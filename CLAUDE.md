@@ -1,6 +1,6 @@
 ## Commits
 
-All commits must follow Conventional Commits specification.
+All commits must follow Conventional Commits specification. Maintain commit message within a single line. Include only the subject line — no body, trailers, or metadata of any kind.
 
 For BMAD artifact updates use `docs` commit type. When a commit creates or updates a BMAD artifact, the scope must reflect the artifact type:
 
