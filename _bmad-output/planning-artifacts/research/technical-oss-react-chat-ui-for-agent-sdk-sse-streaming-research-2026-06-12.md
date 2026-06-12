@@ -1378,6 +1378,19 @@ npm install @ag-ui/core
 
 **Removed from original recommendation:** `@assistant-ui/react-data-stream`, `assistant-stream`
 
+**Verified resolved versions** (dry-run against React 19.2.7 — no peer dep conflicts):
+
+| Package | Resolved version | Stability note |
+|---|---|---|
+| `@assistant-ui/react` | `0.14.18` | — |
+| `@assistant-ui/react-ag-ui` | `0.0.38` | ⚠️ Pin exact — pre-1.0 |
+| `@ag-ui/client` | `0.0.55` | ⚠️ Pin exact — pre-1.0 |
+| `@ag-ui/core` | `0.0.57` | ⚠️ Pin exact — pre-1.0 |
+
+`assistant-stream 0.3.21` is pulled in as a transitive dependency of `@assistant-ui/react` — available if needed but not a direct dependency for the AG-UI path.
+
+Use exact versions (no `^`) for all `@ag-ui/*` and `@assistant-ui/react-ag-ui` packages until they reach `1.0`.
+
 ---
 
 ### Amended Gotchas
