@@ -457,6 +457,8 @@ const sandbox = await daytona.create({
 - Use fine-grained GitHub PATs scoped to the specific repository + `contents:write` + `pull_requests:write` only
 - Token rotation: issue a new PAT per-session or use GitHub Apps installation tokens (1-hour TTL) for tighter rotation
 
+> **MVP:** `userGitHubToken` is a fine-grained PAT entered by the user during onboarding and stored encrypted in the platform database. Clone URL uses `https://x-access-token:{PAT}@github.com/{owner}/{repo}.git`. GitHub App installation tokens are the post-MVP target — see git auth research ADR-002.
+
 _Sources: [Daytona Git Operations](https://www.daytona.io/docs/en/git-operations/), [Daytona Python SDK Git](https://www.daytona.io/docs/en/python-sdk/sync/git/), [Daytona Sandboxes via Arcade (OAuth integration)](https://www.daytona.io/dotfiles/sandboxes-now-available-as-agent-ready-tools-through-arcade)_
 
 ---

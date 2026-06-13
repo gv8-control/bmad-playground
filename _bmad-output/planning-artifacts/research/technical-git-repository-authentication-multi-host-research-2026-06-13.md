@@ -55,6 +55,39 @@ All claims are sourced from official provider documentation and current technica
 
 ---
 
+## MVP Scope
+
+> **Read this first.** These decisions govern the MVP private beta. The full architecture in this document is the post-MVP target state. Downstream BMAD skills (PRD, Architecture) should operate from the MVP decisions below and treat the full research as a reference for future phases.
+
+### Decision 1 — GitHub Only
+
+bmad-easy MVP supports GitHub repositories only. GitLab, Bitbucket, Azure DevOps, Gitea/Forgejo, and generic git are deferred. The `GitCredentialProvider` abstraction interface is not built for MVP.
+
+- **In MVP:** Single GitHub integration path.
+- **Out of MVP:** All non-GitHub providers; the multi-provider credential abstraction layer.
+- **Migration trigger:** Add the second provider when a paying customer explicitly requests it.
+
+### Decision 2 — Fine-Grained PAT, Not GitHub App
+
+ADR-002 (below) recommends GitHub App as the right long-term model. For MVP, a fine-grained GitHub PAT pasted by the user is used instead. GitHub App requires RSA key management, server-side JWT signing, and an installation token exchange flow — overhead not justified before product-market fit.
+
+**MVP auth flow:**
+
+1. During repo connection, the platform UI prompts for a fine-grained GitHub PAT with a step-by-step generation guide.
+2. Required scope: specific repository + `contents:write` only.
+3. PAT stored encrypted (AES-256-GCM) in the platform database.
+4. Injected into the Daytona sandbox at creation as `GITHUB_TOKEN` env var.
+5. Clone URL format: `https://x-access-token:{PAT}@github.com/{owner}/{repo}.git`
+6. Commit authorship set independently via `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` sandbox env vars — the PAT is transport-only and does not affect `git log` attribution.
+
+**Push notifications (MVP):** No webhook registration. The Project Map reads repository state on page load via the GitHub REST API using the stored PAT. Real-time push detection is post-MVP.
+
+**Acceptable compromise:** Fine-grained PAT generation requires a manual step during onboarding. The user audience (developer champions assisting non-dev teammates) can follow a step-by-step guide in the UI. Fine-grained PATs are scoped to a single repository — more restrictive than a classic OAuth scope.
+
+**Migration trigger:** Implement GitHub App (ADR-002) when beta feedback identifies PAT-generation friction as a material onboarding activation blocker.
+
+---
+
 ## Technology Stack Analysis
 
 ### Git Client Libraries (Programmatic Git Operations)
@@ -337,6 +370,8 @@ User onboarding flow (GitHub):
 - Survives org admin departures (app install is org-level)
 - Industry standard: how Vercel, Netlify, Railway, Linear, etc. integrate with GitHub
 
+> **MVP note:** GitHub App is the post-MVP target. MVP uses a user-provided fine-grained PAT instead. See [MVP Scope](#mvp-scope) above.
+
 ### Tier 2: Universal (GitLab, Bitbucket, Azure DevOps, Gitea, Generic)
 
 ```
@@ -454,6 +489,8 @@ Outcome: UC1 ✅, UC3 ✅, UC4 ⚠️ (mitigated — see below), UC5 ✅, UC6 �
 Outcome: Marginally better than Option 2 on PR attribution; not meaningfully better than Option 2 on any other use case. Adds a second credential flow and doubles token storage complexity. Not justified until PR attribution via the GitHub API is a product requirement.
 
 ### Decision: Option 2 — GitHub App (single entity)
+
+> **MVP note:** This ADR documents the post-MVP target architecture. bmad-easy MVP uses fine-grained user-provided PATs rather than a GitHub App installation. See [MVP Scope](#mvp-scope). Implement GitHub App when beta feedback identifies PAT-generation friction as a material activation blocker.
 
 The platform registers one GitHub App. The developer champion installs it once on their org or selected repositories. All git transport uses installation access tokens issued by the platform's NestJS backend.
 
