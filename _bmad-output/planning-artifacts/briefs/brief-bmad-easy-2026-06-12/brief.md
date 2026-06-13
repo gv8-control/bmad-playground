@@ -2,7 +2,7 @@
 title: "Product Brief: bmad-easy"
 status: final
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-06-13
 ---
 
 # Product Brief: bmad-easy
@@ -26,7 +26,7 @@ In practice, the delivery mechanism betrays the promise. BMAD runs through IDE e
 - A PM or delivery lead who wants to run a brainstorming session, create a PRD, or contribute to an architecture review must configure a local dev environment, understand git workflows, and operate tooling that was never built for them.
 - When teams push BMAD on non-dev members without removing this barrier, participation stays shallow — the tool feels like an imposition, not an invitation.
 
-Current workarounds all fall short. Screensharing sessions with a developer are ad-hoc and don't scale. Generic AI chat tools (ChatGPT, Claude.ai) are not BMAD-aware and produce artifacts disconnected from the repo. Claude Code Desktop is the closest substitute — it surfaces a git-connected agent interface without exposing the codebase directly — but it is still a developer tool: it requires local setup and is not designed for the non-dev workflow. The founder's own team used BMAD, and non-dev members participated — but the experience was rougher than it needed to be, leaving value on the table. The methodology worked; the access layer got in the way.
+Current workarounds all fall short. Screensharing sessions with a developer are ad-hoc and don't scale. Generic AI chat tools (ChatGPT, Claude.ai) are not BMAD-aware and produce artifacts disconnected from the repo. Claude Code Web (released October 2025) is the closest substitute — it removes the local installation requirement — but it is still a general-purpose developer tool: it is not BMAD-structured, requires each user to manage their own Claude subscription, and provides no Project Map or automatic artifact commitment to the shared repo. The founder's own team used BMAD, and non-dev members participated — but the experience was rougher than it needed to be, leaving value on the table. The methodology worked; the access layer got in the way.
 
 ---
 
@@ -53,11 +53,15 @@ The **Project Map** is the product's central metaphor: a home screen that reflec
 
 Product Managers, Business Analysts, and Delivery Leads on agile software development teams that are using or evaluating BMAD. They are capable professionals who find AI tools compelling but experience developer tooling as a barrier rather than an invitation. Success looks like: completing a BMAD skill session unassisted, contributing an artifact to the shared repo, and feeling like a full participant in the team's AI-driven workflow — not a passenger.
 
-**Decision maker / buyer** [ASSUMPTION — to be validated]
+**Decision maker / buyer** [VALIDATED — see market research 2026-06-12]
 
-Director or VP-level leadership — Head of Product, VP Engineering, CTO — purchasing seats for non-dev teammates at companies where BMAD adoption is being evaluated or expanded. In multi-team organisations, purchasing authority sits above team-lead level.
+Head of Product or VP Engineering, depending on which organisational function owns the non-dev seats. At growth-stage companies (20–200 people, the most likely early adopters), this person may hold VP-equivalent authority under a title like "Head of Product" rather than a formal VP title. Budget authority for this purchase sits at department-head level or above; typical approval threshold is $5k/year, above which VP sign-off is required. The GTM implication: qualify by decision-making authority and company size, not job title alone.
 
-**Prerequisite user (enabler, not buyer)**
+**Champion (developer who set up BMAD)**
+
+The developer who initialised BMAD is not just an enabler — they are the primary discovery and sales channel. They experience the non-dev access problem directly (becoming the BMAD bottleneck for their team), discover bmad-easy through the BMAD community, validate it via self-serve trial, and pitch it internally to the economic buyer. GTM must activate developer champions in the BMAD community and equip them with VP-facing materials. Without an active champion, the economic buyer never engages.
+
+**Prerequisite user (technical dependency)**
 
 A developer on the team who initialises BMAD in the repository. The platform assumes `_bmad` is already set up; onboarding non-devs requires a developer to have done this first. This dependency is a known constraint, not a product responsibility.
 
@@ -67,7 +71,7 @@ A developer on the team who initialises BMAD in the repository. The platform ass
 
 The differentiation is specific and honest:
 
-- **First mover in BMAD-native non-dev access.** No comparable tool exists. Generic AI chat tools are not BMAD-aware and don't integrate with the repo. GitHub's web interface doesn't facilitate skill execution.
+- **First mover in BMAD-native non-dev access.** Claude Code Web (October 2025) removed the installation barrier but is not BMAD-structured, requires individual subscriptions, and provides no Project Map or automatic artifact commitment. The intersection of browser-native + BMAD-structured + repo-committed artifacts + team-shared project state is unoccupied. Generic AI chat tools and GitHub's web interface do not facilitate BMAD skill execution.
 - **Built from lived experience.** The founder uses BMAD and identified this gap within their own team. The product is not a market hypothesis — it is a solution to a friction point already observed in practice.
 - **BMAD community as distribution.** BMAD has an established and growing practitioner base. A BMAD-native platform has a natural, ready-made distribution channel that broad AI tools cannot easily access.
 
@@ -134,5 +138,6 @@ The longer arc, still grounded in BMAD's methodology: as BMAD's modularity matur
 ## Known Risks
 
 - **BMAD dependency.** The platform's value is directly tied to BMAD's adoption. If a competing methodology overtakes BMAD or if AI development tooling converges on a different paradigm, the platform faces an existential question. This is a deliberate bet, made with eyes open.
-- **ICP assumption.** [ASSUMPTION] The buyer persona is intuition-based and unvalidated. A wrong assumption will misalign the go-to-market approach and pricing model. Market research is a near-term prerequisite before any go-to-market investment.
+- **ICP assumption.** [RESOLVED — 2026-06-12] Market research validated the buyer persona with three refinements: (1) target by budget authority rather than formal title — at growth-stage companies the buyer may be a "Head of Product" not a formal VP; (2) the sale is two-persona — developer champion discovers and pitches, VP/Director approves; (3) the GTM pitch must explicitly address "why not Claude Code Web?" as the primary comparison. See [market research report](_bmad-output/planning-artifacts/research/market-b2b-saas-dev-tooling-buyer-persona-research-2026-06-12.md).
+- **Claude Code Web competitive pressure.** Anthropic released a browser-based Claude Code in October 2025. Non-technical PMs are already adopting it. This narrows the "non-dev barrier" differentiation over time. bmad-easy's durable advantages — BMAD-structured sessions, automatic artifact commitment, Project Map, team billing — must be clearly superior to the DIY alternative (Claude Code Web + self-study + manual commits) within 12–18 months of launch.
 - **Prerequisite dependency.** The platform requires a developer to have set up BMAD in the repository first. This creates a dependency on developer buy-in that the platform cannot control and that may slow adoption in teams where dev and non-dev onboarding are not coordinated.
