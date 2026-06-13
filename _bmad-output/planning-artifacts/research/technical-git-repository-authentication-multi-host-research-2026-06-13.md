@@ -508,7 +508,94 @@ If bmad-easy needs to create GitHub Pull Requests attributed to the individual u
 
 ---
 
-## Sources
+## Gaps and Open Questions
+
+*Identified via pre-mortem analysis — areas the architecture must address before production.*
+
+---
+
+### 1. Credential Health Monitoring (Missing Feature — High)
+
+The report has no detection-and-notification loop for expired or revoked credentials. GitLab enforces a 1-year maximum PAT expiry; Bitbucket app passwords can be revoked by users at any time. Without active health checks, failures are silent: polling workers hit 401s indefinitely and users discover broken connections only when they notice missing commits.
+
+**Required addition:** A background credential-validation job that periodically calls a lightweight provider API endpoint (e.g., `GET /user` or `git ls-remote`) with the stored credential, sets an `auth_health_status` field in `repo_connections`, and triggers a user-facing re-auth notification on failure. The DB schema needs `last_auth_error`, `auth_health_status`, and `auth_failed_at` columns.
+
+---
+
+### 2. GitHub App Installation Is a Hard Prerequisite for Non-Dev Teams (Hidden Assumption — High)
+
+The report presents GitHub App as satisfying UC1 (non-dev without GitHub write access), but GitHub App installation requires organization **owner** permissions. Teams with no developer champion hit a wall at onboarding — they cannot install the app themselves.
+
+**Required addition:** Document this as an explicit prerequisite in the onboarding flow. Provide a PAT-based fallback path for GitHub (same as Tier 2 universal flow) for teams with no org admin available. Surface this in the UX as a branching choice: "Install GitHub App (recommended)" vs "Use a Personal Access Token."
+
+---
+
+### 3. go-git Has Material Limitations for Production Use (Incomplete Recommendation — High)
+
+go-git is appropriate for small-to-medium repos but has undisclosed production risks:
+- **Git LFS**: no native support — LFS pointer files are cloned as raw text; silently broken
+- **Large repos (>1 GB)**: go-git loads the object graph into memory for some operations; causes OOM in memory-constrained sandboxes
+- **SSH compatibility**: `golang.org/x/crypto/ssh` defaults conflict with some enterprise SSH server key-exchange configurations
+
+**Required addition:** Document these constraints in the technology selection rationale. Add user-facing repo size and LFS warnings at connect time. Provide an escape hatch to the system `git` CLI subprocess for cases go-git cannot handle.
+
+---
+
+### 4. Azure DevOps Webhook Security Is Insufficient for Enterprise (Weak Mitigation — Medium)
+
+UUID-based webhook URLs (security through obscurity) are not an acceptable mitigation for enterprise customers. UUIDs can appear in server logs, error messages, and browser history.
+
+**Required addition:** Either implement IP allowlisting against Microsoft's published Azure DevOps CIDR ranges (with an operational process to track range updates) or formally classify Azure DevOps as webhook-unsupported and default to polling with an explicit UX explanation. Remove the UUID-URL mitigation from the security table.
+
+---
+
+### 5. No Webhook Secret Rotation Procedure (Missing Operational Guidance — Medium)
+
+The report stores webhook secrets encrypted but defines no rotation procedure. If secrets are compromised, the platform must atomically: generate a new secret, call each provider's API to update the webhook config, and update the DB record. For a large number of connections across multiple providers, this is a multi-step operation with no documented rollback.
+
+**Required addition:** Design a dual-secret transition window (accept both old and new HMAC secrets for a short overlap period during rotation, mirroring GitHub's own approach). Document the rotation runbook as an operational requirement.
+
+---
+
+### 6. Cross-Tenant GitHub App Token Scoping Is Unspecified (Security Gap — High)
+
+The report states "the platform controls who can access which repos" but does not specify the enforcement mechanism. A code bug that retrieves the wrong `installation_id` from the database could result in an installation token for one customer's org being used to access another customer's repository.
+
+**Required addition:** Every code path from `connection_id` to installation token issuance must pass through a tenant authorization check that verifies `repo_connection.tenant_id == requesting_tenant_id` before calling `POST /app/installations/{id}/access_tokens`. This must be enforced at the service layer, not assumed at the caller layer.
+
+---
+
+### 7. UC4 Revocation Is Passive, Not Active (ADR Gap — Medium)
+
+The ADR acknowledges UC4 as ⚠️ with the mitigation "platform deactivates user → `POST /agent` rejected → no new sessions." This is passive: an in-progress agent session at deactivation time continues running in its Daytona sandbox, potentially committing to the repository for the remainder of the session (up to the session timeout).
+
+**Required addition:** User deactivation must emit an event that actively terminates all running sandboxes for that user (e.g., `DELETE /sandbox/{id}` on Daytona). The ADR consequences table should reflect this as a required platform behaviour, not a future consideration.
+
+---
+
+### 8. Forgejo API Compatibility Claim Is Under-Sourced (Source Quality — Low)
+
+The claim "Forgejo maintains API compatibility with Gitea for core operations as of 2026" is sourced from TechVerdict, a non-authoritative third-party blog. Forgejo has been diverging from Gitea since the 2022 fork and has changed authentication headers in some releases.
+
+**Required addition:** Source compatibility claims from the [official Forgejo API documentation](https://codeberg.org/forgejo/forgejo/src/branch/forgejo/docs) or Forgejo changelog. Note the specific API version range validated. Flag API divergence as an ongoing maintenance risk requiring periodic verification against new Forgejo releases.
+
+---
+
+### 9. No GitHub PAT Fallback for GitHub Onboarding (Missing Alternative — Medium)
+
+The report presents GitHub App as the only GitHub integration path. There is no fallback for users whose GitHub org disables third-party app installations (a setting available to org admins).
+
+**Required addition:** Document and implement a PAT-based GitHub path (identical to the Tier 2 universal flow) as a fallback. Surface it in onboarding if GitHub App installation fails or is declined.
+
+---
+
+### 10. Webhook Payload Normalization Layer Not Designed (Missing Architecture Component — Medium)
+
+The provider webhook comparison table shows that push event payloads differ significantly across providers (field names, nesting, branch ref format, commit object structure). The `WebhookRouter` in the ingestion architecture diagram emits a `PushEvent` but the normalization from provider-specific payload to internal schema is not designed.
+
+**Required addition:** Define a `NormalizedPushEvent` schema (branch name, HEAD commit SHA, list of changed files, pusher identity) and document per-provider adapter logic that maps each provider's payload shape to this schema. This normalization layer belongs between `WebhookRouter` and the internal event bus.
+
+---
 
 - [GitHub Docs – Differences between GitHub Apps and OAuth Apps](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps)
 - [GitHub Docs – Authenticating as a GitHub App installation](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation)
