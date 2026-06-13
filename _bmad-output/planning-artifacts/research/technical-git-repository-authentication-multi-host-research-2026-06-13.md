@@ -412,6 +412,87 @@ WebhookRouter
 
 ---
 
+## ADR-002: GitHub Auth Token Ownership — Platform Entity vs. Per-User
+
+**Date:** 2026-06-13
+**Status:** Decided
+**Deciders:** Marius (founder), Winston (architect)
+
+### Context
+
+bmad-easy connects multiple non-dev team members (PMs, BAs, Delivery Leads) to a shared GitHub repository. A Claude Agent SDK process running inside a Daytona sandbox clones the repo, writes BMAD artifacts, and pushes commits on each user's behalf. The platform must decide who owns the GitHub credential used for git transport: each individual platform user, or the platform acting as a single entity (GitHub App).
+
+This decision is coupled with how commit authorship is expressed in git history and how access is revoked when a user leaves a team.
+
+### Use Cases Evaluated
+
+| # | Use Case |
+|---|----------|
+| UC1 | Non-dev without GitHub write access connects a team repo |
+| UC2 | Committed artifacts identify the individual who created them |
+| UC3 | Multiple teammates share one repo connection without individual OAuth flows |
+| UC4 | User leaves team — their repo access stops |
+| UC5 | Sandbox pre-warming fires at repo connect time, not at first message |
+| UC6 | Webhooks registered once, survive user token expiry and departures |
+| UC7 | Project Map reads repo state on every page load without an active user session |
+| UC8 | Developer champion (repo admin) installs once; non-devs gain access without GitHub permissions |
+| UC9 | Token scoped to minimum required permissions |
+| UC10 | Org admin departure does not break the repo connection |
+
+### Options Considered
+
+**Option 1 — Per-User Tokens:** Each platform user authenticates with GitHub via OAuth. The platform stores their OAuth access token. All sandbox git operations use the acting user's token.
+
+Outcome against use cases: UC1 ❌, UC3 ⚠️, UC4 ✅, UC5 ⚠️, UC6 ❌, UC7 ❌, UC8 ❌, UC10 ❌. Per-user tokens fail on the majority of load-bearing use cases. The core product premise — non-devs who lack GitHub repo access using the platform — is blocked at the auth layer.
+
+**Option 2 — Single Entity (GitHub App):** One GitHub App registered for the platform. The developer champion installs it on their org/repo once. All sandbox git operations use installation access tokens (1-hour TTL, auto-refreshed by NestJS). The platform controls who can access which repos; GitHub is not the access control layer.
+
+Outcome: UC1 ✅, UC3 ✅, UC4 ⚠️ (mitigated — see below), UC5 ✅, UC6 ✅, UC7 ✅, UC8 ✅, UC10 ✅.
+
+**Option 3 — True Hybrid (GitHub App for transport + per-user OAuth for identity):** GitHub App handles all git operations; a separate per-user OAuth token is stored for identity verification and PR attribution via the GitHub API.
+
+Outcome: Marginally better than Option 2 on PR attribution; not meaningfully better than Option 2 on any other use case. Adds a second credential flow and doubles token storage complexity. Not justified until PR attribution via the GitHub API is a product requirement.
+
+### Decision: Option 2 — GitHub App (single entity)
+
+The platform registers one GitHub App. The developer champion installs it once on their org or selected repositories. All git transport uses installation access tokens issued by the platform's NestJS backend.
+
+**Auth token ownership and git author identity are independent.** The installation token used for `git push` does not determine what appears in `git log`. The NestJS backend injects per-user author metadata into every Daytona sandbox at creation time:
+
+```
+GIT_AUTHOR_NAME=<platform user display name>
+GIT_AUTHOR_EMAIL=<platform user email>
+GIT_COMMITTER_NAME=<platform user display name>
+GIT_COMMITTER_EMAIL=<platform user email>
+```
+
+Git history correctly attributes each artifact to the individual who created it. GitHub displays the commit as authored by the user and pushed via the bmad-easy GitHub App — the same pattern used by Vercel, Netlify, Railway, and Linear.
+
+**UC4 mitigation (user revocation):** Because GitHub is not the access control layer, revocation must be enforced at the platform layer. A user deactivated in bmad-easy immediately loses the ability to start new sessions. NestJS validates the user's platform session on every `POST /agent` request before issuing a sandbox. The GitHub App installation's continued existence is irrelevant once the platform rejects the user.
+
+### Consequences
+
+| Concern | Owner |
+|---------|-------|
+| Git transport credentials (clone/push) | GitHub App installation token — platform entity |
+| Commit author identity | Per-user `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` injected as Daytona sandbox env vars |
+| Access control: who can use which repo | Platform (bmad-easy) — per-seat, session-gated |
+| Webhook registration | Automatic at GitHub App installation event — no user action required |
+| Project Map background reads | GitHub App installation token — always available; no user session required |
+| Token rotation | NestJS refreshes installation tokens every ~55 minutes (1-hour TTL) |
+| Revocation when user leaves team | Platform deactivates user → `POST /agent` rejected → no new sessions |
+
+### Explicitly Rejected
+
+- **Per-user OAuth tokens** (Option 1): Recreates the developer-tooling barrier that bmad-easy exists to remove. Non-devs would need individual GitHub repo write access, adding an out-of-platform prerequisite. Webhook and Project Map stability tied to individual user tokens. Fails 5 of 10 use cases.
+- **True hybrid** (Option 3): Per-user OAuth adds a second credential flow without improving any use case outcome that git author metadata does not already cover. Revisit only if PR attribution via the GitHub API (creating PRs as the individual user's GitHub identity) becomes a product requirement.
+
+### Future Trigger for Revisiting
+
+If bmad-easy needs to create GitHub Pull Requests attributed to the individual user's GitHub account (rather than the GitHub App), per-user OAuth becomes justified. At that point, implement Option 3: GitHub App for git transport, per-user OAuth stored separately for GitHub API calls only.
+
+---
+
 ## Summary and Decisions
 
 | Decision | Recommendation |
