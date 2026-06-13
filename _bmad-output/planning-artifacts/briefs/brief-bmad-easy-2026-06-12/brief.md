@@ -110,18 +110,24 @@ The longer arc, still grounded in BMAD's methodology: as BMAD's modularity matur
 
 **Methodology validation**
 
-- Non-dev users report BMAD feels accessible rather than imposed — qualitative signal from early user interviews
+- A non-dev team member completes a BMAD skill session on their own — from initial artifact layout through to a committed result — without a developer guiding them through it
+- Non-dev users who complete one session go on to run a second session on their own initiative (shows the tool is an invitation, not a one-time exercise)
 
-**Early signal — first 90 days post-launch** [ASSUMPTION]
+**Early signal — first 90 days post-launch**
 
-- 3–5 teams complete at least one full BMAD skill session with a non-dev as primary operator
-- Non-dev users complete skill sessions unassisted — no developer help required
-- Artifacts committed through the platform are accepted into the shared repo without developer intervention
+- At least 3 teams run a full BMAD skill session with a non-dev as the one operating the platform
+- Non-dev users in those teams each run at least 3 skill sessions in total, across at least 2 different skill types (shows they are using it as part of their actual workflow, not just trying it once)
+- At least one artifact produced through the platform is used as a direct input to subsequent team work — referenced in a developer's session, a sprint planning discussion, or equivalent
 
-**Business signal — 6 months** [ASSUMPTION]
+**Business signal — 6 months**
 
-- First paying customer (team subscription)
-- Net retention: teams that activate continue beyond their first month
+- At least one paying customer is a Director or VP-level buyer purchasing seats for non-dev teammates at the full asking price
+- Teams that pay for a second month run at least 4 skill sessions that month (shows the tool has become part of their working rhythm, not just something they are keeping around)
+- At least one team adds seats or brings in additional non-dev participants beyond the original group
+
+**If this is not working**
+
+- If fewer than 2 teams reach 3 skill sessions within 90 days, the experience needs fundamental rethinking before any further effort to grow the user base
 
 ---
 
