@@ -466,28 +466,36 @@ _Sources: [Daytona Git Operations](https://www.daytona.io/docs/en/git-operations
 The `threadId` from `RunAgentInput` is the single durable key that connects all layers: the Next.js conversation record, the Daytona sandbox, and the Claude Agent SDK session. NestJS manages a `SandboxRegistry` (in-memory map or Redis-backed) keyed by `threadId`:
 
 ```
-State: IDLE (no sandbox)
+State: NO SANDBOX
   │
-  ├── RUN_STARTED (first turn)
-  │     ├── Create Daytona sandbox
-  │     ├── git clone user repo
-  │     ├── Start SDK process (via sandbox-agent or hooks)
-  │     └── → RUNNING
+  └── User opens chat tab
+        ├── Create Daytona sandbox
+        ├── git clone user repo (~3–8 s, happens in background while user reads skill options)
+        ├── Read skills metadata from sandbox filesystem (surfaces available skills in UI)
+        ├── Immediately pause sandbox
+        └── → PROVISIONED (sandbox paused, filesystem intact, no SDK process)
+
+State: PROVISIONED
   │
-  └── RUN_STARTED (subsequent turn, sandbox exists)
-        ├── Resume paused sandbox (if stopped)
-        ├── Re-run SDK process with updated messages
+  └── RUN_STARTED (any turn)
+        ├── Resume paused sandbox (~90 ms)
+        ├── Start SDK process via sandbox-agent (~150–300 ms)
         └── → RUNNING
             │
             ├── RUN_FINISHED → Pause sandbox (preserve filesystem state)
-            │                   → IDLE (sandbox warm, waiting)
+            │                   → PROVISIONED (sandbox warm, waiting)
             │
             ├── Client disconnect → Cancel SDK process, pause sandbox
-            │                        → IDLE
+            │                        → PROVISIONED
             │
             └── Idle timeout (e.g. 30 min) → Destroy sandbox
-                                              → TERMINATED
+                                              → NO SANDBOX
 ```
+
+**Key design decision — sandbox lifecycle anchored to chat tab open, not first message:**
+The sandbox is created and immediately paused when the user opens a new chat tab — not when they send their first message. This serves two purposes: (1) the git clone cost (~3–8 s) is paid during the tab-open transition while the user is reading available skill options, making it invisible; (2) the paused sandbox filesystem can be read immediately via the Daytona SDK to populate the skills list in the chat UI, with no separate GitHub API call needed. By the time the user sends their first message, the sandbox is already provisioned and resumes in ~90 ms.
+
+**Skill invocation:** No special initial prompt or skill-selection API is required. The Claude Agent SDK starts in the sandbox environment with all BMAD skills already available (loaded from the cloned `_bmad/` directory, exactly as in Claude Code). Skill dispatch is conversational — the UI reads the skills list from the paused sandbox filesystem and surfaces them as suggestions; the user's first message (e.g. `/bmad-agent-pm`) invokes the skill naturally through the agent loop. The backend has no concept of a "selected skill."
 
 **Pause vs destroy:** Pausing the sandbox (Daytona auto-stop) preserves the filesystem — the user's in-progress work survives across turns without requiring a commit. Destroying on every turn would require a fresh `git clone` each time, adding latency and losing uncommitted file state between turns.
 
@@ -518,15 +526,16 @@ Total to first streamed token: ~600–1500 ms
 
 This is acceptable for BMAD sessions where individual tasks take minutes. The per-turn overhead does not compound because the sandbox is paused (not destroyed) between turns — the filesystem is preserved, the only cost is the process restart.
 
-**First-turn vs subsequent-turn:**
+**Per-turn latency (all turns benefit from pre-provisioned sandbox):**
 
-| Turn | Sandbox state | Latency driver |
+| Moment | Sandbox state | Latency driver |
 |---|---|---|
-| First message in conversation | Cold (create new) | git clone + sandbox-agent install + SDK startup (~3–8 s) |
+| Chat tab open | NO SANDBOX → PROVISIONED | git clone + sandbox-agent install (~3–8 s, background — user is reading skill options) |
+| First message | Paused (pre-provisioned) | Sandbox resume + SDK startup (~600–1500 ms) |
 | Second+ message | Paused (resume) | Sandbox resume + SDK restart (~600–1500 ms) |
 | Same-session reconnect | Running | Zero sandbox overhead — stream reconnect only |
 
-The first-turn latency of 3–8 seconds (git clone dominates) is the only UX moment requiring a loading indicator. All subsequent turns benefit from the warm sandbox.
+The git clone cost is paid on tab open, not on first message. A loading indicator is appropriate during tab open (skeleton state while sandbox provisions). All message turns — including the first — benefit from the pre-provisioned sandbox and see consistent ~600–1500 ms latency to first streamed token.
 
 _Sources: [Daytona vs E2B vs Modal vs Vercel Sandbox 2026](https://www.startuphub.ai/ai-news/artificial-intelligence/2026/daytona-vs-e2b-vs-modal-vs-vercel-sandbox-2026), [Daytona vs Modal 2026 — Northflank](https://northflank.com/blog/daytona-vs-modal), [AI Agent Sandboxes 2026 — E2B vs Daytona vs WebContainers](https://www.pkgpulse.com/guides/e2b-vs-daytona-vs-webcontainers-ai-agent-sandboxes-2026)_
 
@@ -695,7 +704,7 @@ Daytona Cloud sandbox (per threadId)
 | `sandbox-agent` drops Claude Code JSONL support | Low | High | ADR-001: switch to SDK hooks (Option 2) or WebSocket (Option 3) |
 | Daytona Cloud concurrent sandbox limit hit | Medium | Medium | Pause aggressively; queue; upgrade tier or migrate to Daytona OSS |
 | NestJS SSE memory leak under load | Medium | Medium | Use `@Post()` not `@Sse()`; explicit cleanup on close; load test before launch |
-| First-turn latency (git clone) exceeds UX tolerance | Medium | Low | Pre-warm: create sandbox on repo connect, not on first message |
+| Tab-open provisioning latency (git clone) exceeds UX tolerance | Medium | Low | Sandbox is created on chat tab open, not on first message — git clone cost paid while user reads skill options; skeleton loading state covers the gap |
 | Daytona Cloud service availability | Low | High | Daytona OSS self-hosted as fallback; migration is NestJS SandboxService swap |
 | GitHub PAT scoping too broad | Medium | High | Fine-grained PATs: repo-specific, `contents:write` + `pull_requests:write` only |
 | AG-UI SDK breaking changes | Low | Medium | Pin `@ag-ui/core` and `@assistant-ui/react-ag-ui` versions; test on upgrade |
@@ -705,8 +714,8 @@ Daytona Cloud sandbox (per threadId)
 ### Open Questions Requiring Product Decision
 
 1. **Git repository source:** Does the user connect an existing GitHub repo, or does bmad-easy create a new repo on their behalf? This determines the OAuth scope and git clone strategy.
-2. **BMAD skill entry point:** How is the specific BMAD skill (brief/PRD/architecture) selected at the start of a conversation? Is it a URL parameter, a message prefix, or a UI selector?
-3. **Sandbox pre-warming:** Should sandboxes be created speculatively when a user connects a repo (to eliminate first-turn latency), or on the first message? Trade-off: cost vs UX.
+2. ~~**BMAD skill entry point:** How is the specific BMAD skill selected at the start of a conversation?~~ **RESOLVED (2026-06-13):** No special entry point mechanism is needed. The Claude Agent SDK starts in the sandbox with all BMAD skills already loaded from the cloned `_bmad/` directory — identical to how Claude Code works. The chat UI reads the skills list from the paused sandbox filesystem and surfaces them as suggestions. Skill invocation is conversational (the user's first message invokes the skill via the standard slash command or natural language). The backend has no concept of a selected skill.
+3. ~~**Sandbox pre-warming:** Should sandboxes be created speculatively, or on first message?~~ **RESOLVED (2026-06-13):** Sandbox is created and immediately paused when the user opens a new chat tab. See the Session Lifecycle State Machine section for the full rationale.
 4. **Artifact visibility:** BMAD artifacts accumulate in the sandbox filesystem. When and how are they committed to git? On `RUN_FINISHED`? On user request? Auto-commit on idle?
 
 ---
