@@ -465,7 +465,7 @@ _Sources: [Daytona Git Operations](https://www.daytona.io/docs/en/git-operations
 
 ### Session Lifecycle State Machine
 
-The `threadId` from `RunAgentInput` is the single durable key that connects all layers: the Next.js conversation record, the Daytona sandbox, and the Claude Agent SDK session. NestJS manages a `SandboxRegistry` (in-memory map) keyed by `threadId`:
+The `threadId` from `RunAgentInput` is the single durable key that connects all layers: the Next.js conversation record, the Daytona sandbox, and the Claude Agent SDK session.
 
 ```
 State: NO SANDBOX
@@ -627,7 +627,7 @@ These two decisions — containerised NestJS + Daytona Pattern A — compose int
 | Auth handoff | Short-lived JWT (120 s TTL, threadId embedded) | Stateless, verifiable by NestJS; prevents sandbox hijacking |
 | Git auth | GitHub PAT injected as env var at sandbox creation | Never stored in sandbox filesystem; scoped fine-grained PAT |
 | Sandbox lifecycle | Create → pause → resume → destroy on idle timeout | Preserves uncommitted work; running concurrency managed aggressively |
-| Horizontal scaling | Single NestJS container | SandboxRegistry is in-process; single-container topology is the decided scope |
+| Horizontal scaling | Single NestJS container | Single-container topology is the decided scope |
 
 ---
 
@@ -646,7 +646,6 @@ Next.js 15 (Vercel)
 NestJS container (Fly.io or Railway)
   ├── POST /agent  →  AG-UI RunAgentInput
   ├── @ag-ui/encoder  EventEncoder → SSE stream → browser
-  ├── SandboxRegistry  Map<threadId, DaytonaSandboxId>
   └── AgentService  →  Daytona TypeScript SDK
 
 Daytona Cloud sandbox (per threadId)
