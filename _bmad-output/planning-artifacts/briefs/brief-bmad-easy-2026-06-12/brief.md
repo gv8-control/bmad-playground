@@ -2,7 +2,7 @@
 title: "Product Brief: bmad-easy"
 status: final
 created: 2026-06-12
-updated: 2026-06-13
+updated: 2026-06-14
 ---
 
 # Product Brief: bmad-easy
@@ -92,9 +92,9 @@ The longer arc, still grounded in BMAD's methodology: as BMAD's modularity matur
 **In**
 
 - Repository connection via OAuth (GitHub) — URL paste, no CLI setup
-- Chat interface with BMAD skill execution: streaming responses, tab-based multi-session, confirmation of key actions
+- Chat interface with BMAD skill execution: streaming responses, Markdown-rendered agent output, tab-based multi-session, confirmation of key actions
 - Project Map — list of in-progress and completed artifacts drawn from `_bmad-output`
-- Artifact Browser — rendered markdown view of committed artifacts, accessible from the project map
+- Artifact Browser — view of committed artifacts drawn from `_bmad-output`
 - Single agent harness (Claude Code); LLM model hardcoded for MVP
 - SaaS deployment, per-seat pricing, no self-hosting
 
