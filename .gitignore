@@ -14,3 +14,7 @@ out/
 .DS_Store
 *.pem
 npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
