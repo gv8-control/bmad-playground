@@ -12,7 +12,7 @@ web_research_enabled: true
 source_verification: true
 ---
 
-# Research Report: technical
+# Claude Agent SDK: Programmatic Usage, Session Lifecycle, and Multi-Tenant Isolation
 
 **Date:** 2026-06-11
 **Author:** Marius
@@ -26,33 +26,16 @@ This research addresses a pivotal architectural question for the BMAD web platfo
 
 The research spans five technical domains: execution models and SDK architecture, session lifecycle and multi-turn conversation management, context injection from the git repository, streaming output delivery to the browser, and multi-tenant isolation for a SaaS deployment. All findings are grounded in current official documentation (Claude Code Docs, June 2026), verified web sources, and established community patterns from 2025–2026.
 
-**Key finding:** The Agent SDK's `query()` async iterator, combined with Daytona sandbox isolation per conversation, git worktrees for per-session filesystem isolation, and SSE for browser delivery, gives the BMAD platform everything it needs to ship an MVP without building any custom agent infrastructure. The most critical non-obvious risk is `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` — without it, auto-memory loads across tenant sessions regardless of other isolation settings. See the Executive Summary in the Research Synthesis section for a full decision map.
+**Key finding:** The Agent SDK's `query()` async iterator, combined with Daytona sandbox isolation per conversation, git worktrees for per-session filesystem isolation, and SSE for browser delivery, gives the BMAD platform everything it needs to ship an MVP without building any custom agent infrastructure. The most critical non-obvious risk is `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` — without it, auto-memory loads across tenant sessions regardless of other isolation settings.
 
----
+**Technical Recommendations (priority order):**
 
-<!-- Content will be appended sequentially through research workflow steps -->
-
-## Technical Research Scope Confirmation
-
-**Research Topic:** Programmatic Claude Code / Agent SDK for headless skill execution
-**Research Goals:** Understand how to drive Claude Code or the Anthropic Agent SDK from a backend web service to execute BMAD skills server-side, manage session lifecycle, and stream output back to the browser — for a SaaS platform giving non-dev roles access to BMAD
-
-**Technical Research Scope:**
-
-- Architecture Analysis — how Claude Code/Agent SDK is structured for server-side orchestration; subprocess vs API models; session and process lifecycle
-- Implementation Approaches — SDK patterns for spawning and managing agent sessions, input/output piping, headless execution from a Node.js/Python backend
-- Technology Stack — Claude Code CLI, Anthropic Agent SDK, streaming transports (SSE/WebSocket), backend framework options
-- Integration Patterns — how the backend platform calls into the SDK, how git commits surface as events, how output streams back to browser clients
-- Context Injection — how to feed repo-sourced context into Claude Code sessions (CLAUDE.md, flags, file injection, MCP, or SDK-level context APIs); what gets read automatically vs what must be explicitly provided
-
-**Research Methodology:**
-
-- Current web data with rigorous source verification
-- Multi-source validation for critical technical claims
-- Confidence level framework for uncertain information
-- Comprehensive technical coverage with architecture-specific insights
-
-**Scope Confirmed:** 2026-06-11
+1. Use `@anthropic-ai/claude-agent-sdk` (TypeScript) on Node.js 20 LTS as the backend
+2. Run the Agent SDK inside a Daytona Cloud sandbox per conversation — not on the NestJS host
+3. Git worktrees for session filesystem isolation (`cwd` per session, inside the sandbox)
+4. `settingSources: []` + `CLAUDE_CONFIG_DIR` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` on every session — all four, not three
+5. HTTP/2 at the load balancer on the SSE endpoint — not optional for the tab-per-session UI model
+6. `PostToolUse` hook on `Bash(git commit *)` for the artifact-committed pill
 
 ---
 
@@ -285,121 +268,6 @@ _Source: [Hosting the Agent SDK — Scaling and concurrency](https://code.claude
 
 ---
 
-## Implementation Approaches
-
-### Development Workflow
-
-**Local development** uses the Agent SDK directly against the Anthropic API. The TypeScript SDK bundles the Claude Code binary — no separate install. Set `ANTHROPIC_API_KEY` and call `query()`.
-
-**Recommended local dev stack:**
-- Node.js 20 LTS + TypeScript
-- `@anthropic-ai/claude-agent-sdk` (latest)
-- A real git repo with BMAD initialized as the test `cwd`
-- JSONL transcripts land on the Daytona sandbox disk automatically — no external session store needed
-
-**Iteration loop:** BMAD skills are markdown files. Editing a skill and restarting the agent process picks up the change instantly — no build step, no recompile. This makes skill development very fast. The platform backend only changes when the wiring changes (new hook, new session event type); skill logic lives entirely in the repo.
-
----
-
-### Testing Approaches
-
-**Unit / integration testing for session resume:**
-No external `SessionStore` adapter to test. The SDK's native JSONL storage on the Daytona sandbox disk handles transcript persistence. Integration tests for session resume should verify that a `query({ resume: sessionId })` call on the same sandbox restores conversation context correctly — no conformance suite needed.
-
-**Testing agent behavior (skill outputs):**
-Use [Promptfoo](https://www.promptfoo.dev/docs/providers/claude-agent-sdk/) — it has a native Claude Agent SDK provider. Write test cases as YAML: input prompt → expected output pattern. Run against real skills before shipping. This is the closest thing to a functional test for a BMAD skill.
-
-**Testing the SSE stream:**
-Collect all messages from the async iterator and assert on message types and order rather than on exact content. Assert that a `ResultMessage` with `subtype: "success"` appears.
-
-**What not to test:**
-Don't mock the `query()` call itself in integration tests — the agent's behavior depends on the actual model, and mocked responses diverge from real behavior. Test the wiring (session lifecycle, SSE emit, hook firing) with real SDK calls against a test repo.
-
-_Source: [Claude Agent SDK — Promptfoo](https://www.promptfoo.dev/docs/providers/claude-agent-sdk/)_
-
----
-
-### Observability
-
-The Agent SDK inherits Claude Code's built-in OpenTelemetry instrumentation. Set four environment variables at the container level and every `query()` call exports spans, metrics, and log events to your collector:
-
-```bash
-CLAUDE_CODE_ENABLE_TELEMETRY=1
-CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1      # required for traces
-OTEL_TRACES_EXPORTER=otlp
-OTEL_METRICS_EXPORTER=otlp
-OTEL_LOGS_EXPORTER=otlp
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.internal:4318
-```
-
-**What you get out of the box:**
-- Spans around each model request and tool execution
-- Token counters and cost per session
-- Tool call decisions (which tools fired and in what order)
-- Retry events (`api_retry` system messages)
-- Error events
-
-**Per-session cost tracking:** `ResultMessage` includes `total_cost_usd` and a per-model cost breakdown. Read it directly from the stream for real-time spend tracking without needing an OTEL pipeline. Surface this to an internal dashboard keyed by `userId` + `sessionId`.
-
-**Compatible backends:** Honeycomb, Datadog, Grafana/Tempo, SigNoz, Langfuse. Prompt text and tool inputs are not exported by default — opt in via `CLAUDE_CODE_OTEL_INCLUDE_PROMPTS=1` if audit logging is required.
-
-_Source: [Observability with OpenTelemetry — Claude Code Docs](https://code.claude.com/docs/en/agent-sdk/observability), [Claude Code + OpenTelemetry: Per-Session Cost — Bindplane](https://bindplane.com/blog/claude-code-opentelemetry-per-session-cost-and-token-tracking)_
-
----
-
-### Risk Assessment and Mitigation
-
-| Risk | Severity | Mitigation |
-|---|---|---|
-| **No wall-clock session timeout** | High | Implement platform-layer watchdog; kill subprocess after N minutes of no `ResultMessage` |
-| **Memory growth in long sessions** | Medium | Cap `maxTurns` in `ClaudeAgentOptions`; recycle subprocesses after session ends |
-| **Auto-memory cross-tenant leakage** | Critical | `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` in all session environments — non-negotiable |
-| **`cwd` mismatch breaks session resume** | High | Store absolute `cwd` path in session metadata DB; reconstruct worktree at exact same path on resume |
-| **Worktree collision on concurrent commits** | Low (main-branch-only) | Serialize git commits per repo via a per-repo lock or commit queue |
-| **SSE connection limit (HTTP/1.1)** | High | Require HTTP/2 at load balancer on the SSE endpoint |
-| **Agent SDK billing credit exhaustion** | Medium | Monitor per-session `total_cost_usd` from `ResultMessage`; set per-user monthly budget alerts |
-
----
-
-## Technical Research Recommendations
-
-### Implementation Roadmap
-
-**Sprint 1 — Foundation (2–3 weeks)**
-1. Set up TypeScript backend with `@anthropic-ai/claude-agent-sdk`
-2. Implement `query()` wrapper with multi-tenant isolation options (`cwd`, `settingSources: []`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`)
-3. Git worktree lifecycle: create on session start, remove on session end
-4. Basic SSE endpoint (Express or Fastify), HTTP/2 at reverse proxy
-
-**Sprint 2 — Core Flow (2–3 weeks)**
-1. Session metadata in Postgres (userId → sessionId → worktree path)
-2. `PostToolUse` hook on `Bash(git commit *)` → SSE `artifact_committed` event
-3. Context injection: CLAUDE.md + skill file via `appendSystemPromptFile`
-4. Session resume via stored `sessionId` (SDK locates JSONL on Daytona sandbox disk automatically)
-5. OTEL telemetry pipeline + per-session cost tracking
-
-**Sprint 3 — Hardening (1–2 weeks)**
-1. Platform-layer session watchdog (wall-clock timeout)
-2. `maxTurns` cap on all sessions
-3. HTTP/2 load balancer configuration
-4. Egress proxy with per-tenant allowlists
-
-### Technology Stack Recommendation
-
-| Layer | Choice | Rationale |
-|---|---|---|
-| Backend runtime | Node.js 20 LTS + TypeScript | Native Agent SDK; superior at concurrent SSE + stdio |
-| Agent SDK | `@anthropic-ai/claude-agent-sdk` latest | Bundles CLI; TypeScript-native; authoritative sessions API |
-| Session store | JSONL on Daytona sandbox disk (SDK native) | No external store needed; sandbox filesystem independent of NestJS container |
-| Session metadata | Postgres | Relational, queryable, easy audit |
-| Git isolation | `git worktree` | Lighter than clones; shares object store |
-| Sandbox hosting | Daytona Cloud | Official Claude Agent SDK guide; TypeScript SDK; ~90 ms warm start |
-| Observability | OTEL → SigNoz or Grafana | First-class Claude Code support; open-source collector |
-| Browser streaming | SSE via EventSource + HTTP/2 | Dominant standard; native reconnect; CDN-compatible |
-
----
-
 ## Integration Patterns Analysis
 
 ### Platform Backend → Agent SDK: Session Model
@@ -615,53 +483,122 @@ _Source: [Agent SDK overview — Hooks tab](https://code.claude.com/docs/en/agen
 
 ---
 
+## Implementation Approaches
+
+### Development Workflow
+
+**Local development** uses the Agent SDK directly against the Anthropic API. The TypeScript SDK bundles the Claude Code binary — no separate install. Set `ANTHROPIC_API_KEY` and call `query()`.
+
+**Recommended local dev stack:**
+- Node.js 20 LTS + TypeScript
+- `@anthropic-ai/claude-agent-sdk` (latest)
+- A real git repo with BMAD initialized as the test `cwd`
+- JSONL transcripts land on the Daytona sandbox disk automatically — no external session store needed
+
+**Iteration loop:** BMAD skills are markdown files. Editing a skill and restarting the agent process picks up the change instantly — no build step, no recompile. This makes skill development very fast. The platform backend only changes when the wiring changes (new hook, new session event type); skill logic lives entirely in the repo.
+
+---
+
+### Testing Approaches
+
+**Unit / integration testing for session resume:**
+No external `SessionStore` adapter to test. The SDK's native JSONL storage on the Daytona sandbox disk handles transcript persistence. Integration tests for session resume should verify that a `query({ resume: sessionId })` call on the same sandbox restores conversation context correctly — no conformance suite needed.
+
+**Testing agent behavior (skill outputs):**
+Use [Promptfoo](https://www.promptfoo.dev/docs/providers/claude-agent-sdk/) — it has a native Claude Agent SDK provider. Write test cases as YAML: input prompt → expected output pattern. Run against real skills before shipping. This is the closest thing to a functional test for a BMAD skill.
+
+**Testing the SSE stream:**
+Collect all messages from the async iterator and assert on message types and order rather than on exact content. Assert that a `ResultMessage` with `subtype: "success"` appears.
+
+**What not to test:**
+Don't mock the `query()` call itself in integration tests — the agent's behavior depends on the actual model, and mocked responses diverge from real behavior. Test the wiring (session lifecycle, SSE emit, hook firing) with real SDK calls against a test repo.
+
+_Source: [Claude Agent SDK — Promptfoo](https://www.promptfoo.dev/docs/providers/claude-agent-sdk/)_
+
+---
+
+### Observability
+
+The Agent SDK inherits Claude Code's built-in OpenTelemetry instrumentation. Set four environment variables at the container level and every `query()` call exports spans, metrics, and log events to your collector:
+
+```bash
+CLAUDE_CODE_ENABLE_TELEMETRY=1
+CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1      # required for traces
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+OTEL_LOGS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.internal:4318
+```
+
+**What you get out of the box:**
+- Spans around each model request and tool execution
+- Token counters and cost per session
+- Tool call decisions (which tools fired and in what order)
+- Retry events (`api_retry` system messages)
+- Error events
+
+**Per-session cost tracking:** `ResultMessage` includes `total_cost_usd` and a per-model cost breakdown. Read it directly from the stream for real-time spend tracking without needing an OTEL pipeline. Surface this to an internal dashboard keyed by `userId` + `sessionId`.
+
+**Compatible backends:** Honeycomb, Datadog, Grafana/Tempo, SigNoz, Langfuse. Prompt text and tool inputs are not exported by default — opt in via `CLAUDE_CODE_OTEL_INCLUDE_PROMPTS=1` if audit logging is required.
+
+_Source: [Observability with OpenTelemetry — Claude Code Docs](https://code.claude.com/docs/en/agent-sdk/observability), [Claude Code + OpenTelemetry: Per-Session Cost — Bindplane](https://bindplane.com/blog/claude-code-opentelemetry-per-session-cost-and-token-tracking)_
+
+---
+
+### Risk Assessment and Mitigation
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| **No wall-clock session timeout** | High | Implement platform-layer watchdog; kill subprocess after N minutes of no `ResultMessage` |
+| **Memory growth in long sessions** | Medium | Cap `maxTurns` in `ClaudeAgentOptions`; recycle subprocesses after session ends |
+| **Auto-memory cross-tenant leakage** | Critical | `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` in all session environments — non-negotiable |
+| **`cwd` mismatch breaks session resume** | High | Store absolute `cwd` path in session metadata DB; reconstruct worktree at exact same path on resume |
+| **Worktree collision on concurrent commits** | Low (main-branch-only) | Serialize git commits per repo via a per-repo lock or commit queue |
+| **SSE connection limit (HTTP/1.1)** | High | Require HTTP/2 at load balancer on the SSE endpoint |
+| **Agent SDK billing credit exhaustion** | Medium | Monitor per-session `total_cost_usd` from `ResultMessage`; set per-user monthly budget alerts |
+
+---
+
+## Technical Research Recommendations
+
+### Implementation Roadmap
+
+**Sprint 1 — Foundation (2–3 weeks)**
+1. Set up TypeScript backend with `@anthropic-ai/claude-agent-sdk`
+2. Implement `query()` wrapper with multi-tenant isolation options (`cwd`, `settingSources: []`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`)
+3. Git worktree lifecycle: create on session start, remove on session end
+4. Basic SSE endpoint (Express or Fastify), HTTP/2 at reverse proxy
+
+**Sprint 2 — Core Flow (2–3 weeks)**
+1. Session metadata in Postgres (userId → sessionId → worktree path)
+2. `PostToolUse` hook on `Bash(git commit *)` → SSE `artifact_committed` event
+3. Context injection: CLAUDE.md + skill file via `appendSystemPromptFile`
+4. Session resume via stored `sessionId` (SDK locates JSONL on Daytona sandbox disk automatically)
+5. OTEL telemetry pipeline + per-session cost tracking
+
+**Sprint 3 — Hardening (1–2 weeks)**
+1. Platform-layer session watchdog (wall-clock timeout)
+2. `maxTurns` cap on all sessions
+3. HTTP/2 load balancer configuration
+4. Egress proxy with per-tenant allowlists
+
+### Technology Stack Recommendation
+
+| Layer | Choice | Rationale |
+|---|---|---|
+| Backend runtime | Node.js 20 LTS + TypeScript | Native Agent SDK; superior at concurrent SSE + stdio |
+| Agent SDK | `@anthropic-ai/claude-agent-sdk` latest | Bundles CLI; TypeScript-native; authoritative sessions API |
+| Session store | JSONL on Daytona sandbox disk (SDK native) | No external store needed; sandbox filesystem independent of NestJS container |
+| Session metadata | Postgres | Relational, queryable, easy audit |
+| Git isolation | `git worktree` | Lighter than clones; shares object store |
+| Sandbox hosting | Daytona Cloud | Official Claude Agent SDK guide; TypeScript SDK; ~90 ms warm start |
+| Observability | OTEL → SigNoz or Grafana | First-class Claude Code support; open-source collector |
+| Browser streaming | SSE via EventSource + HTTP/2 | Dominant standard; native reconnect; CDN-compatible |
+
+---
+
 ## Research Synthesis
-
-### Table of Contents
-
-1. [Technical Research Scope Confirmation](#technical-research-scope-confirmation)
-2. [Technology Stack Analysis](#technology-stack-analysis) — Execution models, SDK APIs, session lifecycle, streaming
-3. [Architectural Patterns and Design](#architectural-patterns-and-design) — Three-tier architecture, data architecture, security, scaling
-4. [Implementation Approaches and Technology Adoption](#implementation-approaches-and-technology-adoption) — Dev workflow, testing, observability, risk
-5. [Technical Research Recommendations](#technical-research-recommendations) — Sprint roadmap, technology stack decision map
-6. [Integration Patterns Analysis](#integration-patterns-analysis) — Subprocess model, git worktrees, multi-tenant isolation, SSE wiring, context injection, commit hook
-
----
-
-### Executive Summary
-
-The Claude Agent SDK (TypeScript package `@anthropic-ai/claude-agent-sdk`, Node.js 18+) is the correct foundation for the BMAD web platform. It exposes the full Claude Code agent loop — tools, session management, context loading, hooks — as a native async iterator callable from a Node.js web backend. The TypeScript SDK bundles the Claude Code binary; no separate install.
-
-**The three core questions this research answers:**
-
-**1. How do you run BMAD skills server-side?**
-Call `query()` with the skill prompt, `allowedTools`, and `cwd` pointing to a git worktree of the user's repo inside a Daytona sandbox. The agent reads BMAD skills from `.claude/skills/` and CLAUDE.md from the worktree automatically (or inject explicitly in bare mode). Each `query()` call is an async iterator that streams typed message objects. One conversation = one Daytona sandbox with one agent process and its own working directory.
-
-**2. How do you manage session lifecycle for a multi-turn chat?**
-Capture the `session_id` from the first `SystemMessage` (type `system`, subtype `init`). Store it in Postgres keyed by `userId + skillName`. On each subsequent PM turn, call `query()` with `options: { resume: sessionId }`. The SDK finds the JSONL transcript on the Daytona sandbox disk automatically. The `cwd` must be the same absolute path on resume — use a stable git worktree path inside the sandbox.
-
-**3. How do you stream output to the browser?**
-Proxy the SDK's async iterator to an SSE response. Each `data:` event is a JSON-serialized SDK message. Requires HTTP/2 at the load balancer (tab-per-session UI will hit HTTP/1.1's 6-connection limit otherwise). Use a `PostToolUse` hook on `Bash(git commit *)` to emit a typed `artifact_committed` SSE event that renders the pill UI.
-
-**Key Technical Findings:**
-
-- The Agent SDK running inside a Daytona sandbox (not on the NestJS host) is the isolation model — direct repo access, no file sync overhead, microVM-grade isolation per conversation
-- Git worktrees are the isolation primitive: one per active session, created on `SessionStart`, removed on `SessionEnd`, lighter than full clones
-- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` is a non-negotiable multi-tenant isolation requirement — auto-memory loads unconditionally even when `settingSources: []` is set
-- JSONL transcripts on the Daytona sandbox disk are the session store — no external adapter needed
-- Token cost is typically 1–2 orders of magnitude larger than container infra cost; plan budget alerting from day one via `ResultMessage.total_cost_usd`
-- The Agent SDK billing model changed June 15, 2026: SDK usage on subscription plans draws from a new monthly Agent SDK credit pool; API key auth is required (not subscription login)
-
-**Technical Recommendations (priority order):**
-
-1. Use `@anthropic-ai/claude-agent-sdk` (TypeScript) on Node.js 20 LTS as the backend
-2. Run the Agent SDK inside a Daytona Cloud sandbox per conversation — not on the NestJS host
-3. Git worktrees for session filesystem isolation (`cwd` per session, inside the sandbox)
-4. `settingSources: []` + `CLAUDE_CONFIG_DIR` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` on every session — all four, not three
-5. HTTP/2 at the load balancer on the SSE endpoint — not optional for the tab-per-session UI model
-6. `PostToolUse` hook on `Bash(git commit *)` for the artifact-committed pill
-
----
 
 ### Source Index
 
