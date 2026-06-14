@@ -89,6 +89,10 @@ The longer arc, still grounded in BMAD's methodology: as BMAD's modularity matur
 
 ## MVP Scope
 
+**Prerequisites**
+
+A BMAD-initialised repository (`_bmad` set up by a developer) is a hard requirement for using the platform. bmad-easy does not set up BMAD — it is a tool for teams that have already adopted it. Users without an initialised repository cannot onboard.
+
 **In**
 
 - Repository connection via OAuth (GitHub) — URL paste, no CLI setup
@@ -106,6 +110,7 @@ The longer arc, still grounded in BMAD's methodology: as BMAD's modularity matur
 - BMAD initialisation or repo configuration (developer responsibility)
 - Self-hosted or on-premise deployment
 - User-selectable LLM model (planned post-MVP)
+- Artifact commit failure error handling — visible error states and retry logic are post-MVP; BMAD's design minimises conflict risk in the short term
 
 ---
 
@@ -139,4 +144,3 @@ The longer arc, still grounded in BMAD's methodology: as BMAD's modularity matur
 - **BMAD dependency.** The platform's value is directly tied to BMAD's adoption. If a competing methodology overtakes BMAD or if AI development tooling converges on a different paradigm, the platform faces an existential question. This is a deliberate bet, made with eyes open.
 - **ICP assumption.** [RESOLVED — 2026-06-12] Market research validated the buyer persona with three refinements: (1) target by budget authority rather than formal title — at growth-stage companies the buyer may be a "Head of Product" not a formal VP; (2) the sale is two-persona — developer champion discovers and pitches, VP/Director approves; (3) the GTM pitch must explicitly address "why not Claude Code Web?" as the primary comparison. See [market research report](_bmad-output/planning-artifacts/research/market-b2b-saas-dev-tooling-buyer-persona-research-2026-06-12.md).
 - **Claude Code Web competitive pressure.** Anthropic released a browser-based Claude Code in October 2025. Non-technical PMs are already adopting it. This narrows the "non-dev barrier" differentiation over time. bmad-easy's durable advantages — BMAD-structured sessions, automatic artifact commitment, Project Map, team billing — must be clearly superior to the DIY alternative (Claude Code Web + self-study + manual commits) within 12–18 months of launch.
-- **Prerequisite dependency.** The platform requires a developer to have set up BMAD in the repository first. This creates a dependency on developer buy-in that the platform cannot control and that may slow adoption in teams where dev and non-dev onboarding are not coordinated.
