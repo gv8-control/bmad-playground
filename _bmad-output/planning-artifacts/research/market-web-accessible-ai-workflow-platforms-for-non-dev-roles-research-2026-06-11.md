@@ -197,7 +197,7 @@ The following platforms were evaluated against four criteria:
 
 ### Platform 1: Claude Code on the Web (`claude.ai/code`) ⭐ Tier 1
 
-**What it is**: Anthropic's official browser-native Claude Code, launched November 2025. Runs on Anthropic-managed cloud infrastructure. In research preview for Pro, Max, Team, and Enterprise users.
+**What it is**: Anthropic's official browser-native Claude Code, launched October 2025. Runs on Anthropic-managed cloud infrastructure. In research preview for Pro, Max, Team, and Enterprise users.
 
 **Browser-accessible**: ✅ Yes — pure web UI, no local install
 **Git commit**: ✅ Yes — clones GitHub repos, pushes branches, opens PRs via secure proxy

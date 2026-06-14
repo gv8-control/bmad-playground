@@ -638,7 +638,7 @@ The Claude Agent SDK (TypeScript package `@anthropic-ai/claude-agent-sdk`, Node.
 Call `query()` with the skill prompt, `allowedTools`, and `cwd` pointing to a git worktree of the user's repo inside a Daytona sandbox. The agent reads BMAD skills from `.claude/skills/` and CLAUDE.md from the worktree automatically (or inject explicitly in bare mode). Each `query()` call is an async iterator that streams typed message objects. One conversation = one Daytona sandbox with one agent process and its own working directory.
 
 **2. How do you manage session lifecycle for a multi-turn chat?**
-Capture the `session_id` from the first `ResultMessage`. Store it in Postgres keyed by `userId + skillName`. On each subsequent PM turn, call `query()` with `options: { resume: sessionId }`. The SDK finds the JSONL transcript on the Daytona sandbox disk automatically. The `cwd` must be the same absolute path on resume — use a stable git worktree path inside the sandbox.
+Capture the `session_id` from the first `SystemMessage` (type `system`, subtype `init`). Store it in Postgres keyed by `userId + skillName`. On each subsequent PM turn, call `query()` with `options: { resume: sessionId }`. The SDK finds the JSONL transcript on the Daytona sandbox disk automatically. The `cwd` must be the same absolute path on resume — use a stable git worktree path inside the sandbox.
 
 **3. How do you stream output to the browser?**
 Proxy the SDK's async iterator to an SSE response. Each `data:` event is a JSON-serialized SDK message. Requires HTTP/2 at the load balancer (tab-per-session UI will hit HTTP/1.1's 6-connection limit otherwise). Use a `PostToolUse` hook on `Bash(git commit *)` to emit a typed `artifact_committed` SSE event that renders the pill UI.
