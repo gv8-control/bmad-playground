@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<!--
+  Spine sections illustrated:
+  - EXPERIENCE.md: Information Architecture (Skill Session surface)
+  - EXPERIENCE.md: Component Patterns — Chat Bubble (user + agent), Commit Pill (both variants),
+                   Agent Thinking Indicator, Agent Tool Indicator, Stop Button,
+                   Scroll-to-Bottom Button, Draft Persistence, Working Tree State Indicator, Save Checkpoint
+  - EXPERIENCE.md: State Patterns — Sandbox ready, Agent streaming, Working tree dirty,
+                   Checkpoint success, Session approaching idle timeout, Session expired
+  - EXPERIENCE.md: Key Flows — Flow 2 (Skill Session and Commit Pill), steps 3–6
+  - DESIGN.md: Colors, Typography, Components (commit-pill, commit-pill-checkpoint,
+               session-status-active, session-status-expired, agent-thinking-indicator,
+               agent-tool-indicator, chat-bubble-user, chat-bubble-agent, working-tree-indicator)
+  Canonical state: Active session with Commit Pill visible, working tree dirty.
+  Alternate state (right column): Session expired.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mock — Skill Session</title>
+<style>
+  :root {
+    --primary: #2C42DB;
+    --primary-fg: #FFFFFF;
+    --accent: #EA5C1E;
+    --accent-fg: #FFFFFF;
+    --bg: #FFFFFF;
+    --fg: #1c1108;
+    --muted: #f5f5f3;
+    --muted-fg: #78716c;
+    --border: #e8e4e0;
+    --input-bg: #f0eeec;
+    --r-sm: 4px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-pill: 9999px;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --mono: 'SF Mono', 'Cascadia Code', 'Fira Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e5e7eb; font-family: var(--sans); font-size: 14px; color: var(--fg); padding: 32px 24px; }
+
+  .stage { display: flex; gap: 32px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+  .label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+
+  .browser { width: 740px; border-radius: 10px; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.18); background: var(--bg); }
+  .chrome { background: #f3f4f6; border-bottom: 1px solid #d1d5db; padding: 10px 14px; display: flex; align-items: center; gap: 8px; }
+  .chrome-dots { display: flex; gap: 5px; }
+  .chrome-dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot-r { background: #ef4444; }
+  .dot-y { background: #f59e0b; }
+  .dot-g { background: #22c55e; }
+  .url-bar { flex: 1; background: #e9eaf0; border-radius: 3px; padding: 4px 10px; font-size: 12px; color: #6b7280; font-family: var(--mono); }
+
+  /* Page shell */
+  .page { display: flex; flex-direction: column; height: 580px; }
+
+  /* Top bar */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .breadcrumb { font-size: 12px; color: var(--muted-fg); }
+  .breadcrumb a { color: var(--primary); text-decoration: none; }
+  .session-status { display: flex; align-items: center; gap: 6px; }
+  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); position: relative; }
+  .pulse-dot::after { content:''; position:absolute; inset:-3px; border-radius:50%; background:rgba(44,66,219,0.25); animation: pulse 2s ease-out infinite; }
+  @keyframes pulse { 0%{transform:scale(1);opacity:0.7} 100%{transform:scale(2);opacity:0} }
+  .session-label { font-family: var(--mono); font-size: 12px; color: var(--fg); font-weight: 500; }
+  .page-title { font-size: 13px; font-weight: 600; }
+
+  /* Chat area */
+  .chat-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; max-width: 896px; margin: 0 auto; width: 100%; }
+
+  /* Chat bubbles */
+  .bubble-agent, .bubble-user { max-width: 80%; }
+  .bubble-user { max-width: 70%; align-self: flex-end; }
+  .bubble-agent-inner { background: var(--muted); border-radius: var(--r-lg); border-top-left-radius: var(--r-sm); padding: 10px 14px; font-size: 13px; line-height: 1.55; }
+  .bubble-user-inner { background: var(--primary); color: var(--primary-fg); border-radius: var(--r-lg); border-top-right-radius: var(--r-sm); padding: 10px 14px; font-size: 13px; line-height: 1.55; }
+  .bubble-ts { font-size: 11px; color: var(--muted-fg); margin-top: 3px; }
+  .bubble-user .bubble-ts { text-align: right; }
+  .bubble-agent .bubble-ts { text-align: left; }
+
+  /* Tool indicator */
+  .tool-indicator { display: inline-flex; align-items: center; gap: 6px; background: var(--muted); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 4px 10px; font-size: 12px; font-family: var(--mono); color: var(--muted-fg); }
+  .tool-indicator .ti-icon { color: var(--primary); font-size: 11px; }
+  .tool-indicator.done { opacity: 0.65; }
+
+  /* Commit pill */
+  .commit-pill { display: inline-flex; align-items: center; gap: 8px; background: var(--muted); border-radius: var(--r-pill); padding: 6px 14px; font-size: 13px; align-self: flex-start; }
+  .commit-pill.agent { border: 1.5px solid var(--accent); }
+  .commit-pill.checkpoint { border: 1.5px dashed var(--accent); }
+  .cp-icon { font-size: 14px; color: var(--muted-fg); }
+  .cp-type { color: var(--muted-fg); font-size: 12px; }
+  .cp-name { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--fg); }
+  .cp-badge { font-size: 11px; color: var(--muted-fg); font-weight: 500; background: var(--bg); border-radius: 3px; padding: 1px 5px; }
+  .cp-ts { font-family: var(--mono); font-size: 11px; color: var(--muted-fg); }
+  .cp-link { color: var(--accent); font-weight: 600; font-size: 12px; text-decoration: none; }
+
+  /* Thinking indicator */
+  .thinking { display: flex; gap: 4px; padding: 10px 14px; background: var(--muted); border-radius: var(--r-lg); border-top-left-radius: var(--r-sm); align-self: flex-start; }
+  .thinking span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-fg); animation: bounce 1.2s ease-in-out infinite; }
+  .thinking span:nth-child(2) { animation-delay: 0.15s; }
+  .thinking span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-5px)} }
+
+  /* Input area */
+  .input-area { border-top: 1px solid var(--border); background: var(--bg); padding: 12px 20px; flex-shrink: 0; box-shadow: 0 -2px 8px rgba(0,0,0,0.06); }
+  .input-wrap { max-width: 896px; margin: 0 auto; }
+  .input-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .wti-dirty { font-size: 12px; color: var(--accent); font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .wti-clean { font-size: 12px; color: var(--muted-fg); display: flex; align-items: center; gap: 4px; }
+  .stop-btn { display: flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); font-size: 12px; color: var(--muted-fg); background: var(--bg); cursor: pointer; }
+  .textarea-row { display: flex; gap: 8px; align-items: flex-end; }
+  .chat-textarea { flex: 1; background: var(--input-bg); border: 1.5px solid var(--border); border-radius: var(--r-md); padding: 9px 12px; font-size: 13px; font-family: var(--sans); resize: none; height: 60px; color: var(--fg); }
+  .chat-textarea::placeholder { color: var(--muted-fg); }
+  .send-btn { padding: 9px 16px; background: var(--primary); color: var(--primary-fg); border: none; border-radius: var(--r-md); font-size: 13px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+
+  /* Expired state */
+  .expired-bar { background: var(--muted); border-bottom: 1px solid var(--border); padding: 8px 20px; font-size: 12px; color: var(--muted-fg); text-align: center; }
+  .expired-input { padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg); box-shadow: 0 -2px 8px rgba(0,0,0,0.06); }
+  .expired-cta { display: block; text-align: center; font-size: 13px; color: var(--muted-fg); }
+  .expired-cta a { font-family: var(--mono); color: var(--primary); font-weight: 500; text-decoration: none; }
+  .expired-cta a::after { content: ' →'; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- Canonical: Active session, Commit Pill visible, working tree dirty -->
+  <div>
+    <div class="label">Canonical — Active session, Commit Pill visible, working tree dirty</div>
+    <div class="browser">
+      <div class="chrome">
+        <div class="chrome-dots">
+          <div class="chrome-dot dot-r"></div>
+          <div class="chrome-dot dot-y"></div>
+          <div class="chrome-dot dot-g"></div>
+        </div>
+        <div class="url-bar">app.bmad-easy.com/sessions/sess_01JXR8A4</div>
+      </div>
+      <div class="page">
+        <div class="topbar">
+          <div class="breadcrumb"><a href="#">← Project Map</a></div>
+          <div class="session-status">
+            <div class="pulse-dot"></div>
+            <div class="session-label">/bmad-prd</div>
+          </div>
+          <div class="page-title">/bmad-prd</div>
+        </div>
+        <div class="chat-area">
+          <div class="bubble-agent">
+            <div class="bubble-agent-inner">I'm ready to create your PRD. Let's start with the core problem — who are the users and what can't they do today that they'll be able to do when we ship?</div>
+            <div class="bubble-ts">just now</div>
+          </div>
+          <div class="bubble-user">
+            <div class="bubble-user-inner">Non-dev PMs on agile teams. They can't use BMAD methodology skills today because those run in Claude Code which requires terminal access. We want to give them a browser-based way to run any BMAD skill against their team's shared git repo.</div>
+            <div class="bubble-ts">just now</div>
+          </div>
+          <div class="bubble-agent">
+            <div class="tool-indicator done"><span class="ti-icon">⊞</span> read_file(_bmad/skills/bmad-prd/skill.md)</div>
+            <div class="bubble-agent-inner" style="margin-top:6px;">Got it — this is a browser proxy for BMAD skills, targeted at PMs who have never opened a terminal. I've read the skill definition. Let me draft the PRD now.</div>
+            <div class="bubble-ts">just now</div>
+          </div>
+          <!-- Commit Pill: agent-initiated -->
+          <div class="commit-pill agent">
+            <span class="cp-icon">⎇</span>
+            <span class="cp-type">PRD</span>
+            <span class="cp-name">bmad-easy</span>
+            <span style="color:var(--muted-fg);font-size:11px;">committed.</span>
+            <a class="cp-link" href="#">View →</a>
+          </div>
+          <div class="bubble-agent">
+            <div class="bubble-agent-inner">PRD committed. I've included FR-1 through FR-20, three key user journeys, NFRs for performance and session limits, and a glossary. Want me to walk through any section?</div>
+            <div class="bubble-ts">just now</div>
+          </div>
+          <!-- Thinking indicator (agent responding) -->
+          <div class="thinking">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+        <div class="input-area">
+          <div class="input-wrap">
+            <div class="input-meta">
+              <div class="wti-dirty">● Unsaved changes</div>
+              <div class="stop-btn">◼ Stop</div>
+            </div>
+            <div class="textarea-row">
+              <textarea class="chat-textarea" placeholder="Message… (Enter to send, Shift+Enter for new line)"></textarea>
+              <button class="send-btn">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alternate: Session expired -->
+  <div>
+    <div class="label">Alternate — Session expired</div>
+    <div class="browser" style="width:520px;">
+      <div class="chrome">
+        <div class="chrome-dots">
+          <div class="chrome-dot dot-r"></div>
+          <div class="chrome-dot dot-y"></div>
+          <div class="chrome-dot dot-g"></div>
+        </div>
+        <div class="url-bar">app.bmad-easy.com/sessions/sess_01JXR8A4</div>
+      </div>
+      <div class="page">
+        <div class="topbar">
+          <div class="breadcrumb"><a href="#">← Project Map</a></div>
+          <div class="session-status">
+            <div class="session-label" style="color:var(--muted-fg);">/bmad-brainstorming (expired)</div>
+          </div>
+          <div></div>
+        </div>
+        <div class="expired-bar">Session expired. Committed artifacts are preserved.</div>
+        <div class="chat-area">
+          <div class="bubble-agent">
+            <div class="bubble-agent-inner">Let's explore the problem space. What's the core insight that makes bmad-easy worth building?</div>
+            <div class="bubble-ts">10:24 AM</div>
+          </div>
+          <div class="bubble-user">
+            <div class="bubble-user-inner">PMs are the ones with domain knowledge but they can't use BMAD without a developer. We're removing that dependency.</div>
+            <div class="bubble-ts">10:26 AM</div>
+          </div>
+          <div class="bubble-agent">
+            <div class="bubble-agent-inner">That's a strong unlock. Who owns the skill library — is it maintained by the dev team or can PMs extend it?</div>
+            <div class="bubble-ts">10:27 AM</div>
+          </div>
+          <!-- Checkpoint Pill -->
+          <div class="commit-pill checkpoint">
+            <span class="cp-icon">◉</span>
+            <span class="cp-badge">Platform checkpoint</span>
+            <span class="cp-ts">2026-06-14T10:29:00Z</span>
+          </div>
+        </div>
+        <div class="expired-input">
+          <div class="expired-cta">
+            Start a new <a href="#">/bmad-brainstorming</a> session
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
