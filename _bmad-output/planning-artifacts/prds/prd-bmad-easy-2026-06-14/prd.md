@@ -3,6 +3,7 @@ title: "PRD: bmad-easy"
 status: draft
 created: 2026-06-14
 updated: 2026-06-14
+status: ready-for-review
 ---
 
 # PRD: bmad-easy
@@ -128,7 +129,7 @@ User can connect a GitHub Repository by pasting its URL and entering a fine-grai
 - Platform displays a step-by-step in-product guide for generating a fine-grained PAT scoped to the pasted Repository URL with `contents:write` permission.
 - Platform validates that the PAT grants write access to the specified Repository before completing setup.
 - On validation failure, the user sees a descriptive error indicating whether the PAT is invalid, lacks the required permission scope, or does not have access to the specified Repository.
-- On success, the PAT is stored AES-256-GCM encrypted with KMS envelope encryption; it is never returned to the client after initial submission.
+- On success, the PAT is stored AES-256-GCM encrypted with KMS envelope encryption (per-PAT DEK); it is never returned to the client after initial submission.
 - User is redirected to the Project Map on successful connection.
 
 **Out of Scope:** OAuth-based automatic git credential flow (post-MVP GitHub App); connecting multiple repositories per account (post-MVP).
@@ -233,8 +234,9 @@ User can start a new Skill Session by selecting a BMAD Skill from the available 
 
 - Available Skills are derived from the connected Repository's `_bmad/skills/` directory.
 - Selecting a Skill opens a new tab labelled with the Skill name.
-- A Sandbox is provisioned and the Repository is cloned inside it as a background operation at tab-open time; the chat interface is visible immediately with a loading indicator.
-- P95 target: chat ready for user input within 10 seconds of tab open.
+- A Sandbox is provisioned and the Repository is cloned inside it as a background operation at tab-open time; the chat interface is visible immediately.
+- While the Sandbox is provisioning, a spinner and status label ("Starting session…") are displayed in the chat area. The chat input is disabled until the Sandbox is ready.
+- Chat is ready for user input within 10 seconds of tab open (satisfies NFR-P2).
 - Skill Session initiation is blocked with a clear upgrade prompt for users who have exceeded their Seat allocation.
 
 #### FR-10: Streaming Chat Interface
@@ -246,8 +248,14 @@ User converses with the BMAD Agent in a chat interface; agent responses stream t
 - Agent responses stream progressively; the user sees tokens as they are produced.
 - Markdown formatting (headings, lists, code blocks, bold, italic, tables) is rendered in agent responses.
 - A thinking indicator is displayed while the BMAD Agent is processing a response.
-- Time to first streamed token after user sends a message: P95 < 1,500 ms.
-- Chat input is a plain text field with send and cancel controls. No rich-text toolbar, no file attachment input.
+- First streamed token appears within 1,500 ms of the user sending a message (satisfies NFR-P1).
+- Chat input is a multi-line auto-growing textarea that expands vertically as the user types. No rich-text toolbar, no file attachment input.
+- Pressing Enter submits the message. Pressing Shift+Enter inserts a newline without submitting. A Send button is present as a secondary affordance.
+- A **Stop** button is visible while the BMAD Agent is processing a response or executing a tool or Bash command. Activating Stop terminates the in-flight LLM response and any tool or Bash process running inside the Sandbox; it does not terminate the Sandbox itself. After Stop, the user can send a new message in the same session.
+- Each message has a copy-to-clipboard action, accessible on hover. Code blocks within agent responses display an independent per-block copy button.
+- A scroll-to-bottom button appears when the user has scrolled above the most recent message. The chat auto-scrolls to the bottom while streaming unless the user has manually scrolled up. The scroll-to-bottom button is hidden when the chat is already at the bottom.
+- Each message displays a timestamp. Messages sent within the most recent minute show a relative label (e.g. "just now"); older messages show the wall-clock time. Timestamps on user messages are visible on hover; timestamps on agent messages are shown inline at reduced prominence.
+- The user's unsent draft message is persisted to browser `localStorage` per Skill Session tab. Reconnecting to an active session within the idle timeout restores the draft. The draft is cleared on successful send.
 
 #### FR-11: Multi-Session Tabs
 
@@ -257,7 +265,8 @@ User can have multiple Skill Sessions open concurrently in separate tabs alongsi
 
 - The Project Map tab is always present; Skill Session tabs appear alongside it.
 - Each Skill Session tab maintains an independent Sandbox and independent chat history.
-- [ASSUMPTION: A-5] A per-user maximum concurrent active Skill Sessions limit is enforced at the platform level.
+- The browser tab title for each Skill Session tab reflects the Skill name. When the session has expired, the title appends " (expired)". The Project Map tab title reflects the project name.
+- A per-user maximum of 10 concurrent active Skill Sessions is enforced at the platform level.
 - Opening a new tab beyond the concurrent session limit shows a "session limit reached" message rather than silently failing.
 
 #### FR-12: Inline Commit Pills
@@ -281,15 +290,7 @@ A Skill Session persists across browser refreshes and reconnects as long as the 
 - Sandboxes idle for 30 minutes are paused; the session chat history is visible on reconnect but the BMAD Agent cannot resume processing without a new Skill Session.
 - An expired Skill Session tab displays a clear end-of-session indicator; the user can start a new Skill Session for the same Skill.
 
-#### FR-14: No Hard Session Duration Limit
-
-The platform does not enforce a maximum session duration. Sessions remain active as long as the user is engaging, regardless of total elapsed time. Sessions end only via the idle timeout in FR-13.
-
-**Consequences (testable):**
-
-- A Skill Session that has been running for more than 2 hours with ongoing user activity is not terminated by the platform.
-- The idle timeout (30 minutes of no user activity) is the sole mechanism by which the platform ends a session.
-- Platform spend monitoring (NFR-O1) is the operational safeguard against runaway sessions, not a session duration limit.
+**Note:** The platform enforces no hard session duration limit. The idle timeout is the sole mechanism that ends a session; spend monitoring (NFR-O1) is the operational safeguard against runaway Sandboxes.
 
 ---
 
@@ -299,7 +300,7 @@ The platform does not enforce a maximum session duration. Sessions remain active
 
 **Functional Requirements:**
 
-#### FR-15: Artifact Rendering
+#### FR-14: Artifact Rendering
 
 User can view any committed Artifact from `_bmad-output/` as rendered Markdown.
 
@@ -308,9 +309,9 @@ User can view any committed Artifact from `_bmad-output/` as rendered Markdown.
 - Artifact content is read directly from the Repository at its latest committed revision.
 - Content is rendered with standard Markdown formatting (headings, lists, tables, code blocks, bold, italic).
 - The Artifact Browser is read-only; no editing controls are present.
-- Artifact load time for files up to [ASSUMPTION: A-11, 500 KB]: P95 < 2 seconds.
+- A committed Artifact loads within 2 seconds (satisfies NFR-P4).
 
-#### FR-16: Artifact Access Points
+#### FR-15: Artifact Access Points
 
 Artifact Browser is accessible from the Project Map and from Commit Pills in Skill Session chat.
 
@@ -327,7 +328,7 @@ Artifact Browser is accessible from the Project Map and from Commit Pills in Ski
 
 **Functional Requirements:**
 
-#### FR-17: Platform Authentication
+#### FR-16: Platform Authentication
 
 User can authenticate with the platform using GitHub OAuth (primary) or email/password (fallback).
 
@@ -337,7 +338,7 @@ User can authenticate with the platform using GitHub OAuth (primary) or email/pa
 - Session persists across browser refreshes until explicit logout or session expiry [ASSUMPTION: A-12, 7-day session].
 - A user who authenticates via GitHub OAuth and the same user who authenticates via email/password are treated as separate accounts unless linked.
 
-#### FR-18: Seat-Gated Skill Sessions
+#### FR-17: Seat-Gated Access
 
 All platform access requires an active Seat license or an active free trial.
 
@@ -407,15 +408,17 @@ All platform access requires an active Seat license or an active free trial.
 - **NFR-S2 (Host tool stripping):** The Claude Agent SDK `query()` call must set `tools: []` to strip all built-in SDK tools (Bash, Read, Write, Edit, Glob, Grep) from the host NestJS process. The BMAD Agent must not be able to execute any tool outside its Sandbox.
 - **NFR-S3 (Credential isolation):** Repository PATs must never be resolved across users. Every git credential lookup must pass through a tenant authorization check at the service layer before a credential is resolved.
 - **NFR-S4 (Active sandbox termination on deactivation):** When a user account is deactivated, all active Sandboxes for that user must be terminated immediately via the Daytona API. Passive rejection of new session requests is insufficient.
-- **NFR-S5 (PAT storage):** Fine-grained GitHub PATs are stored AES-256-GCM encrypted with KMS envelope encryption. PATs are never returned to the client after initial submission.
+- **NFR-S5 (PAT storage):** Fine-grained GitHub PATs are stored AES-256-GCM encrypted with KMS envelope encryption (per-PAT DEK). PATs are never returned to the client after initial submission.
 - **NFR-S6 (HTTP/2 at SSE endpoint):** HTTP/2 must be enabled at the load balancer terminating TLS for the agent SSE endpoint. HTTP/1.1 caps browser connections at 6 concurrent SSE connections per origin; users with more than 6 Skill Session tabs open will have sessions hang under HTTP/1.1.
 
 ### Performance
 
-- **NFR-P1:** Time to first streamed token after user sends a message: P95 < 1,500 ms.
-- **NFR-P2:** Sandbox provisioning (tab-open to chat-ready): P95 < 10 seconds.
-- **NFR-P3:** Project Map page load: P95 < 2 seconds.
-- **NFR-P4:** Artifact Browser load for Artifacts up to 500 KB: P95 < 2 seconds.
+Verified with a single manual test run under normal conditions, not statistical sampling.
+
+- **NFR-P1:** First streamed token appears within 1,500 ms of the user sending a message.
+- **NFR-P2:** Chat is ready for user input within 10 seconds of opening a Skill Session tab.
+- **NFR-P3:** Project Map loads within 2 seconds of page open.
+- **NFR-P4:** Artifact Browser loads a committed Artifact within 2 seconds.
 
 ### Reliability
 
@@ -508,13 +511,7 @@ If fewer than 2 teams reach 3 Skill Sessions within 90 days of launch, the exper
 
 ## 12. Open Questions
 
-1. **Artifact commit timing model.** When exactly does the BMAD Agent commit Artifacts during a Skill Session? BMAD skills manage this through their own conventions, but the platform's Commit Pill implementation depends on a clear model for the commit event. Is it on `RUN_FINISHED`, on a specific tool call, or on a pattern the platform monitors? Requires architectural definition before FR-12 is implemented.
-
-2. **Concurrent session limit per user.** What is the maximum number of concurrent active Skill Sessions a user can run? This depends on the Daytona Cloud tier selected and cost modelling. A number must be confirmed before FR-11 is finalized. (A-5)
-
-3. **Concurrent session limit queue UX.** When a user hits the concurrent session limit, does the platform queue the new session with a "preparing session" indicator, or show a hard error? The UX for this state is undefined.
-
-4. **Repository size limit.** Is there a maximum repository size for connection? Large repositories could cause git clone times that exceed the P95 < 10-second tab-open target.
+No open questions remain.
 
 ---
 
@@ -524,11 +521,11 @@ If fewer than 2 teams reach 3 Skill Sessions within 90 days of launch, the exper
 - **A-2:** Daytona Cloud Docker-level isolation is acceptable for authenticated, non-adversarial users in MVP. Upgrade to Firecracker microVM isolation is the documented escalation trigger if adversarial use is detected. (§8)
 - **A-3:** Claude Agent SDK billing applies via API key and separate credit pool as of June 15, 2026. OAuth via claude.ai is not permitted for third-party platforms. (§8)
 - **A-4:** No official TypeScript adapter between the Claude Agent SDK and the AG-UI protocol exists. The `ClaudeAgentSdkHarness` emitter must be built and maintained internally. (§8)
-- **A-5:** A per-user maximum concurrent active Skill Sessions limit is enforced at the platform level; specific number is TBD pending Daytona tier selection and cost modelling. (§4.3 FR-11, Q-2)
-- **A-6:** ~~RESOLVED~~ No hard session duration limit. Sessions end on idle timeout only (30 min). (§4.3 FR-14)
+- **A-5:** ~~RESOLVED~~ Maximum 10 concurrent Skill Sessions per user. (§4.3 FR-11)
+- **A-6:** ~~RESOLVED~~ No hard session duration limit. Sessions end on idle timeout only (30 min). See note under FR-13.
 - **A-7:** ~~RESOLVED~~ All platform access requires a Seat or active trial; no read-only free tier. (§4.5 FR-18)
 - **A-8:** Fine-grained GitHub PAT is acceptable onboarding friction for MVP. GitHub App integration is the post-MVP replacement; trigger is PAT friction identified as a material activation blocker in beta. (§6.2)
 - **A-9:** Daytona Cloud is the MVP sandbox platform. Daytona OSS self-hosting is the documented continuity fallback; migration is bounded to the `SandboxService` layer. (§8)
 - **A-10:** ~~RESOLVED~~ 14-day free trial, no credit card required at sign-up. (§10)
-- **A-11:** Artifact Browser load performance target applies to Artifacts up to 500 KB. Larger Artifacts may require a fallback rendering path. (§4.4 FR-15)
+
 - **A-12:** Platform session expiry is 7 days after last activity. (§4.5 FR-17)
