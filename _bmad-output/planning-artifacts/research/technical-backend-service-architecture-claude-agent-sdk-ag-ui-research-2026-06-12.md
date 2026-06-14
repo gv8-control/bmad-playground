@@ -453,7 +453,7 @@ const sandbox = await daytona.create({
 **Daytona Git SDK** (TypeScript) also provides `sandbox.git.clone({ url, username, password })` which handles the credential injection at the protocol level.
 
 **Security considerations:**
-- The GitHub token lives in NestJS session memory (Redis or in-process), never in the Daytona sandbox filesystem after the clone is complete
+- The GitHub token lives in NestJS session memory (in-process), never in the Daytona sandbox filesystem after the clone is complete
 - Use fine-grained GitHub PATs scoped to the specific repository + `contents:write` + `pull_requests:write` only
 - Token rotation: issue a new PAT per-session or use GitHub Apps installation tokens (1-hour TTL) for tighter rotation
 
@@ -465,7 +465,7 @@ _Sources: [Daytona Git Operations](https://www.daytona.io/docs/en/git-operations
 
 ### Session Lifecycle State Machine
 
-The `threadId` from `RunAgentInput` is the single durable key that connects all layers: the Next.js conversation record, the Daytona sandbox, and the Claude Agent SDK session. NestJS manages a `SandboxRegistry` (in-memory map or Redis-backed) keyed by `threadId`:
+The `threadId` from `RunAgentInput` is the single durable key that connects all layers: the Next.js conversation record, the Daytona sandbox, and the Claude Agent SDK session. NestJS manages a `SandboxRegistry` (in-memory map) keyed by `threadId`:
 
 ```
 State: NO SANDBOX
@@ -559,8 +559,6 @@ Each active BMAD session holds one open SSE response stream on the NestJS proces
 
 **Event loop impact:** AG-UI events are low-frequency lifecycle markers and token deltas — not high-frequency sensor data. A typical BMAD turn emits ~10–200 events per minute. At 100 concurrent sessions, NestJS handles ~1000–20000 events/minute — well within Node.js single-thread capacity. The event loop is not a bottleneck at this scale.
 
-**Horizontal scaling caveat:** NestJS holds the `SandboxRegistry` (Map<threadId, sandbox>) in-process memory. If NestJS is horizontally scaled to multiple instances, a session's subsequent turns may land on a different instance with no sandbox record. At MVP (single NestJS container), this is not an issue. At scale, the registry must move to Redis with the Daytona sandbox ID as the value.
-
 _Sources: [NestJS SSE Memory Leak Issue #11601](https://github.com/nestjs/nest/issues/11601), [Node.js SSE Production Guide 2026](https://www.hirenodejs.com/blog/nodejs-server-sent-events-sse-2026), [NestJS Performance — DEV Community](https://dev.to/leolanese/nestjs-performance-2kcb)_
 
 ---
@@ -629,7 +627,7 @@ These two decisions — containerised NestJS + Daytona Pattern A — compose int
 | Auth handoff | Short-lived JWT (120 s TTL, threadId embedded) | Stateless, verifiable by NestJS; prevents sandbox hijacking |
 | Git auth | GitHub PAT injected as env var at sandbox creation | Never stored in sandbox filesystem; scoped fine-grained PAT |
 | Sandbox lifecycle | Create → pause → resume → destroy on idle timeout | Preserves uncommitted work; running concurrency managed aggressively |
-| Horizontal scaling | Single NestJS container at MVP; Redis SandboxRegistry before scale-out | SandboxRegistry is in-process; Redis required before multiple instances |
+| Horizontal scaling | Single NestJS container | SandboxRegistry is in-process; single-container topology is the decided scope |
 
 ---
 

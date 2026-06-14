@@ -695,30 +695,6 @@ _Source: [Agent SDK overview — Hooks tab](https://code.claude.com/docs/en/agen
 
 ---
 
-### Resumable Stream Architecture
-
-`assistant-stream` ships a `resumable` sub-path that enables clients to reconnect to an in-progress stream and replay missed chunks. This maps directly onto the BMAD platform's multi-turn session model.
-
-```typescript
-import { ResumableStream } from "assistant-stream/resumable";
-import { createClient } from "redis";
-
-const redis = createClient({ url: process.env.REDIS_URL });
-const resumable = new ResumableStream({ adapter: redis });
-
-// On each new turn: create or resume a keyed stream
-const sessionStream = await resumable.getOrCreate(sessionId, () => runSkillSession(prompt, options));
-return createAssistantStreamResponse(sessionStream);
-```
-
-When a browser tab reconnects (refresh, network drop), `EventSource` triggers a reconnect. The frontend's `useDataStreamRuntime` re-issues the POST; the backend serves the same `sessionId` keyed stream from Redis, replaying from the last acknowledged chunk. This is effectively free session resume on the frontend — no extra state management needed.
-
-**Trade-off:** Resumable streams add a Redis dependency to the backend (already required for `RedisSessionStore` from the previous research). The same Redis instance can serve both.
-
-_Source: [assistant-stream — npmx](https://npmx.dev/package/assistant-stream)_
-
----
-
 ### Security and Authentication Architecture
 
 The wire format separation introduced by Approach B creates a clean auth boundary:
@@ -770,9 +746,7 @@ npm install assistant-stream
 
 | Package | Purpose | Latest (June 2026) |
 |---|---|---|
-| `assistant-stream` | `AssistantStream`, `createAssistantStreamResponse`, `ResumableStream` | `0.3.19` |
-
-`assistant-stream` is a single package. The resumable sub-path (`assistant-stream/resumable`) is included — no separate install.
+| `assistant-stream` | `AssistantStream`, `createAssistantStreamResponse` | `0.3.19` |
 
 _Source: [@assistant-ui/react — npm](https://www.npmjs.com/package/@assistant-ui/react), [@assistant-ui/react-data-stream — npm](https://www.npmjs.com/package/@assistant-ui/react-data-stream), [assistant-stream — npm](https://www.npmjs.com/package/assistant-stream)_
 
@@ -990,11 +964,10 @@ _Source: [Testing AI Agents with Vitest 4 — DEV Community](https://dev.to/jang
 4. Register tool UI components: `BashToolUI`, `ReadToolUI`, `WriteToolUI`, `EditToolUI`
 5. Wire `PostToolUse` hook into the mapper; implement `ArtifactPillUI`
 
-**Sprint 3 — Resumable streams + testing (1 week)**
-1. Add `ResumableStream` with Redis adapter on the backend
-2. Write Vitest unit tests for tool renderers and stream mapper
-3. Write integration test for the SSE proxy route
-4. Smoke-test end-to-end with a real BMAD skill session
+**Sprint 3 — Testing (1 week)**
+1. Write Vitest unit tests for tool renderers and stream mapper
+2. Write integration test for the SSE proxy route
+3. Smoke-test end-to-end with a real BMAD skill session
 
 ### Technology Stack Recommendation
 
@@ -1002,7 +975,7 @@ _Source: [Testing AI Agents with Vitest 4 — DEV Community](https://dev.to/jang
 |---|---|---|
 | Frontend runtime | `@assistant-ui/react` + `useDataStreamRuntime` | Headless, Tailwind-native, stable wire format, React 19 confirmed |
 | Wire protocol | `assistant-stream` data-stream format | Backend-agnostic contract; survives Agent SDK → Managed Agents migration |
-| Backend stream builder | `assistant-stream` 0.3.19 | `createAssistantStreamResponse`, `ResumableStream`, tool call parts — all in one package |
+| Backend stream builder | `assistant-stream` 0.3.19 | `createAssistantStreamResponse`, tool call parts |
 | SSE proxy | Next.js App Router route handler | Co-located auth gate; no extra infra |
 | Testing | Vitest + React Testing Library | Native Vite/Next.js 15 compatibility; fast; `vi.fn()` for fetch mocking |
 
@@ -1041,7 +1014,6 @@ A route handler at `/api/sessions/[id]/stream` proxies the SSE stream from the A
 
 - `assistant-ui` 200k+ monthly downloads June 2026; production-proven at LangChain, Stack AI, Athena Intelligence
 - Approach B wire format (`assistant-stream` data-stream protocol) is the migration-safe choice — backend-agnostic, frontend stable
-- `assistant-stream` 0.3.19 includes `ResumableStream` with Redis adapter — free session reconnect, same Redis already needed for `RedisSessionStore`
 - React 19.2.7 is confirmed compatible with `@assistant-ui/react` 0.12.15
 - Three critical deploy-blocking gotchas: wrong `protocol` value, missing `force-dynamic`, Express pipe failure mode
 - `npx assistant-ui init` scaffolds Tailwind v4-compatible components in one command
@@ -1053,8 +1025,7 @@ A route handler at `/api/sessions/[id]/stream` proxies the SSE stream from the A
 3. Implement the Express Web Response pipe adapter (not `pipeTo()`)
 4. Always pass `protocol: "data-stream"` to `useDataStreamRuntime` explicitly
 5. Add `export const dynamic = "force-dynamic"` to the SSE proxy route handler
-6. Wire `ResumableStream` + Redis from Sprint 1 — it costs one extra function call and prevents silent stream loss on reconnect
-7. Use Vitest (not Jest) for the test suite — native Vite/Next.js 15 compatibility
+6. Use Vitest (not Jest) for the test suite — native Vite/Next.js 15 compatibility
 
 ---
 

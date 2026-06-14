@@ -287,22 +287,12 @@ The platform has three distinct categories of persistent state with different st
 
 | State | Storage | Rationale |
 |---|---|---|
-| **Session transcripts** | `SessionStore` → Redis or S3 | Mirrored from disk; must survive container restart |
+| **Session transcripts** | JSONL on Daytona sandbox disk | SDK writes natively; survives NestJS restarts because the sandbox filesystem is independent of the NestJS container |
 | **Session metadata** (sessionId → userId, repoUrl, skillName, worktree path) | Postgres | Relational, queried by userId; source of truth for session lookup |
 | **Git artifacts** (`_bmad-output/**`) | The git repo itself | Already version-controlled; platform reads via OAuth |
-| **Worktree files** (during session) | Container local disk | Ephemeral — removed on `SessionEnd`; only committed artifacts persist |
+| **Worktree files** (during session) | Daytona sandbox local disk | Ephemeral — removed on `SessionEnd`; only committed artifacts persist |
 
-**SessionStore backend selection:**
-
-| Backend | Best for | Trade-off |
-|---|---|---|
-| **Redis** (`RedisSessionStore`) | Interactive sessions with strict latency budgets | Volatile unless persistence configured; bounded memory |
-| **S3** (`S3SessionStore`) | Long-running background tasks with large tool results | High durability; latency acceptable for non-interactive resume |
-| **Postgres** (`PostgresSessionStore`) | Small-to-medium agents, moderate concurrency, compliance/audit | Durable, queryable, easy retention policies |
-
-For the BMAD platform's interactive skill sessions: **Redis** is the right primary store (low-latency resume between PM turns), with **S3** as a cold-archive tier for completed sessions (compliance and audit). Reference adapters for all three are available under `examples/session-stores/` in the TypeScript SDK repo — copy, don't npm-install.
-
-**Dual-write architecture (important):** `SessionStore` is a mirror, not a replacement. The subprocess writes to local disk first; the SDK forwards each batch to `append()`. If the store times out, the SDK emits a `mirror_error` system message and continues — the local copy is authoritative. Monitor `mirror_error` events if store durability matters.
+**No external `SessionStore` needed.** Sessions run inside Daytona sandboxes. The SDK writes JSONL transcripts to the sandbox filesystem (`~/.claude/projects/<encoded-cwd>/*.jsonl`). When NestJS restarts, it reconnects to the existing Daytona sandbox via the Daytona SDK and calls `query({ resume: sessionId })` — the SDK locates the JSONL on the sandbox disk. The `SessionStore` mirror API exists for cases where the agent process runs on ephemeral container storage; that concern does not apply here.
 
 _Source: [Persist sessions to external storage — Claude Code Docs](https://code.claude.com/docs/en/agent-sdk/session-storage), [Agent State Management: Redis vs Postgres — SitePoint](https://www.sitepoint.com/state-management-for-long-running-agents-redis-vs-postgres/)_
 
@@ -380,7 +370,7 @@ _Source: [Claude Agent SDK and Managed Agents — Hatchworks](https://hatchworks
 - Node.js 20 LTS + TypeScript
 - `@anthropic-ai/claude-agent-sdk` (latest)
 - A real git repo with BMAD initialized as the test `cwd`
-- `InMemorySessionStore` for session state during development (no Redis/S3 needed)
+- No `SessionStore` configuration needed — JSONL lands on the sandbox disk automatically
 
 **Iteration loop:** BMAD skills are markdown files. Editing a skill and restarting the agent process picks up the change instantly — no build step, no recompile. This makes skill development very fast. The platform backend only changes when the wiring changes (new hook, new session event type); skill logic lives entirely in the repo.
 
@@ -388,19 +378,8 @@ _Source: [Claude Agent SDK and Managed Agents — Hatchworks](https://hatchworks
 
 ### Testing Approaches
 
-**Unit / integration testing for the SessionStore adapter:**
-The SDK ships a conformance suite that validates `append`, `load`, and optional methods. Copy `shared/conformance.ts` from the SDK's `examples/session-stores/` into your test suite and run it against your chosen adapter (Redis / S3 / Postgres). This ensures the store behaves correctly before connecting it to a live agent.
-
-```typescript
-// Jest / Vitest conformance test for custom SessionStore
-import { runConformanceSuite } from "./conformance"; // copied from SDK examples
-import { RedisSessionStore } from "./RedisSessionStore";
-
-test("RedisSessionStore passes conformance suite", async () => {
-  const store = new RedisSessionStore({ client: testRedisClient });
-  await runConformanceSuite(store);
-});
-```
+**Unit / integration testing for session resume:**
+No external `SessionStore` adapter to test. The SDK's native JSONL storage on the Daytona sandbox disk handles transcript persistence. Integration tests for session resume should verify that a `query({ resume: sessionId })` call on the same sandbox restores conversation context correctly — no conformance suite needed.
 
 **Testing agent behavior (skill outputs):**
 Use [Promptfoo](https://www.promptfoo.dev/docs/providers/claude-agent-sdk/) — it has a native Claude Agent SDK provider. Write test cases as YAML: input prompt → expected output pattern. Run against real skills before shipping. This is the closest thing to a functional test for a BMAD skill.
@@ -468,8 +447,7 @@ _Source: [Observability with OpenTelemetry — Claude Code Docs](https://code.cl
 1. Set up TypeScript backend with `@anthropic-ai/claude-agent-sdk`
 2. Implement `query()` wrapper with multi-tenant isolation options (`cwd`, `settingSources: []`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`)
 3. Git worktree lifecycle: create on session start, remove on session end
-4. `RedisSessionStore` adapter (copy from SDK examples, run conformance suite)
-5. Basic SSE endpoint (Express or Fastify), HTTP/2 at reverse proxy
+4. Basic SSE endpoint (Express or Fastify), HTTP/2 at reverse proxy
 
 **Sprint 2 — Core Flow (2–3 weeks)**
 1. Session metadata in Postgres (userId → sessionId → worktree path)
@@ -492,7 +470,7 @@ _Source: [Observability with OpenTelemetry — Claude Code Docs](https://code.cl
 |---|---|---|
 | Backend runtime | Node.js 20 LTS + TypeScript | Native Agent SDK; superior at concurrent SSE + stdio |
 | Agent SDK | `@anthropic-ai/claude-agent-sdk` latest | Bundles CLI; TypeScript-native; authoritative sessions API |
-| Session store | Redis (interactive) + S3 (archive) | Low-latency resume + durable cold storage |
+| Session store | JSONL on Daytona sandbox disk (SDK native) | No external store needed; sandbox filesystem independent of NestJS container |
 | Session metadata | Postgres | Relational, queryable, easy audit |
 | Git isolation | `git worktree` | Lighter than clones; shares object store |
 | Container hosting | Modal or Fly Machines (MVP) | No Kubernetes overhead until scale justifies it |
@@ -742,7 +720,7 @@ The Claude Agent SDK (TypeScript package `@anthropic-ai/claude-agent-sdk`, Node.
 Call `query()` with the skill prompt, `allowedTools`, and `cwd` pointing to a git worktree of the user's repo. The agent reads BMAD skills from `.claude/skills/` and CLAUDE.md from the worktree automatically (or inject explicitly in bare mode). Each `query()` call is an async iterator that streams typed message objects. One `query()` call = one agent subprocess. Multiple concurrent sessions = multiple subprocesses, each with its own process tree and working directory.
 
 **2. How do you manage session lifecycle for a multi-turn chat?**
-Capture the `session_id` from the first `ResultMessage`. Store it in Postgres keyed by `userId + skillName`. On each subsequent PM turn, call `query()` with `options: { resume: sessionId, sessionStore }`. Use a `RedisSessionStore` adapter (copy from SDK's `examples/session-stores/`) to mirror transcripts so sessions survive container restarts. The `cwd` must be the same absolute path on resume — use a stable git worktree path.
+Capture the `session_id` from the first `ResultMessage`. Store it in Postgres keyed by `userId + skillName`. On each subsequent PM turn, call `query()` with `options: { resume: sessionId }`. The SDK finds the JSONL transcript on the Daytona sandbox disk automatically. The `cwd` must be the same absolute path on resume — use a stable git worktree path inside the sandbox.
 
 **3. How do you stream output to the browser?**
 Proxy the SDK's async iterator to an SSE response. Each `data:` event is a JSON-serialized SDK message. Requires HTTP/2 at the load balancer (tab-per-session UI will hit HTTP/1.1's 6-connection limit otherwise). Use a `PostToolUse` hook on `Bash(git commit *)` to emit a typed `artifact_committed` SSE event that renders the pill UI.
@@ -760,8 +738,7 @@ Proxy the SDK's async iterator to an SSE response. Each `data:` event is a JSON-
 
 1. Use `@anthropic-ai/claude-agent-sdk` (TypeScript) on Node.js 20 LTS as the backend
 2. Git worktrees for session filesystem isolation (`cwd` per session)
-3. Redis `SessionStore` adapter for interactive session resume across container restarts
-4. `settingSources: []` + `CLAUDE_CONFIG_DIR` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` on every session — all four, not three
+3. `settingSources: []` + `CLAUDE_CONFIG_DIR` + `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` on every session — all four, not three
 5. HTTP/2 at the load balancer on the SSE endpoint — not optional for the tab-per-session UI model
 6. `PostToolUse` hook on `Bash(git commit *)` for the artifact-committed pill
 7. Start on a sandbox provider (Modal or Fly Machines) rather than operating Kubernetes for MVP
