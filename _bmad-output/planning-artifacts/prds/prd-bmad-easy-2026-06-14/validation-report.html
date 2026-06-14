@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PRD Validation: bmad-easy</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+
+    --grade-exc: #16a34a;
+    --grade-good: #65a30d;
+    --grade-fair: #d97706;
+    --grade-poor: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .grade {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    color: white;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .grade-excellent { background: var(--grade-exc); }
+  .grade-good { background: var(--grade-good); }
+  .grade-fair { background: var(--grade-fair); }
+  .grade-poor { background: var(--grade-poor); }
+
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+
+  .findings-list { padding: 0 20px 4px; }
+  article.finding {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+  }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+
+  .reviewer-source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div class="container">
+
+    <header class="report-header">
+      <div class="title">
+        <h1>bmad-easy — Validation Report</h1>
+        <div class="subtitle">_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md</div>
+      </div>
+      <div class="grade grade-fair">Fair</div>
+    </header>
+
+    <div class="synthesis">
+      <p>This PRD is technically well-formed: six of seven rubric dimensions grade strong, one grades adequate (downstream usability), and the "Consequences (testable)" pattern on every FR is among the best done-ness clarity seen at PRD level. Two cross-reference defects in the Assumptions Index — a ghost reference to a non-existent FR-18 and a missing A-11 — are the blocking downstream usability issues; both are mechanical fixes. The PRD earns a <strong>Fair</strong> grade because the rubric surfaced two high findings before the adversarial reviewer ran.</p>
+      <p>The adversarial review materially shifts the risk picture beyond what the rubric scores. Three critical findings surface concerns the rubric did not: the addressable market is bounded by BMAD's actual production user base rather than its GitHub star count, and that base is unquantified; LLM cost per session is unmodelled and could invert unit economics at the current flat per-seat price; and every critical technical layer (AG-UI emitter, Stop signal, PostToolUse hook, Daytona stability) requires custom work against undocumented or unstable APIs, making the MVP timeline fragile. The adversarial also elevates PAT onboarding from "known activation friction" to a potential activation wall, and identifies the success metrics as validating onboarding UX but not the business model. These are strategic and build-risk concerns rather than PRD craft defects — the PRD cannot resolve them by itself — but a decision-maker reading only the rubric verdicts would underestimate them.</p>
+    </div>
+
+    <div class="dimension-summary">
+      <div class="dim-card">
+        <div class="dim-name">Decision-readiness</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">Strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Substance over theater</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">Strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Strategic coherence</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">Strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Done-ness clarity</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">Strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Scope honesty</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">Strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Downstream usability</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">Adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Shape fit</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">Strong</div>
+      </div>
+    </div>
+
+    <!-- Decision-readiness -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Decision-readiness</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The PRD names real trade-offs and does not smooth them to neutral. The PAT onboarding friction is called a "known activation friction point" at §4.1 with a <code>[NOTE FOR PM]</code> callout in §6.2 identifying it as "the single highest-impact UX improvement in Phase 2." The main-branch-only decision in §8 explicitly names the last-write-wins consequence and calls it "a known constraint, not an error condition for MVP." The single-container constraint in §8 names horizontal scaling as a post-MVP architectural change rather than burying it. The security NFRs (NFR-S1 through NFR-S6) name specific failure modes — memory isolation breach, tool escape — rather than generic language.</p>
+            <p>The one weakness: §12 declares "No open questions remain." An MVP at this specification level almost certainly has unresolved questions; the decision log shows several items were resolved on the same day the PRD was produced. The repository size limit (Q-4) was deferred without a threshold or trigger for revisiting — classifying it as an implementation detail rather than a genuinely closed question.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">"No open questions remain" is implausible</h3>
+              <span class="finding-location">§12</span>
+            </header>
+            <div class="finding-note">The repository size limit (Q-4 from decision log) was deferred without a threshold or owner. Under extreme cases a large monorepo could violate NFR-P2. The decision to defer is fine; closing the question without a threshold is not.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Re-open Q-4 with explicit language: "No Repository size limit is defined for MVP; Daytona provisioning time for Repositories &gt; N GB is unvalidated against NFR-P2."</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- Substance over theater -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Substance over theater</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The Vision statement (§1) is product-specific: it names the exact failure mode ("the methodology's team-wide promise breaks at the access layer"), the exact inversion being attempted, and the counterfactual. It would not survive transplant into a different PRD. The personas (§2.1) are structured as Jobs To Be Done, not demographic profiles — the developer champion persona drives the 14-day no-credit-card trial and SM-5. NFRs have product-specific thresholds (1,500 ms, 10 seconds, 2 seconds) and the performance verification qualifier ("verified with a single manual test run") is honest admission, not boilerplate optimism.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">SM-4 assumes a detection mechanism that does not exist</h3>
+              <span class="finding-location">§11</span>
+            </header>
+            <div class="finding-note">"Referenced in a subsequent developer Skill Session or in team-external documents" cannot be measured without instrumentation for the external reference case. No FR captures cross-tool artifact reference.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a note: "External reference measurement requires manual sampling or instrumentation not in MVP scope; proxy: percentage of platform Artifacts that appear in any git diff in the same Repository within 30 days."</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- Strategic coherence -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Strategic coherence</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The PRD has a legible thesis: BMAD's team-wide methodology fails at the access layer; bmad-easy fixes the access layer without changing the methodology. Every feature follows from this thesis. The Project Map, Artifact Browser, and Commit Pill each exist for a specific reason in the thesis, not because a template had a slot for them. Success metrics connect to the thesis correctly and counter-metrics are named with their counterbalance relationships explicit. The "Why Now" section (§9) names a competitive window and quantifies it.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">SM-5 is a milestone condition dressed as a metric</h3>
+              <span class="finding-location">§11</span>
+            </header>
+            <div class="finding-note">"At least one paying team includes a Director or VP-level buyer" within 6 months is binary and untargeted: it says nothing about whether the GTM model is working or whether you got lucky with one buyer.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Replace or supplement with a ratio metric: "Percentage of paying accounts where the buyer holds a Director or VP-equivalent title, target ≥ 30% within 6 months." The binary milestone can remain as a failure alarm alongside it.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- Done-ness clarity -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Done-ness clarity</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>This is the PRD's strongest dimension. The "Consequences (testable)" pattern is applied consistently across all 17 FRs and produces verifiable outcomes for almost every requirement. FR-3 ("Commits from two different users on the same Repository show different author identities in git history") and FR-12 ("Commit Pill is triggered by the platform's <code>PostToolUse</code> hook on <code>git commit</code> commands") are exemplary. Vague language is almost entirely absent. The one partial exception is FR-14's "standard Markdown formatting," which is underspecified for edge cases but acceptable at PRD level since a UX spec will govern renderer selection.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">FR-5 does not define behavior when the Repository read fails</h3>
+              <span class="finding-location">§4.1</span>
+            </header>
+            <div class="finding-note">FR-5 says Repository state reflects "the latest committed state … at the time of the most recent page load or manual refresh" but does not specify a staleness bound or error condition if the read fails — the consequence of a failed read is undefined.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a consequence: "If the Repository read fails, the Project Map displays a read-failure notice; it does not silently render stale state."</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- Scope honesty -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Scope honesty</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Non-Goals (§5) has 11 items that do real work — each names a feature a PM or BA might reasonably expect, states it is out of scope, and (where relevant) the trigger for post-MVP inclusion is in §6.2. The Assumptions Index covers the major inferences with RESOLVED annotations that make the history legible. The §6.2 out-of-scope list names post-MVP triggers rather than just listing items. One structural gap: A-11 is missing from the index.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Artifact commit failure has no user-visible fallback defined</h3>
+              <span class="finding-location">§6.2</span>
+            </header>
+            <div class="finding-note">§6.2 defers "Artifact commit failure error handling and retry logic" but does not name what the user sees when a commit fails. A failed commit with no error path is a silent data loss risk.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a consequence to FR-12 or §6.2: "If the git commit operation inside the Sandbox fails, the BMAD Agent's error output must be visible in the chat stream; the Commit Pill is not emitted."</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- Downstream usability -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Downstream usability</h2>
+          <span class="verdict-pill verdict-adequate">Adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The Glossary (§3) is the best part of this section: 13 terms, each defined once, with a header asserting no synonyms are used. Spot-checking confirms consistent usage throughout. FR and UJ IDs are present and sequential. UJs have a named protagonist (Sarah) and inline persona context. FRs cross-reference NFRs inline. Two defects require correction before the architect and UX designer extract from this PRD: a ghost cross-reference to FR-18 in the Assumptions Index, and the absence of A-11.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">A-7 cross-references FR-18 which does not exist</h3>
+              <span class="finding-location">§13</span>
+            </header>
+            <div class="finding-note">A-7 states "no read-only free tier. (§4.5 FR-18)" but the PRD defines FR-1 through FR-17 only. FR-17 covers Seat-Gated Access. An architect or story author extracting A-7 will hit a dead reference.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Correct A-7's cross-reference to FR-17.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">A-11 is absent from the Assumptions Index</h3>
+              <span class="finding-location">§13</span>
+            </header>
+            <div class="finding-note">The index lists A-1 through A-10, then jumps to A-12. No inline <code>[ASSUMPTION: A-11]</code> appears in the PRD body either. This may be a deleted assumption that was not cleaned up, or an assumption that was never indexed.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Either define A-11 (if an assumption was intended) or renumber A-12 to A-11 throughout.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">SM-4 has no defined data collection mechanism</h3>
+              <span class="finding-location">§11</span>
+            </header>
+            <div class="finding-note">"Referenced in a subsequent developer Skill Session or in team-external documents" has no instrumentation path in MVP. A story author cannot write a story for this measurement.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a proxy metric note as described under Substance over theater.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">RBAC out-of-scope line in §6.2 should reference FR-17 explicitly</h3>
+              <span class="finding-location">§6.2</span>
+            </header>
+            <div class="finding-note">A UX designer extracting access control requirements should be directed to FR-17 explicitly rather than needing to infer the connection.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add "(FR-17)" parenthetical to the RBAC out-of-scope line in §6.2.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- Shape fit -->
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Shape fit</h2>
+          <span class="verdict-pill verdict-strong">Strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>This is a consumer SaaS product with a multi-persona GTM model and meaningful UX stakes — non-dev users who have "never heard of a personal access token." The PRD correctly uses UJs with a named protagonist, maps each UJ to the feature section that realizes it, and includes edge cases in each UJ. The Glossary-anchored, FR-per-feature, testable-consequences shape is appropriate for a chain-top document that will feed a UX spec and architecture document. The §0 document purpose statement confirms this intent explicitly.</p>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- Adversarial reviewer section -->
+    <section class="reviewer-section">
+      <details>
+        <summary>
+          <h2>Adversarial review</h2>
+          <span class="reviewer-source">review-adversarial-general.md</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The core vulnerability is a three-layer dependency trap: the product's entire value proposition rests on BMAD adoption that the platform neither controls nor can accelerate, delivered through a tech stack where every critical layer requires custom plumbing that doesn't exist yet, and sold to a buyer persona whose existence as a motivated purchaser is asserted rather than evidenced. The PRD is polished on craft while remaining structurally evasive on the hardest questions: how big is the actual addressable market, what do unit economics look like when LLM cost is a passthrough, and what happens when Anthropic ships the obvious feature.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">The addressable market is a population of one tool's existing users</h3>
+              <span class="finding-location">§9, §2.1</span>
+            </header>
+            <div class="finding-note">The "Why Now" section cites 49,000 GitHub stars and 5,680 forks. Stars and forks are not seats. There is no estimate of how many star-holders are on active teams using BMAD in production, what fraction of those teams include non-dev members who are actually blocked today, or whether non-dev users want to run sessions themselves vs. having a PM theory applied to them. The buyer model requires three sequential conversions (developer using BMAD + frustrated enough to champion a purchase + sells upward to a VP/Director), all assumed. No customer discovery conversations, waiting list, or signal that non-dev users have asked for this as a product are cited.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a market sizing note to §9 that distinguishes GitHub stars from estimated active production teams, and state explicitly what evidence (if any) exists that non-dev users are requesting access.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">LLM cost passthrough is unmodelled and could invert unit economics</h3>
+              <span class="finding-location">§10, §8, §11</span>
+            </header>
+            <div class="finding-note">The platform runs <code>claude-sonnet-4-6</code> inside a Daytona sandbox on sessions that "may run 20+ minutes." A non-dev PM running a PRD session could generate 50,000–200,000 tokens per session. At current rates, a single session could cost $0.75–$3.00 in LLM spend alone. If a PM runs 4 sessions per month (implied by SM-6's retention target), LLM cost per seat per month could reach $3–$12 before any other costs. The PRD includes no unit economics calculation. NFR-O1 (spend monitoring) proves the team knows this is a risk but makes no attempt to bound it. The "post-MVP" note on usage-based pricing is not a deferral — it is an unresolved structural question being locked in while per-seat pricing is established.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a cost model to §10 or §8: estimated LLM token cost per average session, estimated sessions per user per month, and the resulting per-seat cost floor. Even rough estimates are better than none.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">Every critical technical layer requires custom work that does not exist</h3>
+              <span class="finding-location">§8, A-4, A-9</span>
+            </header>
+            <div class="finding-note">No official TypeScript adapter between the Claude Agent SDK and AG-UI protocol exists; the Stop button implementation requires distinguishing a user SIGINT from an idle timeout without a supported API path (cited GitHub issue, not a resolved capability); the PostToolUse hook mechanism for Commit Pills is specific to Claude Code and not documented as a stable API; Daytona's AGPL-3.0 "continuity fallback" is a large migration, not a fallback. These four are sequential build dependencies — any one hitting an 8-week delay cascades the entire MVP timeline. The PRD labels these as "constraints" when they are unbuilt custom integrations against undocumented or unstable hooks.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Re-open §12 with a technical risk question: "Which of the four custom integration layers (AG-UI emitter, Stop signal, PostToolUse hook, Daytona API) has been prototyped? A working prototype of the SSE streaming loop is the prerequisite for the architecture document."</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">PAT onboarding is not "known activation friction" — it may be an activation wall</h3>
+              <span class="finding-location">§4.1, §6.2, A-8</span>
+            </header>
+            <div class="finding-note">Fine-grained GitHub PATs require navigating GitHub settings, finding the Fine-grained section, configuring repo scope, setting expiry, copying the token before it disappears, and pasting it into the product. Non-dev users may not have a GitHub account at all — the PRD does not address this. The GitHub App integration that eliminates this step is deferred to post-MVP, triggered by data showing "PAT friction is identified as a material activation blocker in beta." That trigger is tautological: you cannot identify the friction as a blocker until you have already lost users to it. PAT drop-off will occur before any session data exists to measure SM-1.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Either fast-track GitHub App as an MVP feature, or add a non-GitHub-account user path (invite flow, admin-generated PAT) to §4.1 and acknowledge the risk explicitly in §12 rather than A-8.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">"Main branch only" is a team workflow blocker, not a minor caveat</h3>
+              <span class="finding-location">§5, §8</span>
+            </header>
+            <div class="finding-note">Many teams protect the main branch with required PR reviews, branch protection rules, or CI checks. A platform committing directly to main will be rejected outright by any team with these protections. The PRD's target persona ("40-person SaaS company") very likely has main branch protection enabled. Additionally, at teams serious enough to hit SM-3 (3 sessions in 90 days), concurrent writes to the same Artifact path by a PM and BA running parallel sessions will silently overwrite each other — described as "a known constraint, not an error condition" without a user-visible signal.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a consequence to §8 or §5: "Teams with GitHub main branch protection rules enabled cannot use the platform in MVP; a branch-based commit workflow is required for those teams." This should be a non-goal, not a buried constraint.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">The "Why Now" window argument is circular</h3>
+              <span class="finding-location">§9</span>
+            </header>
+            <div class="finding-note">The PRD argues Claude Code Web validates the market and defines the competitive window, then argues bmad-easy's advantages are durable because they are BMAD-specific. But if Anthropic is actively reducing the non-dev access barrier, the moat — "no per-user Claude subscription, BMAD-structured sessions, auto Artifact commitment, Project Map, team billing" — can be replicated by Anthropic in a Claude Code Web update. The 12–24 month window estimate is undocumented; no competitive teardown of what Claude Code Web already offers non-dev users is included. If Anthropic ships native BMAD support in Claude Code Web, the entire differentiation argument collapses.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a two-sentence answer to §9: "What prevents Anthropic from shipping this?" The moat must be named explicitly — community ownership of BMAD, team billing model, workflow-specific UX — rather than assumed to exist.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Success metrics validate onboarding UX, not the business model</h3>
+              <span class="finding-location">§11</span>
+            </header>
+            <div class="finding-note">SM-1 and SM-2 validate that onboarding and first session work — a UX bar, not a willingness-to-pay signal. SM-4 relies on external references the platform cannot track. SM-5 is a single-data-point vanity metric. There is no metric for trial-to-paid conversion rate, net revenue retention, churn rate, or whether paying teams increase seat count over time. At the 6-month mark the team could hit all six success metrics and still be running at 90% churn with no path to growth.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add: (1) trial-to-paid conversion rate, target ≥ 15%; (2) 90-day net revenue retention, target ≥ 80%; (3) month-2 seat expansion rate for accounts with ≥ 2 seats.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Single-container NestJS backend is a hidden reliability risk</h3>
+              <span class="finding-location">§8</span>
+            </header>
+            <div class="finding-note">One process crash drops all active Skill Sessions with no failover. A BMAD PRD session that has run 25 minutes and produced a 3,000-word draft but not reached the commit step loses that work on a NestJS restart or Daytona blip. The chat interface provides no indication that work is not persisted until commit. A single high-profile session loss during beta will define the product's reputation among the early-adopter developer champions the GTM model depends on.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add to the chat interface (FR-10) a persistent, unobtrusive indicator that work is ephemeral until committed — similar to unsaved-file indicators. This does not require horizontal scaling; it sets the correct user expectation.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Artifact commit failure leaves the user with no output and no recovery</h3>
+              <span class="finding-location">§6.2</span>
+            </header>
+            <div class="finding-note">In MVP, a failed commit means: the BMAD Agent produces the Artifact, the commit silently fails, no Commit Pill appears, and the user believes the session produced no output. There is no fallback to show the Artifact content in-chat and no recovery mechanism. Git commit failures — network interruption, PAT expiry mid-session, race condition on the same path — are not exotic. A non-dev user who loses 20 minutes of work with no explanation does not come back.</div>
+            <div class="finding-fix"><strong>Fix:</strong> This overlaps with the rubric finding on FR-12: "If the git commit fails, the BMAD Agent's error output must be visible in the chat stream; the Commit Pill is not emitted." Additionally, consider showing the Artifact content inline on commit failure so the user can copy it manually.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">No repository size limit creates an unquantified Sandbox risk</h3>
+              <span class="finding-location">§12, decision log Q-4</span>
+            </header>
+            <div class="finding-note">The decision log records "no limit defined for MVP." A team's monorepo could be 10 GB. The Sandbox provisioning time target (10 seconds, NFR-P2) depends directly on git clone time. The platform has no shallow-clone specification, no sparse-checkout requirement, and no size guard. NFR-P2 will be violated at first real use on any Repository over a few hundred MB, and the team will not discover this until beta because demos use clean test repos.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a shallow clone or sparse checkout specification to §8 or FR-9, or add a Repository size guard with a user-visible error when the Repository exceeds the validated threshold.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <div class="mechanical">
+      <h3>Mechanical notes</h3>
+      <ul>
+        <li><strong>Glossary drift:</strong> None detected. All 13 glossary terms used consistently in their defined forms throughout the document. ✓</li>
+        <li><strong>FR ID continuity:</strong> FR-1 through FR-17, contiguous, no gaps or duplicates. ✓</li>
+        <li><strong>UJ ID continuity:</strong> UJ-1 through UJ-3, contiguous. ✓</li>
+        <li><strong>NFR ID continuity:</strong> NFR-S1–S6, NFR-P1–P4, NFR-R1–R3, NFR-O1 — contiguous within each group. ✓</li>
+        <li><strong>SM ID continuity:</strong> SM-1 through SM-6, SM-C1, SM-C2 — contiguous. ✓</li>
+        <li><strong>Assumptions ID continuity:</strong> A-11 is missing — index jumps from A-10 to A-12. ✗</li>
+        <li><strong>Cross-reference defect:</strong> A-7 references "§4.5 FR-18" — FR-18 does not exist; correct to FR-17. ✗</li>
+        <li><strong>Assumptions Index roundtrip:</strong> A-1, A-5, A-6, A-7, A-10 appear only in the index with no inline tag in the body — inconsistent with §0's statement that all assumption tags are indexed in §13. Minor.</li>
+        <li><strong>YAML frontmatter:</strong> Duplicate <code>status</code> key (lines 3 and 6: <code>draft</code> and <code>ready-for-review</code>). Minor defect — YAML parsers will use the last value.</li>
+        <li><strong>UJ protagonist naming:</strong> All three UJs use "Sarah" consistently with inline persona context. ✓</li>
+        <li><strong>Required sections:</strong> All sections present (§0 through §13). ✓</li>
+      </ul>
+    </div>
+
+    <footer class="report-footer">
+      <div class="meta">
+        <span>PRD: _bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md</span>
+        <span>Rubric: .claude/skills/bmad-prd/assets/prd-validation-checklist.md</span>
+        <span>Generated: 2026-06-14T00:00:00Z</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

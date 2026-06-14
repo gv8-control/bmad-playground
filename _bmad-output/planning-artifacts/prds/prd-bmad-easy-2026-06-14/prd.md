@@ -66,7 +66,7 @@ The goal is a specific inversion: make BMAD feel like a tool that was built for 
 
 - **Persona + context:** Sarah is a PM at a 40-person SaaS company. Her team's developer has BMAD set up in the shared repo. The developer shared bmad-easy with her after growing tired of being the BMAD intermediary for every session.
 - **Entry state:** Sarah has signed up for bmad-easy and is on the onboarding screen. No repository connected yet.
-- **Path:** Sarah pastes the GitHub repository URL. The platform displays a step-by-step in-product guide for generating a fine-grained GitHub PAT scoped to that repository with `contents:write` access. She generates the token, pastes it, and the platform validates the PAT and confirms the repository has `_bmad` initialized. She is taken to the Project Map.
+- **Path:** Sarah pastes the GitHub repository URL. The platform displays a link to GitHub documentation for generating a fine-grained PAT with `contents:write` access scoped to that repository. She generates the token, pastes it into the provided field, and the platform validates the PAT and confirms the repository has `_bmad` initialized. She is taken to the Project Map.
 - **Climax:** The Project Map loads, showing the team's existing BMAD Artifacts — a brainstorming session the developer ran two weeks ago, a draft brief that was never finished. Sarah sees the team's BMAD state at a glance without opening GitHub.
 - **Resolution:** Sarah is on the Project Map with the option to start a new Skill Session or read an existing Artifact.
 - **Edge case:** If `_bmad` is not found in the Repository, Sarah sees a clear message naming the prerequisite and linking to BMAD documentation. She cannot proceed until a developer initialises BMAD in the repo.
@@ -75,7 +75,7 @@ The goal is a specific inversion: make BMAD feel like a tool that was built for 
 
 - **Persona + context:** Sarah has connected her Repository and is on the Project Map. The team has an active brainstorming Artifact she wants to turn into a PRD.
 - **Entry state:** Authenticated, Project Map visible, Repository connected.
-- **Path:** Sarah opens the Skill list and selects `bmad-prd`. A new tab opens next to the Project Map tab with a loading indicator while the session Sandbox is provisioned. Within 10 seconds, the chat is ready. Sarah starts conversing with the BMAD PM agent, providing context and responding to its questions across multiple turns over 20 minutes. When the agent completes the PRD and commits it, a Commit Pill appears inline in the chat: "PRD: bmad-easy — committed. View."
+- **Path:** Sarah types `/bmad-prd` in the Project Map's skill entry field and selects `bmad-prd` from the list of matching Skills. The session page opens with a loading indicator while the Sandbox is provisioned. Within 10 seconds, the chat is ready. Sarah starts conversing with the BMAD PM agent, providing context and responding to its questions across multiple turns over 20 minutes. When the agent completes the PRD and commits it, a Commit Pill appears inline in the chat: "PRD: bmad-easy — committed. View."
 - **Climax:** Sarah clicks the Commit Pill and reads the rendered PRD in the Artifact Browser. The PRD commit shows her name as the author in git history.
 - **Resolution:** Sarah is in the Artifact Browser with the committed PRD. The Project Map tab now shows the PRD as a completed Artifact.
 - **Edge case:** If the session is idle for 30 minutes, the Sandbox pauses. Sarah returns to find the session expired; any committed work is preserved and visible on the Project Map.
@@ -103,7 +103,8 @@ Terms used verbatim throughout this PRD. No synonyms are used elsewhere in the d
 - **Artifact Browser** — the read-only surface for viewing a committed Artifact, rendered as Markdown.
 - **Repository** — the GitHub git repository containing the team's `_bmad/` setup and `_bmad-output/` Artifacts. The Repository is the sole source of truth for project state; the platform owns no copy of Repository content.
 - **Sandbox** — an isolated cloud execution environment (Daytona Cloud) provisioned per Skill Session. The BMAD Agent and all git operations run inside the Sandbox. Sandboxes are paused after user inactivity and destroyed after the session idle timeout.
-- **Commit Pill** — an inline chat event indicator that appears in the Skill Session chat stream when the BMAD Agent commits an Artifact to the Repository.
+- **Commit Pill** — an inline chat event indicator that appears in the Skill Session chat stream when an Artifact is committed to the Repository, either by the BMAD Agent or by a platform-initiated Checkpoint (FR-19). Platform-initiated Commit Pills carry a source annotation distinguishing them from agent-initiated commits.
+- **Checkpoint** — a platform-initiated git commit capturing the current working tree state of a Skill Session, triggered by the user via the Save control. Committed to the Repository with the message `chore(platform-save): checkpoint [<ISO8601 UTC timestamp>]`; surfaced in the chat stream as a source-annotated Commit Pill. A Checkpoint preserves in-progress work that the BMAD Agent has not yet committed.
 - **Seat** — a licensed user slot in the platform's per-seat subscription. Required to initiate Skill Sessions.
 - **PAT** — a fine-grained GitHub Personal Access Token, generated by the user and scoped to a single Repository with `contents:write` permission. Used by the platform as a git transport credential for MVP. Not used for platform authentication.
 - **Runner** — the agent harness that executes BMAD Skills. Hardcoded to Claude Code for MVP; not user-configurable.
@@ -114,9 +115,9 @@ Terms used verbatim throughout this PRD. No synonyms are used elsewhere in the d
 
 ### 4.1 Repository Connection & Onboarding
 
-**Description:** The first action a new user takes is connecting a GitHub Repository. The platform guides the user through generating a fine-grained PAT scoped to that Repository, validates the PAT and the Repository's BMAD setup, and brings the user to the Project Map. Every subsequent git operation — reads for the Project Map and Artifact Browser, writes from Skill Sessions — flows through this authenticated connection. Commit authorship is attributed to the individual user, not to a shared platform identity.
+**Description:** The first action a new user takes is connecting a GitHub Repository. The platform links to GitHub documentation for generating a fine-grained PAT, accepts the PAT the user pastes, validates it and the Repository's BMAD setup, and brings the user to the Project Map. Every subsequent git operation — reads for the Project Map and Artifact Browser, writes from Skill Sessions — flows through this authenticated connection. Commit authorship is attributed to the individual user, not to a shared platform identity.
 
-This flow asks non-dev users to complete a step (PAT generation) that is routine for developers but unfamiliar to PMs and BAs. The in-product guide must be clear enough that a user who has never heard of a personal access token can complete onboarding without external help. This is a known activation friction point; GitHub App integration (post-MVP) removes it. Realizes UJ-1.
+This flow asks non-dev users to complete a step (PAT generation) that is routine for developers but unfamiliar to PMs and BAs. GitHub documentation covers the generation steps; the platform links directly to it and provides an input field for the result. This is a known activation friction point; GitHub App integration (post-MVP) removes it. Realizes UJ-1.
 
 **Functional Requirements:**
 
@@ -126,7 +127,7 @@ User can connect a GitHub Repository by pasting its URL and entering a fine-grai
 
 **Consequences (testable):**
 
-- Platform displays a step-by-step in-product guide for generating a fine-grained PAT scoped to the pasted Repository URL with `contents:write` permission.
+- Platform displays a link to GitHub documentation for generating a fine-grained PAT with `contents:write` permission scoped to the specified Repository, and provides an input field for the user to paste the generated PAT.
 - Platform validates that the PAT grants write access to the specified Repository before completing setup.
 - On validation failure, the user sees a descriptive error indicating whether the PAT is invalid, lacks the required permission scope, or does not have access to the specified Repository.
 - On success, the PAT is stored AES-256-GCM encrypted with KMS envelope encryption (per-PAT DEK); it is never returned to the client after initial submission.
@@ -213,14 +214,14 @@ Clicking a completed Artifact on the Project Map opens it in the Artifact Browse
 **Consequences (testable):**
 
 - Click on a completed Artifact navigates to the Artifact Browser with that Artifact loaded.
-- Click on an in-progress Artifact whose Skill Session tab is currently open brings that tab into focus.
+- Click on an in-progress Artifact whose session is active navigates to that session's page.
 - Click on an in-progress Artifact whose Skill Session tab is not open opens the Artifact in read-only Artifact Browser.
 
 ---
 
 ### 4.3 Skill Execution
 
-**Description:** Each Skill runs in a dedicated chat tab. The user selects a BMAD Skill from a list derived from the Repository's `_bmad/skills/` directory, and the tab becomes a streaming chat conversation with the BMAD Agent. The interaction is identical to what a developer has with their local agent harness — the same Skills, the same BMAD prompts, the same Artifact output — without any terminal or IDE involvement. When the BMAD Agent commits an Artifact, a Commit Pill appears inline in the chat. Multiple Skills can run concurrently in parallel tabs.
+**Description:** Each Skill runs in a dedicated session page. The user starts a Skill Session by typing a slash command in the Project Map's skill entry field; the session page opens as a streaming chat conversation with the BMAD Agent. The interaction is identical to what a developer has with their local agent harness — the same Skills, the same BMAD prompts, the same Artifact output — without any terminal or IDE involvement. When the BMAD Agent commits an Artifact, a Commit Pill appears inline in the chat. The user can also save in-progress working tree state at any time via a Save control in the chat input area; this triggers a platform-initiated Checkpoint commit and produces a correspondingly annotated Commit Pill. Multiple Skills can run concurrently as separate Skill Sessions.
 
 The Sandbox is provisioned when the tab is opened (not when the first message is sent), so the git clone phase runs in the background while the user reads the chat interface. The chat is ready within seconds of the tab opening. Realizes UJ-2.
 
@@ -233,8 +234,8 @@ User can start a new Skill Session by selecting a BMAD Skill from the available 
 **Consequences (testable):**
 
 - Available Skills are derived from the connected Repository's `_bmad/skills/` directory.
-- Selecting a Skill opens a new tab labelled with the Skill name.
-- A Sandbox is provisioned and the Repository is cloned inside it as a background operation at tab-open time; the chat interface is visible immediately.
+- Typing `/` in the Project Map's skill entry field displays a filterable list of available Skills matching the typed query. Selecting a Skill from the list navigates to a new Skill Session page for that Skill.
+- A Sandbox is provisioned and the Repository is cloned inside it as a background operation when the session page opens; the chat interface is visible immediately.
 - While the Sandbox is provisioning, a spinner and status label ("Starting session…") are displayed in the chat area. The chat input is disabled until the Sandbox is ready.
 - Chat is ready for user input within 10 seconds of tab open (satisfies NFR-P2).
 - Skill Session initiation is blocked with a clear upgrade prompt for users who have exceeded their Seat allocation.
@@ -247,7 +248,7 @@ User converses with the BMAD Agent in a chat interface; agent responses stream t
 
 - Agent responses stream progressively; the user sees tokens as they are produced.
 - Markdown formatting (headings, lists, code blocks, bold, italic, tables) is rendered in agent responses.
-- A thinking indicator is displayed while the BMAD Agent is processing a response.
+- A thinking indicator is displayed while the BMAD Agent is processing a response. A tool execution indicator is displayed while the BMAD Agent is executing a tool or Bash command inside the Sandbox, distinct from the thinking indicator shown during LLM response generation.
 - First streamed token appears within 1,500 ms of the user sending a message (satisfies NFR-P1).
 - Chat input is a multi-line auto-growing textarea that expands vertically as the user types. No rich-text toolbar, no file attachment input.
 - Pressing Enter submits the message. Pressing Shift+Enter inserts a newline without submitting. A Send button is present as a secondary affordance.
@@ -257,17 +258,16 @@ User converses with the BMAD Agent in a chat interface; agent responses stream t
 - Each message displays a timestamp. Messages sent within the most recent minute show a relative label (e.g. "just now"); older messages show the wall-clock time. Timestamps on user messages are visible on hover; timestamps on agent messages are shown inline at reduced prominence.
 - The user's unsent draft message is persisted to browser `localStorage` per Skill Session tab. Reconnecting to an active session within the idle timeout restores the draft. The draft is cleared on successful send.
 
-#### FR-11: Multi-Session Tabs
+#### FR-11: Concurrent Skill Sessions
 
-User can have multiple Skill Sessions open concurrently in separate tabs alongside the Project Map tab.
+User can have multiple Skill Sessions active concurrently, each accessible at its own stable URL.
 
 **Consequences (testable):**
 
-- The Project Map tab is always present; Skill Session tabs appear alongside it.
-- Each Skill Session tab maintains an independent Sandbox and independent chat history.
-- The browser tab title for each Skill Session tab reflects the Skill name. When the session has expired, the title appends " (expired)". The Project Map tab title reflects the project name.
+- Each Skill Session maintains an independent Sandbox and independent chat history.
+- Each page title reflects its content: session pages show the Skill name (appended with " (expired)" when the session has ended); the Project Map page shows the project name.
 - A per-user maximum of 10 concurrent active Skill Sessions is enforced at the platform level.
-- Opening a new tab beyond the concurrent session limit shows a "session limit reached" message rather than silently failing.
+- Attempting to start a new session beyond the concurrent session limit shows a "session limit reached" message rather than silently failing.
 
 #### FR-12: Inline Commit Pills
 
@@ -291,6 +291,46 @@ A Skill Session persists across browser refreshes and reconnects as long as the 
 - An expired Skill Session tab displays a clear end-of-session indicator; the user can start a new Skill Session for the same Skill.
 
 **Note:** The platform enforces no hard session duration limit. The idle timeout is the sole mechanism that ends a session; spend monitoring (NFR-O1) is the operational safeguard against runaway Sandboxes.
+
+#### FR-18: Working Tree State Indicator
+
+Platform continuously monitors the Sandbox working tree for uncommitted changes and displays a persistent status indicator in the chat input area.
+
+**Consequences (testable):**
+
+- Platform polls `git status --porcelain` inside the Sandbox via the Daytona exec API at 15-second intervals while the Skill Session is active.
+- Polling is suspended while an agent turn is in progress; the indicator does not update during active agent execution.
+- A status indicator is displayed in the chat input area. It shows `● Unsaved changes` (amber) when the working tree is dirty, and `✓ All saved` (muted) or is hidden when the working tree is clean.
+- When any Commit Pill event is emitted (agent-initiated or platform-initiated), the indicator resets to clean state immediately — without waiting for the next poll cycle.
+- The indicator is visible only while the Sandbox is live; it is hidden when the session has expired.
+
+#### FR-19: Manual Session Checkpoint
+
+User can commit the current working tree state of a Skill Session on demand via the Save control in the chat input area, producing a Checkpoint.
+
+**Consequences (testable):**
+
+- The status indicator from FR-18 is activatable (clickable) when the working tree is dirty. Activating it presents a confirmation labeled "Save checkpoint" — no git vocabulary is shown to the user.
+- Confirming executes a platform-level `git add -A && git commit --no-verify` inside the Sandbox via the Daytona exec API, bypassing the BMAD Agent.
+- The save operation is queued behind an agent-idle lock: it does not execute while an agent turn is in progress. The user receives immediate visual acknowledgment and the exec fires when the agent is next idle.
+- The platform-initiated commit uses the message format `chore(platform-save): checkpoint [<ISO8601 UTC timestamp>]`. This message is not shown in the chat UI; it is visible only in git history.
+- On success: a Commit Pill annotated as a platform Checkpoint appears inline in the chat at the position of the save event, and the indicator resets to clean state.
+- On failure: a visible error is shown in the chat area; the indicator remains dirty; no partial commit state is created.
+- The Save control is disabled while a save operation is in progress, preventing duplicate submissions.
+- If the working tree is clean when the save is triggered, the operation returns a no-op without error.
+- A Checkpoint commit does not trigger the PostToolUse hook (the hook is registered to the BMAD Agent process, not the platform exec). The platform manually synthesizes and emits the Commit Pill event after a successful exec.
+
+**Out of Scope:** User-authored commit messages for Checkpoints (post-MVP); per-file selection of what to include in a Checkpoint (post-MVP).
+
+#### FR-20: Proactive Save Prompt Near Session Idle Timeout
+
+Platform proactively prompts the user to save when uncommitted changes are present and the session is approaching the idle timeout.
+
+**Consequences (testable):**
+
+- At 25 minutes of session inactivity (5 minutes before the 30-minute Sandbox pause threshold), if the working tree is dirty, a system message appears inline in the chat timeline warning that the session may pause soon, with an inline "Save now" action that triggers the same operation as FR-19.
+- The proactive prompt appears at most once per idle window and is not repeated if the user acts on it or the session becomes active again.
+- When the BMAD Agent becomes idle (finishes a response) and the working tree is dirty, the status indicator pulses once. The pulse does not repeat until the next agent turn completes.
 
 ---
 
@@ -335,7 +375,7 @@ User can authenticate with the platform using GitHub OAuth (primary) or email/pa
 **Consequences (testable):**
 
 - GitHub OAuth is the default authentication path at the sign-up and sign-in screen.
-- Session persists across browser refreshes until explicit logout or session expiry [ASSUMPTION: A-12, 7-day session].
+- Session persists across browser refreshes until explicit logout or session expiry [ASSUMPTION: A-11, 7-day session].
 - A user who authenticates via GitHub OAuth and the same user who authenticates via email/password are treated as separate accounts unless linked.
 
 #### FR-17: Seat-Gated Access
@@ -375,9 +415,10 @@ All platform access requires an active Seat license or an active free trial.
 - Repository connection via URL + fine-grained GitHub PAT; PAT stored AES-256-GCM encrypted
 - Repository BMAD validation (`_bmad/` presence check) with a clear error path if absent
 - Project Map: Artifact list from `_bmad-output/`, in-progress / completed status, manual refresh
-- Skill Execution: streaming chat interface, BMAD Skills from the connected Repository, inline Commit Pills, multi-session tabs
+- Skill Execution: streaming chat interface, BMAD Skills from the connected Repository, slash-command Skill entry, inline Commit Pills, concurrent Skill Sessions
 - Artifact Browser: read-only rendered Markdown view of committed Artifacts
 - Commit attribution per user (git author/committer identity injected per session)
+- Working tree state indicator and manual Checkpoint save in the chat input area (FR-18, FR-19, FR-20)
 - Credential health monitoring with re-auth prompt on 401/403
 - SaaS deployment; per-seat subscription with free trial
 - Single Runner (Claude Code); LLM model hardcoded
@@ -419,6 +460,7 @@ Verified with a single manual test run under normal conditions, not statistical 
 - **NFR-P2:** Chat is ready for user input within 10 seconds of opening a Skill Session tab.
 - **NFR-P3:** Project Map loads within 2 seconds of page open.
 - **NFR-P4:** Artifact Browser loads a committed Artifact within 2 seconds.
+- **NFR-P5 (Checkpoint commit latency):** A platform-initiated Checkpoint commit completes within 5 seconds of the save operation executing (exclusive of queue time waiting for an agent turn to complete).
 
 ### Reliability
 
@@ -435,6 +477,8 @@ Verified with a single manual test run under normal conditions, not statistical 
 ## 8. Constraints & Guardrails
 
 **Platform.** Web application, accessed through any modern browser. No mobile native app, no PWA, no desktop client in MVP.
+
+**Navigation model.** The platform uses page-based navigation. Project Map, Skill Session, and Artifact Browser are distinct pages with stable URLs. In-page navigation is hierarchical with breadcrumbs one level deep: Project Map is the root; session and Artifact Browser pages are one level down and display a breadcrumb back to the Project Map. No in-app tab UI is implemented.
 
 **Sandbox isolation level.** Daytona Cloud uses Docker (shared kernel) with optional Kata Containers — classified as medium isolation. This is acceptable for MVP given authenticated users directing agent work on their own Repositories. If evidence of adversarial use emerges, upgrading to Firecracker microVM isolation (Fly.io Sprites or E2B) is the documented escalation path; this migration is bounded to the `SandboxService` abstraction layer. [ASSUMPTION: A-2]
 
@@ -482,6 +526,8 @@ Self-serve sales motion for purchases below $5,000 ACV (~16 seats at $25/seat/mo
 
 **Post-MVP consideration:** Hybrid base-seat + LLM usage passthrough model. Per-seat pricing is under structural pressure from usage-based models (Gartner: 70% of businesses will prefer usage-based by 2026). The V2 pricing model should plan for a hybrid structure; MVP should not be over-engineered around it.
 
+**Cost floor (validate before launch pricing is locked):** Each Skill Session runs `claude-sonnet-4-6` inside a Daytona sandbox with extended thinking disabled (BMAD's step-based skill files provide reasoning scaffolding). Measured session costs at current Sonnet 4.6 pricing ($3.00/M input, $15.00/M output, with prompt caching): brainstorming $0.36–$0.63; full PRD session $0.77–$1.26; research and UX sessions $0.83–$1.47; architecture sessions $1.50–$2.55. Weighted average across typical planning workflows is approximately $0.77 per session. Daytona sandbox runtime and infrastructure add cost on top. At the SM-6 retention target (≥ 4 sessions per team per month), estimated LLM cost per active seat per month is $3–$6 for typical planning use, higher for architecture-heavy teams. The $25–$30 price point must be validated against the full cost floor (LLM + Daytona + infrastructure) before launch. NFR-O1 (spend monitoring) is the operational instrument; budget alert thresholds should be calibrated against the validated cost model at launch.
+
 ---
 
 ## 11. Success Metrics
@@ -511,7 +557,9 @@ If fewer than 2 teams reach 3 Skill Sessions within 90 days of launch, the exper
 
 ## 12. Open Questions
 
-No open questions remain.
+**Q-4: Repository size limit and NFR-P2 validity**
+
+No Repository size limit is defined for MVP. Daytona provisioning time for Repositories above a few hundred MB has not been validated against NFR-P2 (chat ready within 10 seconds of tab open). Large monorepos common at companies in the target size range (50–200 people) may violate this target without a shallow clone or sparse checkout strategy. *Owner:* Architect. *Resolve by:* prototype validation during technical spike — determine whether shallow clone or sparse checkout is required and add the specification to §8 or FR-9 if so.
 
 ---
 
@@ -523,9 +571,8 @@ No open questions remain.
 - **A-4:** No official TypeScript adapter between the Claude Agent SDK and the AG-UI protocol exists. The `ClaudeAgentSdkHarness` emitter must be built and maintained internally. (§8)
 - **A-5:** ~~RESOLVED~~ Maximum 10 concurrent Skill Sessions per user. (§4.3 FR-11)
 - **A-6:** ~~RESOLVED~~ No hard session duration limit. Sessions end on idle timeout only (30 min). See note under FR-13.
-- **A-7:** ~~RESOLVED~~ All platform access requires a Seat or active trial; no read-only free tier. (§4.5 FR-18)
+- **A-7:** ~~RESOLVED~~ All platform access requires a Seat or active trial; no read-only free tier. (§4.5 FR-17)
 - **A-8:** Fine-grained GitHub PAT is acceptable onboarding friction for MVP. GitHub App integration is the post-MVP replacement; trigger is PAT friction identified as a material activation blocker in beta. (§6.2)
 - **A-9:** Daytona Cloud is the MVP sandbox platform. Daytona OSS self-hosting is the documented continuity fallback; migration is bounded to the `SandboxService` layer. (§8)
 - **A-10:** ~~RESOLVED~~ 14-day free trial, no credit card required at sign-up. (§10)
-
-- **A-12:** Platform session expiry is 7 days after last activity. (§4.5 FR-17)
+- **A-11:** Platform session expiry is 7 days after last activity. (§4.5 FR-16)
