@@ -12,7 +12,7 @@ web_research_enabled: true
 source_verification: true
 ---
 
-# Research Report: technical
+# Backend Service Architecture: NestJS + Claude Agent SDK + AG-UI
 
 **Date:** 2026-06-12
 **Author:** Marius
@@ -28,31 +28,7 @@ The research covers three areas confirmed with the user: deployment topology (se
 
 The central finding is that a **hybrid architecture** is mandatory — Next.js serverless functions cannot hold a live SSE connection for the duration of a BMAD session (Vercel's 300s hard cap on Hobby, fragile 1800s beta on Pro). A containerised NestJS backend running on Fly.io or Railway handles all Claude Agent SDK sessions. Critically, tool execution (Bash, git, npm) must be isolated in a **Daytona sandbox** per conversation — running tools on the NestJS host would give every user arbitrary shell access to a shared server. The recommended isolation pattern (Pattern A) runs the entire Claude Agent SDK inside the sandbox; a `sandbox-agent` binary exposes an HTTP/SSE endpoint from which NestJS proxies AG-UI events to the browser.
 
-See the Research Synthesis section for executive summary, full architecture decisions, implementation roadmap, and risk assessment.
-
----
-
-<!-- Content will be appended sequentially through research workflow steps -->
-
-## Technical Research Scope Confirmation
-
-**Research Topic:** Backend service architecture for Claude Agent SDK + AG-UI harness
-**Research Goals:** Determine the optimal backend architecture for a hybrid Next.js 15 app that uses serverless functions for traditional requests and a long-running containerized service for Claude Agent SDK streaming sessions emitting AG-UI events — covering deployment topology, ClaudeAgentSdkHarness design, session lifecycle, and BMAD skill invocation
-
-**Technical Research Scope:**
-
-- Architecture Analysis — hybrid serverless + containerized backend topologies; deployment topology options; where the execution boundary sits; backend framework selection based on evidence, not assumption
-- Integration Patterns — how the Next.js frontend connects to the agent backend; session routing; how BMAD skills are invoked as Claude Agent SDK runs from a web request; AG-UI HttpAgent connection lifecycle
-- Performance Considerations — SSE connection durability in serverless vs container; long-running session handling; memory-bound vs persisted session state
-
-**Research Methodology:**
-
-- Current web data with rigorous source verification
-- Multi-source validation for critical technical claims
-- Confidence level framework for uncertain information
-- Comprehensive technical coverage with architecture-specific insights
-
-**Scope Confirmed:** 2026-06-12
+See the Research Synthesis section for architecture decisions, implementation roadmap, and risk assessment.
 
 ---
 
@@ -600,18 +576,6 @@ _Sources: [Is Daytona the Best Sandbox Runtime for AI Agents?](https://devaitool
 
 ## Research Synthesis
 
-### Executive Summary
-
-Building a browser-accessible BMAD agent requires two architectural decisions that are non-negotiable once you understand the constraints.
-
-**First, serverless execution is categorically unsuitable** for Claude Agent SDK sessions. Vercel's 300-second hard cap on Hobby and the fragile 1800-second Pro beta cannot accommodate BMAD workflows that routinely run 10–30+ minutes. A persistent containerised backend (NestJS on Fly.io or Railway) is required. Next.js remains on Vercel for UI, auth, and short REST APIs — the two form a hybrid topology connected by a short-lived JWT that authorises each agent session.
-
-**Second, tool isolation is mandatory from day one.** Running Claude Agent SDK tools (Bash, git, npm) on the NestJS host gives every authenticated user arbitrary shell access to the shared server and its secrets. The correct architecture (Pattern A) runs the entire Claude Agent SDK process inside a Daytona sandbox per conversation. NestJS creates and manages sandboxes; it does not execute tools itself. The `sandbox-agent` binary (rivet-dev) running inside each sandbox exposes an HTTP/SSE endpoint from which NestJS proxies structured AG-UI events to the browser.
-
-These two decisions — containerised NestJS + Daytona Pattern A — compose into a coherent, independently validated architecture that has official reference implementations from both Anthropic and Daytona.
-
----
-
 ### Architecture Decisions (Final)
 
 | Decision | Choice | Rationale |
@@ -713,9 +677,7 @@ Daytona Cloud sandbox (per threadId)
 ### Open Questions Requiring Product Decision
 
 1. **Git repository source:** Does the user connect an existing GitHub repo, or does bmad-easy create a new repo on their behalf? This determines the OAuth scope and git clone strategy.
-2. ~~**BMAD skill entry point:** How is the specific BMAD skill selected at the start of a conversation?~~ **RESOLVED (2026-06-13):** No special entry point mechanism is needed. The Claude Agent SDK starts in the sandbox with all BMAD skills already loaded from the cloned `_bmad/` directory — identical to how Claude Code works. The chat UI reads the skills list from the paused sandbox filesystem and surfaces them as suggestions. Skill invocation is conversational (the user's first message invokes the skill via the standard slash command or natural language). The backend has no concept of a selected skill.
-3. ~~**Sandbox pre-warming:** Should sandboxes be created speculatively, or on first message?~~ **RESOLVED (2026-06-13):** Sandbox is created and immediately paused when the user opens a new chat tab. See the Session Lifecycle State Machine section for the full rationale.
-4. **Artifact visibility:** BMAD artifacts accumulate in the sandbox filesystem. When and how are they committed to git? On `RUN_FINISHED`? On user request? Auto-commit on idle?
+2. **Artifact visibility:** BMAD artifacts accumulate in the sandbox filesystem. When and how are they committed to git? On `RUN_FINISHED`? On user request? Auto-commit on idle?
 
 ---
 

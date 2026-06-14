@@ -30,30 +30,6 @@ Key findings: Docker containers offer the lowest operational overhead but carry 
 
 ---
 
-## Technical Research Scope Confirmation
-
-**Research Topic:** Docker container-per-session and Daytona as isolation strategies for AI agent tool execution
-**Research Goals:** Evaluate Docker container-per-session and Daytona as alternatives to E2B for isolating AI agent tool execution (Bash, file read/write, git, npm) in a NestJS/Node.js web app using the Claude Agent SDK
-
-**Technical Research Scope:**
-
-- Architecture Analysis — design patterns, frameworks, system architecture
-- Implementation Approaches — development methodologies, coding patterns
-- Technology Stack — languages, frameworks, tools, platforms
-- Integration Patterns — APIs, protocols, interoperability
-- Performance Considerations — scalability, optimization, patterns
-
-**Research Methodology:**
-
-- Current web data with rigorous source verification
-- Multi-source validation for critical technical claims
-- Confidence level framework for uncertain information
-- Comprehensive technical coverage with architecture-specific insights
-
-**Scope Confirmed:** 2026-06-12
-
----
-
 ## Executive Summary
 
 In 2025–2026 the default assumption in the AI agent infrastructure space has shifted: Docker containers alone are **not considered sufficient isolation** for running arbitrary agent-generated code in a multi-tenant backend. The shared host kernel means a container escape gives an attacker host root. The field has converged on three acceptable isolation technologies for production: **Firecracker microVMs** (E2B, Fly.io Sprites), **gVisor** (Modal, Google Agent Sandbox), and **Kata Containers** (Northflank, Google Agent Sandbox). Daytona occupies a pragmatic middle ground—pre-warmed Docker containers enhanced with optional Kata/Sysbox—and explicitly targets the BMAD/Claude Agent SDK use case with documented integration guides and a TypeScript SDK.
@@ -574,11 +550,9 @@ _Source: [dockerode exec_running_container.js](https://github.com/apocas/dockero
 **Solutions in order of reliability:**
 
 1. **`AutoRemove: true` in HostConfig**: Docker daemon removes the container when it exits. Reliable even if Node.js crashes. Limitation: cannot restart stopped containers.
-2. **Session timeout via container `StopTimeout`**: Set `StopTimeout: 30` so Docker terminates the container after 30 s if the process inside hangs.
-3. **Health check in host process**: A background interval checks all registered sessions and destroys containers that have been idle longer than a threshold.
-4. **`onModuleDestroy()` hook in NestJS**: Called during graceful shutdown (SIGTERM). Works for orderly shutdowns but not SIGKILL.
-5. **Label-based cleanup cron job**: Label containers with `session-id`, `created-at`, and a TTL label. A separate cleanup process calls `docker.listContainers()` with label filters and removes expired ones.
-6. **Synchronous SIGTERM fallback**: Use `execSync` with the Docker CLI as a synchronous fallback in the SIGTERM handler (async cleanup is unreliable at this point):
+2. **`onModuleDestroy()` hook in NestJS**: Called during graceful shutdown (SIGTERM). Works for orderly shutdowns but not SIGKILL.
+3. **Label-based cleanup cron job**: Label containers with `session-id`, `created-at`, and a TTL label. A separate cleanup process calls `docker.listContainers()` with label filters and removes expired ones.
+4. **Synchronous SIGTERM fallback**: Use `execSync` with the Docker CLI as a synchronous fallback in the SIGTERM handler (async cleanup is unreliable at this point):
 
 ```typescript
 process.on('SIGTERM', () => {
@@ -1034,63 +1008,26 @@ Phase 3 (if needed):  Fly.io Sprites OR E2B
 
 ---
 
-## 10. Technical Research Methodology and Source Verification
+## 10. Sources and Confidence
 
-### Research Approach
+### Key Sources
 
-This research was conducted via 14 targeted web searches covering:
-- dockerode API patterns and Node.js container management
-- Docker security: socket exposure, container escape, seccomp/AppArmor
-- Docker cold start latency and pre-warming strategies (Apify production data)
-- Daytona platform, TypeScript SDK, and Claude Agent SDK integration
-- Daytona self-hosting requirements and pricing/licensing
-- Fly.io Sprites and Machines API for agent isolation
-- AI agent sandboxing landscape: Modal, Northflank, Google Agent Sandbox, WebContainers
-- Production patterns for AI agent tool execution in 2025–2026
-- Container pool management libraries for Node.js
+| Source | Relevance |
+|--------|-----------|
+| [dockerode GitHub](https://github.com/apocas/dockerode) | Node.js Docker SDK API patterns |
+| [Daytona TypeScript SDK docs](https://www.daytona.io/docs/en/typescript-sdk/) | SDK API and lifecycle |
+| [Daytona Claude Agent SDK guide](https://www.daytona.io/docs/en/guides/claude/claude-agent-sdk-interactive-terminal-sandbox/) | Official BMAD integration pattern |
+| [Fly.io Agent Sandbox docs](https://fly.io/learn/agent-sandbox/) | Firecracker/Sprites architecture |
+| [E2B vs Daytona — ZenML](https://www.zenml.io/blog/e2b-vs-daytona) | Platform comparison |
+| [Container escape vulnerabilities — Blaxel](https://blaxel.ai/blog/container-escape) | Shared-kernel security risks |
+| [Apify container startup improvement](https://blog.apify.com/container-startup-time-improvement/) | Production cold-start benchmark data |
+| [OWASP Docker Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html) | Security hardening baseline |
 
-### Primary Sources
+### Confidence
 
-| Source | URL |
-|--------|-----|
-| dockerode GitHub | [github.com/apocas/dockerode](https://github.com/apocas/dockerode) |
-| Daytona TypeScript SDK docs | [daytona.io/docs/en/typescript-sdk/](https://www.daytona.io/docs/en/typescript-sdk/) |
-| Daytona Claude Agent SDK guide | [daytona.io/docs/en/guides/claude/claude-agent-sdk-interactive-terminal-sandbox/](https://www.daytona.io/docs/en/guides/claude/claude-agent-sdk-interactive-terminal-sandbox/) |
-| Daytona Claude Managed Agents | [daytona.io/docs/en/guides/claude/claude-managed-agents/](https://www.daytona.io/docs/en/guides/claude/claude-managed-agents/) |
-| Daytona OSS deployment | [daytona.io/docs/en/oss-deployment/](https://www.daytona.io/docs/en/oss-deployment/) |
-| Docker AI isolation layers | [docs.docker.com/ai/sandboxes/security/isolation/](https://docs.docker.com/ai/sandboxes/security/isolation/) |
-| Docker AI Governance blog | [docker.com/blog/docker-ai-governance-unlock-agent-autonomy-safely/](https://www.docker.com/blog/docker-ai-governance-unlock-agent-autonomy-safely/) |
-| Fly.io Sprites announcement | [techzine.eu/news/devops/137884/](https://www.techzine.eu/news/devops/137884/fly-io-puts-ai-agents-in-vms-not-containers/) |
-| Fly.io Agent Sandbox docs | [fly.io/learn/agent-sandbox/](https://fly.io/learn/agent-sandbox/) |
-| Fly.io per-user dev environments | [fly.io/docs/blueprints/per-user-dev-environments/](https://fly.io/docs/blueprints/per-user-dev-environments/) |
-| Apify container startup 500% | [blog.apify.com/container-startup-time-improvement/](https://blog.apify.com/container-startup-time-improvement/) |
-| E2B vs Daytona comparison | [zenml.io/blog/e2b-vs-daytona](https://www.zenml.io/blog/e2b-vs-daytona) |
-| Daytona vs E2B (Northflank) | [northflank.com/blog/daytona-vs-e2b-ai-code-execution-sandboxes](https://northflank.com/blog/daytona-vs-e2b-ai-code-execution-sandboxes) |
-| dockerode Issue #214 | [github.com/apocas/dockerode/issues/214](https://github.com/apocas/dockerode/issues/214) |
-| Mastra DaytonaSandbox issue | [github.com/mastra-ai/mastra/issues/13111](https://github.com/mastra-ai/mastra/issues/13111) |
-| Container escape vulnerabilities | [blaxel.ai/blog/container-escape](https://blaxel.ai/blog/container-escape) |
-| AI Agent Sandboxing guide 2026 | [manveerc.substack.com/p/ai-agent-sandboxing-guide](https://manveerc.substack.com/p/ai-agent-sandboxing-guide) |
-| Best sandboxes for AI agents | [modal.com/resources/best-code-execution-sandboxes-ai-agents](https://modal.com/resources/best-code-execution-sandboxes-ai-agents) |
-| Northflank ephemeral environments | [northflank.com/blog/ephemeral-execution-environments-ai-agents](https://northflank.com/blog/ephemeral-execution-environments-ai-agents) |
-| OWASP Docker Security | [cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html](https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html) |
-| generic-pool npm | [npmjs.com/package/generic-pool](https://www.npmjs.com/package/generic-pool) |
-| Docker socket exposure | [securityscientist.net/blog/12-questions-and-answers-about-docker-socket-exposure-misconfiguration/](https://www.securityscientist.net/blog/12-questions-and-answers-about-docker-socket-exposure-misconfiguration/) |
-| Why Docker Is Not Enough | [softwareseni.com/ai-agent-sandboxing-explained-why-docker-is-not-enough](https://www.softwareseni.com/ai-agent-sandboxing-explained-why-docker-is-not-enough-and-what-actually-works/) |
-| Daytona Series A / ARR | [read.unicorner.news/p/daytona](https://read.unicorner.news/p/daytona) |
-| Sub-90ms cold start blog | [medium.com/@kacperwlodarczyk/sub-90ms-cloud-code-execution](https://medium.com/@kacperwlodarczyk/sub-90ms-cloud-code-execution-how-daytona-replaced-docker-in-our-ai-agent-stack-b6f343e4e547) |
-| HackerNoon Docker latency | [hackernoon.com/reducing-docker-container-start-up-latency](https://hackernoon.com/reducing-docker-container-start-up-latency-practical-strategies-for-faster-aiml-workflows) |
-
-### Confidence Levels
-
-- **High confidence (multiple authoritative sources):** dockerode API patterns; Docker socket security risks; Daytona TypeScript SDK API; Daytona cold start ~90 ms; Fly.io Sprites Firecracker architecture; Daytona Claude Agent SDK guide existence and structure
-- **Medium confidence (single or competitive source):** Daytona 27 ms optimized cold start (from competitive blog, not official docs); Northflank 2M workload/month claim; Google Agent Sandbox KubeCon NA 2025 launch
-- **Low confidence / verify before using:** exact current Daytona SDK method signatures (APIs evolve rapidly — verify against live docs before coding); Daytona self-hosted cold start performance (may vary significantly by hardware)
-
-### Research Limitations
-
-- WebFetch was not available during this research session; all source content was retrieved via WebSearch summaries. Some fine-grained API details (exact TypeScript method signatures, exact constructor options) should be verified against current official documentation before coding.
-- Daytona is evolving rapidly (pivoted to AI agent infrastructure in early 2025, $24M Series A in Feb 2026); SDK API may have changed between documentation indexing and today.
-- Cold start numbers from third-party blogs (especially competitive comparisons) should be treated as directional, not precise benchmarks.
+- **High**: dockerode API patterns; Docker socket security risks; Daytona TypeScript SDK API; Daytona ~90 ms cold start claim; Fly.io Sprites Firecracker architecture; official Claude Agent SDK guide existence
+- **Medium**: Daytona 27 ms optimized cold start (competitive blog, not official docs); Northflank workload volume claim
+- **Low/verify**: Exact current Daytona SDK method signatures (APIs evolve rapidly — verify against live docs before coding); Daytona self-hosted performance on specific hardware
 
 ---
 

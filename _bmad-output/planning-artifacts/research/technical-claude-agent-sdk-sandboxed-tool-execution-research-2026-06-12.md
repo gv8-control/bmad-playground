@@ -12,7 +12,7 @@ web_research_enabled: true
 source_verification: true
 ---
 
-# Research Report: Claude Agent SDK — Sandboxed Tool Execution (E2B / Docker)
+# Claude Agent SDK: Sandboxed Tool Execution via Remote Execution Providers
 
 **Date:** 2026-06-12
 **Author:** Marius
@@ -36,26 +36,21 @@ Approach 1 is what E2B's official Claude Code integration uses. Approaches 2 and
 
 ---
 
-## Technical Research Scope Confirmation
+## Key Findings Summary
 
-**Research Topic:** Claude Agent SDK Sandboxed Tool Execution (E2B / Docker)
-**Research Goals:** Understand how to intercept or override tool execution in the Claude Agent SDK so that tool calls (Bash, Read, Write, Edit) are dispatched to an external isolated environment (E2B or Docker container) rather than executing locally on the NestJS host
+1. **There is no built-in "remote tool execution" configuration in the Claude Agent SDK.** You must either (a) run the entire SDK inside the sandbox, or (b) replace built-in tools with custom tool handlers that call the remote sandbox.
 
-**Technical Research Scope:**
+2. **The `tools: []` option is the critical safety switch.** It removes all built-in tools (Bash, Read, Write, Edit, Glob, Grep, etc.) from Claude's context so Claude cannot fall back to local execution. Without this, your sandboxing is not complete.
 
-- Architecture Analysis — design patterns for tool execution isolation
-- Implementation Approaches — how to intercept Bash/Read/Write/Edit tool calls
-- Technology Stack — Claude Agent SDK, E2B, Docker, MCP Server, NestJS
-- Integration Patterns — remote tool dispatch, MCP-in-sandbox architecture
-- Performance Considerations — sandbox lifecycle, latency, round-trip patterns
+3. **Custom tools via `createSdkMcpServer` + `tool()` are the SDK-native pattern** for routing tool execution to external services. The handler is a plain async function — it can call any API, including E2B.
 
-**Research Methodology:**
+4. **PreToolUse hooks intercept but cannot redirect Bash execution.** Hooks can block, modify input, or replace output — but the actual Bash subprocess still runs locally unless you use `updatedInput` to rewrite the command OR use custom tools. Hooks are best used as a secondary guard, not the primary isolation mechanism.
 
-- Current web data with rigorous source verification
-- Multi-source validation for critical technical claims
-- Confidence level framework for uncertain information
+5. **E2B's official architecture runs Claude Code inside the E2B VM.** The `e2b-dev/claude-code-fastapi` reference implementation uses this pattern. MCP servers configured via `.mcp.json` also run inside the VM.
 
-**Scope Confirmed:** 2026-06-12
+6. **MCP servers over HTTP/SSE are the right pattern** when the sandbox runs a tool server that the NestJS host connects to remotely. The SDK supports `type: "http"` and `type: "sse"` MCP server configurations.
+
+7. **For NestJS multi-tenant production, the recommended pattern is:** one E2B sandbox per user session, custom tool handlers in the NestJS process that delegate to that sandbox via the E2B SDK, `tools: []` to remove local tools, and `permissionMode: "dontAsk"` for autonomous execution.
 
 ---
 
@@ -725,37 +720,6 @@ For NestJS, this means each concurrent session is a subprocess. Memory baseline:
 ### Context Window Accumulation
 
 Tool outputs accumulate in the context window across turns. Large Bash outputs or file reads can consume thousands of tokens per turn. For E2B-routed tools, consider truncating large outputs in the tool handler before returning to Claude.
-
----
-
-## Technology Stack Summary
-
-| Component | Package/Service | Role |
-|-----------|----------------|------|
-| Claude Agent SDK | `@anthropic-ai/claude-agent-sdk` | Drives the agent loop; spawns `claude` CLI subprocess |
-| Custom tool definition | `tool()` + `createSdkMcpServer()` from SDK | Replaces built-in tools with E2B-delegating handlers |
-| E2B sandbox | `@e2b/sdk` | Provides isolated cloud VM; executes Bash commands, file I/O |
-| Docker alternative | `dockerode` or Docker CLI | Provides isolated container; executes tool calls via exec |
-| MCP protocol | Built into SDK | Wires custom tools to the agent loop |
-| NestJS | `@nestjs/core` | Manages session lifecycle, SSE streaming, HTTP API |
-
----
-
-## Key Findings Summary
-
-1. **There is no built-in "remote tool execution" configuration in the Claude Agent SDK.** You must either (a) run the entire SDK inside the sandbox, or (b) replace built-in tools with custom tool handlers that call the remote sandbox.
-
-2. **The `tools: []` option is the critical safety switch.** It removes all built-in tools (Bash, Read, Write, Edit, Glob, Grep, etc.) from Claude's context so Claude cannot fall back to local execution. Without this, your sandboxing is not complete.
-
-3. **Custom tools via `createSdkMcpServer` + `tool()` are the SDK-native pattern** for routing tool execution to external services. The handler is a plain async function — it can call any API, including E2B.
-
-4. **PreToolUse hooks intercept but cannot redirect Bash execution.** Hooks can block, modify input, or replace output — but the actual Bash subprocess still runs locally unless you use `updatedInput` to rewrite the command OR use custom tools. Hooks are best used as a secondary guard, not the primary isolation mechanism.
-
-5. **E2B's official architecture runs Claude Code inside the E2B VM.** The `e2b-dev/claude-code-fastapi` reference implementation uses this pattern. MCP servers configured via `.mcp.json` also run inside the VM.
-
-6. **MCP servers over HTTP/SSE are the right pattern** when the sandbox runs a tool server that the NestJS host connects to remotely. The SDK supports `type: "http"` and `type: "sse"` MCP server configurations.
-
-7. **For NestJS multi-tenant production, the recommended pattern is:** one E2B sandbox per user session, custom tool handlers in the NestJS process that delegate to that sandbox via the E2B SDK, `tools: []` to remove local tools, and `permissionMode: "dontAsk"` for autonomous execution.
 
 ---
 

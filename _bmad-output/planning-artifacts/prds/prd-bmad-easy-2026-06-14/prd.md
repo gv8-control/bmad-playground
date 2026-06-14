@@ -1,9 +1,8 @@
 ---
 title: "PRD: bmad-easy"
-status: draft
+status: final
 created: 2026-06-14
 updated: 2026-06-14
-status: ready-for-review
 ---
 
 # PRD: bmad-easy

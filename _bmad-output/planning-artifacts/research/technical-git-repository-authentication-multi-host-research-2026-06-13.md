@@ -12,36 +12,11 @@ web_research_enabled: true
 source_verification: true
 ---
 
-# Research Report: Git Repository Authentication for Multi-Host Platforms
+# Git Repository Authentication for Multi-Host Platforms
 
 **Date:** 2026-06-13
 **Author:** Marius
 **Research Type:** Technical
-
----
-
-## Technical Research Scope Confirmation
-
-**Research Topic:** Git Repository Authentication for Multi-Host Platforms
-**Research Goals:** Evaluate platform-agnostic git authentication approaches (SSH keys, PATs, credential helpers); assess multi-faceted strategy with GitHub-first onboarding (OAuth App / GitHub App) plus universal git support for GitLab, Bitbucket, Gitea, self-hosted, etc.; cover push notification / webhook strategies including fallbacks for self-hosted git.
-
-**Technical Research Scope:**
-
-- Architecture Analysis — how git authentication flows work across providers; OAuth vs SSH vs token models
-- Implementation Approaches — GitHub App vs OAuth App; credential helper patterns; per-user credential storage
-- Technology Stack — libraries and protocols: libgit2/go-git/JGit, HTTPS credential helpers, SSH agent forwarding
-- Integration Patterns — unified credential abstraction layer; provider-specific adapters
-- Push Notification / Webhooks — provider webhook APIs (GitHub, GitLab, Bitbucket, Azure DevOps); fallback strategies for self-hosted git (Gitea/Forgejo webhooks, polling, server-side hooks); webhook verification and security (HMAC signatures)
-- Performance & Security Considerations — token scopes, secret storage, rotation, revocation
-
-**Research Methodology:**
-
-- Current web data with rigorous source verification
-- Multi-source validation for critical technical claims
-- Confidence level framework for uncertain information
-- Comprehensive technical coverage with architecture-specific insights
-
-**Scope Confirmed:** 2026-06-13
 
 ---
 
@@ -449,6 +424,8 @@ WebhookRouter
 
 ## ADR-002: GitHub Auth Token Ownership — Platform Entity vs. Per-User
 
+> **Note:** This is an Architecture Decision Record (ADR) embedded in this research document for co-location convenience. It documents the platform-level decision on GitHub credential ownership.
+
 **Date:** 2026-06-13
 **Status:** Decided
 **Deciders:** Marius (founder), Winston (architect)
@@ -569,12 +546,7 @@ The report presents GitHub App as satisfying UC1 (non-dev without GitHub write a
 
 ### 3. go-git Has Material Limitations for Production Use (Incomplete Recommendation — High)
 
-go-git is appropriate for small-to-medium repos but has undisclosed production risks:
-- **Git LFS**: no native support — LFS pointer files are cloned as raw text; silently broken
-- **Large repos (>1 GB)**: go-git loads the object graph into memory for some operations; causes OOM in memory-constrained sandboxes
-- **SSH compatibility**: `golang.org/x/crypto/ssh` defaults conflict with some enterprise SSH server key-exchange configurations
-
-**Required addition:** Document these constraints in the technology selection rationale. Add user-facing repo size and LFS warnings at connect time. Provide an escape hatch to the system `git` CLI subprocess for cases go-git cannot handle.
+go-git lacks native Git LFS support (LFS pointer files are cloned as raw text), can OOM on large repos (>1 GB) due to in-memory object graph loading, and has SSH compatibility issues with some enterprise key-exchange configurations. Document these constraints at connect time and provide a `git` CLI subprocess fallback for affected cases.
 
 ---
 
@@ -612,9 +584,7 @@ The ADR acknowledges UC4 as ⚠️ with the mitigation "platform deactivates use
 
 ### 8. Forgejo API Compatibility Claim Is Under-Sourced (Source Quality — Low)
 
-The claim "Forgejo maintains API compatibility with Gitea for core operations as of 2026" is sourced from TechVerdict, a non-authoritative third-party blog. Forgejo has been diverging from Gitea since the 2022 fork and has changed authentication headers in some releases.
-
-**Required addition:** Source compatibility claims from the [official Forgejo API documentation](https://codeberg.org/forgejo/forgejo/src/branch/forgejo/docs) or Forgejo changelog. Note the specific API version range validated. Flag API divergence as an ongoing maintenance risk requiring periodic verification against new Forgejo releases.
+The Forgejo API compatibility claim cites TechVerdict (non-authoritative). Source from the [official Forgejo API docs](https://codeberg.org/forgejo/forgejo/src/branch/forgejo/docs) or changelog before implementing. Flag Forgejo API divergence from Gitea as an ongoing maintenance risk.
 
 ---
 
@@ -628,11 +598,11 @@ The report presents GitHub App as the only GitHub integration path. There is no 
 
 ### 10. Webhook Payload Normalization Layer Not Designed (Missing Architecture Component — Medium)
 
-The provider webhook comparison table shows that push event payloads differ significantly across providers (field names, nesting, branch ref format, commit object structure). The `WebhookRouter` in the ingestion architecture diagram emits a `PushEvent` but the normalization from provider-specific payload to internal schema is not designed.
-
-**Required addition:** Define a `NormalizedPushEvent` schema (branch name, HEAD commit SHA, list of changed files, pusher identity) and document per-provider adapter logic that maps each provider's payload shape to this schema. This normalization layer belongs between `WebhookRouter` and the internal event bus.
+Push event payloads differ significantly across providers (field names, nesting, branch ref format). The `WebhookRouter` emits a `PushEvent` but the normalization from provider-specific payload to an internal `NormalizedPushEvent` schema (branch, HEAD SHA, changed files, pusher identity) is not yet designed. Add per-provider adapter logic between `WebhookRouter` and the internal event bus.
 
 ---
+
+## Sources
 
 - [GitHub Docs – Differences between GitHub Apps and OAuth Apps](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps)
 - [GitHub Docs – Authenticating as a GitHub App installation](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation)

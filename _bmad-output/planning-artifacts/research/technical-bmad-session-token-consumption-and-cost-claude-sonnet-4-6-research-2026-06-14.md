@@ -30,30 +30,6 @@ See the Executive Summary and Section 6 for a per–session-type cost table.
 
 ---
 
-## Technical Research Scope Confirmation
-
-**Research Topic:** BMAD session token consumption and cost estimation for Claude Sonnet 4.6
-**Research Goals:** Calculate typical token usage and cost for a BMAD session using Claude Sonnet 4.6
-
-**Technical Research Scope:**
-
-- Architecture Analysis — how BMAD skill files, CLAUDE.md, system-reminders, and conversation history accumulate tokens
-- Implementation Approaches — input/output token ratios, prompt caching behavior, multi-step workflow overhead
-- Technology Stack — Claude Sonnet 4.6 pricing tiers, context window, cache pricing, long-context surcharges
-- Integration Patterns — how tool calls, file reads, and web search results inflate token counts
-- Performance Considerations — cost per session type, extended thinking multiplier, agent team scaling
-
-**Research Methodology:**
-
-- Local file measurement of BMAD skill directories to derive exact token loads
-- Current web data from Anthropic pricing pages and Claude Code documentation
-- Multi-source validation of pricing and tokenization claims
-- Worked cost models with turn-by-turn breakdowns
-
-**Scope Confirmed:** 2026-06-14
-
----
-
 ## Executive Summary
 
 Every BMAD session in Claude Code is an API conversation: each user turn sends the full accumulated context (system prompt, conversation history, tool results) to Claude and receives an assistant response. Costs scale with context depth rather than linearly with session length. This has two practical consequences for BMAD users:
@@ -80,45 +56,9 @@ Every BMAD session in Claude Code is an API conversation: each user turn sends t
 
 ---
 
-## Table of Contents
+## 1. Methodology
 
-1. Technical Research Introduction and Methodology
-2. Claude Sonnet 4.6 Technology Stack and Pricing
-3. BMAD Session Architecture and Token Accumulation
-4. Integration Patterns: How Tools and Files Inflate Token Counts
-5. Architectural Patterns in BMAD Token Economics
-6. Implementation Analysis: Per-Session-Type Cost Models
-7. Performance and Scalability Analysis
-8. Strategic Recommendations
-9. Implementation Roadmap and Risk Assessment
-10. Future Outlook
-11. Research Methodology and Source Verification
-12. Appendices
-
----
-
-## 1. Technical Research Introduction and Methodology
-
-### Research Significance
-
-The cost of BMAD workflows is opaque in practice. Unlike a simple chat, a BMAD session involves: a base system prompt loaded every turn, multiple skill files read and retained in history, tool call results (Bash, Read, WebSearch) that pile into context, and a growing assistant response from each prior turn. Users invoking `/bmad-technical-research` or `/bmad-create-architecture` often have no model of how these layers combine.
-
-This research makes the economics concrete so that users and operators can make informed decisions about when to use which workflow, whether to enable extended thinking, and how to budget for regular BMAD usage.
-
-### Measurement Approach
-
-**File size measurement** — BMAD skill directories were measured directly in the repository at `/workspaces/codespaces-blank/.claude/skills/`. All skill files, step files, and templates were counted using `wc -c`. Token counts were derived using the Claude tokenization ratio of **3.7 characters per token** (confirmed from multiple token counter tools; Claude's tokenizer yields 3.5–3.8 chars/token for English prose).
-
-**Pricing data** — Sourced from Anthropic's API documentation, apidog.com pricing breakdown, and the Claude Code cost management documentation page. All figures verified against multiple sources.
-
-**Session modelling** — Turn-by-turn context growth was modelled by tracing the actual messages in this research session plus reference to observed patterns in the Claude Code cost documentation.
-
-### Research Goals Achieved
-
-- **Goal 1**: Identify all token-contributing layers in a Claude Code BMAD session ✅
-- **Goal 2**: Derive token counts per BMAD skill type from direct file measurement ✅
-- **Goal 3**: Compute per-turn and per-session costs at current Sonnet 4.6 pricing ✅
-- **Goal 4**: Identify the key cost levers and their relative magnitudes ✅
+BMAD skill directories were measured directly in the repository at `/workspaces/codespaces-blank/.claude/skills/` using `wc -c`. Token counts were derived using the Claude tokenization ratio of **3.7 characters per token** (Claude's tokenizer yields 3.5–3.8 chars/token for English prose). Pricing data was sourced from Anthropic's API documentation and the Claude Code cost management docs, verified across multiple sources. Turn-by-turn context growth was modelled by tracing the actual messages in this research session.
 
 ---
 
@@ -542,46 +482,17 @@ When a single turn exceeds 200K input tokens, the entire request is billed at 2�
 
 ---
 
-## 9. Implementation Roadmap and Risk Assessment
+## 9. Operational Notes
 
-### Immediate Optimizations (Zero Implementation Cost)
-
-1. Disable extended thinking in `/config` for all structured BMAD workflows
-2. Use `/clear` between unrelated BMAD sessions
-3. Use `/usage` after each session to track actual vs. estimated costs
-
-### Near-Term Improvements (Low Implementation Cost)
-
-1. Add a session cost estimate to the BMAD skill activation step (step-01 could display "Estimated session cost: $X based on workflow type")
-2. Configure `MAX_THINKING_TOKENS=8000` in project settings for BMAD sessions
-3. Set workspace spend limits in Claude Console to prevent unexpected overrun on testarch sessions
-
-### Risk: Context Window Auto-Compaction
-
-For sessions approaching the 1M token limit (extremely heavy testarch runs), Claude Code triggers auto-compaction — summarizing prior conversation to free context space. This:
-- May lose skill step guidance that was in prior assistant responses
-- Can cause the model to lose track of workflow state
-- Mitigation: for extremely long runs, save progress checkpoints to disk between major phases
-
-### Risk: Long-Context Price Surprise
-
-Users running bmad-document-project or bmad-testarch-* without awareness of the 200K/turn pricing threshold may see bills 2× higher than expected on late-session turns. Claude Code's `/usage` command shows running cost but not the per-turn pricing tier being applied.
+See Appendix D for implementation optimizations and operational risk mitigations.
 
 ---
 
-## 10. Future Technical Outlook
+## 10. Future Outlook
 
-### Context Window Growth
-
-The 1M token context window introduced with Sonnet 4.6 removes hard limits on BMAD session length but introduces the long-context pricing structure as the new constraint. Future models will likely expand context windows further; the cost structure will need to be re-evaluated when Opus 4.8 and future Sonnet versions introduce their pricing.
-
-### Prompt Caching TTL Improvements
-
-The current 5-minute and 1-hour cache write options determine how efficiently multi-session caching works. If Anthropic extends cache TTL to session-day granularity, the base system context cost could be amortized across many sessions rather than within a single one.
-
-### BMAD Skill File Optimization Opportunity
-
-The testarch skills (850K–920K bytes each) are an order of magnitude larger than other BMAD skills. If these were restructured to load only the active section into context (rather than reading large step files in full), the token cost of a testarch session could be reduced by 40–60%.
+- **Context windows**: Sonnet 4.6's 1M context window removes hard session limits but introduces the long-context pricing structure as the new constraint; re-evaluate when future model pricing changes.
+- **Cache TTL**: If Anthropic extends cache TTL beyond the current 1-hour maximum, base system context costs could be amortized across sessions rather than within a single one.
+- **Skill file optimization**: The testarch skills (850K–920K bytes each) could reduce session costs 40–60% if restructured to load only the active section rather than reading large step files in full.
 
 ---
 
@@ -719,6 +630,28 @@ Where:
 = $0.765 + $0.225 + $0.600 + $0.06 + $0.04
 = $1.69
 ```
+
+### Appendix D: Operational Optimizations and Risk Mitigations
+
+**Immediate Optimizations (Zero Implementation Cost)**
+
+1. Disable extended thinking in `/config` for all structured BMAD workflows
+2. Use `/clear` between unrelated BMAD sessions
+3. Use `/usage` after each session to track actual vs. estimated costs
+
+**Near-Term Improvements (Low Implementation Cost)**
+
+1. Add a session cost estimate to the BMAD skill activation step
+2. Configure `MAX_THINKING_TOKENS=8000` in project settings for BMAD sessions
+3. Set workspace spend limits in Claude Console to prevent unexpected overrun on testarch sessions
+
+**Risk: Context Window Auto-Compaction**
+
+For sessions approaching the 1M token limit, Claude Code triggers auto-compaction — summarizing prior conversation to free context space. This may lose skill step guidance and cause the model to lose workflow state. Mitigation: save progress checkpoints to disk between major phases.
+
+**Risk: Long-Context Price Surprise**
+
+Users running bmad-document-project or bmad-testarch-* without awareness of the 200K/turn pricing threshold may see bills 2× higher than expected on late-session turns.
 
 ---
 

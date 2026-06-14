@@ -12,7 +12,7 @@ web_research_enabled: true
 source_verification: true
 ---
 
-# Research Report: technical
+# assistant-ui + AG-UI Integration for Claude Agent SDK SSE Streaming
 
 **Date:** 2026-06-12
 **Author:** Marius
@@ -24,37 +24,11 @@ source_verification: true
 
 This research answers a precise architectural question: which OSS React chat UI library should be used for a Next.js 15 frontend communicating with a Node.js backend running the Claude Agent SDK — and how should it be wired?
 
-The answer is **`assistant-ui`** with the **`assistant-stream` data-stream protocol** (Approach B). The library is Radix-style headless React primitives, Tailwind v4 native, with first-class streaming and tool-call rendering. The `assistant-stream` package gives the backend a stable wire format that decouples the frontend from Claude Agent SDK internals — enabling a future migration to Managed Agents without touching frontend code.
+The answer is **`assistant-ui`** with the **AG-UI protocol** (`@assistant-ui/react-ag-ui` runtime adapter). The library is Radix-style headless React primitives, Tailwind v4 native, with first-class streaming and tool-call rendering. AG-UI is the open SSE-based event standard adopted by Google, Microsoft, Amazon Bedrock, LangChain, and Mastra — choosing it now makes the platform compatible with multiple agent harnesses (OpenCode, GitHub Copilot) with no frontend changes.
 
-The research spans four technical domains: library landscape and selection (4 candidates evaluated), the Approach B wiring pattern (backend mapper → data-stream protocol → `useDataStreamRuntime`), component architecture and tool rendering patterns, and a concrete 3-sprint implementation roadmap. All findings are grounded in current official documentation and verified web sources (June 2026).
+The research spans four technical domains: library landscape and selection (4 candidates evaluated), the AG-UI wiring pattern (backend `IAgentHarness` interface → AG-UI event emitter → `useAgUiRuntime`), component architecture and tool rendering patterns, and a concrete 3-sprint implementation roadmap. All findings are grounded in current official documentation and verified web sources (June 2026).
 
 See the **Research Synthesis** section for the full executive summary and decision map.
-
----
-
-<!-- Content will be appended sequentially through research workflow steps -->
-
-## Technical Research Scope Confirmation
-
-**Research Topic:** OSS React chat UI for Claude Agent SDK SSE streaming backend
-**Research Goals:** Find the best existing OSS React chat UI library that can be dropped into Next.js 15 with Tailwind v4, supports streaming text rendering via SSE, can display tool call/result messages inline, supports custom event types (artifact-committed pill), is headless or easily Tailwind-stylable, and integrates with a custom Node.js backend (not locked to OpenAI/ChatGPT)
-
-**Technical Research Scope:**
-
-- Architecture Analysis — how OSS chat UI libraries are structured; headless vs pre-styled; adapter patterns for custom SSE backends
-- Implementation Approaches — integrating the chosen library with the SSE endpoint, rendering streamed tokens, displaying tool call/result pairs, injecting the artifact pill as a custom message type
-- Technology Stack — candidate libraries: Vercel AI SDK (`useChat`), `assistant-ui`, `@nlux/react`, CopilotKit
-- Integration Patterns — how each library hooks up to a non-OpenAI backend, how message types map to the Claude Agent SDK's typed stream
-- Performance Considerations — token-by-token rendering, large tool result payloads, long conversation history
-
-**Research Methodology:**
-
-- Current web data with rigorous source verification
-- Multi-source validation for critical technical claims
-- Confidence level framework for uncertain information
-- Comprehensive technical coverage with architecture-specific insights
-
-**Scope Confirmed:** 2026-06-12
 
 ---
 
@@ -279,7 +253,9 @@ _Source: [ExternalStoreRuntime — assistant-ui](https://www.assistant-ui.com/do
 
 ---
 
-#### Approach B — `assistant-stream` backend package + `useDataStreamRuntime`
+#### Approach B — `assistant-stream` backend package + `useDataStreamRuntime` *(superseded — see AG-UI approach below)*
+
+> **Note:** Approach B was the initial recommendation from this research. It was superseded by the AG-UI protocol (see Addendum, now integrated below) because AG-UI has broader industry adoption and enables future harness-switching without frontend changes. Approach B documentation is preserved here for reference.
 
 The backend maps Claude Agent SDK messages into the assistant-ui data stream protocol using the `assistant-stream` npm package. The frontend uses the simpler `useDataStreamRuntime` hook.
 
@@ -983,21 +959,11 @@ _Source: [Testing AI Agents with Vitest 4 — DEV Community](https://dev.to/jang
 
 ## Research Synthesis
 
-### Table of Contents
-
-1. [Technology Stack Analysis](#technology-stack-analysis) — 4 library candidates evaluated; selection rationale
-2. [Integration Patterns Analysis](#integration-patterns-analysis) — Approach A vs B; message type mapping; tool rendering; artifact pill; multi-turn session management
-3. [Architectural Patterns and Design](#architectural-patterns-and-design) — Full stack diagram; component tree; backend mapper; resumable streams; auth boundary
-4. [Implementation Approaches and Technology Adoption](#implementation-approaches-and-technology-adoption) — Package inventory; sprint checklists; testing strategy; gotchas
-5. [Technical Research Recommendations](#technical-research-recommendations) — Sprint roadmap; final stack decision
-
----
-
 ### Executive Summary
 
 The React AI chat UI landscape in 2026 has converged around a two-layer model: a **hooks layer** (Vercel AI SDK `useChat`, 20M+ monthly downloads) for streaming state management, and a **UI primitives layer** (`assistant-ui`, 200k+ monthly downloads, used by LangChain, Stack AI, Athena Intelligence) for composable, headless chat components. For a Next.js 15 + Tailwind v4 project, `assistant-ui` is the correct foundation — it follows the Radix headless pattern, has no default styles to fight, and integrates natively with Tailwind v4 (including a first-party Tailwind v4 plugin).
 
-**The central architectural decision is Approach B:** the backend maps Claude Agent SDK typed messages into the `assistant-stream` data-stream protocol. The frontend speaks only this stable wire format via `useDataStreamRuntime`. This decouples the React code from Agent SDK internals. When the platform migrates from the Agent SDK to Managed Agents (the documented Anthropic migration path), only the backend mapper changes — the entire frontend and all tool renderers are unaffected.
+**The central architectural decision is the AG-UI protocol:** the backend implements an `IAgentHarness` interface that normalizes agent output to `AgentMessage[]`, which the AG-UI emitter maps to standard AG-UI SSE events. The frontend speaks only AG-UI via `useAgUiRuntime` from `@assistant-ui/react-ag-ui`. This decouples the React code from any specific agent harness — when the platform adds OpenCode, GitHub Copilot, or Managed Agents support, only a new `IAgentHarness` implementation is needed; the entire frontend and all tool renderers are unaffected.
 
 **The three questions this research answers:**
 
@@ -1005,25 +971,25 @@ The React AI chat UI landscape in 2026 has converged around a two-layer model: a
 `assistant-ui` (`@assistant-ui/react` + `@assistant-ui/react-data-stream`). Headless, Tailwind-native, first-class tool call rendering, Generative UI for the artifact pill, React 19.2.7 compatible, actively maintained (YC W25, 200k+ monthly downloads June 2026). CopilotKit is too heavy (AG-UI backend mapping layer). NLUX's theming API is not Tailwind-native. Vercel AI SDK `useChat` is hooks only — no UI primitives.
 
 **2. How does the backend connect to it?**
-`assistant-stream` (0.3.19) on the Node.js Agent backend. The mapper consumes the `query()` async iterator, translates each SDK message type to the data-stream protocol via `AssistantStream`, and returns a `createAssistantStreamResponse()` Web Response. An Express pipe adapter bridges the Fetch-style `Response` to Express's `res` object. The `artifact_committed` hook event is injected as a synthetic tool-call + tool-result pair, rendered by a registered pill component.
+`@ag-ui/core` on the Node.js Agent backend. The `ClaudeAgentSdkHarness` implements `IAgentHarness`, consuming the `query()` async iterator and normalizing output to `AgentMessage[]`. The AG-UI emitter maps these to standard AG-UI SSE events (`TEXT_MESSAGE_CHUNK`, `TOOL_CALL_START`, `TOOL_CALL_END`, `RUN_FINISHED`) over an SSE `ReadableStream`. An Express pipe adapter bridges the `Response` to Express's `res` object. The `artifact_committed` hook event is injected as a synthetic tool-call pair.
 
 **3. How does the Next.js frontend connect?**
-A route handler at `/api/sessions/[id]/stream` proxies the SSE stream from the Agent backend (auth gate + VPC-internal fetch). The frontend mounts `useDataStreamRuntime({ api, protocol: "data-stream" })` inside `AssistantRuntimeProvider`. `<Thread tools={[...]} />` renders the conversation with per-tool UI components styled entirely in Tailwind v4.
+A route handler at `/api/sessions/[id]/stream` proxies the SSE stream from the Agent backend (auth gate + VPC-internal fetch). The frontend mounts `useAgUiRuntime({ agent })` from `@assistant-ui/react-ag-ui` inside `AssistantRuntimeProvider`. `<Thread tools={[...]} />` renders the conversation with per-tool UI components styled entirely in Tailwind v4.
 
 **Key Technical Findings:**
 
 - `assistant-ui` 200k+ monthly downloads June 2026; production-proven at LangChain, Stack AI, Athena Intelligence
-- Approach B wire format (`assistant-stream` data-stream protocol) is the migration-safe choice — backend-agnostic, frontend stable
+- AG-UI protocol (`@ag-ui/core` + `@assistant-ui/react-ag-ui`) is the migration-safe choice — enables harness-switching (Claude SDK → OpenCode → Copilot) with zero frontend changes
 - React 19.2.7 is confirmed compatible with `@assistant-ui/react` 0.12.15
 - Three critical deploy-blocking gotchas: wrong `protocol` value, missing `force-dynamic`, Express pipe failure mode
 - `npx assistant-ui init` scaffolds Tailwind v4-compatible components in one command
 
 **Technical Recommendations (priority order):**
 
-1. Use `@assistant-ui/react` + `@assistant-ui/react-data-stream` as the frontend chat stack
-2. Use `assistant-stream` on the Agent backend as the wire format adapter
+1. Use `@assistant-ui/react` + `@assistant-ui/react-ag-ui` + `@ag-ui/client` as the frontend chat stack
+2. Use `@ag-ui/core` on the Agent backend; implement `IAgentHarness` + `ClaudeAgentSdkHarness`
 3. Implement the Express Web Response pipe adapter (not `pipeTo()`)
-4. Always pass `protocol: "data-stream"` to `useDataStreamRuntime` explicitly
+4. Pin all `@ag-ui/*` and `@assistant-ui/react-ag-ui` packages to exact versions (pre-1.0)
 5. Add `export const dynamic = "force-dynamic"` to the SSE proxy route handler
 6. Use Vitest (not Jest) for the test suite — native Vite/Next.js 15 compatibility
 
@@ -1072,15 +1038,9 @@ A route handler at `/api/sessions/[id]/stream` proxies the SSE stream from the A
 
 ---
 
-## Addendum: Multi-Harness Infrastructure (2026-06-12)
+## Multi-Harness Infrastructure and AG-UI Architecture
 
-> **Amendment:** This section supersedes the wire format recommendation in "Integration Patterns Analysis" (Approach B) and "Implementation Approaches". The frontend library, component architecture, and tool rendering patterns are **unchanged**. Only the runtime adapter and backend wire format change.
-
-### What Triggered This Addendum
-
-After the initial research completed, a review of the harness landscape revealed that the platform should be designed from MVP to support multiple agent harnesses — with Claude Agent SDK first, and OpenCode / GitHub Copilot / others following the same interface. This makes the AG-UI protocol a better wire format choice than `assistant-stream` data-stream.
-
----
+The platform should be designed from MVP to support multiple agent harnesses — with Claude Agent SDK first, and OpenCode / GitHub Copilot / others following the same interface. This makes the AG-UI protocol the right wire format: it has critical-mass industry adoption and enables future harness-switching with zero frontend changes.
 
 ### The Multi-Harness Landscape
 
@@ -1101,44 +1061,7 @@ _Source: [AG-UI Agent Runtime — assistant-ui](https://www.assistant-ui.com/doc
 
 ---
 
-### Amended Architecture
-
-The full stack diagram from "Architectural Patterns and Design" is updated as follows:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Browser (Next.js 15 App Router)                            │
-│  · <AssistantRuntimeProvider runtime={agUiRuntime}>         │
-│  · useAgUiRuntime({ api: "/api/sessions/[id]/stream" })     │  ← CHANGED
-│  · <Thread tools={[BashUI, ReadUI, WriteUI, ArtifactUI]} /> │  ← UNCHANGED
-│  · All styling via Tailwind v4 utility classes              │  ← UNCHANGED
-└────────────────────────┬────────────────────────────────────┘
-                         │  HTTP POST + SSE response
-                         │  AG-UI event stream                   ← CHANGED wire format
-┌────────────────────────▼────────────────────────────────────┐
-│  Next.js Route Handler  /api/sessions/[id]/stream           │  ← UNCHANGED
-│  · export const dynamic = "force-dynamic"                   │
-│  · Thin proxy: fetch() → Agent backend, pipe body           │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────────┐
-│  Agent Backend  (Node.js / TypeScript)                      │
-│  · IAgentHarness interface                                  │  ← NEW
-│  · ClaudeAgentSdkHarness (MVP)                              │  ← NEW
-│  · Future: OpenCodeHarness, GitHubCopilotHarness            │  ← PLANNED
-│  · AgUiEmitter: harness output → AG-UI events → SSE         │  ← CHANGED
-└────────────────────────┬────────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────────┐
-│  Agent Substrate (whichever harness is active)              │
-│  · MVP: Claude Agent SDK subprocess (git worktree, BMAD)    │
-│  · Future: opencode serve / GitHub Copilot SDK / others     │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-### Amended Package Inventory
+### Package Changes for AG-UI
 
 #### Frontend — what changes
 
@@ -1306,7 +1229,7 @@ const runtime = useAgUiRuntime({ agent });
 
 ---
 
-### Amended Sprint Roadmap
+### Sprint Roadmap
 
 **Sprint 1 — Chat UI + AG-UI foundation (1 week)**
 1. Install `@assistant-ui/react`, `@assistant-ui/react-ag-ui`, `@ag-ui/client` in Next.js app
@@ -1335,7 +1258,7 @@ const runtime = useAgUiRuntime({ agent });
 
 ---
 
-### Amended Package Summary
+### Verified Package Versions
 
 **Frontend (this repo — add):**
 ```bash
@@ -1364,7 +1287,7 @@ Use exact versions (no `^`) for all `@ag-ui/*` and `@assistant-ui/react-ag-ui` p
 
 ---
 
-### Amended Gotchas
+### Additional Gotchas (AG-UI specific)
 
 Original gotchas from the Implementation section remain valid, with these additions:
 
