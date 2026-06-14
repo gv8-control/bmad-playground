@@ -104,7 +104,6 @@ The longer arc, still grounded in BMAD's methodology: as BMAD's modularity matur
 - Proactive nudging or automated workflow suggestions
 - Integrations with PM tools (Jira, Confluence, etc.)
 - BMAD initialisation or repo configuration (developer responsibility)
-- Multi-role live collaboration
 - Self-hosted or on-premise deployment
 - User-selectable LLM model (planned post-MVP)
 
