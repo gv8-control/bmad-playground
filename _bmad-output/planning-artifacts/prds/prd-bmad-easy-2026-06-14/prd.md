@@ -2,7 +2,7 @@
 title: "PRD: bmad-easy"
 status: draft
 created: 2026-06-14
-updated: 2026-06-15 (DL-7: OAuth App + repo scope replaces PAT for git transport)
+updated: 2026-06-15 (DL-7: OAuth App + repo scope; DL-8: BMAD v6-only MVP; DL-9: Semantic Pill on confirmed commit only; DL-10: first-mover moat; DL-11: Daytona costs deferred to architecture)
 ---
 
 # PRD: bmad-easy
@@ -117,7 +117,7 @@ Terms used verbatim throughout this PRD. No synonyms are used elsewhere in the d
 
 **Description:** The first action a new user takes is connecting a GitHub Repository. The user provides the repository URL; the platform validates access and BMAD setup using the GitHub OAuth access token authorized with `repo` scope during sign-in, then brings the user to the Project Map. Every subsequent git operation — reads for the Project Map and Artifact Browser, writes from Conversations — flows through this authenticated connection. Commit authorship is attributed to the individual user, not to a shared platform identity.
 
-The `repo` scope grants the platform access to all GitHub repositories the user can access, which is broader than required for a single connected Repository. This is an accepted trade-off of the OAuth App model; GitHub App integration (post-MVP) provides per-repository scoping with short-lived tokens. Note: if the connected Repository belongs to a GitHub organization that has enabled OAuth App access restrictions, the OAuth token may not carry write access even with `repo` scope granted — org-owner approval of the bmad-easy OAuth App would be required in that case. Realizes UJ-1.
+The `repo` scope grants the platform access to all GitHub repositories the user can access, which is broader than required for a single connected Repository. This is an accepted trade-off of the OAuth App model for MVP; GitHub App integration (post-MVP) provides per-repository scoping with short-lived tokens. Note: if the connected Repository belongs to a GitHub organization that has enabled OAuth App access restrictions, the OAuth token may not carry write access even with `repo` scope granted — org-owner approval of the bmad-easy OAuth App would be required in that case. This org restriction is a known enterprise adoption risk for MVP; the business impact on the target market will be evaluated post-launch, and GitHub App integration is the escalation path if adoption data confirms material impact. Realizes UJ-1.
 
 **Functional Requirements:**
 
@@ -137,13 +137,15 @@ User can connect a GitHub Repository by providing its URL. The platform uses the
 
 #### FR-2: BMAD Initialization Validation
 
-Platform validates that the connected Repository contains `_bmad/`, `_bmad-output/`, `.claude/` before activating the connection.
+Platform validates that the connected Repository contains `_bmad/`, `_bmad-output/`, `.claude/` before activating the connection, and that the BMAD installation is version 6.x. MVP supports BMAD v6 only; post-MVP version compatibility is undefined, pending domain and technical research.
 
 **Consequences (testable):**
 
-- If any directory is absent, user sees a blocking message naming the prerequisite and linking to BMAD documentation.
+- If any required directory is absent, the user sees a blocking message naming the prerequisite and linking to BMAD documentation.
 - Conversations are unavailable for Repositories without required directories.
 - An empty `_bmad-output/` is acceptable; absence of prior Artifacts is not an error.
+- The platform reads the BMAD version from the Repository's BMAD configuration. If the detected version is outside the v6.x range, the user sees a blocking message stating that only BMAD v6 is supported, naming the detected version, and linking to BMAD documentation. Conversations are unavailable until a supported BMAD version is present.
+- If `.claude/skills/` is absent or contains no Skill files, the user sees a blocking message stating that no Skills were found; Conversations are unavailable until at least one Skill is present.
 
 #### FR-3: Commit Attribution per User
 
@@ -151,7 +153,7 @@ Commits produced through Conversations are attributed to the individual user's i
 
 **Consequences (testable):**
 
-- Commits produced in a user's session are attributed to the user's GitHub OAuth identity (name and primary email as returned by the GitHub OAuth profile claim). These are injected into the Sandbox git config at session initialization. No user configuration is required or exposed.
+- Commits produced in a user's session are attributed to the user's GitHub OAuth identity (name and primary email as returned by the GitHub OAuth profile claim). These are injected into the Sandbox git config at session initialization. No user configuration is required or exposed. If the GitHub OAuth profile returns no primary email, the platform uses the GitHub-generated noreply address (`{github_username}@users.noreply.github.com`) as the fallback commit email.
 - The OAuth access token is used for HTTPS transport only; it does not appear in the git commit record.
 - Commits from two different users on the same Repository show distinct author identities in git history.
 
@@ -280,7 +282,7 @@ The platform surfaces all agent tool calls as Tool Pills inline in the chat stre
 **Consequences (testable):**
 
 - Every agent tool call produces a Tool Pill in the chat stream at the position where the action occurred.
-- A `git commit` by the Agent is a recognized action; its Tool Pill is promoted to a Semantic Pill displayed as "Progress saved" with the Artifact type, title, and a "View" link.
+- A `git commit` by the Agent is a recognized action; its Tool Pill is promoted to a Semantic Pill displayed as "Progress saved" with the Artifact type, title, and a "View" link. The "Progress saved" Semantic Pill is emitted only after confirmed commit success — it is not emitted on commit initiation. A failed `git commit` produces an error-state Tool Pill (not a "Progress saved" Semantic Pill); FR-14's working tree state indicator remains dirty.
 - Clicking "View" opens the committed Artifact in the Artifact Browser.
 - Semantic Pills are part of the chat stream, not a separate notification channel.
 - Multiple recognized actions in a single Conversation each produce a distinct Semantic Pill at the position where they occurred.
@@ -336,7 +338,7 @@ User can view any committed Artifact from `_bmad-output/` as rendered Markdown.
 
 **Consequences (testable):**
 
-- The Artifact Browser is a single page with two layout states. When accessed directly (e.g., from the side navigation), it shows a full-width flat list of all Artifacts from `_bmad-output/`. When an Artifact is selected — by clicking in the list, or by arriving from a Project Map click or a Semantic Pill "View" link — the list narrows and the rendered Artifact is displayed alongside it. Artifact ordering in the list is to be determined by the UX spec.
+- The Artifact Browser is a single page with two layout states. When accessed directly (e.g., from the side navigation), it shows a full-width flat list of all Artifacts from `_bmad-output/`. When an Artifact is selected — by clicking in the list, or by arriving from a Project Map click or a Semantic Pill "View" link — the list narrows and the rendered Artifact is displayed alongside it. Artifacts are listed in reverse commit-date order (most recently committed first) by default. [NOTE FOR PM: UX spec may override this ordering.]
 - Artifact content is read directly from the Repository at its latest committed revision.
 - Content is rendered with standard Markdown formatting (headings, lists, tables, code blocks, bold, italic).
 - The Artifact Browser is read-only; no editing controls are present.
@@ -366,7 +368,7 @@ User authenticates with the platform using GitHub OAuth.
 **Consequences (testable):**
 
 - GitHub OAuth is the only authentication path at the sign-up and sign-in screen.
-- Session persists across browser refreshes until explicit logout or session expiry. [NON-GOAL for MVP: session lifetime duration is not specified; the platform accepts whatever the authentication provider or framework default provides and does not need to define or configure it.]
+- Session persists across browser refreshes until explicit logout or session expiry. [NOTE FOR PM: session lifetime is not configured by the platform for MVP — it accepts whatever the authentication provider or framework default provides. A minimum of 8 hours is preferred to allow within-day return to in-progress Conversations; the platform should verify the framework default meets this threshold before launch.]
 
 #### FR-19: Access Control
 
@@ -414,7 +416,7 @@ All platform access requires an authenticated account. In MVP, all users are aut
 
 ### 6.2 Out of Scope for MVP
 
-- GitHub App integration, which replaces the broad OAuth `repo` scope with per-repository fine-grained permissions and short-lived installation tokens (post-MVP; trigger: org OAuth App restriction failures become a reported activation blocker, or security posture review requires shorter-lived credentials)
+- GitHub App integration, which replaces the broad OAuth `repo` scope with per-repository fine-grained permissions and short-lived installation tokens (post-MVP; trigger: post-launch business analysis confirms org OAuth App restrictions are materially impacting target-market adoption, or security posture review requires shorter-lived credentials)
 - Non-GitHub git providers (post-MVP; trigger: paying customer with an explicit requirement)
 - Branching / pull request workflows (post-MVP enterprise feature)
 - Real-time Repository push detection / webhooks (Repository state refreshes on page load and manual refresh only)
@@ -435,17 +437,17 @@ All platform access requires an authenticated account. In MVP, all users are aut
 
 ### Security
 
-- **NFR-S2 (Sandbox credential and network isolation):** Platform-internal credentials (database connection strings, internal service API keys, platform service account tokens) must not be injected into a Sandbox environment. The user's OAuth access token is explicitly permitted inside the Sandbox for git transport operations. The Sandbox network must not have accessible routes to the agent backend's internal service endpoints.
-- **NFR-S3 (Credential isolation):** Repository OAuth access tokens must never be resolved across users. Every git credential lookup must pass through a tenant authorization check at the service layer before a credential is resolved.
-- **NFR-S4 (Active sandbox termination on deactivation):** When a user account is deactivated, all active Sandboxes for that user must be terminated immediately through the platform's sandbox management interface. Passive rejection of new session requests is insufficient.
-- **NFR-S5 (OAuth token storage):** GitHub OAuth access tokens are encrypted when stored on the platform and never returned to the client after initial submission.
+- **NFR-S1 (Sandbox credential and network isolation):** Platform-internal credentials (database connection strings, internal service API keys, platform service account tokens) must not be injected into a Sandbox environment. The user's OAuth access token is explicitly permitted inside the Sandbox for git transport operations. The Sandbox network must not have accessible routes to the agent backend's internal service endpoints.
+- **NFR-S2 (Credential isolation):** Repository OAuth access tokens must never be resolved across users. Every git credential lookup must pass through a tenant authorization check at the service layer before a credential is resolved.
+- **NFR-S3 (Active sandbox termination on deactivation):** When a user account is deactivated, all active Sandboxes for that user must be terminated immediately through the platform's sandbox management interface. Passive rejection of new session requests is insufficient.
+- **NFR-S4 (OAuth token storage):** GitHub OAuth access tokens are encrypted when stored on the platform and never returned to the client after initial submission.
 
 ### Performance
 
 Verified with a single manual test run under normal conditions, not statistical sampling.
 
 - **NFR-P1:** First streamed token appears within 1,500 ms of the user sending a message.
-- **NFR-P2:** Chat is ready for user input within 10 seconds of opening a Conversation page.
+- **NFR-P2:** Chat is ready for user input within 10 seconds of opening a Conversation page. This target applies to repositories under approximately 200 MB (see §12 Q-1 for the architecture owner's task to formally document this boundary).
 - **NFR-P3:** Project Map loads within 2 seconds of page open.
 - **NFR-P4:** Artifact Browser loads a committed Artifact within 2 seconds.
 - **NFR-P5 (Manual commit latency):** A platform-initiated commit completes within 5 seconds of the save operation executing (exclusive of queue time waiting for an agent turn to complete).
@@ -469,7 +471,7 @@ Verified with a single manual test run under normal conditions, not statistical 
 
 **Navigation model.** The platform uses page-based navigation. Project Map, Conversation, and Artifact Browser are distinct pages with stable URLs. In-page navigation is hierarchical with breadcrumbs one level deep: Project Map is the root; Conversation and Artifact Browser pages are one level down and display a breadcrumb back to the Project Map. No in-app tab UI is implemented.
 
-A persistent side navigation panel is always visible after onboarding. It contains: the last 5 Conversations labeled with a 2–5 word semantic summary each, a New Conversation button, a separator, links to Project Map and Artifact Browser, and a user avatar circle displaying the user's initials as the entry point to Settings. Settings is present in MVP as an empty "coming soon" page.
+A persistent side navigation panel is always visible after onboarding. It contains: the last 5 Conversations labeled with a 2–5 word semantic summary each, a New Conversation button, a separator, links to Project Map and Artifact Browser, and a user avatar circle displaying the user's initials as the entry point to Settings. Settings is present in MVP as an empty "coming soon" page. (Note for downstream authors: the persistent side navigation panel specification is located here in §8 rather than in §4 Features.)
 
 **Sandbox isolation level.** Daytona Cloud provides medium isolation, which is acceptable for MVP given authenticated users directing agent work on their own Repositories. If evidence of adversarial use emerges, upgrading to stronger VM-level isolation is the documented escalation trigger; the platform is designed to contain that migration. [ASSUMPTION: A-2]
 
@@ -477,13 +479,15 @@ A persistent side navigation panel is always visible after onboarding. It contai
 
 **Agent SDK credit billing.** Claude Agent SDK sessions draw from a separate monthly credit pool; API key authentication is required. OAuth via claude.ai is not permitted for third-party platforms (billing model as of June 15, 2026). Platform API costs are metered separately from any personal Claude subscriptions team members may hold. [ASSUMPTION: A-3]
 
-**Main branch only.** All git writes go to the main branch. BMAD's design minimises direct write conflicts (Skills write to distinct Artifact paths); however, two concurrent sessions committing to the same path will result in last-write-wins. This is a known constraint, not an error condition for MVP.
+**Main branch only.** All git writes go to the main branch. BMAD's design minimises direct write conflicts (Skills write to distinct Artifact paths); however, two concurrent sessions committing to the same path will result in last-write-wins. The platform makes no attempt to detect or surface clobber events; the Repository git history reflects the last-committed state; the earlier committing user receives no notification. This is a known constraint, not an error condition for MVP.
 
 **Stateful platform backend.** A single container hosts the platform backend for MVP — no horizontal scaling, no shared session registry across containers. This is a conscious scope decision; horizontal scaling is a post-MVP architectural change.
 
 **GitHub only.** Repository connection is GitHub-only in MVP. A provider abstraction will serve as the extension point when a second git provider is added post-MVP.
 
-**GitHub organization OAuth App restrictions.** GitHub organizations can enable a policy that blocks OAuth App access to organization repositories unless the org owner has explicitly approved the OAuth App. If a user's connected Repository belongs to such an organization, the platform's `repo`-scoped OAuth token will not carry write access to that Repository regardless of the user's individual permissions. This is a platform-level constraint with no in-app workaround in MVP; the org owner must approve the bmad-easy OAuth App. GitHub App integration (post-MVP) sidesteps this restriction entirely.
+**BMAD version.** MVP supports BMAD v6.x only. The platform validates the BMAD version at Repository connection (FR-2). Post-MVP support for other BMAD versions is undefined, pending domain and technical research.
+
+**GitHub organization OAuth App restrictions.** GitHub organizations can enable a policy that blocks OAuth App access to organization repositories unless the org owner has explicitly approved the OAuth App. If a user's connected Repository belongs to such an organization, the platform's `repo`-scoped OAuth token will not carry write access to that Repository regardless of the user's individual permissions. This is a platform-level constraint with no in-app workaround in MVP; the org owner must approve the bmad-easy OAuth App. GitHub App integration (post-MVP) sidesteps this restriction entirely. The business impact of this restriction on the target enterprise market will be evaluated post-launch; GitHub App integration is the escalation path if adoption data confirms material impact.
 
 **LLM model.** The Agent runs `claude-sonnet-4-6` (hardcoded for MVP). Model selection is not exposed to users. This decision is reflected in cost modelling and credit pool sizing for the Agent SDK billing plan.
 
@@ -497,13 +501,11 @@ A persistent side navigation panel is always visible after onboarding. It contai
 
 BMAD's practitioner community has grown rapidly since the npm launch in June 2025: 49,000 GitHub stars, 5,680 forks, 370 releases in 12 months. The community is active, expanding, and producing practitioner guides that are driving non-dev adoption of BMAD-adjacent tooling.
 
-Claude Code Web, launched by Anthropic in October 2025, simultaneously validates the market — Anthropic is reducing the non-dev access barrier — and defines the competitive window. Non-technical PMs are already self-adopting Claude Code Web using practitioner guides. As Claude Code Web matures, the "browser-native access" differentiation narrows. bmad-easy's durable advantages — BMAD-structured sessions, automatic Artifact commitment, Project Map, team billing, no per-user Claude subscription required — must be in users' hands within 12–18 months of Claude Code Web's launch. As of June 2026, approximately 8 months of this window have elapsed; the remaining window is 4–10 months.
+Claude Code Web, launched by Anthropic in October 2025, simultaneously validates the market — Anthropic is reducing the non-dev access barrier — and defines the competitive window. Non-technical PMs are already self-adopting Claude Code Web using practitioner guides. As Claude Code Web matures, its general-purpose browser interface increasingly covers the "browser-native BMAD access" use case. bmad-easy's window is the time before BMAD-using teams default to Claude Code Web for non-dev participation rather than adopting a purpose-built platform. That window, from Claude Code Web's launch, is approximately 12–18 months. As of June 2026, approximately 8 months have elapsed; the remaining window is approximately 4–10 months.
 
 Developer tooling SaaS pricing increased 57% between 2024–2026. Willingness to pay for AI tooling is at a historic high, and the $20–$30/seat/month reference price is well-established by comparable products.
 
-The estimated first-mover window before platform encroachment is 12–24 months.
-
-The BMAD methodology itself is the structural moat. BMAD's skill-file architecture, Artifact conventions, and community are too niche for Anthropic or other large platform vendors to build specific support for — their incentive is general-purpose tooling that works for any workflow, not optimization for one methodology. bmad-easy's advantage is not feature parity with Claude Code Web; it is that the product is built specifically for BMAD and the teams that use it. A general-purpose browser agent that supports slash commands does not replicate BMAD session structure, Project Map derived from `_bmad-output/`, or Artifact commitment conventions. That specificity is the defensible position, not a niche to escape.
+The moat is first-mover advantage within the BMAD practitioner community. Teams that adopt bmad-easy first accumulate Project Maps, establish Artifact conventions in their Repository, and build team habits around the platform; switching cost grows with use. The BMAD community is niche and defined enough that a purpose-built platform with a head start compounds its lead faster than a general-purpose platform can develop equivalent BMAD-specific functionality. The strategic objective is to be the established non-dev participation platform for BMAD teams before the window closes — not to compete on feature breadth with Claude Code Web.
 
 ---
 
@@ -519,7 +521,7 @@ Self-serve sales motion for purchases below $5,000 ACV (~16 seats at $25/seat/mo
 
 **Post-MVP consideration:** Hybrid base-seat + LLM usage passthrough model. Per-seat pricing is under structural pressure from usage-based models (Gartner: 70% of businesses will prefer usage-based by 2026). The V2 pricing model should plan for a hybrid structure; MVP should not be over-engineered around it.
 
-**Cost floor (validate before launch pricing is locked):** Each Conversation runs `claude-sonnet-4-6` inside a Daytona sandbox with extended thinking disabled (BMAD's step-based skill files provide reasoning scaffolding). Measured session costs at current Sonnet 4.6 pricing ($3.00/M input, $15.00/M output, with prompt caching): brainstorming $0.36–$0.63; full PRD session $0.77–$1.26; research and UX sessions $0.83–$1.47; architecture sessions $1.50–$2.55. Weighted average across typical planning workflows is approximately $0.77 per session. Daytona sandbox runtime and infrastructure add cost on top. At the SM-6 retention target (≥ 4 sessions per team per month), estimated LLM cost per active seat per month is $3–$6 for typical planning use, higher for architecture-heavy teams. The $25–$30 price point must be validated against the full cost floor (LLM + Daytona + infrastructure) after MVP launch and before end of 2027. NFR-O1 (spend monitoring) is the operational instrument; budget alert thresholds should be calibrated against the validated cost model at launch. If the validated cost floor places gross margin below 60%, the pricing model must be revised before any further seat growth.
+**Cost floor (validate before launch pricing is locked):** Each Conversation runs `claude-sonnet-4-6` inside a Daytona sandbox with extended thinking disabled (BMAD's step-based skill files provide reasoning scaffolding). Measured session costs at current Sonnet 4.6 pricing ($3.00/M input, $15.00/M output, with prompt caching): brainstorming $0.36–$0.63; full PRD session $0.77–$1.26; research and UX sessions $0.83–$1.47; architecture sessions $1.50–$2.55. Weighted average across typical planning workflows is approximately $0.77 per session. Daytona sandbox compute cost per session has not been estimated; this is deferred to the architecture phase, as it depends on Sandbox lifecycle and configuration decisions that are architecture concerns (see §12 Q-2). Infrastructure costs add on top. At the SM-5 retention target (≥ 4 sessions per team per month), estimated LLM cost per active seat per month is $3–$6 for typical planning use, higher for architecture-heavy teams. The $25–$30 price point must be validated against the full cost floor (LLM + Daytona compute + infrastructure) after the architecture phase provides Daytona compute estimates and after MVP launch, and before end of 2027. NFR-O1 (spend monitoring) is the operational instrument; budget alert thresholds should be calibrated against the validated cost model at launch. If the validated cost floor places gross margin below 60%, the pricing model must be revised before any further seat growth.
 
 ---
 
@@ -533,13 +535,13 @@ Self-serve sales motion for purchases below $5,000 ACV (~16 seats at $25/seat/mo
 **Secondary**
 
 - **SM-3: Team activation rate.** Percentage of paying accounts in which at least 3 skill runs are completed by a non-dev user in the first 90 days. Target: ≥ 50%. Validates product-team fit.
-- **SM-5: VP/Director buyer conversion.** At least one paying team includes a Director or VP-level buyer purchasing Seats at the full asking price within 6 months of launch. Validates the two-persona GTM model.
-- **SM-6: Second-month retention.** Teams that pay for a second month run ≥ 4 skill runs that month. Validates the tool has become part of the team's working rhythm.
+- **SM-4: VP/Director buyer conversion.** At least one paying team includes a Director or VP-level buyer purchasing Seats at the full asking price within 6 months of launch. Validates the two-persona GTM model.
+- **SM-5: Second-month retention.** Teams that pay for a second month run ≥ 4 skill runs that month. Validates the tool has become part of the team's working rhythm.
 
 **Counter-metrics (do not optimize)**
 
 - **SM-C1: Session duration.** Do not optimize for long sessions. Long sessions may indicate the Agent is struggling rather than being productive. Counterbalances SM-1.
-- **SM-C2: Seat count over activation.** Do not optimize for seat growth if activated users are not completing skill runs. Empty seats are a vanity metric. Counterbalances SM-5.
+- **SM-C2: Seat count over activation.** Do not optimize for seat growth if activated users are not completing skill runs. Empty seats are a vanity metric. Counterbalances SM-4.
 
 **If this is not working**
 
@@ -551,16 +553,20 @@ If fewer than 2 teams reach 3 skill runs within 90 days of launch, the experienc
 
 **Q-1: Repository size limit and NFR-P2 scope**
 
-NFR-P2 (chat ready within 10 seconds of page open) is not validated against large repositories for MVP. Daytona provisioning time for repositories above a few hundred MB may exceed this target, and large monorepos are not a supported configuration in MVP. The supported scope is standard-sized repositories (under ~200 MB). Large repository support — including shallow clone or sparse checkout — is a post-MVP concern. _Owner:_ Architect to document the size boundary in §8 constraints before the architecture document is finalized.
+NFR-P2 (chat ready within 10 seconds of page open) is not validated against large repositories for MVP. Daytona provisioning time for repositories above a few hundred MB may exceed this target, and large monorepos are not a supported configuration in MVP. The supported scope is standard-sized repositories (under ~200 MB). Large repository support — including shallow clone or sparse checkout — is a post-MVP concern. _Owner:_ Architect to formally document the size boundary in §8 constraints before the architecture document is finalized.
+
+**Q-2: Daytona compute cost estimate**
+
+Daytona sandbox compute cost per session has not been estimated and is excluded from the cost floor analysis in §10. Estimating it requires architecture decisions on Sandbox configuration, idle timeout, and cold-start optimization. _Owner:_ Architect to provide a Daytona compute cost estimate (including idle compute, cold-start overhead, and per-session cost at the SM-5 retention target of ≥ 4 sessions per team per month) before launch pricing is locked.
 
 ---
 
 ## 13. Assumptions Index
 
-- **A-1:** The connected Repository has `_bmad/`, `_bmad-output/`, `.claude/` already initialized by a developer. bmad-easy does not set up BMAD. (§4.1 FR-2, §5)
+- **A-1:** The connected Repository has `_bmad/`, `_bmad-output/`, `.claude/` already initialized by a developer, running BMAD v6.x. bmad-easy does not set up BMAD and supports BMAD v6 only for MVP. (§4.1 FR-2, §5, §8)
 - **A-2:** Daytona Cloud Docker-level isolation is acceptable for authenticated, non-adversarial users in MVP. Upgrade to Firecracker microVM isolation is the documented escalation trigger if adversarial use is detected. (§8)
 - **A-3:** Claude Agent SDK billing applies via API key and separate credit pool as of June 15, 2026. OAuth via claude.ai is not permitted for third-party platforms. (§8)
 - **A-4:** ~~RESOLVED~~ Maximum 10 concurrent Conversations per user. (§4.3 FR-11)
 - **A-5:** ~~RESOLVED~~ All MVP users are automatically enrolled in a full-access plan with no expiry; no trial, paywall, or billing enforcement in MVP. Subscription billing is post-MVP. (§4.5 FR-19, §10)
-- **A-6:** GitHub OAuth App with `repo` scope is the chosen approach for Repository git transport in MVP. The `repo` scope grants access to all GitHub repositories the user can access; this is broader than needed for a single connected Repository and is an accepted trade-off. If the connected Repository belongs to a GitHub organization with OAuth App access restrictions enabled, write access may be blocked. GitHub App integration is the post-MVP path; trigger is org OAuth restriction failures or a security posture review requiring shorter-lived credentials. (§4.1, §6.2, DL-7)
+- **A-6:** GitHub OAuth App with `repo` scope is the chosen approach for Repository git transport in MVP. The `repo` scope grants access to all GitHub repositories the user can access; this is broader than needed for a single connected Repository and is an accepted trade-off. If the connected Repository belongs to a GitHub organization with OAuth App access restrictions enabled, write access may be blocked; the business impact on the target enterprise market will be evaluated post-launch. GitHub App integration is the post-MVP path; trigger is post-launch adoption data confirming material impact, or a security posture review requiring shorter-lived credentials. (§4.1, §6.2, DL-7)
 - **A-7:** Daytona Cloud is the MVP sandbox platform. Daytona OSS self-hosting is the documented continuity fallback; migration is bounded to the `SandboxService` layer. (§8)

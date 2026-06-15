@@ -2,14 +2,14 @@
 
 - **PRD:** `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md`
 - **Rubric:** `.claude/skills/bmad-prd/assets/prd-validation-checklist.md`
-- **Run at:** 2026-06-15T00:00:00Z
+- **Run at:** 2026-06-15T13:45:00Z
 - **Grade:** Poor
 
 ## Overall verdict
 
-This PRD is structurally strong: all seven rubric dimensions score strong or adequate, the Vision has a specific thesis, every FR carries testable consequences, NFRs have real numeric targets, and scope decisions are named honestly rather than buried. A reviewer sympathetic to the product would call this a well-made planning document.
+This PRD is structurally strong: all seven rubric dimensions score strong or adequate, the Vision has a specific and earned thesis, every FR carries testable consequences, NFRs have real numeric targets, and the DL-7 OAuth update visibly improved the onboarding story by removing the PAT setup step that contradicted the access-barrier premise.
 
-The adversarial review shifts the grade to Poor by surfacing three critical strategic gaps the rubric cannot reach. The PAT onboarding step directly contradicts the access-barrier thesis the product is built on, and the success metric (SM-1) will return signal about infrastructure readiness before it returns signal about product-market fit. The competitive window argument claims durable advantages over Claude Code Web that Anthropic could reproduce within the stated window, with no moat analysis to close that gap. The cost model omits Daytona sandbox compute entirely, leaving the $25–$30/seat price point unvalidated against the real cost floor. These are not PRD writing problems — they are unresolved strategic bets the PRD presents as settled, and a skeptical decision-maker at a green-light gate would challenge all three.
+The adversarial review shifts the grade to Poor by surfacing three critical strategic gaps that survive DL-7. The OAuth `repo` scope fixes PAT friction but trades it for an enterprise security blocker: the scope grants write access to every repository the user can access, and the buyer segment most likely to pay — organized teams in GitHub organizations above ~30–50 people — is precisely the segment most likely to be blocked by org-level OAuth App restrictions or security reviews. The competitive window argument in §9 remains self-contradictory: BMAD specificity cannot simultaneously be a durable structural moat and be eroded by Claude Code Web within 4–10 months. Daytona compute costs remain absent from the cost model while the 60% gross margin floor — computed without them — gates the pricing decision. A skeptical decision-maker at a green-light gate would challenge all three before approving further investment.
 
 ## Dimension verdicts
 
@@ -25,86 +25,106 @@ The adversarial review shifts the grade to Poor by surfacing three critical stra
 
 ### Critical (3)
 
-**[Adversarial]** — PAT onboarding contradicts the product's access-barrier thesis (§4.1 FR-1, §6.2, §9)
-The platform's stated purpose is to give non-dev PMs browser-based access without touching the terminal. The first required action is generating a fine-grained GitHub PAT with contents:write scope. The post-MVP trigger ("if identified as a material activation blocker in beta") is circular: you cannot measure PAT friction as a blocker until after users have already bounced on it. SM-1's 60% target will measure infrastructure readiness before it measures product-market fit.
-Fix: Either provide a usability test result showing ≥N% of PM-personas completing PAT setup unassisted, or state that SM-1's 60% target is contingent on PAT setup succeeding, with a separate funnel metric tracking PAT drop-off.
+**[Adversarial]** — OAuth `repo` scope is an enterprise sales blocker that trades one barrier for another (§4.1 FR-1, A-6, §6.2, §8)
+DL-7 removes PAT setup friction, but the `repo` scope gives the platform write access to every GitHub repository the user can access — not just the connected one. Any PM or BA at a company above ~30 people is subject to a security review before authorizing a third-party OAuth App with `repo` scope. That scope, on a personal OAuth App, will fail most enterprise security reviews. §8 acknowledges a second blocker: GitHub organizations with OAuth App access restrictions will require org-owner approval regardless of scope granted. The population most likely to pay $25–$30/seat (organized teams in GitHub organizations) is also the population most likely to be blocked. GitHub App integration is post-MVP with a trigger dependent on observing production failures — meaning the blocker must manifest before the fix ships.
+Fix: Either (a) move a minimal GitHub App integration to MVP — scoped to a single connected repository per installation; or (b) narrow the stated target market to personal-account and small-team GitHub users not subject to organization OAuth restrictions, and revise §9's buyer persona, addressable market, and SM-5 accordingly.
 
-**[Adversarial]** — Competitive window argument is self-contradictory (§9)
-§9 lists bmad-easy's "durable advantages" over Claude Code Web — team billing, BMAD-structured sessions, automatic Artifact commitment, Project Map — each either trivially reproducible by Anthropic or dependent on BMAD's continued relevance. The window is stated as 12–24 months total and "4–10 months remaining" in the same section. No evidence is provided that Anthropic's roadmap excludes native team billing or workflow templates.
-Fix: Distinguish bmad-easy's structural advantage (BMAD community lock-in, methodology distribution) from feature parity. State explicitly what the durable moat is if Anthropic ships comparable features within the window.
+**[Adversarial]** — Competitive window argument is self-contradictory and moat analysis is absent (§9)
+§9 makes two incompatible claims: "As Claude Code Web matures, the 'browser-native access' differentiation narrows … bmad-easy's durable advantages must be in users' hands within 12–18 months" and "The BMAD methodology itself is the structural moat … too niche for Anthropic to build specific support for." If BMAD specificity is the structural moat, Claude Code Web maturing does not close the window. If the window closes, BMAD specificity is not a durable moat. Both cannot be true. BMAD is open-source and Claude Code Web users can already run BMAD Skills today using practitioner guides; the actual differentiation is platform UX (Project Map, Artifact Browser, team billing), which is replicable. The PRD contains no competitive analysis of Claude Code Web. The 12–18 month and 12–24 month window estimates in §9 are also inconsistent arithmetic.
+Fix: Choose a coherent moat thesis: "habit formation and BMAD community distribution" (the window is about acquisition speed) or "platform UX specificity" (evaluate how fast Claude Code Web can ship equivalent UX). Add a short competitor section. Harmonize to a single window estimate with an explicit projected expiry date.
 
-**[Adversarial]** — Cost model omits Daytona compute; unit economics unvalidated (§10)
-$3–$6 LLM cost per active seat implies 75–85% gross margin against the $25–$30 price point. Daytona sandbox compute is noted as "add[ing] cost on top" with no estimate. The $0.77/session weighted average assumes prompt caching offsets dependent on session structure and cache TTL. "Validate before launch pricing is locked" has no owner and no date.
-Fix: Add an explicit Daytona compute cost estimate (even a range) in §10. State a gross margin floor below which the pricing model must change. Name an owner and a date for the pre-launch cost validation.
+**[Adversarial]** — Cost floor omits Daytona compute and is used as a pricing gate without owner or deadline (§10)
+The cost model estimates $3–$6 LLM cost per active seat and uses the 60% gross margin floor as a pricing gate — but Daytona compute is explicitly listed as missing ("add cost on top") with no estimate. This gap is unchanged from the prior validation. Up to 10 concurrent Sandboxes per user are permitted (FR-11) with no idle timeout defined anywhere, making the per-session cost model an undercount. NFR-O1 covers LLM spend monitoring only; there is no observability requirement for Daytona compute spend. The gate cannot be evaluated without the missing input.
+Fix: Add a Daytona compute cost estimate (even an order-of-magnitude range) to §10. Add an idle Sandbox timeout requirement to §4.3 or §8. Add an NFR-O2 for Daytona compute spend monitoring and alerting. Name an owner and a date for the cost floor validation task.
 
-### High (4)
+### High (5)
 
-**[Adversarial]** — NFR-P2 is a smoke test, not a verified requirement (§7, §12)
-"Verified with a single manual test run under normal conditions" does not define normal conditions, repository size, Daytona cold start p90, or provisioning queue contention. A fresh Daytona sandbox provisioning, cloning, and starting Claude Code in under 10 seconds is aggressive even for a 20 MB repository at p90.
-Fix: Source a measured Daytona cold start baseline (p50, p90). State the maximum repository size for which NFR-P2 is guaranteed. Commit to surfacing a degraded-mode message when the target is missed.
+**[Rubric]** — Sandbox re-initialization recovery is not testable (§4.3 FR-13)
+FR-13 states the platform handles re-initialization "transparently" and the user "sees a loading indicator." No condition defines when re-initialization is triggered, what the maximum wait is, or when the platform surfaces a hard failure. "Transparent" is not a testable condition.
+Fix: Add: what triggers a re-initialization attempt; a maximum wait duration before surfacing an error; and the user-visible state when re-initialization fails.
 
-**[Adversarial]** — Silent agent-initiated commit failure is first-session churn risk (§5, FR-12, FR-14)
-§5 explicitly states: "If the Agent's git commit fails during a Conversation, no error is surfaced to the user and no retry is attempted." A user who sees "Progress saved" (Semantic Pill fires on attempt) may have no Artifact in the repository. FR-14's Working Tree State Indicator tracks working tree state, not commit success, and does not update on commit failure.
-Fix: Either surface a visible error when an agent-initiated commit fails in MVP, or explicitly state in FR-12 that Semantic Pills for "Progress saved" are emitted only on confirmed commit success.
+**[Rubric]** — Concurrent-write last-write-wins has no user-visible consequence specified (§6.2, §8)
+The constraint is honestly named, but the PRD does not specify what the losing user sees. Is the earlier commit silently overwritten? Does the user whose commit "lost" receive any indication?
+Fix: At minimum, add a consequence statement naming the behavior. Then evaluate whether a pull-before-push sequence (converting silent data loss to a visible error) is in scope for MVP.
 
-**[Adversarial]** — Project Map "In Progress" is misleadingly scoped (§4.2 FR-5, FR-6)
-"In Progress" status is derived from active platform Conversations only. Locally-running developer sessions are not visible as in-progress — they are invisible entirely, not just undistinguished from platform sessions. The Project Map's claim to show what "the team" is working on is accurate for completed state and silently wrong for in-progress state.
-Fix: Clarify in FR-6 that "In Progress" is limited to active platform Conversations. Update §4.2 to reflect that locally-run agent sessions are not visible in any status.
+**[Adversarial]** — Main-branch last-write-wins creates silent data loss on the core user journey (§5, §6.2, §8)
+Sarah can complete a 20-minute PRD session, see "Progress saved," and then have that Artifact silently overwritten by a concurrent session — with no notification and no recovery path. This is a failure mode that cannot be distinguished from success by SM-1's metric instrumentation. A pull-before-push sequence is standard git and converts silent data loss to a visible error without requiring branch workflows.
+Fix: Add a requirement that the platform performs a pull-then-push sequence on every Agent-initiated and platform-initiated commit. Define the failure behavior: surface an error Tool Pill and leave the working tree dirty (FR-14 amber state) rather than silently overwriting.
 
-**[Adversarial]** — Commit attribution mechanism is unspecified and may fail silently (§4.1 FR-3)
-FR-3 states commits are attributed to the user's platform identity but describes no mechanism. If the Agent runs git commit with a default Sandbox git config, the commit author will be empty or a platform default. GitHub primary email can be private, returning a noreply address. The requirement is real but implementation-free.
-Fix: Specify the source for attribution identity (GitHub OAuth primary email, or user-provided override). Note that git config injection is a required Sandbox initialization step. Address the GitHub private email case.
+**[Adversarial]** — "Progress saved" Semantic Pill timing undefined — may display before commit is confirmed (§4.3 FR-12)
+The PRD does not define the timing relationship between tool call initiation, tool call completion, and Semantic Pill display. If the platform promotes a `git commit` to "Progress saved" before the commit result is confirmed, a user can see "Progress saved" for an Artifact that was not actually committed. A first-session user who loses 20 minutes of work after seeing "Progress saved" will not return — this directly threatens SM-2 (repeat session rate ≥ 40%).
+Fix: Clarify in FR-12 that the "Progress saved" Semantic Pill is only emitted after confirmed commit success. Define the failure path: a failed `git commit` shows an error-state Tool Pill, not a "Progress saved" Semantic Pill. Ensure FR-14's working tree indicator remains dirty if the commit fails.
 
-### Medium (4)
+**[Adversarial]** — BMAD version compatibility is unspecified, creating a silent breakage path (§2.2, §4.1 FR-2, §5, A-1)
+BMAD is an open-source third-party project. The PRD does not address BMAD version compatibility across releases, who maintains compatibility when BMAD's Skill directory structure or Artifact conventions change, or how the platform detects an incompatible BMAD version. FR-2 validates only directory presence — not BMAD version or Skill file presence. A developer who upgrades BMAD to a version that renames conventions may break Project Map parsing and Artifact Browser rendering silently.
+Fix: Add a BMAD version check to FR-2's validation. Add a Skill file presence check (.claude/skills/ must exist and be non-empty). Define a compatibility matrix and ownership scope in the architecture document.
 
-**[Rubric / Adversarial]** — SM-4 missing from Success Metrics sequence (§11)
-Sequence is SM-1, SM-2, SM-3, SM-5, SM-6 — no SM-4. If intentionally removed, renumber. If accidentally omitted, a validation signal is missing.
-Fix: Renumber SM-5 and SM-6 to SM-4 and SM-5, or document what SM-4 was and confirm it was intentionally removed.
+### Medium (7)
 
-**[Rubric]** — Commit attribution identity source unspecified (§4.1 FR-3)
-FR-3 states "the user's platform identity (name and email)" without naming the data source for the email field.
-Fix: Specify that email is drawn from the GitHub OAuth profile claim, or note if a user-provided override in Settings is permitted.
+**[Rubric]** — NFR-P2 scope boundary not closed in PRD (§12 Q-1, §7)
+The open question is correctly flagged and owner-assigned, but it lands in the architecture document. If that document has not yet been started, nothing prevents a build decision being made with NFR-P2's scope undefined.
+Fix: Add a sentence to §7 Performance noting that NFR-P2 applies to repositories under ~200 MB; the architect's task in Q-1 is to document the number, not to decide it.
 
-**[Adversarial]** — EU Data Act claim has no derived requirements (§8)
-"Data portability in machine-readable formats and mandatory switching rights must be designed in from launch. These cannot be retrofitted." No requirements in §4 implement this. No data export format, switching mechanism, or implementation scope is defined.
-Fix: Derive concrete EU Data Act requirements (what "machine-readable export" means for Artifacts, what switching means) or defer explicitly to post-MVP with a named risk owner.
+**[Rubric]** — FR-3 commit attribution email fallback unspecified (§4.1 FR-3)
+FR-3 is clear on where name comes from but does not specify behavior when the GitHub OAuth profile returns no public primary email.
+Fix: Add: what happens when the GitHub OAuth profile returns no email — whether a fallback identity is used, the commit is blocked, or a placeholder email is generated.
 
-**[Adversarial]** — Single-container restart impact on active Conversations is unaddressed (§8)
-A container restart terminates all active Conversations and Sandboxes without notice. In-progress working tree state is not guaranteed to survive (NFR-R2). Expected restart frequency and user-visible recovery path are not defined.
-Fix: State expected restart frequency during MVP. Add a user-visible recovery path for interrupted sessions.
+**[Rubric]** — Agent behavior after tool call failure unspecified (§4.3 FR-12)
+FR-12 specifies that failures appear as error-state Tool Pills, but does not specify whether the Agent continues its turn after a tool call failure, stops and waits, or requires user input before the next turn.
+Fix: Add: whether the Agent continues its turn after a tool call failure or pauses; and whether the user must take action before the session continues.
 
-### Low (6)
+**[Adversarial]** — Session timeout and Sandbox lifecycle entirely unspecified (§4.3 FR-11, FR-13, §8)
+The PRD does not state when a Sandbox is terminated. With up to 10 concurrent Sandboxes per user and no idle timeout, a user who opens sessions and walks away imposes unbounded compute cost and leaves 10 live Sandbox environments holding OAuth tokens active.
+Fix: Add a constraint in §8 specifying a maximum idle Sandbox lifetime (e.g., auto-terminated after 30 minutes of no agent activity, with a user-visible warning before termination).
 
-**[Rubric]** — Missing blast radius on single-container constraint (§8)
-The "conscious scope decision" label is correct but the consequence (no burst handling, single point of failure at launch) is not named.
-Fix: Add one sentence naming the consequence and the documented mitigation.
+**[Adversarial]** — SM-1 "unassisted" has no definition and no measurement mechanism (§11)
+"Assistance" is not defined and no platform requirement captures whether a session was assisted or unassisted. Without a definition and instrumentation path, SM-1 can only be reported as "session completion rate."
+Fix: Define "unassisted" (e.g., no support ticket opened against that session). Add a data requirement specifying how sessions are tagged as assisted vs. unassisted.
 
-**[Rubric]** — NFR-S1 missing from security NFR sequence (§7)
-Security NFRs are numbered S2–S5 with no S1.
-Fix: Renumber S2–S5 to S1–S4, or add a note explaining why the sequence starts at S2.
+**[Adversarial]** — OAuth token has no rotation or revocation requirement beyond account deactivation (§4.1 FR-4, NFR-S4, NFR-S5)
+GitHub OAuth tokens for OAuth Apps do not expire unless revoked. A token stored for a user inactive for 18 months remains a valid `repo`-scope credential to all repositories that user could access at the time. NFR-S4 addresses account deactivation but not dormant token exposure.
+Fix: Extend NFR-S4 to require OAuth token revocation on account deactivation. Add a token re-authorization interval requirement (e.g., every 90 days). Add a dormant account purge requirement.
 
-**[Rubric]** — Artifact Browser list ordering deferred to UX spec (§4.4 FR-16)
-"Artifact ordering is to be determined by the UX spec" creates a hard dependency on a downstream spec for an implementable FR.
-Fix: Add a default ordering (e.g., "most recently committed first") as the fallback.
+**[Adversarial]** — EU Data Act compliance asserted with no derived requirements (§8)
+§8 states EU Data Act requirements "cannot be retrofitted" but no requirement in §4 implements this. "Machine-readable export" of Artifacts, a "switching" mechanism, and any export surface are absent from the PRD.
+Fix: Derive concrete minimum requirements (what Artifact export means, what switching means in this context) or defer explicitly to post-MVP with a named risk owner and a date by which requirements must exist.
 
-**[Rubric]** — Session lifetime unbounded (§4.5 FR-18)
-"Whatever the framework default provides" spans 15 minutes to indefinite. A 15-minute default would eject non-dev users mid-Conversation.
-Fix: Add a minimum preference signal (e.g., "session lifetime should be at least 8 hours").
+### Low (7)
 
-**[Rubric]** — Side navigation specification buried in Constraints (§8)
-The persistent side navigation panel specification is in §8 Constraints rather than §4 Features. The UX designer will need to know to look there.
-Fix: Move navigation model to §4 or add a cross-reference from §8.
+**[Rubric]** — SM-4 absent from metrics sequence (§11)
+SM-1, SM-2, SM-3, SM-5, SM-6 are present; SM-4 does not appear and no note explains the gap.
+Fix: Either restore SM-4 or renumber SM-5 and SM-6 to SM-4 and SM-5.
 
-**[Adversarial]** — Three-hop buyer journey has no platform-assisted conversion mechanism in MVP (§2.1)
-The developer champion cannot invite teammates during trial (seat management is post-MVP), so the bottleneck motivating the developer is not resolved during evaluation. SM-5 (VP/Director buyer conversion) has no observable mechanism.
-Fix: State an early-access model that lets the developer champion add one or two non-dev teammates during trial.
+**[Rubric]** — NFR-S1 missing from Security NFR sequence (§7)
+Security NFRs are numbered S2 through S5 with no S1 and no note explaining the gap.
+Fix: Renumber S2–S5 to S1–S4, or add a note explaining the gap.
+
+**[Rubric]** — FR-16 Artifact ordering deferred without fallback (§4.4 FR-16)
+"Artifact ordering is to be determined by the UX spec" creates a hard dependency on a downstream spec for an otherwise implementable FR.
+Fix: Add a default ordering (e.g., "most recently committed first") as the fallback. Mark the deferral as [NOTE FOR PM].
+
+**[Rubric]** — [NON-GOAL for MVP] on session lifetime conflates non-goal with deferred decision (§4.5 FR-18)
+A session lifetime of 15 minutes is within the space of "framework defaults" and would eject non-dev users mid-Conversation. This is a deferred decision, not a non-goal.
+Fix: Replace the [NON-GOAL for MVP] tag with [NOTE FOR PM] and add a preference signal: session lifetime should be at least 8 hours.
+
+**[Rubric]** — Side navigation specification located in Constraints, not Features (§8)
+The navigation model (5 Conversations in side nav, semantic labels, breadcrumb model, Settings placeholder) is embedded in §8 Constraints rather than §4 Features. The UX designer will need to read §8 to find this.
+Fix: Move navigation model to §4 or add a cross-reference in §8.
+
+**[Adversarial]** — Window estimate is internally inconsistent (§9)
+§9 gives two different window estimates: "12–18 months of Claude Code Web's launch" and "12–24 months" in adjacent sentences. Combined with "8 months elapsed / 4–10 months remaining," the arithmetic is consistent only with the 12–18 month estimate.
+Fix: Harmonize to a single window estimate with an explicit projected expiry date.
+
+**[Adversarial]** — Settings "coming soon" is a trust signal problem during developer champion evaluation (§8 navigation model)
+A product priced at $25–$30/seat that shows an empty "coming soon" page when the user clicks their own avatar undermines the premium positioning during the developer champion's internal evaluation period.
+Fix: Either hide the Settings entry point until it has real content, or populate it with minimal MVP content: connected Repository status, re-auth action, account email, and sign-out.
 
 ## Mechanical notes
 
 - **Glossary drift:** None detected. Capitalized terms used consistently across all sections.
-- **ID continuity:** FR-1–19 contiguous. UJ-1–3 contiguous. NFR-S2–S5 (gap at S1). SM-1–3, SM-5–6 (gap at SM-4). NFR-P1–P5, NFR-R1–R4, NFR-O1 contiguous.
+- **ID continuity:** FR-1–19 contiguous. UJ-1–3 contiguous. NFR-S2–S5 (gap at S1, unexplained). SM-1–3, SM-5–6 (gap at SM-4, unexplained). NFR-P1–P5, NFR-R1–R4, NFR-O1 contiguous.
 - **Assumptions Index roundtrip:** A-1 through A-7 all indexed in §13 with inline tags. A-4 and A-5 marked resolved. No orphans.
-- **UJ protagonist naming:** All three UJs carry "Sarah" as the named protagonist with context inline. Clean.
+- **UJ protagonist naming:** All three UJs carry "Sarah" as named protagonist with context inline. Clean.
 - **Required sections:** All sections present and substantively populated for a chain-top greenfield SaaS PRD at this stake level.
 
 ## Reviewer files
