@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(mkdir -p /workspaces/codespaces-blank/_bmad-output/*)",
+      "Bash(python3 /workspaces/codespaces-blank/_bmad/scripts/*)",
       "WebSearch",
       "Bash(git push *)",
       "Bash(git add *)",
