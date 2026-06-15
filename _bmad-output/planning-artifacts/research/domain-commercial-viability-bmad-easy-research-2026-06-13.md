@@ -12,7 +12,7 @@ web_research_enabled: true
 source_verification: true
 ---
 
-# Research Report: domain
+# Commercial Viability of bmad-easy
 
 **Date:** 2026-06-13
 **Author:** Marius
@@ -20,27 +20,43 @@ source_verification: true
 
 ---
 
-## Domain Research Scope Confirmation
+## Executive Summary
 
-**Research Topic:** Commercial viability of bmad-easy — B2B SaaS for non-developer BMAD access
-**Research Goals:** Assess likelihood of generating revenue: BMAD adoption trajectory, market size for AI workflow tooling, comparable SaaS benchmarks, willingness to pay, and key success/failure factors
+bmad-easy operates in one of the fastest-growing technology markets of 2026 — AI SaaS (36.59% CAGR) — with a specific bet on the BMAD methodology becoming the dominant structured AI development framework for agile teams. The product's commercial thesis is validated on four key dimensions: the demand is real (non-developers are actively seeking BMAD access), the pricing is market-appropriate ($20–30/seat is standard for AI productivity tools), the distribution channel is available (49K-star BMAD community with developer champions as the sales vector), and no direct competitor currently occupies the niche.
 
-**Domain Research Scope:**
+The honest constraints are also clear: the addressable market is currently small (estimated ~5,000 active BMAD-using teams globally), the primary substitute — Claude Code Web — is being adopted by PMs directly, and platform risk from Anthropic or the BMAD project itself is real within a 12–24 month horizon. This is a **time-sensitive opportunity with a genuine but bounded revenue ceiling** in its current form.
 
-- Industry Analysis — market structure, competitive landscape
-- Regulatory Environment — compliance requirements, legal frameworks
-- Technology Trends — innovation patterns, digital transformation
-- Economic Factors — market size, growth projections
-- Supply Chain Analysis — value chain, ecosystem relationships
+**Key Findings:**
 
-**Research Methodology:**
+- BMAD has 49K GitHub stars, 5,680 forks, 370 releases since June 2025 — a legitimate and growing practitioner community
+- AI developer tooling market: $12.8B in 2026, 65% YoY growth; design & dev SaaS saw +57% price increases 2024–2026
+- Estimated SAM at 100% capture: ~$4.5M ARR; realistic Year 1 target (5% capture): ~$225K ARR
+- Per-seat $20–30/seat/month is well within market norms; hybrid usage-based pricing recommended for V2
+- No direct competitor in the browser-native + BMAD-structured + repo-committing + team-billing intersection
+- Regulatory barriers are low for MVP; SOC 2 becomes necessary at ~12 months for enterprise deals
+- The 12–24 month window before platform encroachment is the critical execution constraint
 
-- All claims verified against current public sources
-- Multi-source validation for critical domain claims
-- Confidence level framework for uncertain information
-- Comprehensive domain coverage with industry-specific insights
+**Strategic Recommendations:**
 
-**Scope Confirmed:** 2026-06-13
+1. **Ship fast, price confidently.** The window is time-limited. $25–30/seat/month is well-supported by the market; do not underprice to grow.
+2. **Activate BMAD community as the primary GTM channel.** Developer champions discover the problem; equip them with VP-facing materials. Community trust is the moat.
+3. **Design for the EU Data Act from the start.** Switching rights and data portability are now regulatory requirements — build them in, not on.
+4. **Watch BMAD's roadmap for a hosted tier.** This is the highest existential risk. Maintain close community relationships.
+5. **Plan a hybrid pricing model for V2.** Usage-based pressure is real (per-seat declining 21% → 15% in 12 months); a base seat + LLM usage passthrough model hedges margin risk.
+
+---
+
+## Table of Contents
+
+1. [Industry Analysis](#industry-analysis)
+2. [Competitive Landscape](#competitive-landscape)
+3. [Regulatory Requirements](#regulatory-requirements)
+4. [Technical Trends and Innovation](#technical-trends-and-innovation)
+5. [Revenue Sizing Model](#revenue-sizing-model)
+6. [Strategic Insights and Recommendations](#strategic-insights-and-recommendations)
+7. [Risk Assessment](#risk-assessment)
+8. [Future Outlook](#future-outlook)
+9. [Research Methodology and Source Verification](#research-methodology-and-source-verification)
 
 ---
 
@@ -259,116 +275,7 @@ _Source: [svitla.com agentic trends](https://svitla.com/blog/agentic-ai-market-t
 
 ---
 
-# Commercial Viability of bmad-easy: Comprehensive Research Report
-
-## Executive Summary
-
-bmad-easy operates in one of the fastest-growing technology markets of 2026 — AI SaaS (36.59% CAGR) — with a specific bet on the BMAD methodology becoming the dominant structured AI development framework for agile teams. The product's commercial thesis is validated on four key dimensions: the demand is real (non-developers are actively seeking BMAD access), the pricing is market-appropriate ($20–30/seat is standard for AI productivity tools), the distribution channel is available (49K-star BMAD community with developer champions as the sales vector), and no direct competitor currently occupies the niche.
-
-The honest constraints are also clear: the addressable market is currently small (estimated ~5,000 active BMAD-using teams globally), the primary substitute — Claude Code Web — is being adopted by PMs directly, and platform risk from Anthropic or the BMAD project itself is real within a 12–24 month horizon. This is a **time-sensitive opportunity with a genuine but bounded revenue ceiling** in its current form.
-
-**Key Findings:**
-
-- BMAD has 49K GitHub stars, 5,680 forks, 370 releases since June 2025 — a legitimate and growing practitioner community
-- AI developer tooling market: $12.8B in 2026, 65% YoY growth; design & dev SaaS saw +57% price increases 2024–2026
-- Estimated SAM at 100% capture: ~$4.5M ARR; realistic Year 1 target (5% capture): ~$225K ARR
-- Per-seat $20–30/seat/month is well within market norms; hybrid usage-based pricing recommended for V2
-- No direct competitor in the browser-native + BMAD-structured + repo-committing + team-billing intersection
-- Regulatory barriers are low for MVP; SOC 2 becomes necessary at ~12 months for enterprise deals
-- The 12–24 month window before platform encroachment is the critical execution constraint
-
-**Strategic Recommendations:**
-
-1. **Ship fast, price confidently.** The window is time-limited. $25–30/seat/month is well-supported by the market; do not underprice to grow.
-2. **Activate BMAD community as the primary GTM channel.** Developer champions discover the problem; equip them with VP-facing materials. Community trust is the moat.
-3. **Design for the EU Data Act from the start.** Switching rights and data portability are now regulatory requirements — build them in, not on.
-4. **Watch BMAD's roadmap for a hosted tier.** This is the highest existential risk. Maintain close community relationships.
-5. **Plan a hybrid pricing model for V2.** Usage-based pressure is real (per-seat declining 21% → 15% in 12 months); a base seat + LLM usage passthrough model hedges margin risk.
-
----
-
-## Table of Contents
-
-1. Research Introduction and Methodology
-2. Industry Overview and Market Dynamics
-3. Competitive Landscape and Key Players
-4. Regulatory Framework and Compliance Requirements
-5. Technical Trends and Innovation Landscape
-6. Revenue Sizing Model
-7. Strategic Insights and Recommendations
-8. Risk Assessment
-9. Future Outlook
-10. Research Methodology and Source Verification
-
----
-
-## 1. Research Introduction and Methodology
-
-### Research Significance
-
-The question "how likely am I to make money on this project?" requires grounding in verifiable market data, not optimistic assumptions. bmad-easy was conceived from firsthand experience of a real friction point — but commercial viability depends on whether that friction point is (a) experienced by enough people, (b) worth paying to resolve, and (c) not about to be eliminated by a better-resourced competitor.
-
-This research answers all three questions with current web-verified data as of June 2026.
-
-### Research Methodology
-
-- **Web search coverage:** 15 targeted searches across market sizing, BMAD community metrics, competitive tools, pricing benchmarks, regulatory requirements, and technical trends
-- **Sources:** Market research firms (Mordor Intelligence, Fortune Business Insights, SNS Insider), community data (GitHub, npm, Libraries.io), practitioner publications (builder.io, MarkTechPost, DEV Community), pricing data (Vena, getmonetizely, NxCode), regulatory resources (Feroot, trycomp.ai, sprinto.com)
-- **Time Period:** Current as of June 2026; all data points sourced from 2025–2026 publications
-- **Confidence Framework:** High confidence on market size and BMAD community data (multiple independent sources); medium confidence on SAM sizing (derived estimate, not published research); high confidence on competitive landscape (verified against multiple practitioner sources)
-
-### Research Goals and Objectives
-
-**Original Goals:** Assess likelihood of generating revenue — BMAD adoption trajectory, market size for AI workflow tooling, comparable SaaS benchmarks, willingness to pay, key success/failure factors.
-
-**Achieved:**
-- BMAD community traction verified (49K stars, active releases) ✅
-- AI workflow tooling market sized ($12.8B in 2026, 65% YoY growth) ✅
-- Per-seat pricing benchmarks confirmed ($20–30/seat standard for AI tools) ✅
-- Competitive positioning mapped (first-mover, no direct competitor) ✅
-- Key risk factors identified and prioritised ✅
-- Revenue ceiling modelled from first principles ✅
-
----
-
-## 2. Industry Overview and Market Dynamics
-
-_[See Industry Analysis section above for full detail]_
-
-**Summary metrics:**
-- AI SaaS market: $30.33B in 2026, 36.59% CAGR
-- AI code assistant market: $12.8B in 2026, 65% YoY growth, 85% developer adoption
-- Spec-driven development: formalised category in 2025, 30+ tools tracked
-- BMAD: 49K stars, 5,680 forks, 370 releases since June 2025
-- Developer tooling pricing: +57% average increase 2024–2026 (highest of any SaaS category)
-
----
-
-## 3. Competitive Landscape and Key Players
-
-_[See Competitive Landscape section above for full detail]_
-
-**Summary:** No direct competitor in the bmad-easy niche. Primary substitutes are Claude Code Web (general-purpose, non-BMAD-structured) and adjacent tools (Kiro, GitHub Spec Kit) targeting developers. bmad-easy's intersection of browser-native + BMAD-structured + artifact-committing + team-billing is unoccupied.
-
----
-
-## 4. Regulatory Framework and Compliance Requirements
-
-_[See Regulatory Requirements section above for full detail]_
-
-**Summary:** No sector-specific regulatory barriers. SOC 2 Type II required at ~12 months for enterprise deals ($30K–$80K cost). GDPR DPAs required with Anthropic and GitHub. EU Data Act (September 2025) mandates switching rights and data portability — build these in from the architecture stage.
-
----
-
-## 5. Technical Trends and Innovation Landscape
-
-_[See Technical Trends section above for full detail]_
-
-**Summary:** Agentic AI frameworks market growing at 36.3% CAGR. AG-UI protocol and Claude Agent SDK are maturing infrastructure. Per-seat pricing under pressure from hybrid/usage-based models. Anthropic considering public listing — platform stability signal. 12–24 month window before platform encroachment risk materialises.
-
----
-
-## 6. Revenue Sizing Model
+## Revenue Sizing Model
 
 This is the most critical section for answering "how likely am I to make money?"
 
@@ -406,7 +313,7 @@ _Source: [Landbase agentic AI](https://www.landbase.com/blog/fastest-growing-age
 
 ---
 
-## 7. Strategic Insights and Recommendations
+## Strategic Insights and Recommendations
 
 ### Immediate Actions (0–6 months)
 
@@ -428,7 +335,7 @@ _Source: [Landbase agentic AI](https://www.landbase.com/blog/fastest-growing-age
 
 ---
 
-## 8. Risk Assessment
+## Risk Assessment
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
@@ -441,7 +348,7 @@ _Source: [Landbase agentic AI](https://www.landbase.com/blog/fastest-growing-age
 
 ---
 
-## 9. Future Outlook
+## Future Outlook
 
 The 12–24 month window is the critical horizon for bmad-easy. The opportunity is genuine, the market is growing, and the niche is unoccupied. The realistic revenue trajectory puts a solo or small-team operation at $180K–$450K ARR within 24 months — a viable, sustainable indie SaaS business.
 
@@ -451,42 +358,7 @@ The honest answer to "how likely am I to make money?" is: **moderately likely to
 
 ---
 
-## 10. Research Methodology and Source Verification
-
-### Web Search Queries Used
-
-1. B2B AI developer tooling SaaS market size 2025 2026
-2. BMAD method AI agile development adoption growth community 2025 2026
-3. Per-seat SaaS pricing developer productivity tools benchmarks 2025
-4. AI coding assistant market growth revenue 2025 2026
-5. BMAD-METHOD GitHub stars forks community size 2026
-6. Product manager AI tools willingness to pay subscription SaaS 2025 2026
-7. Claude Code Web non-developer PM product manager usage 2025 2026
-8. B2B SaaS product management workflow tools market size growth 2025
-9. Kiro BMAD spec-driven AI development tools comparison market 2026
-10. AI workflow tools non-developer teams per seat pricing $20-50 2025 2026
-11. bmad-method npm downloads 2026 monthly
-12. B2B SaaS data privacy compliance GitHub OAuth SOC2 GDPR requirements startup 2025 2026
-13. Agentic AI software development workflow tools market consolidation M&A 2026
-14. Agentic AI workflow SaaS startup revenue ARR early traction examples 2025 2026
-
-### Primary Sources
-
-- [Fortune Business Insights — AI SaaS Market](https://www.fortunebusinessinsights.com/ai-saas-market-111182)
-- [SNS Insider / Yahoo Finance — AI Code Assistant Market](https://finance.yahoo.com/news/ai-code-assistant-market-set-143000983.html)
-- [ideaplan.io — AI Coding Assistant Market Share 2026](https://www.ideaplan.io/blog/ai-coding-assistant-market-share-2026)
-- [GitHub — BMAD-METHOD Repository](https://github.com/bmad-code-org/BMAD-METHOD)
-- [MarkTechPost — 9 Best Spec-Driven Development Tools 2026](https://www.marktechpost.com/2026/05/08/9-best-ai-tools-for-spec-driven-development-in-2026-kiro-bmad-gsd-and-more-compare/)
-- [Reenbit — BMAD vs Spec Kit vs OpenSpec](https://reenbit.com/bmad-vs-spec-kit-vs-openspec-choosing-your-spec-driven-ai-framework/)
-- [builder.io — Claude Code for Product Managers](https://www.builder.io/blog/claude-code-for-product-managers)
-- [morphllm.com — Kiro vs Cursor 2026](https://www.morphllm.com/comparisons/kiro-vs-cursor)
-- [NxCode — SaaS Pricing Strategy Guide 2026](https://www.nxcode.io/resources/news/saas-pricing-strategy-guide-2026)
-- [getpricepulse — SaaS Price Increases by Category](https://www.getpricepulse.com/blog/saas-price-increases-by-category-2024-2026.html)
-- [Feroot Security — GDPR SaaS Compliance 2026](https://www.feroot.com/blog/gdpr-saas-compliance-2025/)
-- [trycomp.ai — SOC 2 Checklist for SaaS Startups](https://trycomp.ai/soc-2-checklist-for-saas-startups)
-- [Mordor Intelligence — Agentic AI Frameworks Market](https://www.mordorintelligence.com/industry-reports/agentic-artificial-intelligence-frameworks-market)
-- [newmarketpitch.com — Agentic AI Funding Trends 2026](https://newmarketpitch.com/blogs/news/agentic-ai-funding-trends)
-- [Uvik — AI Coding Assistant Statistics 2026](https://uvik.net/blog/ai-coding-assistant-statistics/)
+## Research Methodology and Source Verification
 
 ### Research Quality Assurance
 
