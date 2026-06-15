@@ -32,41 +32,14 @@ See Section 5 for strategic recommendations and the deployment decision matrix.
 
 ## Table of Contents
 
-1. Market Research Introduction and Methodology
-2. Market Dynamics — Non-Developer AI Tool Adoption
-3. Customer Behavior and Segments
-4. Customer Pain Points and Needs
-5. Competitive Landscape
-6. Strategic Recommendations
-7. Risk Assessment and Mitigation
-8. Implementation Roadmap
-9. Future Outlook
-10. Source Documentation
-
----
-
-## 1. Market Research Introduction and Methodology
-
-### Research Significance
-
-The software development tooling market is undergoing a structural shift: AI agents now handle significant portions of coding, documentation, planning, and testing. Frameworks like BMAD (Breakthrough Method for Agile AI Driven Development, 37,000+ GitHub stars as of June 2026) codify this into structured workflows with specialized personas — PM, Architect, Developer, QA, and more.
-
-However, the *non-developer* personas — Product Managers, Business Analysts, Delivery Leads — are still locked out. BMAD today runs inside IDEs (VS Code, Cursor, JetBrains) through Claude Code CLI. These tools require a terminal, Node.js, and Git familiarity, creating a hard barrier for the exact roles BMAD is designed to empower.
-
-The market question is: **where can BMAD be deployed so that non-dev roles participate via a browser, with artifacts committed to Git, without needing any local tooling?**
-
-### Research Scope Confirmed
-
-- **Platform breadth**: All platforms capable of hosting or running BMAD-style AI agent skills/workflows
-- **Hard requirement**: Git integration with ability for non-dev users to commit/push artifacts back to a repository
-- **Business goal**: Deployment decision — identify where BMAD can be set up today
-
-### Research Methodology
-
-- Web search queries executed June 2026
-- Sources cross-referenced across vendor documentation, independent reviews, and community discussions
-- Confidence levels applied to uncertain data points
-- Platforms evaluated against a consistent rubric: (a) browser-accessible, (b) Git/GitHub commit capability, (c) ability to run or host BMAD agents/skills, (d) non-developer UX
+1. Market Dynamics — Non-Developer AI Tool Adoption
+2. Customer Behavior and Segments
+3. Customer Pain Points and Needs
+4. Competitive Landscape
+5. Strategic Recommendations
+6. Risk Assessment and Mitigation
+7. Implementation Roadmap
+8. Future Outlook
 
 ---
 
@@ -506,55 +479,6 @@ _Source: [Lovable GitHub sync incident — IsDown](https://isdown.app/status/lov
 The team that deploys a polished web BMAD experience for non-devs first will have a significant internal productivity advantage. The pieces exist today — they require assembly, not invention.
 
 ---
-
-## 10. Source Documentation
-
-### Primary Sources
-
-- [Use Claude Code on the web — Claude Code Docs](https://code.claude.com/docs/en/claude-code-on-the-web)
-- [Claude Code on the web — Anthropic News](https://www.anthropic.com/news/claude-code-on-the-web)
-- [Claude Code GitHub Actions — Claude Code Docs](https://code.claude.com/docs/en/github-actions)
-- [claude-code-action — GitHub](https://github.com/anthropics/claude-code-action)
-- [BMAD-METHOD — GitHub](https://github.com/bmad-code-org/BMAD-METHOD)
-- [AI for Product Managers — Replit](https://replit.com/usecases/product-managers)
-- [Connect to GitHub — Lovable Docs](https://docs.lovable.dev/integrations/github)
-- [GitHub Spark — GitHub Features](https://github.com/features/spark)
-- [Agents panel — GitHub Blog](https://github.blog/news-insights/product-news/agents-panel-launch-copilot-coding-agent-tasks-anywhere-on-github/)
-- [Not just for developers — GitHub Blog](https://github.blog/ai-and-ml/github-copilot/not-just-for-developers-how-product-and-security-teams-can-use-github-copilot/)
-
-### Secondary Sources
-
-- [Claude Code for Product Managers — Every.to](https://every.to/source-code/claude-code-for-product-managers)
-- [ccforpms.com](https://ccforpms.com/)
-- [Product management on the AI exponential — Anthropic](https://claude.com/blog/product-management-on-the-ai-exponential)
-- [Replit AI Statistics 2026 — GetPanto](https://www.getpanto.ai/blog/replit-ai-statistics)
-- [GitHub Copilot for Business Analysts — GitHub Community](https://github.com/orgs/community/discussions/163538)
-- [Gitpod Review 2026 — AI Productivity](https://aiproductivity.ai/tools/gitpod/)
-- [Claude Code sandboxing — Anthropic Engineering](https://www.anthropic.com/engineering/claude-code-sandboxing)
-- [Lovable vs Bolt vs Replit 2026 — Lovable](https://lovable.dev/guides/bolt-vs-replit-vs-lovable)
-- [Lovable GitHub sync incident — IsDown](https://isdown.app/status/lovable/incidents/557602-issue-with-github-two-way-synchronization-in-lovable)
-- [BMAD Framework — Pasquale Pillitteri](https://pasqualepillitteri.it/en/news/171/bmad-framework-claude-code-agile-development)
-- [What Is BMAD — Reenbit](https://reenbit.com/the-bmad-method-how-structured-ai-agents-turn-vibe-coding-into-production-ready-software/)
-- [Claude Features 2026 — Suprmind](https://suprmind.ai/hub/claude/features/)
-
-### Research Queries Used
-
-1. `non-developer roles using AI coding assistants product managers business analysts 2025 2026`
-2. `web-based Claude Code interface browser accessible AI agent 2025 2026`
-3. `platforms web IDE git integration non-technical users AI agents 2025 2026`
-4. `GitHub Codespaces web browser non-developer AI workflow git commit 2025 2026`
-5. `claude.ai code web interface non-developer product manager workflow 2025 2026`
-6. `Replit non-technical users product managers AI agent git repository 2025 2026`
-7. `Lovable Bolt StackBlitz web app AI agent git commit non-developer 2026`
-8. `GitHub Copilot web agent non-developer product manager business analyst use cases 2025 2026`
-9. `"Claude Code on the web" anthropic non-developer git repository integration details 2025 2026`
-10. `pain points product managers business analysts using AI coding tools without IDE git knowledge`
-11. `Gitpod StackBlitz WebContainers browser AI agent non-developer git commit 2026`
-12. `BMAD method AI agents web deployment non-developer Claude Code skills browser 2026`
-13. `claude.ai/code web interface features limitations non-developer experience 2025 2026`
-14. `Lovable GitHub two-way sync non-developer commit pull request artifact workflow 2026`
-15. `GitHub Spark no-code web app GitHub repository integration non-developer 2025 2026`
-16. `Claude Code GitHub Action "@claude" issue comment PR creation non-developer 2026`
 
 ---
 

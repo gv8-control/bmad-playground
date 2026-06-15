@@ -28,7 +28,33 @@ The answer is **`assistant-ui`** with the **AG-UI protocol** (`@assistant-ui/rea
 
 The research spans four technical domains: library landscape and selection (4 candidates evaluated), the AG-UI wiring pattern (backend `IAgentHarness` interface → AG-UI event emitter → `useAgUiRuntime`), component architecture and tool rendering patterns, and a concrete 3-sprint implementation roadmap. All findings are grounded in current official documentation and verified web sources (June 2026).
 
-See the **Research Synthesis** section for the full executive summary and decision map.
+### The Three Questions
+
+**1. Which OSS library?**
+`assistant-ui` (`@assistant-ui/react` + `@assistant-ui/react-ag-ui`). Headless, Tailwind-native, first-class tool call rendering, Generative UI for the artifact pill, React 19.2.7 compatible, actively maintained (YC W25, 200k+ monthly downloads June 2026). CopilotKit is too heavy (AG-UI backend mapping layer). NLUX's theming API is not Tailwind-native. Vercel AI SDK `useChat` is hooks only — no UI primitives.
+
+**2. How does the backend connect to it?**
+`@ag-ui/core` on the Node.js Agent backend. The `ClaudeAgentSdkHarness` implements `IAgentHarness`, consuming the `query()` async iterator and normalizing output to `AgentMessage[]`. The AG-UI emitter maps these to standard AG-UI SSE events (`TEXT_MESSAGE_CHUNK`, `TOOL_CALL_START`, `TOOL_CALL_END`, `RUN_FINISHED`) over an SSE `ReadableStream`. An Express pipe adapter bridges the `Response` to Express's `res` object. The `artifact_committed` hook event is injected as a synthetic tool-call pair.
+
+**3. How does the Next.js frontend connect?**
+A route handler at `/api/sessions/[id]/stream` proxies the SSE stream from the Agent backend (auth gate + VPC-internal fetch). The frontend mounts `useAgUiRuntime({ agent })` from `@assistant-ui/react-ag-ui` inside `AssistantRuntimeProvider`. `<Thread tools={[...]} />` renders the conversation with per-tool UI components styled entirely in Tailwind v4.
+
+**Key Technical Findings:**
+
+- `assistant-ui` 200k+ monthly downloads June 2026; production-proven at LangChain, Stack AI, Athena Intelligence
+- AG-UI protocol (`@ag-ui/core` + `@assistant-ui/react-ag-ui`) is the migration-safe choice — enables harness-switching (Claude SDK → OpenCode → Copilot) with zero frontend changes
+- React 19.2.7 is confirmed compatible with `@assistant-ui/react` 0.12.15
+- Three critical deploy-blocking gotchas: wrong `protocol` value, missing `force-dynamic`, Express pipe failure mode
+- `npx assistant-ui init` scaffolds Tailwind v4-compatible components in one command
+
+**Technical Recommendations (priority order):**
+
+1. Use `@assistant-ui/react` + `@assistant-ui/react-ag-ui` + `@ag-ui/client` as the frontend chat stack
+2. Use `@ag-ui/core` on the Agent backend; implement `IAgentHarness` + `ClaudeAgentSdkHarness`
+3. Implement the Express Web Response pipe adapter (not `pipeTo()`)
+4. Pin all `@ag-ui/*` and `@assistant-ui/react-ag-ui` packages to exact versions (pre-1.0)
+5. Add `export const dynamic = "force-dynamic"` to the SSE proxy route handler
+6. Use Vitest (not Jest) for the test suite — native Vite/Next.js 15 compatibility
 
 ---
 
@@ -253,41 +279,9 @@ _Source: [ExternalStoreRuntime — assistant-ui](https://www.assistant-ui.com/do
 
 ---
 
-#### Approach B — `assistant-stream` backend package + `useDataStreamRuntime` *(superseded — see AG-UI approach below)*
+#### Approach B — `assistant-stream` + `useDataStreamRuntime` *(superseded)*
 
-> **Note:** Approach B was the initial recommendation from this research. It was superseded by the AG-UI protocol (see Addendum, now integrated below) because AG-UI has broader industry adoption and enables future harness-switching without frontend changes. Approach B documentation is preserved here for reference.
-
-The backend maps Claude Agent SDK messages into the assistant-ui data stream protocol using the `assistant-stream` npm package. The frontend uses the simpler `useDataStreamRuntime` hook.
-
-```typescript
-// Backend: map SDK messages to assistant-ui data stream protocol
-import { AssistantStream } from "assistant-stream";
-
-const stream = new AssistantStream();
-for await (const message of sdkQuery({ prompt, options })) {
-  if (message.type === "assistant") {
-    for (const part of message.content) {
-      if (part.type === "text") stream.appendText(part.text);
-      else stream.addToolCallPart({ toolCallId: part.id, toolName: part.name, args: part.input });
-    }
-  }
-  if (message.type === "tool") {
-    stream.addToolResult({ toolCallId: message.tool_use_id, result: message.content });
-  }
-}
-stream.close();
-return createAssistantStreamResponse(stream);
-```
-
-```tsx
-// Frontend: dead-simple runtime
-import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
-const runtime = useDataStreamRuntime({ api: "/api/chat" });
-```
-
-**Trade-off:** Cleaner frontend code but adds a backend mapping obligation. Useful if you want to standardise on the assistant-ui protocol for multi-tenant isolation (the backend controls what the UI sees). The `assistant-stream` package (latest: 0.3.19, June 2026) provides all the helpers needed.
-
-_Source: [Streaming Infrastructure (assistant-stream) — DeepWiki](https://deepwiki.com/assistant-ui/assistant-ui/4-streaming-infrastructure-(assistant-stream)), [assistant-stream — npm](https://www.npmjs.com/package/assistant-stream), [Data Stream Protocol — assistant-ui](https://www.assistant-ui.com/docs/runtimes/custom/data-stream)_
+This approach mapped Agent SDK messages to the assistant-ui data stream protocol via the `assistant-stream` npm package, using `useDataStreamRuntime` on the frontend. It was superseded by the AG-UI protocol (see Multi-Harness Infrastructure section) because AG-UI has broader industry adoption and enables future harness-switching without frontend changes.
 
 ---
 
@@ -919,115 +913,6 @@ _Source: [Testing AI Agents with Vitest 4 — DEV Community](https://dev.to/jang
 | `X-Accel-Buffering: no` missing | **High** | nginx will buffer SSE chunks — tokens arrive in batches instead of streaming |
 | `assistant-ui` CLI init may scaffold shadcn-style components that reference older Tailwind v3 syntax | **Medium** | Review scaffolded files for `@apply` directives; replace with Tailwind v4 equivalents |
 | `artifact_committed` hook fires outside the `query()` iterator | **Medium** | Inject via `commitArtifact` closure; emit synthetic tool-call+result pair into stream before `stream.close()` |
-
----
-
-## Technical Research Recommendations
-
-### Implementation Roadmap
-
-**Sprint 1 — Chat UI foundation (1 week)**
-1. Install `@assistant-ui/react` + `@assistant-ui/react-data-stream` in the Next.js app
-2. Scaffold `Thread` component via `npx assistant-ui init`; apply Tailwind v4 classes
-3. Create `ChatRuntimeProvider` with `useDataStreamRuntime({ protocol: "data-stream" })`
-4. Build SSE proxy route handler (`/api/sessions/[id]/stream`) with `force-dynamic`
-5. Wire to a stub backend (return a hardcoded data-stream response) to verify end-to-end render
-
-**Sprint 2 — Tool renderers + artifact pill (1 week)**
-1. Install `assistant-stream` on the Agent backend
-2. Implement the SDK message mapper + `createAssistantStreamResponse`
-3. Write the Express Web Response adapter (pipe utility)
-4. Register tool UI components: `BashToolUI`, `ReadToolUI`, `WriteToolUI`, `EditToolUI`
-5. Wire `PostToolUse` hook into the mapper; implement `ArtifactPillUI`
-
-**Sprint 3 — Testing (1 week)**
-1. Write Vitest unit tests for tool renderers and stream mapper
-2. Write integration test for the SSE proxy route
-3. Smoke-test end-to-end with a real BMAD skill session
-
-### Technology Stack Recommendation
-
-| Layer | Choice | Rationale |
-|---|---|---|
-| Frontend runtime | `@assistant-ui/react` + `useDataStreamRuntime` | Headless, Tailwind-native, stable wire format, React 19 confirmed |
-| Wire protocol | `assistant-stream` data-stream format | Backend-agnostic contract; survives Agent SDK → Managed Agents migration |
-| Backend stream builder | `assistant-stream` 0.3.19 | `createAssistantStreamResponse`, tool call parts |
-| SSE proxy | Next.js App Router route handler | Co-located auth gate; no extra infra |
-| Testing | Vitest + React Testing Library | Native Vite/Next.js 15 compatibility; fast; `vi.fn()` for fetch mocking |
-
----
-
-## Research Synthesis
-
-### Executive Summary
-
-The React AI chat UI landscape in 2026 has converged around a two-layer model: a **hooks layer** (Vercel AI SDK `useChat`, 20M+ monthly downloads) for streaming state management, and a **UI primitives layer** (`assistant-ui`, 200k+ monthly downloads, used by LangChain, Stack AI, Athena Intelligence) for composable, headless chat components. For a Next.js 15 + Tailwind v4 project, `assistant-ui` is the correct foundation — it follows the Radix headless pattern, has no default styles to fight, and integrates natively with Tailwind v4 (including a first-party Tailwind v4 plugin).
-
-**The central architectural decision is the AG-UI protocol:** the backend implements an `IAgentHarness` interface that normalizes agent output to `AgentMessage[]`, which the AG-UI emitter maps to standard AG-UI SSE events. The frontend speaks only AG-UI via `useAgUiRuntime` from `@assistant-ui/react-ag-ui`. This decouples the React code from any specific agent harness — when the platform adds OpenCode, GitHub Copilot, or Managed Agents support, only a new `IAgentHarness` implementation is needed; the entire frontend and all tool renderers are unaffected.
-
-**The three questions this research answers:**
-
-**1. Which OSS library?**
-`assistant-ui` (`@assistant-ui/react` + `@assistant-ui/react-data-stream`). Headless, Tailwind-native, first-class tool call rendering, Generative UI for the artifact pill, React 19.2.7 compatible, actively maintained (YC W25, 200k+ monthly downloads June 2026). CopilotKit is too heavy (AG-UI backend mapping layer). NLUX's theming API is not Tailwind-native. Vercel AI SDK `useChat` is hooks only — no UI primitives.
-
-**2. How does the backend connect to it?**
-`@ag-ui/core` on the Node.js Agent backend. The `ClaudeAgentSdkHarness` implements `IAgentHarness`, consuming the `query()` async iterator and normalizing output to `AgentMessage[]`. The AG-UI emitter maps these to standard AG-UI SSE events (`TEXT_MESSAGE_CHUNK`, `TOOL_CALL_START`, `TOOL_CALL_END`, `RUN_FINISHED`) over an SSE `ReadableStream`. An Express pipe adapter bridges the `Response` to Express's `res` object. The `artifact_committed` hook event is injected as a synthetic tool-call pair.
-
-**3. How does the Next.js frontend connect?**
-A route handler at `/api/sessions/[id]/stream` proxies the SSE stream from the Agent backend (auth gate + VPC-internal fetch). The frontend mounts `useAgUiRuntime({ agent })` from `@assistant-ui/react-ag-ui` inside `AssistantRuntimeProvider`. `<Thread tools={[...]} />` renders the conversation with per-tool UI components styled entirely in Tailwind v4.
-
-**Key Technical Findings:**
-
-- `assistant-ui` 200k+ monthly downloads June 2026; production-proven at LangChain, Stack AI, Athena Intelligence
-- AG-UI protocol (`@ag-ui/core` + `@assistant-ui/react-ag-ui`) is the migration-safe choice — enables harness-switching (Claude SDK → OpenCode → Copilot) with zero frontend changes
-- React 19.2.7 is confirmed compatible with `@assistant-ui/react` 0.12.15
-- Three critical deploy-blocking gotchas: wrong `protocol` value, missing `force-dynamic`, Express pipe failure mode
-- `npx assistant-ui init` scaffolds Tailwind v4-compatible components in one command
-
-**Technical Recommendations (priority order):**
-
-1. Use `@assistant-ui/react` + `@assistant-ui/react-ag-ui` + `@ag-ui/client` as the frontend chat stack
-2. Use `@ag-ui/core` on the Agent backend; implement `IAgentHarness` + `ClaudeAgentSdkHarness`
-3. Implement the Express Web Response pipe adapter (not `pipeTo()`)
-4. Pin all `@ag-ui/*` and `@assistant-ui/react-ag-ui` packages to exact versions (pre-1.0)
-5. Add `export const dynamic = "force-dynamic"` to the SSE proxy route handler
-6. Use Vitest (not Jest) for the test suite — native Vite/Next.js 15 compatibility
-
----
-
-### Source Index
-
-| Source | Used in |
-|---|---|
-| [assistant-ui — React Chat UI for AI Apps](https://www.assistant-ui.com/) | Technology Stack, Architecture |
-| [ExternalStoreRuntime — assistant-ui](https://www.assistant-ui.com/docs/runtimes/custom/external-store) | Integration Patterns |
-| [Data Stream Protocol — assistant-ui](https://www.assistant-ui.com/docs/runtimes/custom/data-stream) | Integration Patterns, Architecture |
-| [@assistant-ui/react-data-stream — assistant-ui docs](https://www.assistant-ui.com/docs/api-reference/integrations/react-data-stream) | Implementation |
-| [Generative UI — assistant-ui](https://www.assistant-ui.com/docs/tools/generative-ui) | Integration Patterns |
-| [makeAssistantToolUI — assistant-ui](https://www.assistant-ui.com/docs/copilots/make-assistant-tool-ui) | Integration Patterns, Implementation |
-| [Thread — assistant-ui](https://www.assistant-ui.com/docs/ui/primitives/Thread) | Architecture |
-| [Composition — assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/composition) | Architecture |
-| [assistant-stream — npm](https://www.npmjs.com/package/assistant-stream) | Architecture, Implementation |
-| [Streaming Infrastructure (assistant-stream) — DeepWiki](https://deepwiki.com/assistant-ui/assistant-ui/4-streaming-infrastructure-(assistant-stream)) | Architecture |
-| [Message Format and Conversion — DeepWiki](https://deepwiki.com/assistant-ui/assistant-ui/3.3-thread-and-message-management) | Integration Patterns |
-| [Getting Started — assistant-ui DeepWiki](https://deepwiki.com/assistant-ui/assistant-ui/1.2-getting-started) | Implementation |
-| [Launch Week: assistant-ui goes multi-platform](https://www.assistant-ui.com/blog/2026-03-launch-week) | Technology Stack |
-| [I Evaluated Every AI Chat UI Library in 2026 — DEV Community](https://dev.to/alexander_lukashov/i-evaluated-every-ai-chat-ui-library-in-2026-heres-what-i-found-and-what-i-built-4p10) | Technology Stack |
-| [The Overview of UI Libraries for AI Chat Interfaces in 2026 — Medium](https://alexander-lukashov.medium.com/the-overview-of-ui-libraries-for-ai-chat-interfaces-in-2026-146a1492114a) | Technology Stack |
-| [AI SDK UI: Stream Protocols](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) | Technology Stack, Integration Patterns |
-| [AI SDK 5 — Vercel blog](https://vercel.com/blog/ai-sdk-5) | Technology Stack |
-| [Introducing AG-UI — CopilotKit blog](https://www.copilotkit.ai/blog/introducing-ag-ui-the-protocol-where-agents-meet-users) | Technology Stack |
-| [GitHub — CopilotKit/CopilotKit](https://github.com/CopilotKit/CopilotKit) | Technology Stack |
-| [NLUX documentation — nlkit.com](https://docs.nlkit.com/nlux) | Technology Stack |
-| [Guides: Streaming — Next.js](https://nextjs.org/docs/app/guides/streaming) | Integration Patterns, Implementation |
-| [Next.js SSE Guide: Real-Time Apps (2026)](https://nextjslaunchpad.com/article/nextjs-server-sent-events-real-time-notifications-progress-tracking-live-dashboards) | Integration Patterns, Implementation |
-| [Using SSE to stream LLM responses — Upstash](https://upstash.com/blog/sse-streaming-llm-responses) | Integration Patterns |
-| [Agent SDK overview — Claude Code Docs](https://code.claude.com/docs/en/agent-sdk/overview) | Integration Patterns |
-| [Work with sessions — Claude Code Docs](https://code.claude.com/docs/en/agent-sdk/sessions) | Integration Patterns |
-| [The Complete Guide to Generative UI Frameworks in 2026 — Medium](https://medium.com/@akshaychame2/the-complete-guide-to-generative-ui-frameworks-in-2026-fde71c4fa8cc) | Technology Stack |
-| [Testing AI Agents with Vitest 4 — DEV Community](https://dev.to/jangwook_kim_e31e7291ad98/testing-ai-agents-with-vitest-4-mocking-llm-calls-and-streaming-responses-in-practice-1bg4) | Implementation |
-| [AI App of the Week: Assistant UI — SaaStr](https://www.saastr.com/ai-app-of-the-week-assistant-ui-the-react-library-thats-eating-the-ai-chat-interface-market/) | Technology Stack |
-| [Securely deploying AI agents — Claude API Docs](https://platform.claude.com/docs/en/agent-sdk/secure-deployment) | Architecture |
 
 ---
 

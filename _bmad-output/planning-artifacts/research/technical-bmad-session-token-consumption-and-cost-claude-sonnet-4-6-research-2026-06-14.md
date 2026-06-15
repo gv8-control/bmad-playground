@@ -482,12 +482,6 @@ When a single turn exceeds 200K input tokens, the entire request is billed at 2�
 
 ---
 
-## 9. Operational Notes
-
-See Appendix D for implementation optimizations and operational risk mitigations.
-
----
-
 ## 10. Future Outlook
 
 - **Context windows**: Sonnet 4.6's 1M context window removes hard session limits but introduces the long-context pricing structure as the new constraint; re-evaluate when future model pricing changes.
@@ -497,20 +491,6 @@ See Appendix D for implementation optimizations and operational risk mitigations
 ---
 
 ## 11. Research Methodology and Source Verification
-
-### Primary Sources
-
-- [Claude Sonnet 4.6 Pricing — apidog.com](https://apidog.com/blog/claude-sonnet-4-6-pricing/) — Complete pricing table including long-context and cache pricing
-- [Claude Code Cost Management Docs — code.claude.com](https://code.claude.com/docs/en/costs) — Official documentation; enterprise averages, rate limits, extended thinking defaults
-- [Anthropic API Pricing 2026 — finout.io](https://www.finout.io/blog/anthropic-api-pricing) — Multi-model pricing comparison
-- [Claude Sonnet 4.6 1M Context Window — aiforanything.io](https://www.aiforanything.io/blog/claude-sonnet-4-6-1m-context-window-guide) — Context window details
-- [Claude Code Token Optimization — buildtolaunch.substack.com](https://buildtolaunch.substack.com/p/claude-code-token-optimization) — Extended thinking budget specifics
-
-### Secondary Sources
-
-- [LLM Token Counter — lettercounter.org](https://lettercounter.org/llm-token-counter/) — Chars/token ratio verification
-- [Claude Code Pricing 2026 — verdent.ai](https://www.verdent.ai/guides/claude-code-pricing-2026) — Enterprise cost context
-- [Claude Code Token Usage Tracker — agentsroom.dev](https://agentsroom.dev/features/claude-code-token-usage) — Session-level token patterns
 
 ### Direct Measurements
 

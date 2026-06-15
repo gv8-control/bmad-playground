@@ -598,24 +598,6 @@ _Source: [Observability with OpenTelemetry — Claude Code Docs](https://code.cl
 
 ---
 
-## Research Synthesis
-
-### Source Index
-
-| Source | Used in |
-|---|---|
-| [Agent SDK overview — Claude Code Docs](https://code.claude.com/docs/en/agent-sdk/overview) | Technology Stack, Integration Patterns |
-| [Run Claude Code programmatically — Claude Code Docs](https://code.claude.com/docs/en/headless) | Technology Stack, Context Injection |
-| [Hosting the Agent SDK — Claude Code Docs](https://code.claude.com/docs/en/agent-sdk/hosting) | Architecture, Integration Patterns |
-| [Work with sessions — Claude Code Docs](https://code.claude.com/docs/en/agent-sdk/sessions) | Integration Patterns |
-| [Observability with OpenTelemetry — Claude Code Docs](https://code.claude.com/docs/en/agent-sdk/observability) | Implementation |
-| [Git Worktrees for AI Coding — Augment Code](https://www.augmentcode.com/guides/git-worktrees-parallel-ai-agent-execution) | Integration Patterns |
-| [Node.js SSE 2026 — HireNodeJS](https://www.hirenodejs.com/blog/nodejs-server-sent-events-sse-2026) | Architecture, Integration Patterns |
-| [Claude Agent SDK — Promptfoo](https://www.promptfoo.dev/docs/providers/claude-agent-sdk/) | Implementation |
-| [Claude Code + OpenTelemetry: Per-Session Cost — Bindplane](https://bindplane.com/blog/claude-code-opentelemetry-per-session-cost-and-token-tracking) | Implementation |
-
----
-
 **Research Completion Date:** 2026-06-11
 **Research Period:** Current — all sources verified June 2026
 **Confidence Level:** High — based on official Anthropic documentation and verified current sources

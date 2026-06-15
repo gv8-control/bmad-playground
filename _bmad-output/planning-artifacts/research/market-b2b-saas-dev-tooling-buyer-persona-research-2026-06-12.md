@@ -41,61 +41,11 @@ The bmad-easy product brief assumed the economic buyer is **Director or VP-level
 
 ## Table of Contents
 
-1. [Research Initialization and Scope](#research-initialization)
-2. [Customer Behavior and Buyer Persona Analysis](#customer-behavior-and-buyer-persona-analysis)
-3. [Customer Pain Points and Needs](#customer-pain-points-and-needs)
-4. [Customer Decision Processes and Journey](#customer-decision-processes-and-journey)
-5. [Competitive Landscape](#competitive-landscape)
-6. [Strategic Synthesis and Recommendations](#strategic-synthesis-and-recommendations)
-
----
-
-## Research Initialization
-
-### Research Understanding Confirmed
-
-**Topic**: Who actually purchases developer productivity and AI workflow SaaS tools in B2B software companies — validating the bmad-easy ICP assumption
-**Goals**: Validate or disprove the hypothesis that the buyer is Director/VP-level (Head of Product, VP Engineering, CTO), and determine whether purchasing authority actually sits above team-lead level in multi-team organisations
-**Research Type**: Market Research
-**Date**: 2026-06-12
-
-### Context from Product Brief
-
-The bmad-easy product brief contains this explicit assumption (marked `[ASSUMPTION — to be validated]`):
-
-> **Decision maker / buyer**: Director or VP-level leadership — Head of Product, VP Engineering, CTO — purchasing seats for non-dev teammates at companies where BMAD adoption is being evaluated or expanded. In multi-team organisations, purchasing authority sits above team-lead level.
-
-The brief also notes: *"The buyer persona is intuition-based and unvalidated. A wrong assumption will misalign the go-to-market approach and pricing model. Market research is a near-term prerequisite before any go-to-market investment."*
-
-### Research Scope
-
-**Key Questions to Answer:**
-
-Company size is a cross-cutting dimension for every question below. Each question should be answered across the full range: **early-stage startup (1–20 people) → growth-stage (20–200) → mid-market (200–1000) → enterprise (1000+)**, because the answer may change dramatically across that range.
-
-1. Who actually approves SaaS tool purchases for development teams — engineering managers, directors, VPs, or individual contributors with budget authority? *How does this shift as company size grows?*
-2. At what price points and team sizes does purchasing authority escalate — from individual/team-lead self-serve to manager approval to VP/C-level sign-off? *What are the typical thresholds?*
-3. How do developer productivity / AI workflow tools get adopted — top-down mandate or bottom-up grassroots? *Does the adoption pattern change by company size, and does that determine who the real buyer is?*
-4. Who specifically holds the budget for non-dev team tooling (PM tools, BA tools, delivery tools) — and does that differ from who owns dev tooling budget? *Does this vary by company size?*
-5. What role does the team lead / engineering manager play versus Director/VP-level in the purchase decision — and at what point does the team lead lose budget authority entirely?
-
-**Research Methodology:**
-
-- Current web data with source verification
-- Multiple independent sources for critical claims
-- Confidence level assessment for uncertain data
-- Buyer persona research from SaaS GTM literature, analyst reports, and case studies
-
-### Next Steps
-
-**Research Workflow:**
-
-1. ✅ Initialization and scope setting (current step)
-2. Customer Insights and Buyer Behavior Analysis
-3. Competitive Landscape Analysis
-4. Strategic Synthesis and Recommendations
-
-**Research Status**: Scope confirmed by user on 2026-06-12, ready to proceed with detailed market analysis
+1. [Customer Behavior and Buyer Persona Analysis](#customer-behavior-and-buyer-persona-analysis)
+2. [Customer Pain Points and Needs](#customer-pain-points-and-needs)
+3. [Customer Decision Processes and Journey](#customer-decision-processes-and-journey)
+4. [Competitive Landscape](#competitive-landscape)
+5. [Strategic Synthesis and Recommendations](#strategic-synthesis-and-recommendations)
 
 ---
 

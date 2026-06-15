@@ -26,48 +26,16 @@ Research was conducted across eight web searches covering business model compari
 
 ## Table of Contents
 
-1. Market Research Introduction and Methodology
-2. Market Landscape: LLM Integration Models
-3. Customer Insights: Who Chooses What and Why
-4. Customer Pain Points: The Hidden Costs of Each Model
-5. Customer Decision Processes: How Buyers Evaluate Integration Models
-6. Competitive Landscape: How Leading Platforms Have Decided
-7. Strategic Recommendations for bmad-easy
-8. Risk Assessment and Mitigation
-9. Implementation Roadmap
-10. Future Market Outlook
-11. Source Verification and Methodology
-12. Appendices
-
----
-
-## 1. Market Research Introduction and Methodology
-
-### Research Significance
-
-The LLM provider integration decision is one of the most consequential architectural choices an AI SaaS platform makes before launch. It shapes pricing model, unit economics, legal liability, onboarding flow, enterprise sales motion, and the underlying infrastructure required to operate the platform. Unlike feature decisions that can be reversed cheaply, changing integration models post-launch requires re-billing infrastructure, renegotiating with customers, and often rebuilding core authentication and cost-tracking logic.
-
-The decision is also time-sensitive. The market is in a consolidation phase: major developer tools (JetBrains, VS Code, Warp) added BYOK support in late 2025, signaling that BYOK is becoming a mainstream expectation rather than a power-user edge case. Simultaneously, model costs have dropped dramatically — commodity tokens reached $0.14 per 100K in 2025 — putting pressure on proxy margins while making managed models cheaper to operate than ever.
-
-### Methodology
-
-- **Web research period:** June 14, 2026
-- **Search queries executed:** 9 parallel searches across business model, sentiment, margin, competitive, security, fraud, churn, gateway comparison, and hybrid model dimensions
-- **Sources consulted:** Market analysis publications, platform documentation, developer blogs, enterprise buyer guides, competitive intelligence reports
-- **Platform context applied:** Research findings were interpreted through the lens of bmad-easy's specific user profile (non-developer agile team members) and technical architecture (Claude Agent SDK, Daytona sandboxes, GitHub integration)
-- **Confidence level:** High for market trends and competitive positioning; Medium for specific margin targets (varies significantly by platform type and scale)
-
-### Research Goals and Achieved Objectives
-
-**Original goal:** Evaluate whether bmad-easy should be a proxy for LLM providers (handling token usage centrally) or allow users to connect their own LLM accounts.
-
-**Achieved objectives:**
-
-1. Characterized the two models' business economics, revenue mechanics, and risk profiles
-2. Identified which customer segments prefer each model and why
-3. Mapped how leading competitors in adjacent spaces have resolved the same question
-4. Assessed the specific implications for bmad-easy's non-developer user base and Claude Code coupling
-5. Derived a clear recommendation with a phased approach
+1. Market Landscape: LLM Integration Models
+2. Customer Insights: Who Chooses What and Why
+3. Customer Pain Points: The Hidden Costs of Each Model
+4. Customer Decision Processes: How Buyers Evaluate Integration Models
+5. Competitive Landscape: How Leading Platforms Have Decided
+6. Strategic Recommendations for bmad-easy
+7. Risk Assessment and Mitigation
+8. Implementation Roadmap
+9. Future Market Outlook
+10. Appendices
 
 ---
 
@@ -467,39 +435,7 @@ Provider consolidation is likely: as Anthropic, OpenAI, and Google compete for e
 
 ---
 
-## 11. Source Verification and Methodology
-
-### Primary Sources Consulted
-
-- [BYOK vs Managed AI Keys - LockLLM Blog](https://www.lockllm.com/blog/BYOK-vs-managed-keys)
-- [BYOK Is Now Live in JetBrains IDEs](https://blog.jetbrains.com/ai/2025/12/bring-your-own-key-byok-is-now-live-in-jetbrains-ides/)
-- [Why BYOK Is the Strategic Choice for AI in 2026 - GeekFlare](https://geekflare.com/guides/byok-ai-business-strategy/)
-- [BYOK AI Platform Guide 2026 - MoClaw](https://moclaw.ai/blog/byok-ai-platform-2026-guide)
-- [BYOK for AI Review - DeepSource](https://deepsource.com/blog/byok)
-- [VS Code Expands AI Flexibility with BYOK](https://visualstudiomagazine.com/articles/2025/10/30/vs-code-expands-ai-flexibility-with-bring-your-own-key.aspx)
-
-### Competitive Analysis Sources
-
-- [AI Coding Tools Pricing Comparison 2026 - NxCode](https://www.nxcode.io/resources/news/ai-coding-tools-pricing-comparison-2026)
-- [Cursor vs Windsurf vs GitHub Copilot 2026 - CodeAnt](https://www.codeant.ai/blogs/best-ai-code-editor-cursor-vs-windsurf-vs-copilot)
-- [Portkey vs LiteLLM vs OpenRouter 2026 - ToolHalla](https://toolhalla.ai/blog/openrouter-vs-litellm-vs-portkey-2026)
-- [Best LLM Gateways 2026 - TrueFoundry](https://www.truefoundry.com/blog/best-llm-gateways)
-- [OpenRouter vs LiteLLM vs Portkey 2026 - ToolHalla](https://toolhalla.ai/blog/openrouter-vs-litellm-vs-portkey-2026)
-
-### Economics and Margin Sources
-
-- [Hidden Economics of AI SaaS 2026](https://the-marketinghub.com/blog/hidden-economics-ai-saas-2026/)
-- [How to Price AI Services 2025 - Monetizely](https://www.getmonetizely.com/articles/how-to-price-ai-services-in-2025-models-examples-and-strategy-for-saas-leaders)
-- [AI Credit Pricing Models 2026 - Solvimon](https://www.solvimon.com/blog/ai-credit-pricing-models-how-tokens-credits-hybrid-billing-work)
-- [2026 Trends From 50+ AI Pricing Models - Metronome](https://metronome.com/blog/2026-trends-from-cataloging-50-ai-pricing-models)
-- [Kinde BYOK Pricing](https://www.kinde.com/learn/billing/billing-for-ai/byok-pricing/)
-
-### Security and Compliance Sources
-
-- [Real-time API Abuse Prevention - Stripe](https://stripe.com/resources/more/real-time-api-abuse-prevention-for-saas-and-ai-platforms)
-- [The BYOK Problem - ComplianceScorecard](https://compliancescorecard.com/byok/)
-- [Enterprise Agentic AI Landscape 2026 - Kai Waehner](https://www.kai-waehner.de/blog/2026/04/06/enterprise-agentic-ai-landscape-2026-trust-flexibility-and-vendor-lock-in/)
-- [LLM Proxy Usage Statistics - MintMCP](https://www.mintmcp.com/blog/llm-proxy-usage-statistics)
+## 11. Source Verification
 
 ### Research Quality Assessment
 
