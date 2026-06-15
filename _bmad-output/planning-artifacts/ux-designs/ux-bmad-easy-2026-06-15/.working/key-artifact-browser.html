@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bmad-easy — Artifact Browser</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0D0D11;
+    color: #EDECF5;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 1280px;
+  }
+
+  /* Browser chrome */
+  .browser-chrome {
+    background: #1E1E26;
+    border-bottom: 1px solid #2B2B38;
+    padding: 0 12px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chrome-dots { display: flex; gap: 6px; }
+  .chrome-dot { width: 12px; height: 12px; border-radius: 9999px; }
+  .dot-red   { background: #FF5F57; }
+  .dot-yellow{ background: #FFBD2E; }
+  .dot-green { background: #28CA41; }
+  .chrome-address-bar {
+    flex: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chrome-lock { color: #3ECF8E; font-size: 10px; }
+
+  /* App shell */
+  .app-shell {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Side nav */
+  .side-nav {
+    width: 240px;
+    flex-shrink: 0;
+    background: #16161C;
+    border-right: 1px solid #1E1E26;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .nav-wordmark {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #1E1E26;
+  }
+  .wordmark-text { font-size: 1rem; font-weight: 600; color: #EDECF5; letter-spacing: -0.02em; }
+  .wordmark-dot  { color: #7B6EE8; }
+
+  .nav-new-btn {
+    margin: 12px 12px 8px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid #7B6EE8;
+    border-radius: 8px;
+    color: #7B6EE8;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    font-family: inherit;
+  }
+
+  .nav-conversations {
+    flex: 1;
+    overflow: hidden;
+    padding: 4px 0;
+  }
+
+  .nav-item {
+    display: block;
+    padding: 7px 12px;
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nav-item.active {
+    background: #1E1E26;
+    color: #EDECF5;
+    border-radius: 6px;
+    margin: 1px 6px;
+    padding: 7px 6px;
+  }
+
+  .nav-separator {
+    height: 1px;
+    background: #1E1E26;
+    margin: 8px 16px;
+  }
+
+  .nav-bottom {
+    padding: 8px 12px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .avatar-circle {
+    width: 32px; height: 32px;
+    border-radius: 9999px;
+    background: #7B6EE8;
+    color: #FFFFFF;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .nav-bottom-label { font-size: 0.75rem; color: #8D8CA0; }
+
+  /* Content area */
+  .content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0D0D11;
+  }
+
+  /* Page header */
+  .page-header {
+    padding: 24px 0 0;
+    flex-shrink: 0;
+    border-bottom: 1px solid #1E1E26;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .page-header-row {
+    display: flex;
+    align-items: center;
+    padding: 0 24px 16px;
+    gap: 12px;
+  }
+  .breadcrumb {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+  }
+  .breadcrumb:hover { color: #EDECF5; }
+  .page-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.75rem;
+    color: #EDECF5;
+  }
+
+  /* Two-column layout */
+  .two-col {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Artifact list pane */
+  .artifact-list-pane {
+    width: 280px;
+    flex-shrink: 0;
+    border-right: 1px solid #1E1E26;
+    overflow-y: auto;
+    padding: 12px 0;
+  }
+  .artifact-list-pane::-webkit-scrollbar { display: none; }
+
+  .list-entry {
+    padding: 10px 16px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: relative;
+  }
+  .list-entry:hover { background: rgba(30,30,38,0.6); }
+  .list-entry.selected {
+    background: #1E1E26;
+    border-left: 2px solid #7B6EE8;
+    padding-left: 14px;
+  }
+
+  .entry-type {
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
+  .entry-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #EDECF5;
+  }
+  .list-entry:not(.selected) .entry-title { color: #EDECF5; }
+
+  .entry-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+  .entry-date { font-size: 0.75rem; color: #56556A; }
+
+  .badge-completed {
+    border: 1px solid #2B2B38;
+    background: transparent;
+    color: #8D8CA0;
+    border-radius: 9999px;
+    padding: 1px 7px;
+    font-size: 0.7rem;
+  }
+  .badge-in-progress {
+    border: 1px solid #F2A944;
+    background: rgba(242,169,68,0.08);
+    color: #F2A944;
+    border-radius: 9999px;
+    padding: 1px 7px;
+    font-size: 0.7rem;
+  }
+
+  /* Artifact content pane */
+  .artifact-content-pane {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 48px;
+  }
+  .artifact-content-pane::-webkit-scrollbar { display: none; }
+
+  /* Frontmatter badge */
+  .frontmatter-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: #1E1E26;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 6px 12px;
+    margin-bottom: 24px;
+  }
+  .fm-label {
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    font-family: 'JetBrains Mono', 'Fira Mono', monospace;
+  }
+  .fm-value {
+    font-size: 0.75rem;
+    color: #EDECF5;
+    font-family: 'JetBrains Mono', 'Fira Mono', monospace;
+    font-weight: 500;
+  }
+  .fm-sep {
+    width: 1px;
+    height: 14px;
+    background: #2B2B38;
+  }
+  .fm-status {
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    border: 1px solid #2B2B38;
+    border-radius: 9999px;
+    padding: 1px 7px;
+    font-family: 'JetBrains Mono', 'Fira Mono', monospace;
+  }
+
+  /* Rendered Markdown */
+  .md-content {
+    max-width: 720px;
+  }
+
+  .md-h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.75rem;
+    color: #EDECF5;
+    margin-bottom: 16px;
+  }
+
+  .md-p {
+    font-size: 1rem;
+    line-height: 1.5rem;
+    color: #EDECF5;
+    margin-bottom: 20px;
+  }
+
+  .md-h2 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.75rem;
+    color: #EDECF5;
+    margin-top: 28px;
+    margin-bottom: 10px;
+    padding-top: 20px;
+    border-top: 1px solid #1E1E26;
+  }
+  .md-h2:first-of-type { margin-top: 0; }
+
+  .md-ul {
+    padding-left: 20px;
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .md-li {
+    font-size: 1rem;
+    line-height: 1.5rem;
+    color: #EDECF5;
+  }
+  .md-li strong {
+    font-weight: 600;
+    color: #EDECF5;
+  }
+</style>
+</head>
+<body>
+
+<!-- Browser chrome -->
+<div class="browser-chrome">
+  <div class="chrome-dots">
+    <div class="chrome-dot dot-red"></div>
+    <div class="chrome-dot dot-yellow"></div>
+    <div class="chrome-dot dot-green"></div>
+  </div>
+  <div class="chrome-address-bar">
+    <span class="chrome-lock">🔒</span>
+    <span>app.bmad-easy.io/artifacts?id=prd-bmad-easy</span>
+  </div>
+</div>
+
+<!-- App shell -->
+<div class="app-shell">
+
+  <!-- Side nav -->
+  <nav class="side-nav">
+    <div class="nav-wordmark">
+      <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+    </div>
+
+    <button class="nav-new-btn">+ New Conversation</button>
+
+    <div class="nav-conversations">
+      <div class="nav-item">Product requirements session</div>
+      <div class="nav-item">Architecture review prep</div>
+      <div class="nav-item">Sprint planning — Q3</div>
+
+      <div class="nav-separator"></div>
+
+      <div class="nav-item">Project Map</div>
+      <div class="nav-item active">Artifact Browser</div>
+    </div>
+
+    <div class="nav-bottom">
+      <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+      <span class="nav-bottom-label">Settings</span>
+    </div>
+  </nav>
+
+  <!-- Content area -->
+  <div class="content-area">
+
+    <!-- Page header -->
+    <div class="page-header">
+      <div class="page-header-row">
+        <span class="breadcrumb" role="link" tabindex="0" aria-label="Back to Project Map">← Project Map</span>
+        <h1 class="page-title">Artifact Browser</h1>
+      </div>
+    </div>
+
+    <!-- Two-column body -->
+    <div class="two-col">
+
+      <!-- Artifact list pane (280px) -->
+      <div class="artifact-list-pane" role="list" aria-label="Artifact list">
+
+        <!-- PRD — selected -->
+        <div class="list-entry selected" role="listitem" aria-current="true" aria-label="PRD: bmad-easy product requirements — Completed — selected">
+          <span class="entry-type">PRD</span>
+          <span class="entry-title">bmad-easy product requirements</span>
+          <div class="entry-meta">
+            <span class="entry-date">Jun 14</span>
+            <span class="badge-completed">Completed</span>
+          </div>
+        </div>
+
+        <!-- Brainstorming -->
+        <div class="list-entry" role="listitem" aria-label="Brainstorming: Initial ideation session — Completed">
+          <span class="entry-type">Brainstorming</span>
+          <span class="entry-title">Initial ideation session</span>
+          <div class="entry-meta">
+            <span class="entry-date">Jun 12</span>
+            <span class="badge-completed">Completed</span>
+          </div>
+        </div>
+
+        <!-- Brief -->
+        <div class="list-entry" role="listitem" aria-label="Brief: Product brief draft — In progress">
+          <span class="entry-type">Brief</span>
+          <span class="entry-title">Product brief draft</span>
+          <div class="entry-meta">
+            <span class="entry-date">Jun 12</span>
+            <span class="badge-in-progress">In progress</span>
+          </div>
+        </div>
+
+      </div><!-- /artifact-list-pane -->
+
+      <!-- Artifact content pane -->
+      <div class="artifact-content-pane" role="main" aria-label="Artifact content">
+
+        <!-- Frontmatter badge -->
+        <div class="frontmatter-badge" aria-label="Artifact metadata">
+          <span class="fm-label">title</span>
+          <span class="fm-value">PRD: bmad-easy</span>
+          <span class="fm-sep"></span>
+          <span class="fm-label">status</span>
+          <span class="fm-status">draft</span>
+          <span class="fm-sep"></span>
+          <span class="fm-label">updated</span>
+          <span class="fm-value">2026-06-14</span>
+        </div>
+
+        <!-- Rendered Markdown -->
+        <div class="md-content">
+
+          <h1 class="md-h1">PRD: bmad-easy</h1>
+
+          <p class="md-p">This PRD covers the MVP of bmad-easy — a SaaS web platform that gives non-developer agile team members browser-based access to BMAD methodology skills within the context of their shared git repository. It is written for the founding PM, downstream workflow owners, and stakeholders evaluating scope and trade-offs before development begins.</p>
+
+          <h2 class="md-h2">Vision</h2>
+
+          <p class="md-p">BMAD (Breakthrough Method for Agile AI-Driven Development) is built for the whole agile team. Its skill-by-skill structure — PRD creation, brainstorming, domain research, architecture review, sprint planning — is designed to be run by PMs, business analysts, delivery leads, and developers alike, producing shared artifacts in a single repository that the whole team works from.</p>
+
+          <p class="md-p">In practice, only developers participate. BMAD runs through IDE extensions and command-line agent harnesses. Getting a PM or delivery lead to run a brainstorming session means configuring a local development environment, understanding git workflows, and operating tooling that was never built for them. The methodology's team-wide promise breaks at the access layer.</p>
+
+          <p class="md-p">bmad-easy removes that barrier. Non-dev team members connect their git repository to the platform, open a Conversation with the Agent, run the same Skill workflows their developers run, and see the Artifact committed to the repository — without touching the terminal or git.</p>
+
+          <h2 class="md-h2">Target User</h2>
+
+          <ul class="md-ul">
+            <li class="md-li"><strong>Primary users (seat holders):</strong> Product Managers, Business Analysts, and Delivery Leads on agile software development teams that are using or adopting BMAD.</li>
+            <li class="md-li"><strong>Decision maker / buyer:</strong> Leader at a growth-stage company (1–200 people) with sufficient authority to purchase bulk subscriptions, evaluating whether bmad-easy sufficiently extends the team's existing BMAD investment to non-dev participants.</li>
+            <li class="md-li"><strong>Developer champion:</strong> The developer who initialised BMAD in the repository — resolving the bottleneck of being the team's BMAD operator for non-dev colleagues.</li>
+          </ul>
+
+        </div><!-- /md-content -->
+
+      </div><!-- /artifact-content-pane -->
+
+    </div><!-- /two-col -->
+
+  </div><!-- /content-area -->
+</div><!-- /app-shell -->
+
+</body>
+</html>

@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bmad-easy — New conversation</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0D0D11;
+    color: #EDECF5;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 1280px;
+  }
+
+  /* Browser chrome */
+  .browser-chrome {
+    background: #1E1E26;
+    border-bottom: 1px solid #2B2B38;
+    padding: 0 12px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chrome-dots { display: flex; gap: 6px; }
+  .chrome-dot { width: 12px; height: 12px; border-radius: 9999px; }
+  .dot-red   { background: #FF5F57; }
+  .dot-yellow{ background: #FFBD2E; }
+  .dot-green { background: #28CA41; }
+  .chrome-address-bar {
+    flex: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chrome-lock { color: #3ECF8E; font-size: 10px; }
+
+  /* App shell */
+  .app-shell {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Side nav */
+  .side-nav {
+    width: 240px;
+    flex-shrink: 0;
+    background: #16161C;
+    border-right: 1px solid #1E1E26;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .nav-wordmark {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #1E1E26;
+  }
+  .wordmark-text {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #EDECF5;
+    letter-spacing: -0.2px;
+  }
+
+  .nav-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 8px;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .new-conv-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid #7B6EE8;
+    border-radius: 8px;
+    color: #7B6EE8;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 8px;
+    background: transparent;
+    font-family: inherit;
+    width: 100%;
+    text-align: left;
+  }
+  .new-conv-btn:hover { background: rgba(123,110,232,0.08); }
+  .new-conv-btn-icon { font-size: 1rem; line-height: 1; }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    gap: 8px;
+  }
+  .nav-item:hover { background: #1E1E26; color: #EDECF5; }
+  .nav-item.active { background: #1E1E26; color: #EDECF5; }
+
+  .nav-sep {
+    height: 1px;
+    background: #1E1E26;
+    margin: 8px 12px;
+  }
+
+  .nav-footer {
+    padding: 12px 8px;
+    border-top: 1px solid #1E1E26;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .nav-footer:hover .avatar-circle { background: #9083F2; }
+
+  .avatar-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+    background: #7B6EE8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #FFFFFF;
+    flex-shrink: 0;
+  }
+  .avatar-label {
+    font-size: 0.75rem;
+    color: #8D8CA0;
+  }
+
+  /* Content area */
+  .content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0D0D11;
+    position: relative;
+  }
+
+  /* Chat message panel — scrolls independently */
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 32px;
+  }
+
+  /* Empty state — prompt */
+  .chat-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 480px;
+    text-align: center;
+  }
+  .chat-empty-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+  }
+  .chat-empty-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #EDECF5;
+  }
+  .chat-empty-subtitle {
+    font-size: 0.9375rem;
+    color: #8D8CA0;
+    line-height: 1.6;
+  }
+  .chat-empty-subtitle kbd {
+    display: inline-block;
+    background: #1E1E26;
+    border: 1px solid #2B2B38;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: 'JetBrains Mono', 'Fira Mono', monospace;
+    font-size: 0.8125rem;
+    color: #EDECF5;
+    line-height: 1.5;
+  }
+
+  /* Starting session state */
+  .starting-session-overlay {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: 480px;
+    text-align: center;
+  }
+  .starting-session-overlay.visible { display: flex; }
+
+  .starting-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #2B2B38;
+    border-top-color: #7B6EE8;
+    border-radius: 9999px;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .starting-label {
+    font-size: 0.9375rem;
+    color: #8D8CA0;
+  }
+  .starting-message-preview {
+    font-size: 0.875rem;
+    color: #56556A;
+    font-style: italic;
+  }
+
+  /* Chat input area — fixed at bottom */
+  .chat-input-area {
+    flex-shrink: 0;
+    padding: 0 32px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: #0D0D11;
+    position: relative;
+  }
+
+  .chat-input-box {
+    background: #1E1E26;
+    border: 1px solid #2B2B38;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .chat-input-box.focused {
+    border-color: #7B6EE8;
+    box-shadow: 0 0 0 2px rgba(123,110,232,0.15);
+  }
+
+  .chat-textarea {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 1rem;
+    color: #EDECF5;
+    font-family: inherit;
+    resize: none;
+    line-height: 1.5;
+    min-height: 28px;
+    max-height: 200px;
+    overflow-y: auto;
+    width: 100%;
+  }
+  .chat-textarea::placeholder { color: #56556A; }
+
+  .chat-input-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .working-tree-hidden {
+    font-size: 0.75rem;
+    color: #56556A;
+  }
+
+  .send-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    background: #7B6EE8;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .send-button:hover { background: #9083F2; }
+  .send-button.disabled {
+    background: #1E1E26;
+    color: #56556A;
+    border: 1px solid #2B2B38;
+    cursor: not-allowed;
+  }
+  .send-button.loading {
+    background: #56556A;
+    cursor: not-allowed;
+  }
+
+  /* Slash command picker (floating above input) */
+  .slash-picker {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 32px;
+    right: 32px;
+    max-width: 320px;
+    background: #1E1E26;
+    border: 1px solid #2B2B38;
+    border-radius: 12px;
+    overflow: hidden;
+    display: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .slash-picker.visible { display: block; }
+  .slash-picker-header {
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    color: #56556A;
+    border-bottom: 1px solid #2B2B38;
+  }
+  .slash-item {
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .slash-item:hover, .slash-item.focused {
+    background: #2B2B38;
+    color: #EDECF5;
+  }
+  .slash-item.focused { background: #2B2B38; color: #EDECF5; }
+  .slash-item-name { font-weight: 500; color: #EDECF5; }
+  .slash-item-desc { font-size: 0.75rem; color: #56556A; }
+
+  /* Variant toggle */
+  .variant-bar {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    color: #56556A;
+    z-index: 10;
+  }
+  .variant-btn {
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #8D8CA0;
+    font-size: 0.75rem;
+    font-family: inherit;
+  }
+  .variant-btn.active {
+    background: rgba(123,110,232,0.12);
+    border-color: #7B6EE8;
+    color: #9083F2;
+  }
+
+  /* Annotation band */
+  .annotation-band {
+    background: #16161C;
+    border-top: 1px solid #2B2B38;
+    padding: 12px 32px;
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .annotation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+  }
+  .annotation-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- Browser chrome -->
+<div class="browser-chrome">
+  <div class="chrome-dots">
+    <div class="chrome-dot dot-red"></div>
+    <div class="chrome-dot dot-yellow"></div>
+    <div class="chrome-dot dot-green"></div>
+  </div>
+  <div class="chrome-address-bar">
+    <span class="chrome-lock">🔒</span>
+    app.bmad-easy.com/conversations/new
+  </div>
+</div>
+
+<!-- App shell -->
+<div class="app-shell">
+
+  <!-- Side nav -->
+  <nav class="side-nav">
+    <div class="nav-wordmark">
+      <span class="wordmark-text">bmad-easy</span>
+    </div>
+    <div class="nav-body">
+      <button class="new-conv-btn active">
+        <span class="new-conv-btn-icon">+</span>
+        New conversation
+      </button>
+      <!-- Conversation list (recent) -->
+      <div class="nav-item">Onboarding docs review</div>
+      <div class="nav-item">Q3 roadmap brainstorm</div>
+      <div class="nav-item">Feature epic refinement</div>
+      <div class="nav-sep"></div>
+      <div class="nav-item">Project Map</div>
+      <div class="nav-item">Artifact Browser</div>
+    </div>
+    <div class="nav-footer">
+      <div class="avatar-circle">SM</div>
+      <span class="avatar-label">Settings</span>
+    </div>
+  </nav>
+
+  <!-- Content area -->
+  <div class="content-area" id="content-area">
+
+    <!-- Variant toggle (mock control) -->
+    <div class="variant-bar">
+      Variant:
+      <button class="variant-btn active" onclick="setVariant('idle')">Idle</button>
+      <button class="variant-btn" onclick="setVariant('slash')">/ picker</button>
+      <button class="variant-btn" onclick="setVariant('starting')">Starting session</button>
+    </div>
+
+    <!-- Chat messages panel -->
+    <div class="chat-messages" id="chat-messages">
+
+      <!-- Idle state: empty state prompt -->
+      <div class="chat-empty-state" id="state-idle">
+        <div class="chat-empty-icon">✦</div>
+        <div class="chat-empty-title">Start a new conversation</div>
+        <div class="chat-empty-subtitle">
+          Press <kbd>/</kbd> to browse available skills, or type a message to start.
+        </div>
+      </div>
+
+      <!-- Starting session state -->
+      <div class="starting-session-overlay" id="state-starting">
+        <div class="starting-spinner"></div>
+        <div class="starting-label">Starting session…</div>
+        <div class="starting-message-preview">Your message will send automatically when ready.</div>
+      </div>
+
+    </div>
+
+    <!-- Chat input area — fixed at bottom -->
+    <div class="chat-input-area" id="chat-input-area">
+
+      <!-- Slash command picker (shown in slash-picker variant) -->
+      <div class="slash-picker" id="slash-picker">
+        <div class="slash-picker-header">Skills — type to filter</div>
+        <div class="slash-item focused">
+          <div>
+            <div class="slash-item-name">/bmad-prd</div>
+            <div class="slash-item-desc">Create or refine a Product Requirements Document</div>
+          </div>
+        </div>
+        <div class="slash-item">
+          <div>
+            <div class="slash-item-name">/bmad-brief</div>
+            <div class="slash-item-desc">Draft a product brief from discovery notes</div>
+          </div>
+        </div>
+        <div class="slash-item">
+          <div>
+            <div class="slash-item-name">/bmad-epics</div>
+            <div class="slash-item-desc">Generate epics and user stories from a PRD</div>
+          </div>
+        </div>
+        <div class="slash-item">
+          <div>
+            <div class="slash-item-name">/bmad-research</div>
+            <div class="slash-item-desc">Produce a technical or market research report</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input box -->
+      <div class="chat-input-box" id="chat-input-box">
+        <textarea
+          class="chat-textarea"
+          id="chat-textarea"
+          placeholder="Message bmad-easy…"
+          rows="1"
+        ></textarea>
+        <div class="chat-input-controls">
+          <span class="working-tree-hidden" id="working-tree-area">
+            <!-- Working tree indicator hidden on new conversation (no session yet) -->
+          </span>
+          <button class="send-button disabled" id="send-btn">
+            Send
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Annotation band -->
+<div class="annotation-band">
+  <div class="annotation">
+    <div class="annotation-dot" style="background:#7B6EE8;"></div>
+    No stable URL until first message sent
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot" style="background:#8D8CA0;"></div>
+    Working tree indicator hidden — no session yet
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot" style="background:#7B6EE8;"></div>
+    Sandbox provisioning begins on page load (background)
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot" style="background:#F2A944;"></div>
+    "Starting session…" only if sandbox not ready when message sent
+  </div>
+</div>
+
+<script>
+  function setVariant(v) {
+    document.querySelectorAll('.variant-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    const idle = document.getElementById('state-idle');
+    const starting = document.getElementById('state-starting');
+    const slashPicker = document.getElementById('slash-picker');
+    const textarea = document.getElementById('chat-textarea');
+    const sendBtn = document.getElementById('send-btn');
+    const inputBox = document.getElementById('chat-input-box');
+
+    // Reset
+    idle.style.display = 'none';
+    starting.classList.remove('visible');
+    slashPicker.classList.remove('visible');
+    textarea.value = '';
+    sendBtn.className = 'send-button disabled';
+    inputBox.classList.remove('focused');
+
+    if (v === 'idle') {
+      idle.style.display = 'flex';
+    } else if (v === 'slash') {
+      idle.style.display = 'flex';
+      textarea.value = '/';
+      sendBtn.className = 'send-button';
+      inputBox.classList.add('focused');
+      slashPicker.classList.add('visible');
+    } else if (v === 'starting') {
+      starting.classList.add('visible');
+      sendBtn.className = 'send-button loading';
+      textarea.value = '/bmad-prd';
+      textarea.disabled = true;
+      setTimeout(() => { textarea.disabled = false; }, 99999);
+    }
+  }
+  // Init
+  document.getElementById('state-idle').style.display = 'flex';
+
+  // Enable send button when textarea has content
+  const ta = document.getElementById('chat-textarea');
+  ta.addEventListener('input', () => {
+    const btn = document.getElementById('send-btn');
+    if (ta.value.trim()) {
+      btn.className = 'send-button';
+    } else {
+      btn.className = 'send-button disabled';
+    }
+  });
+</script>
+</body>
+</html>

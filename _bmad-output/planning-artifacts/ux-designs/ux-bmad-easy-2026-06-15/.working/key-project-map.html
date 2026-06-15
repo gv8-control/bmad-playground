@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bmad-easy — Project Map</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0D0D11;
+    color: #EDECF5;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 1280px;
+  }
+
+  /* Browser chrome */
+  .browser-chrome {
+    background: #1E1E26;
+    border-bottom: 1px solid #2B2B38;
+    padding: 0 12px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chrome-dots { display: flex; gap: 6px; }
+  .chrome-dot { width: 12px; height: 12px; border-radius: 9999px; }
+  .dot-red   { background: #FF5F57; }
+  .dot-yellow{ background: #FFBD2E; }
+  .dot-green { background: #28CA41; }
+  .chrome-address-bar {
+    flex: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chrome-lock { color: #3ECF8E; font-size: 10px; }
+
+  /* App shell */
+  .app-shell {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Side nav */
+  .side-nav {
+    width: 240px;
+    flex-shrink: 0;
+    background: #16161C;
+    border-right: 1px solid #1E1E26;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .nav-wordmark {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #1E1E26;
+  }
+  .wordmark-text { font-size: 1rem; font-weight: 600; color: #EDECF5; letter-spacing: -0.02em; }
+  .wordmark-dot  { color: #7B6EE8; }
+
+  .nav-new-btn {
+    margin: 12px 12px 8px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid #7B6EE8;
+    border-radius: 8px;
+    color: #7B6EE8;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    font-family: inherit;
+  }
+
+  .nav-conversations {
+    flex: 1;
+    overflow: hidden;
+    padding: 4px 0;
+  }
+
+  .nav-item {
+    display: block;
+    padding: 7px 12px;
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nav-item.active {
+    background: #1E1E26;
+    color: #EDECF5;
+    border-radius: 6px;
+    margin: 1px 6px;
+    padding: 7px 6px;
+  }
+
+  .nav-separator {
+    height: 1px;
+    background: #1E1E26;
+    margin: 8px 16px;
+  }
+
+  .nav-bottom {
+    padding: 8px 12px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .avatar-circle {
+    width: 32px; height: 32px;
+    border-radius: 9999px;
+    background: #7B6EE8;
+    color: #FFFFFF;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .nav-bottom-label { font-size: 0.75rem; color: #8D8CA0; }
+
+  /* Content area */
+  .content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0D0D11;
+  }
+
+  /* Page header */
+  .page-header {
+    padding: 32px 40px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #1E1E26;
+    flex-shrink: 0;
+  }
+  .page-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.75rem;
+    color: #EDECF5;
+  }
+  .refresh-btn {
+    background: transparent;
+    border: none;
+    color: #8D8CA0;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .refresh-icon {
+    /* Unicode refresh arrow */
+    font-size: 15px;
+    display: inline-block;
+  }
+
+  /* Artifact list */
+  .artifact-list {
+    padding: 24px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+  }
+  .artifact-list::-webkit-scrollbar { display: none; }
+
+  /* Artifact card */
+  .artifact-card {
+    background: #1E1E26;
+    border: 1px solid #2B2B38;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    max-width: 720px;
+  }
+  .artifact-card:hover { border-color: #3b3b4f; }
+
+  .artifact-card-left {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .artifact-type {
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
+  .artifact-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #EDECF5;
+  }
+
+  /* Status badges */
+  .badge-completed {
+    border: 1px solid #2B2B38;
+    background: transparent;
+    color: #8D8CA0;
+    border-radius: 9999px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .badge-in-progress {
+    border: 1px solid #F2A944;
+    background: rgba(242,169,68,0.08);
+    color: #F2A944;
+    border-radius: 9999px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- Browser chrome -->
+<div class="browser-chrome">
+  <div class="chrome-dots">
+    <div class="chrome-dot dot-red"></div>
+    <div class="chrome-dot dot-yellow"></div>
+    <div class="chrome-dot dot-green"></div>
+  </div>
+  <div class="chrome-address-bar">
+    <span class="chrome-lock">🔒</span>
+    <span>app.bmad-easy.io/</span>
+  </div>
+</div>
+
+<!-- App shell -->
+<div class="app-shell">
+
+  <!-- Side nav -->
+  <nav class="side-nav">
+    <div class="nav-wordmark">
+      <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+    </div>
+
+    <button class="nav-new-btn">+ New Conversation</button>
+
+    <div class="nav-conversations">
+      <div class="nav-item">Product requirements session</div>
+      <div class="nav-item">Architecture review prep</div>
+      <div class="nav-item">Sprint planning — Q3</div>
+
+      <div class="nav-separator"></div>
+
+      <div class="nav-item active">Project Map</div>
+      <div class="nav-item">Artifact Browser</div>
+    </div>
+
+    <div class="nav-bottom">
+      <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+      <span class="nav-bottom-label">Settings</span>
+    </div>
+  </nav>
+
+  <!-- Content area -->
+  <div class="content-area">
+
+    <!-- Page header -->
+    <div class="page-header">
+      <h1 class="page-title">Project Map</h1>
+      <button class="refresh-btn" aria-label="Refresh Project Map">
+        <span class="refresh-icon">↺</span>
+      </button>
+    </div>
+
+    <!-- Artifact list -->
+    <div class="artifact-list" role="list">
+
+      <!-- Card 1: PRD — completed -->
+      <div class="artifact-card" role="listitem" tabindex="0" aria-label="PRD: bmad-easy product requirements — Completed">
+        <div class="artifact-card-left">
+          <span class="artifact-type">PRD</span>
+          <span class="artifact-title">bmad-easy product requirements</span>
+        </div>
+        <span class="badge-completed">Completed</span>
+      </div>
+
+      <!-- Card 2: Brainstorming — completed -->
+      <div class="artifact-card" role="listitem" tabindex="0" aria-label="Brainstorming: Initial ideation session — Completed">
+        <div class="artifact-card-left">
+          <span class="artifact-type">Brainstorming</span>
+          <span class="artifact-title">Initial ideation session</span>
+        </div>
+        <span class="badge-completed">Completed</span>
+      </div>
+
+      <!-- Card 3: Brief — in progress -->
+      <div class="artifact-card" role="listitem" tabindex="0" aria-label="Brief: Product brief draft — In progress">
+        <div class="artifact-card-left">
+          <span class="artifact-type">Brief</span>
+          <span class="artifact-title">Product brief draft</span>
+        </div>
+        <span class="badge-in-progress">In progress</span>
+      </div>
+
+    </div><!-- /artifact-list -->
+
+  </div><!-- /content-area -->
+</div><!-- /app-shell -->
+
+</body>
+</html>

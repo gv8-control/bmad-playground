@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bmad-easy — Connect your repository</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0D0D11;
+    color: #EDECF5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 1280px;
+  }
+
+  /* Browser chrome */
+  .browser-chrome {
+    background: #1E1E26;
+    border-bottom: 1px solid #2B2B38;
+    padding: 0 12px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chrome-dots { display: flex; gap: 6px; }
+  .chrome-dot { width: 12px; height: 12px; border-radius: 9999px; }
+  .dot-red   { background: #FF5F57; }
+  .dot-yellow{ background: #FFBD2E; }
+  .dot-green { background: #28CA41; }
+  .chrome-address-bar {
+    flex: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chrome-lock { color: #3ECF8E; font-size: 10px; }
+
+  /* Pre-app shell */
+  .pre-shell {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+  }
+
+  .onboarding-card {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  /* Header */
+  .onboarding-header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .onboarding-step-label {
+    font-size: 0.75rem;
+    color: #7B6EE8;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .onboarding-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #EDECF5;
+    line-height: 1.25;
+  }
+  .onboarding-subtitle {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+
+  /* Form */
+  .onboarding-form {
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 16px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .field-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #EDECF5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .field-label-help {
+    font-weight: 400;
+    color: #56556A;
+    font-size: 0.75rem;
+  }
+
+  .field-input {
+    width: 100%;
+    background: #0D0D11;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.9375rem;
+    color: #EDECF5;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .field-input:focus {
+    border-color: #7B6EE8;
+    box-shadow: 0 0 0 2px rgba(123,110,232,0.2);
+  }
+  .field-input.error {
+    border-color: #F06B6B;
+  }
+  .field-input.readonly {
+    color: #8D8CA0;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  .field-input::placeholder { color: #56556A; }
+
+  .field-hint {
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .field-hint a {
+    color: #7B6EE8;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .field-hint a:hover { color: #9083F2; text-decoration: underline; }
+
+  .field-error {
+    font-size: 0.75rem;
+    color: #F06B6B;
+    display: none;
+  }
+  .field-error.visible { display: block; }
+
+  .connect-button {
+    width: 100%;
+    padding: 11px 20px;
+    background: #7B6EE8;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .connect-button:hover { background: #9083F2; }
+  .connect-button.loading {
+    background: #56556A;
+    pointer-events: none;
+  }
+
+  /* Spinner */
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #FFFFFF;
+    border-radius: 9999px;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* BMAD not found blocking state */
+  .bmad-not-found {
+    background: rgba(240,107,107,0.08);
+    border: 1px solid #F06B6B;
+    border-radius: 12px;
+    padding: 16px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .bmad-not-found.visible { display: flex; }
+  .bmad-not-found-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #EDECF5;
+  }
+  .bmad-not-found-body {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    line-height: 1.5;
+  }
+  .bmad-not-found-body a { color: #F06B6B; text-decoration: underline; }
+
+  /* State toggle (for mock variant display) */
+  .mock-variant-bar {
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+  }
+  .variant-label { color: #56556A; }
+  .variant-pill {
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #1E1E26;
+    color: #8D8CA0;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .variant-pill.active {
+    background: rgba(123,110,232,0.12);
+    border-color: #7B6EE8;
+    color: #9083F2;
+  }
+
+  /* Annotation band */
+  .annotation-band {
+    background: #16161C;
+    border-top: 1px solid #2B2B38;
+    padding: 12px 32px;
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .annotation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+  }
+  .annotation-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  .dot-accent { background: #7B6EE8; }
+  .dot-caution { background: #F2A944; }
+  .dot-negative { background: #F06B6B; }
+</style>
+</head>
+<body>
+
+<!-- Browser chrome -->
+<div class="browser-chrome">
+  <div class="chrome-dots">
+    <div class="chrome-dot dot-red"></div>
+    <div class="chrome-dot dot-yellow"></div>
+    <div class="chrome-dot dot-green"></div>
+  </div>
+  <div class="chrome-address-bar">
+    <span class="chrome-lock">🔒</span>
+    app.bmad-easy.com/onboarding
+  </div>
+</div>
+
+<!-- Pre-app shell -->
+<div class="pre-shell">
+  <div class="onboarding-card">
+
+    <!-- Heading -->
+    <div class="onboarding-header">
+      <div class="onboarding-step-label">Setup · Step 1 of 1</div>
+      <div class="onboarding-title">Connect your repository</div>
+      <div class="onboarding-subtitle">
+        bmad-easy reads from and writes to your GitHub repository.
+        You'll need a repository that's already been set up for BMAD.
+      </div>
+    </div>
+
+    <!-- Form: default (idle) state -->
+    <div class="onboarding-form" id="form-idle">
+
+      <!-- Repository URL field -->
+      <div class="field-group">
+        <label class="field-label" for="repo-url">
+          Repository URL
+        </label>
+        <input
+          class="field-input"
+          id="repo-url"
+          type="url"
+          placeholder="https://github.com/your-org/your-repo"
+          value="https://github.com/acme-corp/product-repo"
+        />
+        <div class="field-error" id="url-error">Enter a valid GitHub repository URL.</div>
+      </div>
+
+      <!-- Access token field -->
+      <div class="field-group">
+        <label class="field-label" for="access-token">
+          Access token
+        </label>
+        <input
+          class="field-input"
+          id="access-token"
+          type="password"
+          placeholder="github_pat_…"
+          value="github_pat_11A••••••••••••••••••••"
+        />
+        <div class="field-hint">
+          Needs <code style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;background:#1E1E26;padding:1px 5px;border-radius:4px;">contents:write</code> scope. &nbsp;
+          <a href="#">How to generate an access token ↗</a>
+        </div>
+        <div class="field-error" id="token-error">Access token is invalid or has insufficient permissions.</div>
+      </div>
+
+      <!-- Connect button -->
+      <button class="connect-button" id="btn-connect">
+        Connect repository
+      </button>
+
+    </div>
+
+    <!-- Validating state (shown when connecting) -->
+    <div class="onboarding-form" id="form-validating" style="display:none;">
+
+      <div class="field-group">
+        <label class="field-label">Repository URL</label>
+        <input class="field-input readonly" type="url" value="https://github.com/acme-corp/product-repo" readonly />
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Access token</label>
+        <input class="field-input readonly" type="password" value="github_pat_11A••••••••••••••••••••" readonly />
+      </div>
+
+      <button class="connect-button loading">
+        <div class="spinner"></div>
+        Validating…
+      </button>
+
+    </div>
+
+    <!-- BMAD not found error -->
+    <div class="bmad-not-found" id="bmad-error">
+      <div class="bmad-not-found-title">BMAD not set up in this repository</div>
+      <div class="bmad-not-found-body">
+        This repository hasn't been set up for BMAD yet. Ask a developer to initialise BMAD, then try again.
+        <br><br>
+        <a href="#">Learn how to set up BMAD ↗</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Annotation band -->
+<div class="annotation-band">
+  <div class="annotation">
+    <div class="annotation-dot dot-accent"></div>
+    Step 1 of 1 — single-page onboarding
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot" style="background:#8D8CA0;"></div>
+    Validating state: fields become read-only, spinner replaces button label
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot dot-caution"></div>
+    Token field cleared on back navigation (security)
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot dot-negative"></div>
+    BMAD not found: non-dismissible blocking message
+  </div>
+</div>
+
+<script>
+  // Simple variant toggler for the mock
+  const btnConnect = document.getElementById('btn-connect');
+  const formIdle = document.getElementById('form-idle');
+  const formValidating = document.getElementById('form-validating');
+  const bmadError = document.getElementById('bmad-error');
+
+  let state = 'idle'; // idle → validating → error → idle
+  btnConnect.addEventListener('click', () => {
+    state = 'validating';
+    formIdle.style.display = 'none';
+    formValidating.style.display = 'flex';
+    setTimeout(() => {
+      state = 'error';
+      formValidating.style.display = 'none';
+      formIdle.style.display = 'flex';
+      bmadError.classList.add('visible');
+    }, 2000);
+  });
+</script>
+</body>
+</html>

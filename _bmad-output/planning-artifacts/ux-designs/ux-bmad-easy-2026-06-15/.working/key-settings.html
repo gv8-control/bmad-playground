@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bmad-easy — Settings</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0D0D11;
+    color: #EDECF5;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 1280px;
+  }
+
+  /* Browser chrome */
+  .browser-chrome {
+    background: #1E1E26;
+    border-bottom: 1px solid #2B2B38;
+    padding: 0 12px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chrome-dots { display: flex; gap: 6px; }
+  .chrome-dot { width: 12px; height: 12px; border-radius: 9999px; }
+  .dot-red   { background: #FF5F57; }
+  .dot-yellow{ background: #FFBD2E; }
+  .dot-green { background: #28CA41; }
+  .chrome-address-bar {
+    flex: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chrome-lock { color: #3ECF8E; font-size: 10px; }
+
+  /* App shell */
+  .app-shell {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Side nav */
+  .side-nav {
+    width: 240px;
+    flex-shrink: 0;
+    background: #16161C;
+    border-right: 1px solid #1E1E26;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .nav-wordmark {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #1E1E26;
+  }
+  .wordmark-text {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #EDECF5;
+    letter-spacing: -0.2px;
+  }
+
+  .nav-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 8px;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .new-conv-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid #7B6EE8;
+    border-radius: 8px;
+    color: #7B6EE8;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 8px;
+    background: transparent;
+    font-family: inherit;
+    width: 100%;
+    text-align: left;
+  }
+  .new-conv-btn:hover { background: rgba(123,110,232,0.08); }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    gap: 8px;
+  }
+  .nav-item:hover { background: #1E1E26; color: #EDECF5; }
+  .nav-item.active { background: #1E1E26; color: #EDECF5; }
+
+  .nav-sep {
+    height: 1px;
+    background: #1E1E26;
+    margin: 8px 12px;
+  }
+
+  .nav-footer {
+    padding: 12px 8px;
+    border-top: 1px solid #1E1E26;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    border-radius: 8px;
+    background: #1E1E26;
+    margin: 0 0 8px;
+  }
+
+  .avatar-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+    background: #7B6EE8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #FFFFFF;
+    flex-shrink: 0;
+  }
+  .avatar-label {
+    font-size: 0.875rem;
+    color: #EDECF5;
+    font-weight: 500;
+  }
+
+  /* Content area */
+  .content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0D0D11;
+  }
+
+  /* Page header */
+  .page-header {
+    flex-shrink: 0;
+    padding: 20px 40px 0;
+    border-bottom: 1px solid #1E1E26;
+    display: flex;
+    align-items: flex-end;
+    gap: 0;
+    padding-bottom: 0;
+  }
+  .page-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #EDECF5;
+    padding-bottom: 16px;
+  }
+
+  /* Settings body */
+  .settings-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 40px;
+  }
+
+  .coming-soon-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 400px;
+    text-align: center;
+  }
+
+  .coming-soon-icon {
+    width: 56px;
+    height: 56px;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: #56556A;
+  }
+
+  .coming-soon-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #EDECF5;
+  }
+
+  .coming-soon-body {
+    font-size: 0.9375rem;
+    color: #8D8CA0;
+    line-height: 1.6;
+  }
+
+  /* Teaser items */
+  .coming-soon-items {
+    margin-top: 8px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+  }
+
+  .teaser-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #16161C;
+    border: 1px solid #1E1E26;
+    border-radius: 8px;
+  }
+  .teaser-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: #2B2B38;
+    flex-shrink: 0;
+  }
+  .teaser-text {
+    font-size: 0.875rem;
+    color: #56556A;
+  }
+
+  /* Annotation band */
+  .annotation-band {
+    background: #16161C;
+    border-top: 1px solid #2B2B38;
+    padding: 12px 32px;
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .annotation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+  }
+  .annotation-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- Browser chrome -->
+<div class="browser-chrome">
+  <div class="chrome-dots">
+    <div class="chrome-dot dot-red"></div>
+    <div class="chrome-dot dot-yellow"></div>
+    <div class="chrome-dot dot-green"></div>
+  </div>
+  <div class="chrome-address-bar">
+    <span class="chrome-lock">🔒</span>
+    app.bmad-easy.com/settings
+  </div>
+</div>
+
+<!-- App shell -->
+<div class="app-shell">
+
+  <!-- Side nav -->
+  <nav class="side-nav">
+    <div class="nav-wordmark">
+      <span class="wordmark-text">bmad-easy</span>
+    </div>
+    <div class="nav-body">
+      <button class="new-conv-btn">
+        <span>+</span>
+        New conversation
+      </button>
+      <div class="nav-item">PRD discovery session</div>
+      <div class="nav-item">Onboarding docs review</div>
+      <div class="nav-item">Q3 roadmap brainstorm</div>
+      <div class="nav-item">Feature epic refinement</div>
+      <div class="nav-item">Competitor research</div>
+      <div class="nav-sep"></div>
+      <div class="nav-item">Project Map</div>
+      <div class="nav-item">Artifact Browser</div>
+    </div>
+    <!-- Settings active state — avatar in footer position -->
+    <div style="padding: 0 8px 12px;">
+      <div class="nav-footer">
+        <div class="avatar-circle">SM</div>
+        <span class="avatar-label">Settings</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content area -->
+  <div class="content-area">
+
+    <!-- Page header -->
+    <div class="page-header">
+      <div class="page-title">Settings</div>
+    </div>
+
+    <!-- Settings body -->
+    <div class="settings-body">
+      <div class="coming-soon-block">
+
+        <div class="coming-soon-icon">⚙</div>
+
+        <div class="coming-soon-title">Settings coming soon</div>
+
+        <div class="coming-soon-body">
+          Account management, repository connections, and notification preferences will be available here in a future release.
+        </div>
+
+        <!-- Teaser: what's planned -->
+        <div class="coming-soon-items">
+          <div class="teaser-item">
+            <div class="teaser-dot"></div>
+            <div class="teaser-text">Manage connected repositories</div>
+          </div>
+          <div class="teaser-item">
+            <div class="teaser-dot"></div>
+            <div class="teaser-text">Account and profile</div>
+          </div>
+          <div class="teaser-item">
+            <div class="teaser-dot"></div>
+            <div class="teaser-text">Notification preferences</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Annotation band -->
+<div class="annotation-band">
+  <div class="annotation">
+    <div class="annotation-dot" style="background:#7B6EE8;"></div>
+    Avatar circle in nav footer = Settings entry point (active state shown)
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot" style="background:#8D8CA0;"></div>
+    Static content — no loading, error, or empty states required
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot" style="background:#56556A;"></div>
+    Teaser items are platform copy only — not interactive in MVP
+  </div>
+</div>
+
+</body>
+</html>

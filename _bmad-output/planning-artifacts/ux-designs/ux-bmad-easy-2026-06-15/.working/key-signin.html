@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bmad-easy — Sign in</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0D0D11;
+    color: #EDECF5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 1280px;
+  }
+
+  /* Browser chrome */
+  .browser-chrome {
+    background: #1E1E26;
+    border-bottom: 1px solid #2B2B38;
+    padding: 0 12px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chrome-dots { display: flex; gap: 6px; }
+  .chrome-dot { width: 12px; height: 12px; border-radius: 9999px; }
+  .dot-red   { background: #FF5F57; }
+  .dot-yellow{ background: #FFBD2E; }
+  .dot-green { background: #28CA41; }
+  .chrome-address-bar {
+    flex: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chrome-lock { color: #3ECF8E; font-size: 10px; }
+
+  /* Pre-app shell */
+  .pre-shell {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+  }
+
+  .auth-card {
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+
+  /* Wordmark */
+  .wordmark {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .wordmark-logo {
+    width: 48px;
+    height: 48px;
+    background: #7B6EE8;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #FFFFFF;
+    letter-spacing: -0.5px;
+  }
+  .wordmark-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #EDECF5;
+    letter-spacing: -0.3px;
+  }
+  .wordmark-tagline {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  /* Auth block */
+  .auth-block {
+    width: 100%;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 16px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .auth-heading {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #EDECF5;
+    text-align: center;
+  }
+
+  .github-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 20px;
+    background: #EDECF5;
+    color: #0D0D11;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .github-button:hover { background: #FFFFFF; }
+  .github-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .auth-divider-line {
+    flex: 1;
+    height: 1px;
+    background: #2B2B38;
+  }
+  .auth-divider-text {
+    font-size: 0.75rem;
+    color: #56556A;
+  }
+
+  .auth-switch {
+    text-align: center;
+    font-size: 0.875rem;
+    color: #8D8CA0;
+  }
+  .auth-switch a {
+    color: #7B6EE8;
+    text-decoration: none;
+  }
+  .auth-switch a:hover { color: #9083F2; text-decoration: underline; }
+
+  /* Error state (variant) */
+  .auth-error {
+    background: rgba(240,107,107,0.08);
+    border: 1px solid #F06B6B;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    color: #EDECF5;
+    display: none;
+  }
+  .auth-error.visible { display: block; }
+
+  /* Footer */
+  .auth-footer {
+    font-size: 0.75rem;
+    color: #56556A;
+    text-align: center;
+  }
+  .auth-footer a { color: #56556A; text-decoration: underline; }
+
+  /* Annotation band */
+  .annotation-band {
+    background: #16161C;
+    border-top: 1px solid #2B2B38;
+    padding: 12px 32px;
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .annotation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+  }
+  .annotation-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  .dot-accent { background: #7B6EE8; }
+  .dot-neutral { background: #2B2B38; border: 1px solid #56556A; }
+
+  /* Tab row */
+  .tab-row {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    border-bottom: 1px solid #2B2B38;
+    width: 100%;
+    max-width: 400px;
+  }
+  .tab {
+    padding: 8px 24px;
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab.active {
+    color: #EDECF5;
+    border-bottom-color: #7B6EE8;
+  }
+</style>
+</head>
+<body>
+
+<!-- Browser chrome -->
+<div class="browser-chrome">
+  <div class="chrome-dots">
+    <div class="chrome-dot dot-red"></div>
+    <div class="chrome-dot dot-yellow"></div>
+    <div class="chrome-dot dot-green"></div>
+  </div>
+  <div class="chrome-address-bar">
+    <span class="chrome-lock">🔒</span>
+    app.bmad-easy.com/sign-in
+  </div>
+</div>
+
+<!-- Pre-app shell -->
+<div class="pre-shell">
+  <div class="auth-card">
+
+    <!-- Wordmark -->
+    <div class="wordmark">
+      <div class="wordmark-logo">be</div>
+      <div class="wordmark-name">bmad-easy</div>
+      <div class="wordmark-tagline">BMAD methodology for your whole team,<br>no terminal required.</div>
+    </div>
+
+    <!-- Sign In / Sign Up tabs -->
+    <div class="tab-row">
+      <div class="tab active">Sign in</div>
+      <div class="tab">Sign up</div>
+    </div>
+
+    <!-- Auth card -->
+    <div class="auth-block">
+      <div class="auth-heading">Continue with GitHub</div>
+
+      <!-- GitHub OAuth button -->
+      <button class="github-button">
+        <!-- GitHub mark (inline SVG, no external fetch) -->
+        <svg class="github-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+        </svg>
+        Sign in with GitHub
+      </button>
+
+      <!-- Auth error — hidden by default, shown on failure -->
+      <div class="auth-error">
+        Sign-in failed. Try again or <a href="#" style="color:#F06B6B">contact support</a>.
+      </div>
+
+      <div class="auth-switch">
+        Don't have an account? <a href="#">Sign up free</a>
+      </div>
+    </div>
+
+    <div class="auth-footer">
+      By signing in you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+    </div>
+
+  </div>
+</div>
+
+<!-- Annotation band -->
+<div class="annotation-band">
+  <div class="annotation">
+    <div class="annotation-dot dot-accent"></div>
+    OAuth only — no username/password form
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot dot-neutral"></div>
+    Pre-app shell — no side nav
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot dot-neutral"></div>
+    Sign up tab switches to registration variant (same GitHub OAuth CTA)
+  </div>
+  <div class="annotation">
+    <div class="annotation-dot" style="background:#F06B6B;"></div>
+    Auth error banner (hidden by default, shown on failure)
+  </div>
+</div>
+
+</body>
+</html>
