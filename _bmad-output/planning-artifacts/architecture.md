@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2, 3]
+stepsCompleted: [1, 2, 3, 4, 5]
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md'
   - '_bmad-output/planning-artifacts/ux-designs/ux-bmad-easy-2026-06-15/DESIGN.md'
@@ -130,7 +130,7 @@ monorepo, plus one external dynamic service (Daytona Cloud sandboxes).
 | Service | Location | Deployment |
 |---------|----------|------------|
 | `apps/web` | Next.js 15 BFF + frontend | Vercel |
-| `apps/agent-be` | NestJS agent orchestrator backend | Docker / Fly.io or Railway |
+| `apps/agent-be` | NestJS agent orchestrator backend | Docker / Railway |
 | Daytona sandboxes | One per active Conversation | Daytona Cloud (external, dynamically scaled) |
 
 **Note on sandbox scaling:** Daytona Cloud manages sandbox container lifecycle and
@@ -154,7 +154,7 @@ Nx workspace with pnpm.
 bmad-easy/
 ├── apps/
 │   ├── web/                # Next.js 15 — BFF + frontend (Vercel)
-│   └── agent-be/           # NestJS — agent orchestrator (Docker / Fly.io)
+│   └── agent-be/           # NestJS — agent orchestrator (Docker / Railway)
 ├── libs/
 │   ├── shared-types/       # @bmad-easy/shared-types — shared TypeScript interfaces
 │   └── database-schemas/   # @bmad-easy/database-schemas — shared Prisma schema
@@ -226,5 +226,209 @@ Migrations run from this library against the shared Railway Postgres instance.
 | `@daytonaio/sdk` | `0.187.0` | `apps/agent-be` | Pinned exact — pre-1.0 |
 | `prisma` | `^7.8.0` | `libs/database-schemas` | ORM — schema + migrations live here, generated client consumed by both apps |
 | `@prisma/client` | `^7.8.0` | `apps/web` + `apps/agent-be` | Each service holds its own client instance generated from the shared schema |
+| `zod` | `^4.4.3` | `apps/web` + `apps/agent-be` | Validation library for both services — Server Action input validation in `apps/web`; request DTO validation in `apps/agent-be` |
+| `nestjs-zod` | latest matching `zod ^4` | `apps/agent-be` | `createZodDto`/`ZodValidationPipe` integration — replaces `class-validator`/`class-transformer` for controller-boundary validation |
 
 **Note:** Project initialization using these commands is the first implementation story.
+
+## Core Architectural Decisions
+
+### Decision Priority Analysis
+
+**Critical Decisions (Block Implementation):**
+
+- Single shared Prisma schema library (`libs/database-schemas`) for `apps/web` and `apps/agent-be` — eliminates schema drift structurally.
+- Boundary JWT between `apps/web` and `apps/agent-be`, decoupled from Auth.js's internal session JWE; transported via `Authorization` header (REST) and query parameter (SSE).
+- OAuth token at rest: per-user DEK + platform KEK envelope encryption (AES-256-GCM), KEK as a Railway env var for MVP.
+- `apps/agent-be` is the sole initiating party toward Daytona/sandbox-agent — no separate sandbox-agent credential exists or is needed; Daytona's proxy/control-plane already authenticates every request via the existing Daytona API key.
+- `apps/agent-be` hosting finalized as Railway (same platform as Postgres).
+- `apps/web` never calls `apps/agent-be` server-to-server — all non-live data (Conversation history, Project Map, Artifact Browser) is read directly from Postgres by `apps/web`; only the live REST+SSE interaction is browser-direct to `apps/agent-be`.
+
+**Important Decisions (Shape Architecture):**
+
+- Live `user.active` DB check on every privileged `apps/agent-be` request (closes the NFR-S4 gap a JWT alone can't cover).
+- KEK rotation runbook documented; GCM nonce-uniqueness enforced.
+- Daytona API key stored as a plain Railway environment secret, no rotation mechanism for MVP.
+- Consistent JSON error envelope across `apps/agent-be`: `{ code, message, meta }`.
+- `@nestjs/throttler` for simple rate limiting on `apps/agent-be`.
+- No global client-state library in `apps/web`; Server Components/Server Actions read Postgres directly, local React state for ephemeral UI only.
+- Draft message persistence via browser `localStorage`, keyed by `conversationId`, no server round-trip.
+- No automatic/scoped client-side revalidation anywhere (Conversation pane, Project Map, Artifact Browser, SSE reconnect) — the user manually reloads the browser page to pick up fresh server-rendered state. This single mechanism also resolves SSE-reconnect-mid-session recovery (falls back to the existing cold-load path) and avoids any live-stream-vs-persisted-render duplication risk, since a full reload tears down the entire client tree before the Server Component re-fetches.
+- shadcn/ui (Radix + Tailwind) as the frontend component library.
+- CI (GitHub Actions): lint + all available test suites (unit/integration/e2e) gate the pipeline; deploy itself is a manual trigger, not automatic on merge.
+
+**Deferred Decisions (Post-MVP):**
+
+- KEK management migrates from a Railway env var to a third-party KMS.
+- Daytona sandbox orphan cleanup: no enforced TTL/backstop; the system operator handles orphaned sandboxes manually for MVP.
+- Postgres role separation: `apps/web` and `apps/agent-be` share one permissive DB role/credential; least-privilege role separation deferred.
+- SSE/Conversation state durability across an `apps/agent-be` restart: in-memory Conversation→sandbox mapping loss on restart is acceptable degradation for MVP.
+- Cross-tab staleness affordance (e.g. a "new activity" indicator on Project Map/Artifact Browser) and a one-time assistant-ui/AG-UI bundle-size sanity check — both optional, not blocking.
+- Staging environment — production only for MVP.
+- Log consolidation onto a single platform — platform-native logging (Railway/Vercel) for MVP.
+- Horizontal scaling of `apps/agent-be` — out of scope until the single-container ceiling is actually reached.
+
+### Data Architecture
+
+- **Database:** PostgreSQL, Railway-hosted (single instance for MVP).
+- **Schema ownership:** a single shared Prisma schema/client library, `libs/database-schemas`, consumed independently by `apps/web` and `apps/agent-be` (full structural detail already recorded in Starter Template Evaluation → Monorepo Structure). This was the direct resolution to the schema-drift risk identified during Category 1 elicitation: maintaining two independently-edited Prisma schemas against one database was rejected as the root risk, not patched around.
+- **Connection limits:** Railway's documented concurrent-connection ceiling is accepted as sufficient for MVP scale; if usage approaches the limit, the resolution is a commercial conversation with Railway, not an architectural change.
+- **Library/version reliability:** Prisma is trusted as a foundational dependency; no defensive abstraction layer was added against ORM-level failure modes. Version upgrades follow the same pinned-version, deliberate-upgrade discipline already established for sandbox-agent and the AG-UI packages (see Technical Constraints) rather than floating versions.
+- **Validation/migrations:** Migrations run from `libs/database-schemas` against the shared Railway Postgres instance (already recorded in Starter Template Evaluation).
+- **Caching:** no caching layer for MVP — consistent with the "no client-side revalidation, no server-side data library" posture adopted in Frontend Architecture.
+
+### Authentication & Security
+
+1. **`apps/web` ↔ `apps/agent-be` identity crossing:** a separate, purpose-built boundary JWT, decoupled from Auth.js's internal JWE. Long-lived, re-minted per page load, no refresh cycle. Transport: `Authorization` header for REST, query parameter for SSE (`EventSource` cannot set headers). Requirement: logs must be sanitized to strip the token before being shipped anywhere.
+2. **Deactivation enforcement (NFR-S4 gap closure):** a JWT alone doesn't reflect live account state, so `apps/agent-be` performs a live `user.active` check against Postgres on every privileged request.
+3. **OAuth token at rest:** per-user DEK encrypts the GitHub OAuth token; a platform KEK wraps each DEK (envelope encryption), AES-256-GCM (NFR-S5). KEK stored as a Railway env var for MVP, migrating to a third-party KMS post-MVP. KEK rotation runbook documented; GCM nonce-uniqueness enforced.
+4. **`apps/agent-be` ↔ Daytona/sandbox-agent transport:** no additional credential is needed beyond the Daytona API key `apps/agent-be` already holds. `apps/agent-be` is the sole initiating/active party — Daytona's proxy and control-plane authenticate and broker every interaction (process exec, log streaming) before it reaches a sandbox; sandbox-agent never opens an outbound connection back to `apps/agent-be`. The only implementation requirement is call correctness: every session/log-streaming call must be scoped to the sandboxId tied to the correct Conversation.
+5. **Daytona API key:** stored as a plain Railway environment secret, no rotation mechanism for MVP.
+6. **DB unavailability:** no fail-open/fail-closed logic; if Postgres is unreachable, the operation simply fails and the frontend surfaces an error.
+7. **Daytona sandbox orphan cleanup:** not enforced for MVP; the system operator handles orphaned sandboxes manually. Post-MVP concern.
+8. **Postgres role separation:** not enforced for MVP; `apps/web` and `apps/agent-be` share one permissive DB role/credential. Post-MVP concern.
+
+### API & Communication Patterns
+
+1. **API style:** plain REST/JSON NestJS controllers for `apps/agent-be`'s non-streaming endpoints, no additional typed-contract layer beyond what already exists in `libs/shared-types`.
+2. **API documentation:** skipped for MVP — internal-only API, no third-party consumers.
+3. **Error response format:** a consistent JSON error envelope across `apps/agent-be`: `{ code, message, meta }`, with `meta` available for context-specific detail (e.g. field-level validation errors, the org-restriction cause on a 403).
+4. **Rate limiting:** `@nestjs/throttler`, simple global/per-route limits, no per-tenant tiering for MVP.
+5. **`apps/web` ↔ `apps/agent-be` communication:** no server-to-server path. The browser connects directly to `apps/agent-be` for the live REST+SSE interaction (start/resume a session, the AG-UI event stream); `apps/web` independently reads Conversation history, Project Map, and Artifact Browser data straight from Postgres via the shared Prisma client. `apps/agent-be` writes each turn/session-state update to Postgres as it processes it.
+
+### Frontend Architecture
+
+1. **State management:** no global client-state library. Server Components/Server Actions handle server data via direct Prisma reads; local React state covers ephemeral UI only (Tool Pill expansion, draft text, optimistic echo of a user's own outbound chat message before the persisted version reconciles).
+2. **Data fetching:** plain Server Component Prisma reads; no React Query/SWR.
+3. **Component library:** shadcn/ui (Radix + Tailwind).
+4. **Routing:** conventional nested Next.js App Router layout — no parallel or intercepting routes for MVP.
+5. **Refresh/staleness model:** no automatic or scoped client-side revalidation anywhere — the user manually reloads the browser page to see updated server-rendered state (Conversation pane, Project Map, Artifact Browser). This single, deliberately simple mechanism also covers SSE-reconnect-mid-session recovery (falls back to the existing FR-13 cold-load path from Postgres) and eliminates any risk of the live-SSE-rendered view and the Postgres-backed Server Component render visibly disagreeing or flashing, since a full page reload tears down the entire client tree (including assistant-ui's internal runtime) before the fresh server render occurs.
+6. **Draft message persistence:** browser `localStorage`, keyed by `conversationId`, no server round-trip.
+7. **Performance/bundle optimization:** deferred as a non-concern for MVP — Next.js defaults only (route-based code splitting, Server Components shipping zero client JS by default).
+
+### Infrastructure & Deployment
+
+- **`apps/web`:** Vercel.
+- **`apps/agent-be`:** Railway (Docker), same platform as the shared Postgres instance.
+- **CI/CD:** GitHub Actions runs lint + all available test suites (unit/integration/e2e) as a gate; deploy is a manual trigger, not automatic on merge.
+- **Environments:** production only for MVP, no separate staging.
+- **Monitoring & logging:** platform-native logging (Railway/Vercel) for MVP, plus the already-mandated NFR-O1 per-user LLM spend monitoring with budget alerting wired in from day one. Log consolidation onto a single platform is a post-MVP consideration.
+- **Scaling:** single-container ceiling for `apps/agent-be` is accepted for MVP (no horizontal scaling, no distributed session registry); reaching the ceiling requires horizontal scaling work that is explicitly out of scope until needed.
+- **Deployment invariants already locked:** `apps/agent-be` must be fronted by an HTTP/2-capable reverse proxy (NFR-R4); NestJS shutdown hooks must drain SSE connections on deploy rather than hard-killing them (single-container constraint).
+
+### Decision Impact Analysis
+
+**Implementation Sequence:**
+
+1. Scaffold the Nx workspace; generate `libs/shared-types` and `libs/database-schemas`.
+2. Provision Railway Postgres; define the Prisma schema in `libs/database-schemas`; run initial migration.
+3. Stand up `apps/agent-be` on Railway (Docker); wire the shared Prisma client.
+4. Implement Auth.js in `apps/web`; mint the boundary JWT for `apps/agent-be` crossing.
+5. Implement the `user.active` live-check guard and the JSON error envelope (`{ code, message, meta }`) in `apps/agent-be`.
+6. Wire OAuth token envelope encryption (per-user DEK + Railway-env-var KEK, AES-256-GCM) into the GitHub OAuth flow.
+7. Integrate the Daytona SDK in `apps/agent-be` (API key as a Railway secret); implement sandbox provisioning and the pull-based session/log-streaming call pattern toward sandbox-agent.
+8. Wire AG-UI event proxying over SSE from `apps/agent-be` to the browser, including the circuit-breaker and heartbeat mitigations already specified in Cross-Cutting Concerns.
+9. Build the `apps/web` frontend: Server Component reads of Conversation/Project Map/Artifact Browser data, assistant-ui integration seeded from those reads, `localStorage`-based draft persistence, manual-reload-based refresh.
+10. Add `@nestjs/throttler` rate limiting to `apps/agent-be`'s REST endpoints.
+11. Configure GitHub Actions CI (lint + test gates) and the manual deploy process for both services.
+12. Verify launch-checklist deployment invariants (HTTP/2 proxy in front of `apps/agent-be`, NFR-O1 cost monitoring and budget alerts live).
+
+**Cross-Component Dependencies:**
+
+- The boundary JWT (Auth & Security #1) depends on Auth.js being wired in `apps/web` first, and is a prerequisite for any browser→`apps/agent-be` call (API & Communication #5).
+- OAuth token envelope encryption depends on the KEK's storage location, which depends on `apps/agent-be`'s hosting platform being finalized as Railway (Infrastructure & Deployment).
+- The Daytona-transport authentication model (Auth & Security #4) depends on `apps/agent-be` correctly scoping every session/log call to the right sandboxId — a code-correctness requirement, not a separate credential, so it must be covered by tests rather than additional auth wiring.
+- The frontend's manual-reload refresh model (Frontend Architecture #5) depends on the data split established in API & Communication #5 (`apps/web` reading Postgres directly) — if that split ever changes, the refresh model must be re-evaluated.
+- CI test gates (Infrastructure & Deployment) depend on the test suites referenced in Implementation Sequence existing; until they exist, the "pass any tests we have" gate is a no-op by construction, not a bypass.
+
+## Implementation Patterns & Consistency Rules
+
+### Pattern Categories Defined
+
+**Critical Conflict Points Identified:** 11 areas where AI agents could make different choices.
+
+### Naming Patterns
+
+**Database Naming Conventions:**
+- Prisma models: PascalCase singular (`User`, `Conversation`, `RepoConnection`), mapped to snake_case plural tables via `@@map` (e.g. `@@map("users")`).
+- Columns: camelCase in the Prisma schema, mapped to snake_case via `@map` (e.g. `userId @map("user_id")`) — the standard Prisma idiom. TypeScript-facing code stays camelCase; the SQL schema stays snake_case.
+
+**API Naming Conventions:**
+- REST endpoints: plural nouns (`/conversations`, `/conversations/:id/turns`).
+- Route params: NestJS `:id` style.
+- JSON field naming: camelCase throughout — matches TS end-to-end, no case-translation layer between Prisma/TS and API payloads.
+
+**Code Naming Conventions:**
+- Component files: PascalCase (`ConversationPane.tsx`).
+- Non-component files (routes, utils, configs): kebab-case (`conversation-service.ts`).
+- Functions/variables: camelCase. Classes/types/interfaces: PascalCase.
+
+### Structure Patterns
+
+**Project Organization:**
+- Tests co-located with source (`*.spec.ts` / `*.test.tsx` next to the file under test) — no separate `__tests__/` tree.
+- `apps/web` components organized by feature, flat hierarchy (`components/conversation/`, `components/project-map/`, `components/artifact-browser/`), not by type. Accepted trade-off: if features develop cross-dependencies later this may need revisiting, but flat-by-feature is the simpler MVP default.
+- Shared utilities are app-local (`apps/web/src/lib`, `apps/agent-be/src/common`) — no shared utility library beyond `libs/shared-types` (types only) and `libs/database-schemas` (Prisma schema/client). A new shared `libs/` package is only justified by a genuine cross-service need, following the same precedent as `libs/database-schemas`.
+
+### Format Patterns
+
+**API Response Formats:**
+- Success: raw resource body, no `{ data: ... }` wrapper.
+- Error: `{ code, message, meta }` (already locked in Core Architectural Decisions).
+- Date/time in JSON: ISO 8601 strings.
+
+**Data Exchange Formats:**
+- JSON field naming: camelCase (see API Naming Conventions).
+
+### Communication Patterns
+
+**Event System Patterns:**
+- AG-UI event naming/payload structure is fixed externally by the AG-UI protocol spec — not a project-level decision.
+
+**State Management Patterns:**
+- Already locked in Frontend Architecture: no global client-state library; local React state for ephemeral UI only.
+
+### Process Patterns
+
+**Error Handling Patterns:**
+- `apps/agent-be`: a global NestJS exception filter maps every thrown error — including Zod validation failures via `nestjs-zod` — to the `{ code, message, meta }` envelope.
+- `apps/web`: Server Actions validate input with Zod; validation failures surface as form/field errors, not the `apps/agent-be` envelope (different layer, different consumer).
+
+**Validation Patterns:**
+- `apps/agent-be`: Zod schemas via `nestjs-zod` (`createZodDto` + `ZodValidationPipe`) at controller boundaries — replaces `class-validator`/`class-transformer` entirely.
+- `apps/web`: Zod schemas validate Server Action input directly.
+- One validation library across both services, consistent with the "one shared schema source" philosophy already applied to the database layer.
+
+**Logging Patterns:**
+- Structured JSON logs in `apps/agent-be` (queryable in Railway's log search).
+- Levels: `debug`, `info`, `warn`, `error` — standard four-level scheme, no custom levels.
+
+### Enforcement Guidelines
+
+**All AI Agents MUST:**
+
+- Use Zod (`nestjs-zod` in `apps/agent-be`) for all input validation — never `class-validator`/`class-transformer`.
+- Return raw resource bodies on success and the `{ code, message, meta }` envelope on error from every `apps/agent-be` endpoint.
+- Use camelCase for every JSON field, every Prisma-schema-facing identifier, and every TypeScript identifier; snake_case only appears at the SQL column/table level via `@map`/`@@map`.
+- Co-locate tests with source; never create a parallel `__tests__/` tree.
+- Organize `apps/web` components by feature, not by type.
+- Never add a new shared `libs/` package without the same justification already applied to `libs/database-schemas` (a genuine cross-service need, not speculative reuse).
+
+**Pattern Enforcement:**
+
+- Verified via code review and lint rules where mechanically enforceable (e.g. ESLint naming conventions, `nestjs-zod` usage).
+- Pattern violations or ambiguities get documented as an addendum to this section, not silently special-cased.
+- Any future change to these patterns is a deliberate architecture-doc update, not implicit per-PR drift.
+
+### Pattern Examples
+
+**Good Examples:**
+
+- `apps/agent-be/src/conversations/conversations.controller.ts` returning `{ id, title, createdAt, ... }` directly on success.
+- `model Conversation { id String @id; userId String @map("user_id"); @@map("conversations") }`.
+
+**Anti-Patterns:**
+
+- Wrapping success responses in `{ data: {...} }` "for consistency" with the error envelope — explicitly rejected.
+- Mixing `class-validator` DTOs into a service that's supposed to be all-Zod.
+- A new top-level `libs/utils` created speculatively, "in case it's needed by both services."
