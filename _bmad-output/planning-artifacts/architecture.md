@@ -114,6 +114,10 @@ Surfaced through pre-mortem, cascading failure, and second-order analysis of the
 - **Auth.js v5 beta contingency:** `next-auth@^5.0.0-beta.31` is a beta dependency; a future Next.js security patch could force an incompatible bump. No contingency is documented — monitor the Auth.js changelog before any Next.js upgrade.
 - **GitHub org OAuth restriction self-service path:** The 403 error path (already improved to name the org-restriction cause) should also include a direct link to GitHub's OAuth App org-approval flow and, ideally, a way to notify the org admin from within the app — this is a sales-blocking friction point for enterprise accounts otherwise.
 
+**Resolved — out of scope for MVP:**
+
+- **Mid-session work loss on client disconnect (laptop close, network drop):** Raised during the party-mode architecture review. If a user closes their laptop mid-Conversation, in-progress agent work that has not been committed is not preserved. This is explicitly out of scope for MVP: NFR-R2 already states that uncommitted working tree state is not guaranteed to survive a Sandbox restart, and FR-15 (manual save) is the existing user-facing mitigation. No automatic persistence or resume-on-reconnect mechanism for in-flight agent/tool-call state is planned for MVP.
+
 ## Starter Template Evaluation
 
 ### Primary Technology Domain
@@ -149,18 +153,28 @@ Nx workspace with pnpm.
 ```
 bmad-easy/
 ├── apps/
-│   ├── web/            # Next.js 15 — BFF + frontend (Vercel)
-│   └── agent-be/       # NestJS — agent orchestrator (Docker / Fly.io)
+│   ├── web/                # Next.js 15 — BFF + frontend (Vercel)
+│   └── agent-be/           # NestJS — agent orchestrator (Docker / Fly.io)
 ├── libs/
-│   └── shared-types/   # @bmad-easy/shared-types — shared TypeScript interfaces
+│   ├── shared-types/       # @bmad-easy/shared-types — shared TypeScript interfaces
+│   └── database-schemas/   # @bmad-easy/database-schemas — shared Prisma schema
 ├── nx.json
 ├── package.json
 └── tsconfig.base.json
 ```
 
-`libs/shared-types` contains interfaces shared across `apps/web` and `apps/agent-be`:
-AG-UI event types, API request/response contracts, session and conversation types,
-credential health status types.
+`libs/shared-types` contains plain TypeScript artifacts shared across `apps/web` and
+`apps/agent-be`: AG-UI event types, API request/response contracts, session and
+conversation types, credential health status types. No database artifacts.
+
+`libs/database-schemas` contains the Prisma schema and generated client shared across
+`apps/web` and `apps/agent-be` — both services hold an independent Prisma client
+instance (generated from this single schema source) and connect directly to the same
+Railway Postgres database. Both are server-side runtimes (`apps/web`'s Next.js server
+functions — API routes / Server Actions / Route Handlers — and `apps/agent-be`'s NestJS
+process); the browser never holds a database credential or connection. A single shared
+schema source eliminates the drift risk of maintaining two independently-edited Prisma
+schemas against one database.
 
 ### Initialization Commands
 
@@ -177,6 +191,10 @@ nx generate @nx/nest:app apps/agent-be --e2eTestRunner=none
 # 4. Shared TypeScript interfaces library
 nx generate @nx/js:lib shared-types --directory=libs \
   --importPath=@bmad-easy/shared-types --bundler=none
+
+# 5. Shared Prisma schema library
+nx generate @nx/js:lib database-schemas --directory=libs \
+  --importPath=@bmad-easy/database-schemas --bundler=none
 ```
 
 ### Architectural Decisions Established by Starters
@@ -192,6 +210,10 @@ Tailwind CSS, Turbopack dev server, ESLint.
 **`libs/shared-types`:** Plain TypeScript, no bundler — resolved via path mappings
 in `tsconfig.base.json`.
 
+**`libs/database-schemas`:** Plain TypeScript, no bundler — holds the single Prisma
+schema file and generated client, resolved via path mappings in `tsconfig.base.json`.
+Migrations run from this library against the shared Railway Postgres instance.
+
 ### Key Packages Added Post-Scaffold
 
 | Package | Version | Service | Note |
@@ -202,7 +224,7 @@ in `tsconfig.base.json`.
 | `@ag-ui/core` | `0.0.57` | `apps/web` + `apps/agent-be` | Pinned exact — pre-1.0 |
 | `@anthropic-ai/claude-agent-sdk` | `0.3.177` | `apps/agent-be` | Pinned exact — pre-1.0 |
 | `@daytonaio/sdk` | `0.187.0` | `apps/agent-be` | Pinned exact — pre-1.0 |
-| `prisma` | `^7.8.0` | `apps/agent-be` | ORM — confirmed |
-| `@prisma/client` | `^7.8.0` | `apps/agent-be` | ORM — confirmed |
+| `prisma` | `^7.8.0` | `libs/database-schemas` | ORM — schema + migrations live here, generated client consumed by both apps |
+| `@prisma/client` | `^7.8.0` | `apps/web` + `apps/agent-be` | Each service holds its own client instance generated from the shared schema |
 
 **Note:** Project initialization using these commands is the first implementation story.
