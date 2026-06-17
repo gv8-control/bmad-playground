@@ -73,7 +73,7 @@ Architecturally significant FRs:
 - **Single NestJS container.** No horizontal scaling; no distributed session registry. Sandbox state is in-process or delegated to Daytona API.
 - **Model hardcoded:** `claude-sonnet-4-6`. Extended thinking disabled (PRD §8). No user-selectable model.
 - **Daytona Cloud** is a critical dependency (A-7). Migration contained to `SandboxService` layer; Daytona OSS is the documented fallback.
-- **Repository size boundary (Q-1 resolution):** NFR-P2 (10s chat ready) is validated only for repositories ≤ 200MB. This boundary is asserted, not empirically validated against Daytona clone timing; empirical validation is deferred. Shallow clone / sparse checkout for large repositories is post-MVP.
+- **Repository size boundary (Q-1 resolution — updated 2026-06-17):** NFR-P2 (10s chat ready) applies to repositories ≤ 200MB, provisioned via **mandatory shallow clone** (`git clone --depth=1`). Shallow clone bounds clone time to working-tree size rather than git history depth, making 200MB a consistent and testable threshold. All Conversation provisions must use `--depth=1`; full-history clone is not supported in MVP. Empirical validation is required as the **first action in Implementation Sequence step 7**: provision a Daytona sandbox in the production region, shallow-clone test repositories at 50 MB / 100 MB / 150 MB / 200 MB / 250 MB, and measure total elapsed time from clone-start through `git status --porcelain` completion (the SESSION_READY precondition). Accept 200 MB if the full provision + shallow-clone + git-config-injection + working-tree-status sequence completes in ≤ 8 s (reserving 2 s margin for cold-start and network jitter). If 200 MB consistently exceeds 8 s, revise the boundary to 100 MB and update the PRD accordingly. Sparse checkout for oversized repositories remains post-MVP.
 - **OAuth App restrictions:** GitHub organizations can block OAuth App access. During repository validation (FR-1) the platform must test write access with a dry-run git operation and surface the org-restriction cause explicitly in the 403 error path — not a generic "couldn't connect" message. No in-app workaround exists; org-owner approval of the bmad-easy OAuth App is required. GitHub App (post-MVP) sidesteps this.
 - **UX/PRD reconciliation required:** EXPERIENCE.md onboarding Flow 1 references a PAT input field (pre-DL-7). The correct onboarding model per PRD DL-7: sign-in with GitHub OAuth obtains the `repo`-scoped token; onboarding only requires a Repository URL input field. The architecture specifies the DL-7 model; EXPERIENCE.md requires a corresponding update.
 - **HTTP/2 deployment invariant:** The NestJS agent backend must be fronted by an HTTP/2-capable reverse proxy at the load balancer level. HTTP/1.1 anywhere in the browser→NestJS path caps concurrent SSE connections at 6, breaking NFR-R4. This is a deployment configuration requirement verified in the launch checklist, not a code requirement.
@@ -86,10 +86,10 @@ Architecturally significant FRs:
 
 1. **Multi-tenant credential isolation** — affects every git operation, every Sandbox initialization, every credential lookup. Every code path must carry a `tenant_id` check before resolving an OAuth token.
 2. **Sandbox lifecycle management** — provision, clone, run, pause, resume, destroy must be handled transparently per Conversation. Lifecycle state affects UI (status indicators), session recovery (FR-13). Active termination on deactivation (NFR-S3) is deferred to post-MVP (see Deferred Decisions) — no in-app deactivation flow exists in MVP scope to trigger it. The AG-UI SSE channel carries lifecycle events (`SESSION_STARTED`, `SESSION_READY`, `WORKING_TREE_DIRTY`, `WORKING_TREE_CLEAN`) as well as agent tokens — single connection for both. Working tree state is checked via `git status --porcelain` after Bash and file-write tool calls only; initial state is emitted as part of the session ready sequence. One sandbox : one conversation is an enforced invariant.
-3. **Real-time SSE streaming** — affects the entire agent-to-browser event path: back-pressure (NFR-R3), 10 concurrent connections (NFR-R4), HTTP/2 requirement, AG-UI event classification (Tool Pills, Semantic Pills). sandbox-agent must be wrapped in a circuit-breaker: if it fails to emit events within a timeout, the backend emits a synthetic error event on the SSE channel. The SSE channel must emit heartbeat comments on a fixed interval so the browser detects dead connections even when sandbox-agent is stalled.
+3. **Real-time SSE streaming** — affects the entire agent-to-browser event path: back-pressure (NFR-R3), 10 concurrent connections (NFR-R4), HTTP/2 requirement, AG-UI event classification (Tool Pills, Semantic Pills). sandbox-agent must be wrapped in a circuit-breaker: if it fails to emit events within a timeout, the backend emits a synthetic error event on the SSE channel. The SSE channel must emit heartbeat comments on a fixed interval so the browser detects dead connections even when sandbox-agent is stalled. **NFR-R3 back-pressure threshold (resolved 2026-06-17):** Each SSE connection maintains a per-connection bounded in-process event queue capped at **200 events**. If the queue reaches 200 events and has not drained within **30 seconds** (client is consuming too slowly), the backend emits a synthetic `STREAM_ERROR` event with payload `{ code: 'STREAM_BACK_PRESSURE' }` on the same SSE channel and closes the connection with a reconnect-eligible `200 + data: [DONE]` termination sequence. Silent event drops are never acceptable: any event that cannot be enqueued must trigger the `STREAM_ERROR` path, not be discarded. This gives QA a concrete pass/fail criterion: (a) no events silently dropped before the error event, and (b) the `STREAM_ERROR` event arrives within 30 s of queue saturation.
 4. **OAuth token lifecycle** — encryption at storage, health monitoring, re-auth flow, credential failure propagation to UI — affects NestJS service layer, Next.js BFF, and frontend state.
 5. **Git transport and commit attribution** — every Conversation requires sandbox-level git config injection (user identity from OAuth profile) before any agent turn. Manual commit (FR-15) is a platform-level operation executed via Daytona process execution API, not an agent action. Queued behind agent turn idle state in-process.
-6. **LLM cost observability** — per-user spend tracking via SDK cost reporting must be wired into the NestJS agent backend from day one (NFR-O1). Budget alerting at launch is non-negotiable.
+6. **LLM cost observability** — per-user spend tracking via SDK cost reporting must be wired into the NestJS agent backend from day one (NFR-O1). Budget alerting at launch is non-negotiable. **B-04 PM guidance (2026-06-17):** The alert threshold value (Q-2) depends on the PM finalizing the Daytona compute cost estimate and the unit economics floor. Based on the cost research (`technical-bmad-session-token-consumption-and-cost-claude-sonnet-4-6-research-2026-06-14.md`), a typical bmad-easy session costs approximately $0.40–$1.80 in Claude API spend (extended thinking is disabled per PRD §8, so the lower end applies: $0.40–$1.10/session). PM should set the per-user monthly alert threshold at a value that signals when a user's Claude spend is approaching the revenue margin floor for their seat price. A starting recommendation: alert at **$20/user/month** in Claude API spend (this leaves margin above the ~$10–15/user/month spend for 10–25 sessions, at $25–30/seat pricing). PM must confirm or revise this number before the cost-observability epic test design begins; it is the only remaining open item in B-04.
 7. **Session persistence and recovery** — Conversations are always resumable (FR-13). Recovery must be transparent: sandbox re-initialization is hidden from the user behind a "Reconnecting…" indicator; chat history must be available immediately from platform storage, independent of sandbox state.
 8. **Sandbox isolation risk (post-MVP hardening item):** Daytona Cloud Docker-level isolation is an accepted risk for MVP, premised on authenticated, non-adversarial users (A-2). No runtime abuse detection mechanism exists in MVP. **This must not be forgotten after launch.** The documented escalation trigger is: if adversarial use is detected, upgrade to Firecracker microVM isolation (Fly.io Sprites or Daytona OSS with VM backend). The architecture contains this migration within the `SandboxService` layer. Post-MVP hardening review should evaluate whether an abuse signal (e.g., anomalous tool call patterns, excessive resource usage per sandbox) can be added.
 
@@ -425,6 +425,49 @@ Migrations run from this library against the shared Railway Postgres instance.
 - Pattern violations or ambiguities get documented as an addendum to this section, not silently special-cased.
 - Any future change to these patterns is a deliberate architecture-doc update, not implicit per-PR drift.
 
+### ISandboxService Contract (B-01 Test Seam)
+
+`libs/shared-types/src/sandbox.interface.ts` defines the interface that both `sandbox.service.ts` (production) and `sandbox.service.fake.ts` (test-only) implement. Backend lead must deliver this interface and the fake before `sandbox.service.ts` is written; QA wires the fake into test modules via a NestJS DI token.
+
+```typescript
+// libs/shared-types/src/sandbox.interface.ts
+
+export interface ProvisionParams {
+  conversationId: string;
+  repoUrl: string;
+  credential: string;
+}
+
+export interface SandboxInfo {
+  sandboxId: string;
+  status: 'running' | 'stopped';
+}
+
+export interface GitUserConfig {
+  name: string;
+  email: string;
+}
+
+export interface WorkingTreeStatus {
+  dirty: boolean;
+  files: string[];
+}
+
+export interface ISandboxService {
+  provision(params: ProvisionParams): Promise<SandboxInfo>;
+  clone(sandboxId: string, repoUrl: string, credential: string): Promise<void>;
+  resume(sandboxId: string): Promise<SandboxInfo>;
+  destroy(sandboxId: string): Promise<void>;
+  injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void>;
+  getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus>;
+  terminateProcess(sandboxId: string, processId: string): Promise<void>;
+}
+
+export const SANDBOX_SERVICE = Symbol('ISandboxService');
+```
+
+`SandboxServiceFake` must support controllable failure injection on any method (e.g. `fake.simulateProvisionFailure()`), deterministic timing (no real sleeps), and capture of call arguments for assertion. It is the canonical test double for all Conversation-path integration tests.
+
 ### Pattern Examples
 
 **Good Examples:**
@@ -548,7 +591,8 @@ bmad-easy/
 │       │   │       └── connect-repository.dto.ts  # Zod schema via createZodDto
 │       │   ├── sandbox/                           # Daytona orchestration
 │       │   │   ├── sandbox.module.ts
-│       │   │   ├── sandbox.service.ts             # provision/clone/resume/destroy, git config injection
+│       │   │   ├── sandbox.service.ts             # implements ISandboxService from libs/shared-types; mandatory --depth=1 shallow clone on provision
+│       │   │   ├── sandbox.service.fake.ts        # SandboxServiceFake — test-only; implements ISandboxService; injected via NestJS DI token in test modules; supports controllable failure injection (B-01 test seam)
 │       │   │   ├── daytona-client.provider.ts
 │       │   │   └── working-tree.service.ts        # git status --porcelain, FR-14
 │       │   ├── conversations/                     # FR-9, FR-10, FR-11, FR-13
@@ -589,7 +633,8 @@ bmad-easy/
 │   │       ├── ag-ui.types.ts
 │   │       ├── conversation.types.ts
 │   │       ├── artifact.types.ts
-│   │       └── credential-health.types.ts
+│   │       ├── credential-health.types.ts
+│   │       └── sandbox.interface.ts             # ISandboxService — the test-seam contract (B-01); sandbox.service.ts implements it; SandboxServiceFake (test only) implements the same interface
 │   └── database-schemas/                        # @bmad-easy/database-schemas
 │       └── src/
 │           ├── index.ts                          # exported Prisma client factory

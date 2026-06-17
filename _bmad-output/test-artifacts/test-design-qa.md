@@ -104,16 +104,25 @@ inputDocuments:
 **Example factory pattern:**
 
 ```typescript
+import { test } from '@seontechnologies/playwright-utils/api-request/fixtures';
+import { expect } from '@playwright/test';
 import { faker } from '@faker-js/faker';
 
-export function buildConversationFixture(overrides = {}) {
-  return {
+test('example: create and assert conversation record @p0', async ({ apiRequest }) => {
+  const payload = {
     id: `conv-${faker.string.uuid()}`,
     repoConnectionId: `repo-${faker.string.uuid()}`,
     status: 'active',
-    ...overrides,
   };
-}
+
+  const { status } = await apiRequest({
+    method: 'POST',
+    path: '/api/conversations',
+    body: payload,
+  });
+
+  expect(status).toBe(201);
+});
 ```
 
 ---
@@ -388,30 +397,47 @@ No P3 scenarios identified at system level for this MVP. Re-evaluate during epic
 
 ## Appendix A: Code Examples & Tagging
 
-**Tagging convention for selective execution (Playwright/Jest):**
+**Playwright Tags for Selective Execution (`tea_use_playwright_utils: true`):**
 
 ```typescript
-// P0 critical test
-test('@P0 @Security cross-tenant credential resolution is rejected', async () => {
-  // attempt to resolve another tenant's stored OAuth token
-  // assert 403/404, never the token value
+import { test } from '@seontechnologies/playwright-utils/api-request/fixtures';
+import { expect } from '@playwright/test';
+
+// P0 critical test — cross-tenant resolution must be rejected
+test('@P0 @Security unauthenticated cross-tenant credential resolution returns 403', async ({ apiRequest }) => {
+  const { status, body } = await apiRequest({
+    method: 'GET',
+    path: '/api/credentials/other-tenant-id',
+    skipAuth: true,
+  });
+
+  expect(status).toBe(403);
+  expect(body.code).toBe('FORBIDDEN');
 });
 
 // P1 integration test
-test('@P1 @Integration working tree indicator reflects git status between turns', async () => {
-  // seed a dirty working tree, assert indicator state
+test('@P1 @Integration working tree indicator reflects dirty state between turns', async ({ apiRequest }) => {
+  const { status, body } = await apiRequest({
+    method: 'GET',
+    path: '/api/conversations/conv-123/working-tree',
+  });
+
+  expect(status).toBe(200);
+  expect(body.dirty).toBe(true);
 });
 ```
 
 **Run specific tags:**
 
 ```bash
-# Run only P0 tests
-npx jest --testPathPattern p0
+# P0 only (smoke, ~2-5 min)
 npx playwright test --grep @P0
 
-# Run P0 + P1 tests
+# P0 + P1 (core functionality, ~10-15 min)
 npx playwright test --grep "@P0|@P1"
+
+# Full regression
+npx playwright test
 ```
 
 ---

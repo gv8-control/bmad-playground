@@ -4,7 +4,7 @@ totalSteps: 5
 stepsCompleted: ['step-01-detect-mode', 'step-02-load-context', 'step-03-risk-and-testability', 'step-04-coverage-plan', 'step-05-generate-output']
 lastStep: 'step-05-generate-output'
 nextStep: ''
-lastSaved: '2026-06-16'
+lastSaved: '2026-06-17'
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
@@ -286,3 +286,48 @@ System-level estimate across the full MVP scope, before epic/story breakdown:
 - Coverage target ≥ 80% on `apps/agent-be` integration suite (the tenant-isolation and SSE-bridge code is the highest-value coverage target)
 - NFR validation evidence identified for every in-scope NFR category (table above) — full PASS/CONCERNS/FAIL status per category is deferred to `nfr-assess` once code and evidence exist
 - NFR-R3 and the NFR-O1 alert threshold remain explicitly open; gate decision on those two items is deferred until the architect/PM provide measurable thresholds — do not default them to PASS
+
+## Step 5: Generate Outputs & Validate
+
+**Execution mode resolved:** `sequential` (config: `tea_execution_mode: auto`; `tea_capability_probe: true`; no agent-team or subagent runtime detected).
+
+**Output files generated:**
+
+| Document | Path | Purpose |
+|---|---|---|
+| Architecture doc | `_bmad-output/test-artifacts/test-design-architecture.md` | Architectural concerns, testability gaps, NFR requirements — for Architecture/Dev team review |
+| QA doc | `_bmad-output/test-artifacts/test-design-qa.md` | Test execution recipe — coverage matrix, execution strategy, resource estimates, for QA team |
+| BMAD Handoff doc | `_bmad-output/test-artifacts/test-design/bmad-easy-handoff.md` | Bridges TEA outputs to BMAD epic/story decomposition workflow |
+
+**Checklist validation:**
+
+- Prerequisites (System-Level Mode): PRD ✓, ADR/architecture doc ✓, architecture available ✓
+- Risk Assessment: 10 risks, 4 high-priority (≥6) with mitigation plans, 4 medium, 2 low ✓
+- NFR Planning: all 4 categories assessed; 3 UNKNOWN thresholds converted to risks/blockers (not guessed) ✓
+- Coverage Matrix: ~37 atomic scenarios across P0/P1/P2; no P3 identified at system level ✓
+- No duplicate coverage across test levels ✓
+- Execution Strategy: PR / Nightly / Weekly model ✓
+- Resource Estimates: interval ranges (no false precision) ✓
+- Quality Gates: P0=100%, P1≥95%, R-01–R-04 mitigations required, ≥80% integration coverage ✓
+- Architecture doc: actionable-first structure (Quick Guide 🚨/⚠️/📋 → Risk → Concerns → Mitigations → Assumptions); no test code, no quality-gate section, no tool-selection section ✓
+- QA doc: playwright-utils imports in code examples (`tea_use_playwright_utils: true`) ✓; DON'T INCLUDE items absent ✓
+- Handoff doc: at `test-design/{project_name}-handoff.md`, Epic-Level guidance, Story-Level guidance, Risk-to-Story table, Phase Transition gates ✓
+- Cross-document consistency: same risk IDs (R-01–R-10), same blocker IDs (B-01–B-04), same priorities (P0–P3) across all three documents ✓
+- `on_complete` hook: resolved empty → skipped ✓
+
+**Key risks and gate thresholds:**
+
+- R-01 (SEC, score 6): Cross-tenant credential leak — P0 mitigation required before `credentials.service.ts` ships
+- R-02 (TECH/OPS, score 6): Runaway agent on crash — P0 mitigation required at AG-UI event proxying step
+- R-03 (PERF, score 6): NFR-P2 repo-size boundary — blocked on architect Q-1 spike; treated as CONCERNS by default
+- R-04 (PERF/OPS, score 6): NFR-R4 HTTP/2 degradation — P0 mitigation required at launch-checklist step
+- Gate: all 4 score-6 risks must be verified before Conversations epic is release-ready
+
+**Open assumptions requiring resolution before epic-level test design:**
+
+- B-01: `SandboxService` test seam (Backend lead, pre-implementation)
+- B-02: PRD Q-1 repo-size boundary (Architect, empirical spike)
+- B-03: NFR-R3 back-pressure quantification (Architect)
+- B-04: NFR-O1 alert threshold (PM, pending Q-2 cost estimate)
+
+**Workflow complete.** All 5 steps executed. Next step for the team: review and approve Quick Guide items, assign owners, then run `bmad-testarch-atdd` for P0 acceptance test generation per story.

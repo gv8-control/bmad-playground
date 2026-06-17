@@ -25,7 +25,7 @@ inputDocuments:
 
 **Date:** 2026-06-16
 **Author:** TEA Master Test Architect (BMad)
-**Status:** Architecture Review Pending
+**Status:** Architecture Review Complete (B-02, B-03 resolved 2026-06-17 by Winston; B-01 interface spec provided; B-04 PM guidance added)
 **Project:** bmad-easy
 **PRD Reference:** `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md`
 **ADR Reference:** `_bmad-output/planning-artifacts/architecture.md`
@@ -66,12 +66,15 @@ inputDocuments:
 
 **Pre-Implementation Critical Path** — these must be resolved before QA can write the corresponding tests:
 
-1. **B-01: No `SandboxService` test seam** — Architecture must define a fake/test-double interface for `@daytonaio/sdk` (provision/clone/resume/destroy, git config injection) before any Conversation-path integration test can run without hitting real Daytona Cloud (recommended owner: Backend lead, pre-implementation).
-2. **B-02: Repo-size performance boundary unresolved (PRD Q-1)** — NFR-P2's "≤200MB" scope is asserted, not empirically validated; blocks any pass/fail test for chat-ready latency until an empirical clone-timing spike is run (recommended owner: Architect/PM).
-3. **B-03: SSE back-pressure threshold undefined (NFR-R3)** — "Must not silently drop events" has no numeric definition (buffer size, max delay); no test can be written until this is quantified (recommended owner: Architect).
-4. **B-04: Cost-alert threshold undefined (NFR-O1, PRD Q-2)** — Daytona compute cost estimate is pending, so the budget-alert threshold cannot be tested yet, only the tracking mechanism itself (recommended owner: PM).
+1. **B-01: No `SandboxService` test seam** ~~Architecture must define a fake/test-double interface~~ → **INTERFACE CONTRACT PROVIDED** (2026-06-17). `ISandboxService` is now defined in `libs/shared-types/src/sandbox.interface.ts` (see architecture.md "ISandboxService Contract" section). **Remaining action for Backend lead:** implement `SandboxServiceFake` in `apps/agent-be/src/sandbox/sandbox.service.fake.ts` before `sandbox.service.ts` is written; wire via `SANDBOX_SERVICE` DI token so QA can inject the fake in test modules.
 
-**What we need from team:** Resolve these 4 items, or explicitly accept them as known gaps with an owner and target date, before integration test development on the Conversations and cost-observability paths begins.
+2. **B-02: Repo-size performance boundary** ~~NFR-P2's "≤200MB" scope is asserted, not empirically validated~~ → **RESOLVED** (2026-06-17). Architecture now mandates `git clone --depth=1` (shallow clone) for all Conversation provisions, making 200 MB a consistent testable threshold bounded to working-tree size. Empirical validation spike is required as the first action in Implementation Sequence step 7 (target: ≤ 8 s for the full provision+clone+config+status sequence). QA may write P0-006 with a conditional skip pending spike sign-off; once the spike confirms ≤ 8 s, remove the skip.
+
+3. **B-03: SSE back-pressure threshold undefined** ~~"Must not silently drop events" has no numeric definition~~ → **RESOLVED** (2026-06-17). NFR-R3 threshold is now: per-connection queue capped at **200 events**; if not drained within **30 seconds**, emit `STREAM_ERROR { code: 'STREAM_BACK_PRESSURE' }` and close with reconnect-eligible `200 + data: [DONE]`. Silent drops are never acceptable. QA can now write P1-013 against these thresholds.
+
+4. **B-04: Cost-alert threshold undefined (NFR-O1, PRD Q-2)** — **PARTIALLY ADDRESSED** (2026-06-17). Architecture provides a starting recommendation of **$20/user/month** in Claude API spend as the alert threshold (based on typical session cost of $0.40–$1.10/session with extended thinking disabled). **Remaining action for PM:** confirm or revise this threshold; the tracking mechanism itself is fully testable now.
+
+**Current status:** B-02 and B-03 fully resolved by Winston. B-01 interface contract provided — Backend lead action required. B-04 partially addressed — PM confirmation required.
 
 ---
 
@@ -146,9 +149,9 @@ inputDocuments:
 | NFR Category | Threshold / Requirement | Current Design Support | Gap / Decision Needed | Planned Evidence |
 |---|---|---|---|---|
 | Security | NFR-S1–S4: sandbox network isolation, tenant-scoped credential resolution, deferred active-termination (S3, post-MVP), AES-256-GCM token encryption at rest | Supported — single enforcement point (`active-user.guard.ts`), encryption pattern already named | None for S1/S2/S4; S3 is an accepted MVP gap, not a decision needed now | Integration tests on `credentials.service.ts`; API response-schema test asserting token absence |
-| Performance | NFR-P1 (≤1500ms first token), P2 (≤10s chat-ready, ≤~200MB repos), P3/P4 (≤2s renders), P5 (≤5s manual commit) | Partial — thresholds defined for P1/P3/P4/P5; P2 repo-size boundary unvalidated; no load-testing tool named (k6/Artillery) | **Decision needed:** select a load-testing tool for automated P1/P2 timing assertions in CI; resolve Q-1 repo-size boundary | Timing assertions in CI test run logs; future k6/Artillery report once tool is chosen |
-| Reliability | NFR-R1 (credential-health update within one git-op cycle), R2 (committed artifacts always recoverable), R3 (no silent SSE event drop under back-pressure), R4 (10 concurrent SSE, HTTP/2 required) | Supported for R1/R2/R4; **unsupported/undefined for R3** | **Decision needed:** quantify "must not silently drop" (max buffer size or max pause before a synthetic error event fires) | Integration test logs; for R4, a connection-count log proving no starvation at 10 concurrent clients |
-| Maintainability | Observability NFR-O1: per-user LLM spend tracked from day one, budget alerting operational at launch | Mechanism designed (`cost-tracking.service.ts`); alert threshold value unknown pending Q-2 | **Decision needed:** finalize per-user spend alert threshold once Daytona compute cost (Q-2) is estimated | Per-turn cost-record assertions in test run output |
+| Performance | NFR-P1 (≤1500ms first token), P2 (≤10s chat-ready, ≤~200MB repos), P3/P4 (≤2s renders), P5 (≤5s manual commit) | Supported — P2 boundary now resolved: mandatory `--depth=1` shallow clone, 200 MB threshold (≤ 8 s provision+clone+config+status), empirical spike required in step 7 | **Remaining:** select a load-testing tool (k6/Artillery) for automated P1/P2 timing assertions in CI | Timing assertions in CI test run logs; spike report from step 7; k6/Artillery report once tool is chosen |
+| Reliability | NFR-R1 (credential-health update within one git-op cycle), R2 (committed artifacts always recoverable), R3 (no silent SSE event drop under back-pressure), R4 (10 concurrent SSE, HTTP/2 required) | Fully supported — R3 threshold now defined: 200-event queue cap, 30 s drain timeout, `STREAM_ERROR { code: 'STREAM_BACK_PRESSURE' }` on breach, no silent drops | None — all four R-NFRs now have testable definitions | Integration test logs; for R4, connection-count log proving no starvation; for R3, slow-consumer test asserting error event arrives within 30 s |
+| Maintainability | Observability NFR-O1: per-user LLM spend tracked from day one, budget alerting operational at launch | Mechanism designed (`cost-tracking.service.ts`); starting alert threshold recommendation: **$20/user/month** (Winston, 2026-06-17) | **Remaining (PM):** confirm or revise $20/user/month threshold once Daytona compute cost (Q-2) is finalized | Per-turn cost-record assertions in test run output; alert-trigger assertion once PM confirms threshold |
 
 **Unknown thresholds:** NFR-P2 repo-size boundary (Q-1), NFR-R3 back-pressure quantification, NFR-O1 alert threshold (Q-2). These are tracked as risk R-03 (NFR-P2) and as open clarification items (NFR-R3, NFR-O1) rather than guessed values.
 
@@ -164,19 +167,16 @@ inputDocuments:
 
 | Concern | Impact | What Architecture Must Provide | Owner | Timeline |
 |---|---|---|---|---|
-| **No `SandboxService` test seam** | Nearly every Conversation-path test (FR-9–FR-15) either hits real Daytona Cloud or stays unwritten | A fake/test-double implementation of the `@daytonaio/sdk` boundary (provision/clone/resume/destroy, git config injection) | Backend lead | Pre-implementation, before `sandbox.service.ts` is built |
+| **`SandboxService` test seam** ~~No interface defined~~ → **Interface contract provided** (2026-06-17) | Nearly every Conversation-path test (FR-9–FR-15) either hits real Daytona Cloud or stays unwritten | `ISandboxService` is defined in `libs/shared-types/src/sandbox.interface.ts`; `SANDBOX_SERVICE` DI token pattern specified. **Backend lead must implement `SandboxServiceFake`** with controllable failure injection before `sandbox.service.ts` is written. | Backend lead | Pre-implementation, before `sandbox.service.ts` is built |
 | **No test-data seeding/factory pattern for Postgres** | Conversation, Artifact, RepoConnection, credential-health rows have no repeatable seeding strategy | Factory functions + a transactional-rollback or truncate-between-tests pattern in `libs/database-schemas` | Backend lead | Implementation Sequence step 2 |
 | **No load-testing tool named** | NFR-P1/P2 automated timing assertions cannot exist in CI | Selection of k6/Artillery (or equivalent) wired into CI | Backend/DevOps | Before NFR-P1/P2 automation is required |
 | **No GitHub org/restricted-token fixture** | FR-1/FR-2's org-restriction 403 error path can't be tested repeatably without a real restricted org | A recorded HTTP cassette or fixture simulating a GitHub App-restriction-policy 403 | Backend lead | Before FR-1/FR-2 integration tests are written |
 
 #### 2. Architectural Improvements Needed (WHAT SHOULD BE CHANGED)
 
-1. **Quantify NFR-R3 back-pressure behavior**
-   - **Current problem**: "Must not silently drop events" has no numeric definition.
-   - **Required change**: Define max buffer size and/or max pause duration before a synthetic error event fires.
-   - **Impact if not fixed**: No automated pass/fail test can exist for this NFR; it remains an unverifiable claim indefinitely.
-   - **Owner**: Architect
-   - **Timeline**: Before epic-level test design for the Conversations epic locks thresholds
+1. **~~Quantify NFR-R3 back-pressure behavior~~ → RESOLVED** (2026-06-17)
+   - **Resolution**: Per-connection queue capped at **200 events**; if not drained within **30 seconds**, emit `STREAM_ERROR { code: 'STREAM_BACK_PRESSURE' }` and close connection with reconnect-eligible `200 + data: [DONE]`. Silent drops forbidden. See architecture.md Cross-Cutting Concerns §3.
+   - **QA action**: Write P1-013 against these thresholds using a slow-consumer test client.
 
 2. **Provide a deterministic shutdown trigger for graceful-drain testing**
    - **Current problem**: Verifying "drain SSE connections rather than hard-kill" has no stated test trigger mechanism.
@@ -219,7 +219,7 @@ This is acceptable for Phase 1 (MVP) and should be revisited post-GA, particular
 |---|---|---|---|---|---|
 | **R-01** Cross-tenant credential leak | Confirm `active-user.guard.ts` covers every credential-resolving route; add P0 unit test enumerating call sites + P0 negative integration test resolving a foreign tenant's token | Backend lead | Before `credentials.service.ts` ships | Planned | Negative test fails closed (403/404) on cross-tenant resolution |
 | **R-02** Runaway agent on crash | Confirm Daytona process API can terminate a running agent from `apps/agent-be`; add P0 integration test killing the bridge mid-session and asserting process termination, not just an error event | Backend lead | AG-UI event proxying step | Planned | Process-termination assertion passes in CI |
-| **R-03** NFR-P2 repo-size boundary unresolved | Architect runs empirical clone-timing spike across repo sizes; close PRD Q-1 with a concrete boundary; QA adds the boundary as a timing assertion | Architect / PM | Before Q-1 resolved | Blocked (pending spike) | PRD Q-1 closed; corresponding test added and passing |
+| **R-03** NFR-P2 repo-size boundary unresolved | Architecture now mandates `git clone --depth=1`; 200 MB threshold accepted with ≤ 8 s target; empirical spike is first action in Implementation Sequence step 7 | Architect / PM | Step 7 (spike) | **Partially resolved** — architectural decision made; spike pending | Spike run + P0-006 timing assertion passing |
 | **R-04** NFR-R4 silent HTTP/1.1 degradation | Add HTTP/2 capability check to launch checklist; add P0 integration test opening 10 concurrent SSE connections against an HTTP/2 dev server | DevOps / Backend lead | Launch-checklist step | Planned | 10-connection load test passes with no starvation; checklist signed off |
 
 ---
