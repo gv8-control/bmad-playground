@@ -1,0 +1,311 @@
+# CI quality pipeline — bmad-easy
+# Stack: fullstack (Nx monorepo — pnpm, Next.js 15 + NestJS)
+# Framework: Playwright (E2E) + Jest/@nestjs/testing (unit/integration)
+#
+# BLUEPRINT MODE — Nx monorepo not yet scaffolded.
+# Sections marked [BLUEPRINT] require activation once pnpm/nx workspace is initialized.
+# See docs/ci.md for the full activation checklist.
+
+name: Test Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Weekly burn-in: Sundays at 02:00 UTC
+    - cron: '0 2 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+  PNPM_VERSION: '9'
+
+jobs:
+  # ── Lint ──────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # [BLUEPRINT] Activate once Nx workspace is scaffolded
+      - name: Lint all apps and libs
+        run: pnpm exec nx run-many --target=lint --all --parallel=4
+
+  # ── Unit & integration tests (NestJS / Jest) ──────────────────────────────────
+  unit:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # [BLUEPRINT] Activate once Nx workspace is scaffolded
+      - name: Run unit and integration tests
+        run: pnpm exec nx run-many --target=test --all --parallel=4 --passWithNoTests
+        env:
+          CI: true
+
+      - name: Upload unit test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: |
+            apps/*/coverage/
+            apps/*/test-results/
+          retention-days: 30
+
+  # ── E2E tests (Playwright, 4 shards) ─────────────────────────────────────────
+  e2e:
+    name: E2E Tests (Shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: lint
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      # [BLUEPRINT] Uncomment once Nx apps are scaffolded to start app under test.
+      # Remove BASE_URL from GitHub repository variables and use localhost when enabled.
+      # - name: Start web app (dev server)
+      #   run: pnpm --filter @bmad-easy/web dev &
+      #   env:
+      #     PORT: 3000
+      # - name: Start agent-be
+      #   run: pnpm --filter @bmad-easy/agent-be start:dev &
+      #   env:
+      #     PORT: 3001
+      # - name: Wait for services
+      #   run: pnpm exec wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
+
+      - name: Run E2E tests (shard ${{ matrix.shard }}/4)
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
+        env:
+          CI: true
+          BASE_URL: ${{ vars.BASE_URL }}
+
+      - name: Upload E2E results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-shard-${{ matrix.shard }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+  # ── Burn-in (flaky detection, 10 iterations) ──────────────────────────────────
+  burn-in:
+    name: Burn-In (Flaky Detection)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: e2e
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      # [BLUEPRINT] Uncomment once Nx apps are scaffolded
+      # - name: Start web app
+      #   run: pnpm --filter @bmad-easy/web dev &
+      #   env:
+      #     PORT: 3000
+      # - name: Start agent-be
+      #   run: pnpm --filter @bmad-easy/agent-be start:dev &
+      #   env:
+      #     PORT: 3001
+      # - name: Wait for services
+      #   run: pnpm exec wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
+
+      - name: Run burn-in loop (10 iterations)
+        env:
+          CI: true
+          BASE_URL: ${{ vars.BASE_URL }}
+          BURN_IN_COUNT: '10'
+        run: |
+          # Security: inputs passed through env: to prevent script injection
+          echo "Starting burn-in loop — detecting flaky tests"
+          for i in $(seq 1 "$BURN_IN_COUNT"); do
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Burn-in iteration $i/$BURN_IN_COUNT"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            pnpm exec playwright test || exit 1
+          done
+          echo "Burn-in complete — no flaky tests detected"
+
+      - name: Upload burn-in failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: burn-in-failures
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+  # ── Report (aggregate results) ────────────────────────────────────────────────
+  report:
+    name: Test Report
+    runs-on: ubuntu-latest
+    needs: [unit, e2e, burn-in]
+    if: always()
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate summary
+        env:
+          UNIT_RESULT: ${{ needs.unit.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          BURN_IN_RESULT: ${{ needs.burn-in.result }}
+        run: |
+          # Security: inputs passed through env: to prevent script injection
+          echo "## Test Execution Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Stage | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Unit & Integration | $UNIT_RESULT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| E2E (4 shards) | $E2E_RESULT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Burn-in | $BURN_IN_RESULT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$BURN_IN_RESULT" = "failure" ]; then
+            echo ":warning: **Flaky tests detected** — review burn-in artifacts" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "$E2E_RESULT" = "failure" ]; then
+            echo ":x: **E2E tests failed** — review shard artifacts" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "$UNIT_RESULT" = "failure" ]; then
+            echo ":x: **Unit/integration tests failed**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+# ============================================================================
+# EXTENSION PATTERNS — Script Injection Prevention
+# ============================================================================
+# When extending into reusable workflows (on: workflow_call) or manual
+# dispatch (on: workflow_dispatch), NEVER use ${{ inputs.* }} directly in
+# run: blocks. Pass through env: intermediaries.
+#
+# Inputs must be DATA, not COMMANDS. Fixed commands only; inputs as arguments.
+#
+# Example (workflow_call):
+#
+# on:
+#   workflow_call:
+#     inputs:
+#       test-grep:
+#         description: 'Test filter pattern (data — not a command)'
+#         type: string
+#         required: false
+#         default: ''
+#
+# jobs:
+#   test:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Run E2E tests
+#         env:
+#           TEST_GREP: ${{ inputs.test-grep }}
+#         run: |
+#           # Security: inputs passed through env: to prevent script injection
+#           if [ -n "$TEST_GREP" ]; then
+#             pnpm exec playwright test --grep "$TEST_GREP"
+#           else
+#             pnpm exec playwright test
+#           fi
+# ============================================================================
