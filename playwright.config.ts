@@ -36,23 +36,22 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: 'playwright/auth-sessions/local/default/storage-state.json',
+        storageState: '.auth/local/default/storage-state.json',
       },
       dependencies: ['setup'],
     },
   ],
 
-  // Uncomment when the Nx monorepo is scaffolded:
-  // webServer: [
-  //   {
-  //     command: 'pnpm --filter @bmad-easy/web dev',
-  //     url: 'http://localhost:3000',
-  //     reuseExistingServer: !process.env.CI,
-  //   },
-  //   {
-  //     command: 'pnpm --filter @bmad-easy/agent-be start:dev',
-  //     url: 'http://localhost:3001/health',
-  //     reuseExistingServer: !process.env.CI,
-  //   },
-  // ],
+  webServer: [
+    {
+      command: 'pnpm nx run web:dev',
+      url: 'http://localhost:3000',
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: 'pnpm nx run agent-be:serve',
+      url: 'http://localhost:3001/api/health',
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
 });

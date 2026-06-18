@@ -1,65 +1,57 @@
-import { type AuthProvider } from '@seontechnologies/playwright-utils/auth-session';
+import { type AuthProvider, loadStorageState, getStorageStatePath } from '@seontechnologies/playwright-utils/auth-session';
+import type { AuthOptions } from '@seontechnologies/playwright-utils/auth-session';
 import * as OTPAuth from 'otpauth';
 
-const required = (name: string): string => {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} env var is required for E2E auth`);
-  return value;
+// Suppress unused import warning — kept for future use in manageAuthToken overrides.
+void OTPAuth;
+
+type CookieEntry = {
+  name: string;
+  value: string;
+  domain?: string;
+  path?: string;
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
+};
+
+const cookiesFrom = (tokenData: Record<string, unknown>): CookieEntry[] => {
+  const raw = tokenData['cookies'];
+  return Array.isArray(raw) ? (raw as CookieEntry[]) : [];
 };
 
 const githubAuthProvider: AuthProvider = {
-  getEnvironment: (options) => options.environment ?? 'local',
-  getUserIdentifier: (options) => options.userIdentifier ?? 'default',
+  getEnvironment: (options?: Partial<AuthOptions>) => options?.environment ?? process.env.TEST_ENV ?? 'local',
 
-  extractToken: (storageState) => {
-    // Auth.js v5 stores the session as a cookie named 'authjs.session-token'
-    const cookie = storageState.cookies?.find((c) => c.name === 'authjs.session-token');
-    return cookie?.value;
+  getUserIdentifier: (options?: Partial<AuthOptions>) => options?.userIdentifier ?? 'default',
+
+  extractToken: (tokenData) => {
+    const cookie = cookiesFrom(tokenData).find((c) => c.name === 'authjs.session-token');
+    return cookie?.value ?? null;
   },
 
-  isTokenExpired: (storageState) => {
-    const cookie = storageState.cookies?.find((c) => c.name === 'authjs.session-token');
-    if (!cookie) return true;
-    // Auth.js session cookies carry an expires timestamp
-    const expiresMs = cookie.expires * 1000;
-    return Date.now() > expiresMs - 60_000; // 1-minute buffer
+  extractCookies: (tokenData) => cookiesFrom(tokenData),
+
+  isTokenExpired: (rawToken) => {
+    // Auth.js session tokens are opaque — expiry cannot be determined from the string alone.
+    // The token is considered valid until the server rejects it.
+    void rawToken;
+    return false;
   },
 
-  manageAuthToken: async (request, options, page) => {
-    if (!page) throw new Error('githubAuthProvider requires a browser page context');
+  manageAuthToken: async (_request, options) => {
+    // Auth.js v5 GitHub OAuth requires a real browser (auth.setup.ts handles that).
+    // Here we load the storage state that auth.setup.ts already saved to disk.
+    const storagePath = getStorageStatePath(options ?? {});
+    const state = loadStorageState(storagePath);
+    if (!state) throw new Error(`No auth storage state found at ${storagePath}. Run auth.setup.ts first.`);
+    return state;
+  },
 
-    const username = required('TEST_GITHUB_USERNAME');
-    const password = required('TEST_GITHUB_PASSWORD');
-    const otpSecret = process.env.TEST_GITHUB_OTP_SECRET;
-    const baseUrl = process.env.BASE_URL ?? 'http://localhost:3000';
-
-    // Navigate to the app sign-in page and trigger GitHub OAuth
-    await page.goto(`${baseUrl}/auth/signin`);
-    await page.getByRole('button', { name: /sign in with github/i }).click();
-
-    // GitHub OAuth login form
-    await page.getByLabel('Username or email address').fill(username);
-    await page.getByLabel('Password').fill(password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-
-    // Handle 2FA if configured
-    if (otpSecret && (await page.getByLabel(/authentication code/i).isVisible({ timeout: 5_000 }).catch(() => false))) {
-      const totp = new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(otpSecret) });
-      await page.getByLabel(/authentication code/i).fill(totp.generate());
-      await page.getByRole('button', { name: /verify/i }).click();
-    }
-
-    // Handle GitHub OAuth authorization screen (first-time only)
-    const authorizeBtn = page.getByRole('button', { name: /authorize/i });
-    if (await authorizeBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await authorizeBtn.click();
-    }
-
-    // Wait for redirect back to the app
-    await page.waitForURL(`${baseUrl}/**`, { timeout: 30_000 });
-
-    // Capture and return the browser storage state (Auth.js session cookie)
-    return page.context().storageState();
+  clearToken: (_options) => {
+    // Token is cleared by deleting the storage state file — handled by Playwright's built-in
+    // storage state management. No additional action needed here.
   },
 };
 

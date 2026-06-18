@@ -1,10 +1,8 @@
 # CI quality pipeline — bmad-easy
-# Stack: fullstack (Nx monorepo — pnpm, Next.js 15 + NestJS)
+# Stack: fullstack (Nx monorepo — pnpm, Next.js + NestJS)
 # Framework: Playwright (E2E) + Jest/@nestjs/testing (unit/integration)
 #
-# BLUEPRINT MODE — Nx monorepo not yet scaffolded.
-# Sections marked [BLUEPRINT] require activation once pnpm/nx workspace is initialized.
-# See docs/ci.md for the full activation checklist.
+# All stages active: lint, unit/integration, E2E (4 shards), burn-in.
 
 name: Test Pipeline
 
@@ -49,7 +47,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # [BLUEPRINT] Activate once Nx workspace is scaffolded
       - name: Lint all apps and libs
         run: pnpm exec nx run-many --target=lint --all --parallel=4
 
@@ -77,7 +74,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # [BLUEPRINT] Activate once Nx workspace is scaffolded
       - name: Run unit and integration tests
         run: pnpm exec nx run-many --target=test --all --parallel=4 --passWithNoTests
         env:
@@ -133,24 +129,24 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      # [BLUEPRINT] Uncomment once Nx apps are scaffolded to start app under test.
-      # Remove BASE_URL from GitHub repository variables and use localhost when enabled.
-      # - name: Start web app (dev server)
-      #   run: pnpm --filter @bmad-easy/web dev &
-      #   env:
-      #     PORT: 3000
-      # - name: Start agent-be
-      #   run: pnpm --filter @bmad-easy/agent-be start:dev &
-      #   env:
-      #     PORT: 3001
-      # - name: Wait for services
-      #   run: pnpm exec wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
+      - name: Start web app (dev server)
+        run: pnpm exec nx run web:dev &
+        env:
+          PORT: 3000
+
+      - name: Start agent-be
+        run: pnpm exec nx run agent-be:serve &
+        env:
+          PORT: 3001
+
+      - name: Wait for services
+        run: pnpm exec wait-on http://localhost:3000 http://localhost:3001/api/health --timeout 60000
 
       - name: Run E2E tests (shard ${{ matrix.shard }}/4)
         run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
         env:
           CI: true
-          BASE_URL: ${{ vars.BASE_URL }}
+          BASE_URL: http://localhost:3000
 
       - name: Upload E2E results
         if: failure()
@@ -198,22 +194,23 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      # [BLUEPRINT] Uncomment once Nx apps are scaffolded
-      # - name: Start web app
-      #   run: pnpm --filter @bmad-easy/web dev &
-      #   env:
-      #     PORT: 3000
-      # - name: Start agent-be
-      #   run: pnpm --filter @bmad-easy/agent-be start:dev &
-      #   env:
-      #     PORT: 3001
-      # - name: Wait for services
-      #   run: pnpm exec wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
+      - name: Start web app (dev server)
+        run: pnpm exec nx run web:dev &
+        env:
+          PORT: 3000
+
+      - name: Start agent-be
+        run: pnpm exec nx run agent-be:serve &
+        env:
+          PORT: 3001
+
+      - name: Wait for services
+        run: pnpm exec wait-on http://localhost:3000 http://localhost:3001/api/health --timeout 60000
 
       - name: Run burn-in loop (10 iterations)
         env:
           CI: true
-          BASE_URL: ${{ vars.BASE_URL }}
+          BASE_URL: http://localhost:3000
           BURN_IN_COUNT: '10'
         run: |
           # Security: inputs passed through env: to prevent script injection

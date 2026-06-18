@@ -1,0 +1,23 @@
+generator client {
+  provider   = "prisma-client-js"
+  output     = "../generated/client"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String    @id @default(cuid())
+  githubId     String    @unique @map("github_id")
+  githubLogin  String    @unique @map("github_login")
+  name         String?
+  email        String?
+  active       Boolean   @default(true)
+  lastActiveAt DateTime? @map("last_active_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("users")
+}

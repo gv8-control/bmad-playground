@@ -2,8 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(mkdir -p _bmad-output/*)",
-      "Bash(python3 _bmad/scripts/*)",
-      "Bash(python3 _bmad/scripts/resolve_customization.py *)",
+      "Bash(python3 *_bmad/scripts/*)",
+      "Bash(python3 *_bmad/scripts/resolve_customization.py *)",
       "Bash(xargs -I{} * {})",
       "Bash(python3 -c \"import webbrowser, pathlib; webbrowser.open\\(pathlib.Path\\('/workspaces/codespaces-blank/_bmad-output/planning-artifacts/ux-designs/*.html'\\).resolve\\(\\).as_uri\\(\\)\\)\")",
       "WebSearch",
@@ -16,6 +16,22 @@
   },
   "enabledPlugins": {
     "example-skills@anthropic-agent-skills": true,
-    "claude-api@anthropic-agent-skills": true
+    "claude-api@anthropic-agent-skills": true,
+    "nx@nx-claude-plugins": true
+  },
+  "extraKnownMarketplaces": {
+    "nx-claude-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "nrwl/nx-ai-agents-config"
+      }
+    }
+  },
+  "sandbox": {
+    "network": {
+      "allowedDomains": [
+        "www.google-analytics.com"
+      ]
+    }
   }
 }

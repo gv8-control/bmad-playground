@@ -18,3 +18,27 @@ npm-debug.log*
 # Python
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# Nx
+.nx/installation
+.nx/cache
+.nx/workspace-data
+.nx/self-healing
+.nx/migrate-runs
+.nx/polygraph
+
+# Build output
+dist/
+
+# Prisma generated client (build artifact)
+libs/database-schemas/src/generated/
+
+# Playwright
+playwright-report/
+test-results/
+.auth/
+
+# Claude Code
+.claude/worktrees
+.claude/settings.local.json

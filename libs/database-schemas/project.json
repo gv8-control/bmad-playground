@@ -1,0 +1,23 @@
+{
+  "name": "database-schemas",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/database-schemas/src",
+  "projectType": "library",
+  "tags": [],
+  "// targets": "to see all targets run: nx show project database-schemas --web",
+  "targets": {
+    "generate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "prisma generate --config prisma.config.ts",
+        "cwd": "libs/database-schemas"
+      }
+    },
+    "lint": {
+      "dependsOn": ["generate"]
+    },
+    "typecheck": {
+      "dependsOn": ["generate"]
+    }
+  }
+}

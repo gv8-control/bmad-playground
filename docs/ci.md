@@ -44,57 +44,29 @@ push / PR / schedule
 
 ---
 
-## Blueprint Activation Checklist
+## Blueprint Activation — Completed
 
-This pipeline was authored before the Nx monorepo was scaffolded. Work through these steps once `pnpm create nx-workspace` is complete:
+All blueprint steps were activated when the Nx monorepo was scaffolded (2026-06-18):
 
-### 1. Verify pnpm lockfile exists
+| Step | Status |
+|------|--------|
+| pnpm lockfile exists | ✅ `pnpm-lock.yaml` |
+| Nx targets confirmed (`lint`, `test`, `serve`, `dev`) | ✅ |
+| `agent-be` health endpoint (`GET /api/health`) | ✅ `app.controller.ts` |
+| Service startup steps uncommented in `test.yml` | ✅ |
+| `wait-on` added to devDependencies | ✅ |
+| `BASE_URL` hardcoded to `http://localhost:3000` in pipeline | ✅ |
 
-```bash
-ls pnpm-lock.yaml   # must exist for cache key to work
-```
+The pipeline is now fully active. No repository variable `BASE_URL` is needed.
 
-### 2. Confirm Nx targets
+### Service startup in CI
 
-```bash
-pnpm exec nx show projects   # should list apps/web, apps/agent-be, libs/*
-pnpm exec nx run-many --target=lint --all --dry-run
-pnpm exec nx run-many --target=test --all --dry-run
-```
+| App | Nx target | Port | Readiness check |
+|-----|-----------|------|-----------------|
+| `web` | `nx run web:dev` | 3000 | `http://localhost:3000` |
+| `agent-be` | `nx run agent-be:serve` | 3001 | `http://localhost:3001/api/health` |
 
-### 3. Uncomment webServer blocks in `playwright.config.ts`
-
-The commented-out `webServer` section starts both `apps/web` and `apps/agent-be`. Remove the `//` prefix once the apps are runnable.
-
-### 4. Uncomment service startup steps in `test.yml`
-
-In both the `e2e` and `burn-in` jobs, uncomment the `Start web app`, `Start agent-be`, and `Wait for services` steps. Remove the `BASE_URL` variable from GitHub repository variables once localhost is used.
-
-### 5. Set up GitHub repository variable `BASE_URL`
-
-Until the webServer blocks are active, point the E2E tests at a deployed staging environment:
-
-- **GitHub → Settings → Secrets and variables → Actions → Variables → New repository variable**
-- Name: `BASE_URL`
-- Value: `https://staging.bmad-easy.example.com` (replace with your staging URL)
-
-### 6. Configure `wait-on` package
-
-Add to the workspace root (or as an Nx tool dep):
-
-```bash
-pnpm add -Dw wait-on
-```
-
-### 7. Push and trigger first run
-
-```bash
-git add .github/workflows/test.yml
-git commit -m "ci: add test pipeline"
-git push
-```
-
-Open a PR to trigger the pipeline.
+Both are started in the background (`&`) before `wait-on` polls for readiness (60 s timeout).
 
 ---
 
