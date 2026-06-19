@@ -9,15 +9,45 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  githubId     String    @unique @map("github_id")
-  githubLogin  String    @unique @map("github_login")
-  name         String?
-  email        String?
-  active       Boolean   @default(true)
-  lastActiveAt DateTime? @map("last_active_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id              String           @id @default(cuid())
+  githubId        String           @unique @map("github_id")
+  githubLogin     String           @map("github_login")
+  name            String?
+  email           String?
+  active          Boolean          @default(true)
+  lastActiveAt    DateTime?        @map("last_active_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  oauthCredential OAuthCredential?
+  repoConnection  RepoConnection?
 
   @@map("users")
+}
+
+model OAuthCredential {
+  id             String   @id @default(cuid())
+  userId         String   @unique @map("user_id")
+  encryptedDek   String   @map("encrypted_dek")
+  dekNonce       String   @map("dek_nonce")
+  encryptedToken String   @map("encrypted_token")
+  tokenNonce     String   @map("token_nonce")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("oauth_credentials")
+}
+
+model RepoConnection {
+  id               String   @id @default(cuid())
+  userId           String   @unique @map("user_id")
+  repoUrl          String   @map("repo_url")
+  credentialHealth String   @default("healthy") @map("credential_health")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("repo_connections")
 }

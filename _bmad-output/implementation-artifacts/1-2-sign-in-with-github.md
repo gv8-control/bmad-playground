@@ -1,11 +1,11 @@
 ---
-status: review
+status: done
 baseline_commit: bcbb72e4924ce56738f455f0446f7e9dbb0b34e2
 ---
 
 # Story 1.2: Sign In with GitHub
 
-Status: review
+Status: done
 
 ## Story
 
@@ -597,3 +597,41 @@ claude-sonnet-4-6
 - `libs/database-schemas/src/prisma/schema.prisma` — UPDATED (engineType = "library")
 - `package.json` (root) — UPDATED (added next-auth, @auth/core, @prisma/client-runtime-utils, @prisma/adapter-pg, pg, @testing-library/*, jest-environment-jsdom)
 - `.env.example` — UPDATED (added AUTH_SECRET, AUTH_GITHUB_ID, AUTH_GITHUB_SECRET, AUTH_URL)
+
+## Review Findings
+
+### Decision Needed
+
+- [x] [Review][Decision] Error message placement (AC-3) — AC-3 requires the error to appear "below the re-enabled button." The current layout places the `<p role="alert">` as a flex sibling after the `<form>`, not inside the form directly below the button. Visually it renders below the button, but it is not co-located with the button element. Decide whether to move the error inside the `<form>` (immediately after the `<button>`) or accept the current layout as compliant.
+- [x] [Review][Decision] Button disabled / pending state (AC-3) — AC-3 references "the re-enabled button," implying the button is disabled while the OAuth flow is pending and re-enabled on failure. The current Server Action `<form>` has no pending state and no `useFormStatus` client hook. Decide whether to add a client component wrapper with `useFormStatus` to implement the disabled → re-enabled transition.
+- [x] [Review][Decision] Redundant redirect mechanism — `auth.config.ts` defines `callbacks.authorized` returning `!!auth?.user` (Auth.js redirects to `pages.signIn` on `false`), and `middleware.ts` also manually issues `Response.redirect(signInUrl)`. Both paths fire for the same unauthenticated request, creating a double-redirect chain. Decide: (a) rely solely on the `authorized` callback and remove the manual redirect, or (b) remove the `authorized` callback and keep the manual redirect.
+- [x] [Review][Decision] `githubLogin` uniqueness constraint with mutable usernames — `githubLogin` has `@unique` in the Prisma schema, but GitHub allows users to rename their accounts. If user A renames to `foo` and user B then takes the old username, the next upsert for user A (by `githubId`) attempts to write user B's current `githubLogin` value, hitting a unique constraint violation. Decide: drop `@unique` from `githubLogin` (identity is `githubId`), or add conflict handling in the upsert.
+- [x] [Review][Decision] Unauthenticated API routes receive HTML redirect — the middleware matcher applies to all paths including non-`api/auth` API routes (e.g., future `/api/project-map`). Unauthenticated requests to those routes will receive a 302 redirect to `/sign-in` (HTML response) instead of a 401 JSON error. Decide whether to add an API-route branch in the middleware that returns `NextResponse.json({ error: 'Unauthorized' }, { status: 401 })` for paths matching `/api/*` (excluding `/api/auth/*`).
+
+### Patches
+
+- [x] [Review][Patch] Open redirect via unvalidated `callbackUrl` — `callbackUrl` is taken directly from `searchParams` and forwarded to `signIn('github', { redirectTo })` with no validation. A crafted link `/sign-in?callbackUrl=https://evil.com` redirects the user off-site after OAuth. Validate that `callbackUrl` is a relative path (starts with `/`) before use; reject and fall back to `/` otherwise. [`apps/web/src/app/sign-in/page.tsx:11`]
+- [x] [Review][Patch] `pages` block duplicated in `auth.config.ts` and `auth.ts` — `auth.ts` spreads `...authConfig` (which already carries `pages`) then re-declares `pages: { signIn: '/sign-in', error: '/sign-in' }` at the end of the `NextAuth()` call. Remove the redundant `pages` block from `auth.ts`. [`apps/web/src/lib/auth.ts`]
+- [x] [Review][Patch] `DATABASE_URL` not validated at startup — `new PrismaPg({ connectionString: process.env.DATABASE_URL })` silently passes `undefined` if the env var is absent; the error surfaces only at first query time. Add a startup guard: throw with a clear message if `DATABASE_URL` is not set. [`apps/web/src/lib/prisma.ts:9`]
+- [x] [Review][Patch] `CREDENTIAL_ENCRYPTION_KEK` all-zeros placeholder in `.env.example` — the value `0000...0000` (64 hex chars) is a syntactically valid AES-256 key; developers who copy `.env.example` without changing it will run with a predictable encryption key. Replace with a non-functional placeholder string (e.g., `REPLACE_WITH_OPENSSL_RAND_HEX_32`). [`.env.example`]
+- [x] [Review][Patch] `tsconfig.json` excludes `*.test.ts` but not `*.test.tsx` — `apps/web/tsconfig.json` `exclude` array contains `**/*.spec.ts` and `**/*.test.ts` but is missing `**/*.spec.tsx` and `**/*.test.tsx`, so `sign-in/page.test.tsx` is included in the production TypeScript compilation. [`apps/web/tsconfig.json`]
+- [x] [Review][Patch] `Session.userId` typed as non-optional `string` but can be `undefined` — if the Prisma upsert in the `jwt` callback throws (e.g., DB unreachable), `token.userId` is never assigned, and `session.userId` becomes `undefined` at runtime despite the TypeScript type declaring it as `string`. Change the `Session` interface declaration to `userId?: string` (optional) so callers handle the absent case. [`apps/web/src/lib/auth.ts:6`]
+- [x] [Review][Patch] Middleware matcher regex too broad — the negative lookahead `(?!sign-in|...)` matches any path starting with `sign-in`, so `/sign-in-settings` (or similar future routes) would also be excluded from auth protection. Narrow to `(?!sign-in(/|$)|...)` to restrict the exclusion to `/sign-in` and its sub-paths only. [`apps/web/src/middleware.ts`]
+- [x] [Review][Patch] Middleware does not preserve original URL as `callbackUrl` — when an unauthenticated user is redirected to `/sign-in`, the middleware constructs `new URL('/sign-in', req.url)` without appending `?callbackUrl=<original path>`. The `sign-in/page.tsx` already reads and forwards `callbackUrl`, so the capability is wired end-to-end but the middleware never populates the parameter. Add `signInUrl.searchParams.set('callbackUrl', req.nextUrl.pathname)` before the redirect. [`apps/web/src/middleware.ts:8`]
+
+### Deferred
+
+- [x] [Review][Defer] No database migration infrastructure — no `prisma/migrations` directory or `migrate` script; schema must be applied manually via `prisma db push` — deferred, pre-existing
+- [x] [Review][Defer] `email` column has no uniqueness constraint or index on `User` — same email can appear on multiple rows without constraint — deferred, pre-existing
+- [x] [Review][Defer] `next-auth` beta pinned with `^` range — `^5.0.0-beta.31` allows automatic upgrades to future betas with potential breaking changes — deferred, pre-existing
+- [x] [Review][Defer] `active` and `lastActiveAt` fields never updated by the application — fields exist in schema but no writer; misleading until a story implements them — deferred, pre-existing
+- [x] [Review][Defer] No unit/integration test coverage for AC-2 session persistence (8h maxAge) — requires E2E coverage, not unit tests — deferred, pre-existing
+- [x] [Review][Defer] Non-GitHub provider path not handled — if a second provider is added, `token.userId` is never set for it — deferred, pre-existing
+- [x] [Review][Defer] Prisma singleton never resets on stale DB connection — known limitation of the global singleton pattern in Next.js — deferred, pre-existing
+- [x] [Review][Defer] Static assets in `/public/` beyond `favicon.ico` not excluded from middleware matcher — theoretical concern; no non-favicon public assets currently exist — deferred, pre-existing
+
+### ATDD Artifacts
+
+- Checklist: `_bmad-output/test-artifacts/atdd-checklist-1-2-sign-in-with-github.md`
+- E2E tests: `playwright/e2e/auth/sign-in.spec.ts`
+- Unit tests: `apps/web/src/lib/auth.config.spec.ts`

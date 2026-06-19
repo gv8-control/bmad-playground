@@ -1,5 +1,5 @@
 import { signIn } from '@/lib/auth';
-import { GitHubIcon } from '@/components/icons/github-icon';
+import { SubmitButton } from './submit-button';
 
 export default async function SignInPage({
   searchParams,
@@ -8,7 +8,8 @@ export default async function SignInPage({
 }) {
   const { error, callbackUrl } = await searchParams;
   const hasError = !!error;
-  const redirectTo = callbackUrl ?? '/';
+  const raw = callbackUrl ?? '/';
+  const redirectTo = raw.startsWith('/') ? raw : '/';
 
   return (
     <main className="min-h-screen bg-bg flex items-center justify-center px-4">
@@ -29,24 +30,17 @@ export default async function SignInPage({
           }}
           className="w-full"
         >
-          <button
-            type="submit"
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-accent text-accent-fg rounded-md hover:bg-accent-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg font-medium text-sm"
-          >
-            <GitHubIcon className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
-            Sign in with GitHub
-          </button>
+          <SubmitButton />
+          {hasError && (
+            <p
+              className="mt-3 text-negative text-sm text-center"
+              role="alert"
+              aria-live="polite"
+            >
+              Sign-in failed. Try again or contact support.
+            </p>
+          )}
         </form>
-
-        {hasError && (
-          <p
-            className="text-negative text-sm text-center"
-            role="alert"
-            aria-live="polite"
-          >
-            Sign-in failed. Try again or contact support.
-          </p>
-        )}
       </div>
     </main>
   );

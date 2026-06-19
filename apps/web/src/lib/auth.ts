@@ -1,10 +1,11 @@
 import NextAuth from 'next-auth';
 import { authConfig } from './auth.config';
 import { getPrisma } from './prisma';
+import { encryptToken } from './crypto';
 
 declare module 'next-auth' {
   interface Session {
-    userId: string;
+    userId?: string;
   }
 }
 
@@ -44,6 +45,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           },
         });
         token.userId = user.id;
+
+        if (account.access_token) {
+          const encrypted = encryptToken(account.access_token);
+          await getPrisma().oAuthCredential.upsert({
+            where: { userId: user.id },
+            update: {
+              encryptedDek: encrypted.encryptedDek,
+              dekNonce: encrypted.dekNonce,
+              encryptedToken: encrypted.encryptedToken,
+              tokenNonce: encrypted.tokenNonce,
+            },
+            create: {
+              userId: user.id,
+              encryptedDek: encrypted.encryptedDek,
+              dekNonce: encrypted.dekNonce,
+              encryptedToken: encrypted.encryptedToken,
+              tokenNonce: encrypted.tokenNonce,
+            },
+          });
+        }
       }
       return token;
     },
@@ -53,9 +74,5 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return session;
     },
-  },
-  pages: {
-    signIn: '/sign-in',
-    error: '/sign-in',
   },
 });

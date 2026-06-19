@@ -46,8 +46,8 @@ development_status:
   # ── Epic 1: Authentication & Repository Connection ──
   epic-1: in-progress
   1-1-scaffold-the-platform-monorepo-and-ci-pipeline: done
-  1-2-sign-in-with-github: review
-  1-3-connect-a-repository-by-url: backlog
+  1-2-sign-in-with-github: done
+  1-3-connect-a-repository-by-url: review
   1-4-validate-bmad-initialization-in-the-connected-repository: backlog
   1-5-resolve-git-identity-for-commit-attribution: backlog
   1-6-detect-and-recover-from-credential-failures: backlog

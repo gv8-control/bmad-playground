@@ -40,6 +40,8 @@
     "jest.config.ts",
     "jest.config.cts",
     "**/*.spec.ts",
-    "**/*.test.ts"
+    "**/*.spec.tsx",
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }
