@@ -42,3 +42,7 @@ test-results/
 # Claude Code
 .claude/worktrees
 .claude/settings.local.json
+
+# n8n
+.cache/
+.n8n/
