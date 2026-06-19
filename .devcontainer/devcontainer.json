@@ -1,0 +1,28 @@
+{
+  "name": "BMad Easy Dev",
+  "image": "mcr.microsoft.com/devcontainers/universal:5",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers-extra/features/n8n:1": {}
+  },
+  "forwardPorts": [3000, 3001, 5432, 5678],
+  "portsAttributes": {
+    "3000": { "label": "Web App", "onAutoForward": "notify" },
+    "3001": { "label": "API", "onAutoForward": "notify" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" },
+    "5678": { "label": "n8n Workflows", "onAutoForward": "openBrowser" }
+  },
+  "postCreateCommand": "npm install -g pnpm@10 && pnpm install",
+  "postStartCommand": "docker compose up -d",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "postman.postman-for-vscode",
+        "cweijan.vscode-postgresql-client2",
+        "anthropic.claude-code"
+      ]
+    }
+  }
+}
