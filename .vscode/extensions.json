@@ -2,6 +2,7 @@
   "recommendations": [
     "postman.postman-for-vscode",
     "esbenp.prettier-vscode",
-    "cweijan.vscode-postgresql-client2"
+    "cweijan.vscode-postgresql-client2",
+    "anthropic.claude-code"
   ]
 }
