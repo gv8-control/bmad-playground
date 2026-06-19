@@ -15,27 +15,5 @@ services:
       timeout: 5s
       retries: 5
 
-  n8n:
-    image: n8nio/n8n:latest
-    restart: unless-stopped
-    ports:
-      - '5678:5678'
-    environment:
-      - N8N_HOST=0.0.0.0
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - GENERIC_TIMEZONE=UTC
-      - NODE_ENV=production
-      - N8N_INSTANCE_OWNER_MANAGED_BY_ENV=true
-      - N8N_INSTANCE_OWNER_EMAIL=dev@dev.dev
-      - N8N_INSTANCE_OWNER_PASSWORD_HASH=$$2a$$10$$FRAwNj1p7F5ijej60UHu9u1Fwa70I.zspRU944FOsdBK/lRFSsDii
-      - N8N_PERSONALIZATION_SURVEY_ENABLED=false
-      - N8N_DIAGNOSTICS_ENABLED=false
-      - NODES_EXCLUDE=[]
-    volumes:
-      # - ./n8n_data:/home/node/.n8n
-      - ./:/home/node
-    working_dir: /home/node
-
 volumes:
   postgres_data:
