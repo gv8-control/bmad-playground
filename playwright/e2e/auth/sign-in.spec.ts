@@ -140,7 +140,7 @@ test.describe('Story 1.2 — GitHub OAuth initiation', () => {
       ]);
 
       // Verify repo scope is included in the OAuth authorization URL
-      expect(githubRequest.url()).toMatch(/scope=.*repo/);
+      expect(githubRequest.url()).toMatch(/[?&]scope=[^&]*\brepo\b/);
     } finally {
       await context.close();
     }

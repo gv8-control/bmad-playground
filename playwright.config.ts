@@ -1,4 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
+import { config as loadDotenv } from 'dotenv';
+
+// Load .env.local into the Playwright runner process (mirrors Next.js dev-server behaviour).
+// The webServer process inherits the shell env, so variables set here (via process.env) are
+// NOT automatically visible to the server — the server reads .env.local itself at startup.
+loadDotenv({ path: '.env.local', override: false });
 
 export default defineConfig({
   testDir: './playwright',
