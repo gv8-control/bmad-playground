@@ -22,7 +22,8 @@
     "N8N_INSTANCE_OWNER_PASSWORD_HASH": "$2a$10$FRAwNj1p7F5ijej60UHu9u1Fwa70I.zspRU944FOsdBK/lRFSsDii",
     "N8N_PERSONALIZATION_SURVEY_ENABLED": "false",
     "N8N_DIAGNOSTICS_ENABLED": "false",
-    "NODES_EXCLUDE": "[]"
+    "NODES_EXCLUDE": "[]",
+    "NODE_FUNCTION_ALLOW_EXTERNAL": "uuid"
   },
   "postCreateCommand": "npm install -g pnpm@10 && pnpm install",
   "postStartCommand": "docker compose up -d",
