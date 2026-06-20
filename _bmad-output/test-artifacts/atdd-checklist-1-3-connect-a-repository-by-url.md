@@ -7,7 +7,7 @@ stepsCompleted:
   - step-04c-aggregate
   - step-05-validate-and-complete
 lastStep: step-05-validate-and-complete
-lastSaved: '2026-06-19'
+lastSaved: '2026-06-20'
 activatedDate: '2026-06-19'
 storyId: '1.3'
 storyKey: 1-3-connect-a-repository-by-url
@@ -18,14 +18,20 @@ generatedTestFiles:
   - apps/web/src/lib/auth.credential.spec.ts
   - apps/web/src/actions/repo-connection.actions.spec.ts
   - apps/web/src/components/onboarding/RepositoryUrlForm.test.tsx
+  - apps/web/src/app/(dashboard)/onboarding/page.test.tsx
+  - apps/web/src/app/page.test.tsx
+  - apps/web/src/app/api/internal/test/seed-user/route.test.ts
+  - apps/web/src/app/api/internal/test/repo-connections/route.test.ts
+  - apps/web/src/app/api/internal/test/repo-connections/[id]/route.test.ts
   - playwright/e2e/onboarding/onboarding.spec.ts
 ---
 
 # ATDD Checklist — Story 1.3: Connect a Repository by URL
 
-**TDD Phase:** GREEN (all Jest tests active and passing; E2E authenticated flows remain skipped pending GitHub credentials)
+**TDD Phase:** GREEN (all 78 Jest tests passing; E2E tests use page.route() mocking — require dev server)
 **Stack:** fullstack (Next.js + NestJS)
 **Generated:** 2026-06-19
+**Last updated:** 2026-06-20
 **Activated:** 2026-06-19
 **Execution Mode:** SEQUENTIAL
 
@@ -39,10 +45,14 @@ generatedTestFiles:
 | Integration (Jest) | `apps/web/src/lib/auth.credential.spec.ts` | 7 | 7 | 0 | **PASSING** |
 | Integration (Jest) | `apps/web/src/actions/repo-connection.actions.spec.ts` | 23 | 23 | 0 | **PASSING** |
 | Component (Jest) | `apps/web/src/components/onboarding/RepositoryUrlForm.test.tsx` | 15 | 15 | 0 | **PASSING** |
-| E2E (Playwright) | `playwright/e2e/onboarding/onboarding.spec.ts` | 14 | 1 | 13 | Active — authenticated flows need GitHub creds |
-| **Total** | | **68** | **55** | **13** | |
+| Server Component (Jest) | `apps/web/src/app/(dashboard)/onboarding/page.test.tsx` | 6 | 6 | 0 | **PASSING** |
+| Server Component (Jest) | `apps/web/src/app/page.test.tsx` | 6 | 6 | 0 | **PASSING** |
+| Internal Routes (Jest) | `seed-user/route.test.ts` + `repo-connections/*.test.ts` | 12 | 12 | 0 | **PASSING** |
+| E2E (Playwright) | `playwright/e2e/onboarding/onboarding.spec.ts` | 14 | 12 | 2 | Needs dev server |
+| **Total Jest** | | **78** | **78** | **0** | **ALL PASSING** |
+| **Total E2E** | | **14** | **12** | **2** | |
 
-> **Note on test counts vs. original scaffold:** `crypto.test.ts` gained 1 tamper-detection test (T-1); `auth.credential.spec.ts` gained 1 credential upsert error-resilience test (T-2); `repo-connection.actions.spec.ts` had 3 additional tests in the implementation beyond the original scaffold count.
+> **Session note (2026-06-20):** Six tests in `onboarding/page.test.tsx` and `app/page.test.tsx` were failing because `redirect()` (return type `never` in Next.js) doesn't throw in Jest mocks, so execution continued past the guard and crashed on `session.userId`. Fixed by extracting `userId` before the guard and adding `return null as never` after each redirect. E2E spec updated: 11 previously-skipped tests un-skipped using `page.route()` Server Action mocking; 2 remain skipped (need GitHub org restrictions / real credentials).
 
 ---
 

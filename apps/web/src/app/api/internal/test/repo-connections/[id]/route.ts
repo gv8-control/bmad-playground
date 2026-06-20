@@ -5,7 +5,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' || !process.env.TEST_ENV) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

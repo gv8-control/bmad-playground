@@ -64,6 +64,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               tokenNonce: encrypted.tokenNonce,
             },
           });
+        } else {
+          console.error('[auth] GitHub sign-in completed but access_token is missing — OAuth credential not stored for user', user.id);
         }
       }
       return token;

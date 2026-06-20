@@ -1,3 +1,6 @@
+-- Drop unique constraint on github_login if it exists (schema removed @unique from githubLogin)
+ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "users_github_login_key";
+
 -- CreateTable
 CREATE TABLE "oauth_credentials" (
     "id" TEXT NOT NULL,

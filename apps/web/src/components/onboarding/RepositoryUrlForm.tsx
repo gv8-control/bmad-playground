@@ -16,14 +16,19 @@ export function RepositoryUrlForm() {
     e.preventDefault();
     setError(null);
     setIsPending(true);
-    connectRepository(url).then((result: ConnectResult) => {
-      setIsPending(false);
-      if ('success' in result) {
-        router.push('/project-map');
-      } else {
-        setError(result.error);
-      }
-    });
+    connectRepository(url)
+      .then((result: ConnectResult) => {
+        setIsPending(false);
+        if ('success' in result) {
+          router.push('/project-map');
+        } else {
+          setError(result.error);
+        }
+      })
+      .catch(() => {
+        setIsPending(false);
+        setError('An unexpected error occurred. Please try again.');
+      });
   }
 
   return (

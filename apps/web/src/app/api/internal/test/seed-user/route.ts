@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getPrisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' || !process.env.TEST_ENV) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' || !process.env.TEST_ENV) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

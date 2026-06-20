@@ -5,12 +5,19 @@ import { RepositoryUrlForm } from '@/components/onboarding/RepositoryUrlForm';
 
 export default async function OnboardingPage() {
   const session = await auth();
-  if (!session?.userId) redirect('/sign-in');
+  const userId = session?.userId;
+  if (!userId) {
+    redirect('/sign-in');
+    return null as never;
+  }
 
   const existing = await getPrisma().repoConnection.findUnique({
-    where: { userId: session.userId },
+    where: { userId },
   });
-  if (existing) redirect('/project-map');
+  if (existing) {
+    redirect('/project-map');
+    return null as never;
+  }
 
   return (
     <main className="min-h-screen bg-bg flex items-center justify-center px-4">

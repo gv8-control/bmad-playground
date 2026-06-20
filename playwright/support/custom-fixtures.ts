@@ -1,5 +1,4 @@
 import { test as base } from '@playwright/test';
-import { createRepository, type TestRepository } from './factories/repository-factory';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 
@@ -7,26 +6,11 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 const E2E_GITHUB_ID = 'e2e-test-default-99999';
 
 type BmadEasyFixtures = {
-  /** A repository record pre-seeded via the platform API, cleaned up after the test. */
-  seededRepository: TestRepository;
   /** Ensures the synthetic E2E test user has a RepoConnection row for the duration of the test. */
   withRepoConnection: void;
 };
 
 export const test = base.extend<BmadEasyFixtures>({
-  seededRepository: async ({ request }, use) => {
-    const repo = createRepository();
-
-    const response = await request.post('/api/internal/test/repositories', { data: repo });
-    if (!response.ok()) {
-      throw new Error(`Failed to seed repository: ${response.status()} ${await response.text()}`);
-    }
-
-    await use(repo);
-
-    await request.delete(`/api/internal/test/repositories/${repo.id}`);
-  },
-
   withRepoConnection: async ({ request }, use) => {
     // Upsert the test user to get its stable userId.
     const userRes = await request.post(`${BASE_URL}/api/internal/test/seed-user`, {
@@ -46,8 +30,10 @@ export const test = base.extend<BmadEasyFixtures>({
     }
     const { id: connectionId } = (await connRes.json()) as { id: string };
 
-    await use();
-
-    await request.delete(`${BASE_URL}/api/internal/test/repo-connections/${connectionId}`);
+    try {
+      await use();
+    } finally {
+      await request.delete(`${BASE_URL}/api/internal/test/repo-connections/${connectionId}`);
+    }
   },
 });

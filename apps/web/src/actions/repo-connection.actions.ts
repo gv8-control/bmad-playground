@@ -10,7 +10,7 @@ const connectRepoSchema = z.object({
     .string()
     .url('Must be a valid URL')
     .regex(
-      /^https:\/\/github\.com\/[^/]+\/[^/]+(\.git)?\/?$/,
+      /^https:\/\/github\.com\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+(\.git)?\/?$/,
       'Must be a GitHub repository URL (e.g. https://github.com/owner/repo)',
     ),
 });
@@ -53,22 +53,30 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     };
   }
 
-  const accessToken = decryptToken(credential);
-
-  const match = cleanUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)$/);
-  if (!match) {
-    return { error: 'Invalid GitHub repository URL format', errorCode: 'INVALID_URL' };
-  }
-  const [, owner, repo] = match;
-
   try {
+    const accessToken = decryptToken(credential);
+
+    const match = cleanUrl.match(/^https:\/\/github\.com\/([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)$/);
+    if (!match) {
+      return { error: 'Invalid GitHub repository URL format', errorCode: 'INVALID_URL' };
+    }
+    const [, owner, repo] = match;
+
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      signal: AbortSignal.timeout(10_000),
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
     });
+
+    if (response.status === 401) {
+      return {
+        error: 'Your GitHub access token has expired or been revoked. Please sign out and sign in again.',
+        errorCode: 'NO_CREDENTIAL',
+      };
+    }
 
     if (response.status === 404) {
       return {

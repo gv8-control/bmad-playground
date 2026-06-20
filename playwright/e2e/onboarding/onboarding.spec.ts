@@ -5,10 +5,22 @@
  * AC-4 (descriptive per-cause inline errors).
  *
  * Most tests use the synthetic session seeded by auth.setup.ts (AUTH_SECRET only).
- * Tests that require real GitHub credentials or server-side API mocking remain skipped.
+ * Tests that require real GitHub org restrictions remain skipped.
+ *
+ * Server Action POST responses are mocked via page.route() using React Flight
+ * wire format so that error/success flows can be tested without real GitHub credentials.
  */
 
 import { test, expect } from '../../support/merged-fixtures';
+
+/**
+ * Generates a minimal React Flight (RSC) wire-format payload for a Server Action
+ * that returns a plain object. Chunk 1 carries the action result; chunk 0 is the
+ * root referencing it via the "a" (action) field.
+ */
+function rscActionPayload(result: unknown): string {
+  return `1:${JSON.stringify(result)}\n0:{"a":"$@1","f":"","b":""}`;
+}
 
 // ─── Unauthenticated access guard ────────────────────────────────────────────
 
@@ -103,35 +115,66 @@ test.describe('Story 1.3 — root page redirect logic', () => {
 // ─── Pending / validating state (UX-DR14) ─────────────────────────────────────
 
 test.describe('Story 1.3 — validating state', () => {
-  test.skip(
+  test(
     '[P1] "Validating…" appears on the button immediately after form submission',
     async ({ page }) => {
       await page.goto('/onboarding');
 
-      // Delay the Server Action response so we can observe the pending state
-      await page.route('**/onboarding**', async (route) => {
-        await new Promise((resolve) => setTimeout(resolve, 3_000));
-        await route.continue();
+      // Hold the Server Action POST open so we can observe the pending state.
+      // Only intercept POST requests with Next-Action header (Server Action calls),
+      // not the initial page load GET.
+      let resolveHeld!: () => void;
+      const held = new Promise<void>((r) => { resolveHeld = r; });
+      await page.route('**/onboarding', async (route) => {
+        if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
+          await held; // block until the assertion below completes
+          await route.fulfill({
+            status: 200,
+            contentType: 'text/x-component',
+            body: rscActionPayload({ error: 'Repository not found.', errorCode: 'NOT_FOUND' }),
+          });
+        } else {
+          await route.continue();
+        }
       });
 
       await page.getByLabel(/repository url/i).fill('https://github.com/a/b');
       await page.getByRole('button', { name: /connect repository/i }).click();
 
+      // Button label switches while Server Action is in flight
       await expect(page.getByRole('button', { name: /validating/i })).toBeVisible();
+
+      // Release the held request so the test can clean up
+      resolveHeld();
     },
   );
 });
 
-// ─── Error states (AC-4) ──────────────────────────────────────────────────────
+// ─── Error states (AC-4) — mocked via page.route() ───────────────────────────
 
 test.describe('Story 1.3 — inline error display (AC-4)', () => {
-  test.skip(
-    '[P0] submitting a non-existent repository URL shows a "not found" error (AC-4)',
+  test(
+    '[P0] submitting a URL for a non-existent repository shows a "not found" inline error (AC-4)',
     async ({ page }) => {
       await page.goto('/onboarding');
-      await page.getByLabel(/repository url/i).fill(
-        'https://github.com/nonexistent-org-xyz-12345/nonexistent-repo-xyz-12345',
-      );
+
+      // Mock Server Action to return a NOT_FOUND error without hitting GitHub API
+      await page.route('**/onboarding', async (route) => {
+        if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'text/x-component',
+            body: rscActionPayload({
+              error: 'Repository not found. Check that the URL is correct and you have access to it.',
+              errorCode: 'NOT_FOUND',
+            }),
+          });
+        } else {
+          await route.continue();
+        }
+      });
+
+      await page.getByLabel(/repository url/i).fill('https://github.com/nonexistent-org/nonexistent-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
 
       const alert = page.getByRole('alert');
@@ -140,11 +183,27 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
     },
   );
 
-  test.skip(
-    '[P0] submitting a repo the user cannot write to shows an "insufficient permission" error (AC-4)',
+  test(
+    '[P0] submitting a read-only repository shows an "insufficient permission" inline error (AC-4)',
     async ({ page }) => {
       await page.goto('/onboarding');
-      await page.getByLabel(/repository url/i).fill('https://github.com/read-only-org/read-only-repo');
+
+      await page.route('**/onboarding', async (route) => {
+        if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'text/x-component',
+            body: rscActionPayload({
+              error: "You don't have write access to this repository. bmad-easy requires write access to create and update BMAD artifacts.",
+              errorCode: 'INSUFFICIENT_PERMISSION',
+            }),
+          });
+        } else {
+          await route.continue();
+        }
+      });
+
+      await page.getByLabel(/repository url/i).fill('https://github.com/some-org/read-only-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
 
       const alert = page.getByRole('alert');
@@ -156,7 +215,8 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
   test.skip(
     '[P1] org OAuth App restriction error explicitly names the org cause — not a generic message (AC-4)',
     async ({ page }) => {
-      // Requires a test repo in an org with OAuth App access restrictions enabled
+      // Requires a test repo in an org with OAuth App access restrictions enabled.
+      // Cannot be simulated without a real GitHub org configured with App restrictions.
       await page.goto('/onboarding');
       await page.getByLabel(/repository url/i).fill('https://github.com/restricted-org-test/some-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
@@ -169,19 +229,35 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
   );
 });
 
-// ─── Successful connection (AC-3) ─────────────────────────────────────────────
+// ─── Successful connection (AC-3) — mocked via page.route() ──────────────────
 
 test.describe('Story 1.3 — successful repository connection (AC-3)', () => {
-  test.skip(
-    '[P0] submitting a valid URL with write access redirects to /project-map (AC-3)',
+  test(
+    '[P0] submitting a valid URL returns success and navigates to /project-map (AC-3)',
     async ({ page }) => {
       await page.goto('/onboarding');
-      // Use a real repo the test user has write access to (configured in test env)
-      const repoUrl = process.env.TEST_REPO_URL ?? 'https://github.com/test-org/test-repo';
-      await page.getByLabel(/repository url/i).fill(repoUrl);
+
+      // Intercept /project-map (currently 404 until Epic 2) so the navigation target resolves
+      await page.route('**/project-map', (route) =>
+        route.fulfill({ status: 200, body: '<html><body>Project Map</body></html>' }),
+      );
+
+      // Mock Server Action to return success without calling GitHub API
+      await page.route('**/onboarding', async (route) => {
+        if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'text/x-component',
+            body: rscActionPayload({ success: true }),
+          });
+        } else {
+          await route.continue();
+        }
+      });
+
+      await page.getByLabel(/repository url/i).fill('https://github.com/test-org/test-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
 
-      // After successful connection the Server Action redirects to /project-map
       await expect(page).toHaveURL('/project-map', { timeout: 15_000 });
     },
   );
@@ -189,6 +265,8 @@ test.describe('Story 1.3 — successful repository connection (AC-3)', () => {
   test.skip(
     '[P1] encrypted token is never visible in the browser — response body check (AC-3)',
     async ({ page }) => {
+      // Requires real GitHub credentials and a writable test repo.
+      // Cannot be simulated with route mocking since token security is a server-side property.
       const responses: string[] = [];
 
       page.on('response', async (response) => {

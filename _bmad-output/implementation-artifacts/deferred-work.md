@@ -26,6 +26,30 @@
 - `/api/internal/test/repo-connections/[id]` DELETE has no Prisma P2025 error handling — non-existent ID throws 500, causing misleading test teardown failures.
 - `syntheticSession` in `playwright/auth.setup.ts` mints real JWT tokens from `AUTH_SECRET` — if `AUTH_SECRET` leaks from CI, arbitrary sessions can be forged; inherent to synthetic session architecture.
 
+## Deferred from: code review of 1-3-connect-a-repository-by-url (2026-06-20)
+
+- Nonce length not validated in `decryptToken` — `dekNonce`/`tokenNonce` decoded from Base64 without asserting exactly 12 bytes; a corrupt nonce throws an unhelpful native OpenSSL error rather than a descriptive application error.
+- `encryptedDek` minimum-size guard too weak — `< TAG_LENGTH` (16-byte) guard passes for exactly 16 bytes, yielding zero-byte ciphertext; a valid DEK ciphertext is at least 48 bytes. Currently caught by outer try/catch.
+- Parallel E2E workers share fixed `E2E_GITHUB_ID` — concurrent `withRepoConnection` fixtures mutate the same DB row; teardown from one test can delete another's fixture. Safe with sequential workers.
+- No unit test for `decryptToken` failure path in `connectRepository` — a KEK-rotated or tampered credential throws as `UNKNOWN`; no test verifies the catch behavior.
+- Middleware permanently exempts `/api/internal/test` from auth — `TEST_ENV` route guard is the sole protection layer; accidental `TEST_ENV=true` in a non-local environment exposes data-mutation endpoints without authentication.
+
+## Deferred from: code review of 1-3-connect-a-repository-by-url (Review 4 — 2026-06-20)
+
+- `encryptToken` in NextAuth jwt callback has no application-level error handling — if `CREDENTIAL_ENCRYPTION_KEK` is misconfigured, `getKek()` throws and NextAuth's internal error handler redirects all sign-in attempts to `/sign-in?error=…`; the root cause (missing env var) is not logged at the catch site. A startup env-var validation or an explicit try/catch with a targeted log is the proper fix. [`apps/web/src/lib/auth.ts:49`]
+- Silent repository replacement — `repoConnection.upsert` overwrites an existing connection without user confirmation; guarded by the onboarding redirect in normal flow but reachable via direct navigation. Intentional upsert semantics for MVP; confirmation UI belongs in a future story. [`apps/web/src/actions/repo-connection.actions.ts:126`]
+- Internal test routes return 500 on malformed/missing JSON body — `request.json()` has no try/catch in any of the three test API routes; opaque 500 is returned instead of a descriptive error. Test-only risk; the E2E fixture always sends valid JSON. [`apps/web/src/app/api/internal/test/seed-user/route.ts:9`]
+- Migration CREATE TABLE has no `IF NOT EXISTS` guard — partial manual pre-creation of `oauth_credentials` or `repo_connections` blocks `prisma migrate deploy` and permanently marks the migration as failed in `_prisma_migrations`. Normal Prisma workflow prevents this via the migration table; idempotency via SQL guards was not added by design. [`libs/database-schemas/src/prisma/migrations/20260619000000_.../migration.sql`]
+- GitHub API 429 rate limit treated as generic UNKNOWN — `!response.ok` catch-all returns "unexpected error (429)" with no retry guidance and ignores `Retry-After` header. Rare in current single-user MVP; belongs in a resilience story. [`apps/web/src/actions/repo-connection.actions.ts:109`]
+
+## Deferred from: code review of 1-3-connect-a-repository-by-url (Review 3 — 2026-06-20)
+
+_Edge Case Hunter layer failed (process exited); findings from Blind Hunter and Acceptance Auditor only._
+
+- `withRepoConnection` Playwright fixture only deletes the `RepoConnection` row on teardown — the seeded `User` and its `OAuthCredential` accumulate across test runs; upsert idempotency prevents correctness failures but orphaned credential rows persist in the database.
+- `credential_health` TEXT column has no DB-level CHECK constraint — valid values `"healthy"` / `"failed"` enforced only at the TypeScript layer; a typo is silently stored without a constraint violation.
+- `CREDENTIAL_ENCRYPTION_KEK` is validated lazily on first call rather than at process startup — spec says "startup guard"; Next.js lazy module loading means misconfiguration surfaces as a user-facing error on the first sign-in rather than a boot failure. Documented as intentional in Dev Notes #10.
+
 ## Deferred from: code review of 1-2-sign-in-with-github (2026-06-18)
 
 - No database migration infrastructure — no `prisma/migrations` directory or `migrate` script; schema must be applied manually via `prisma db push`.

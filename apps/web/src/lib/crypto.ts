@@ -54,6 +54,9 @@ export function decryptToken(credential: EncryptedCredential): string {
 
   const dekNonce = Buffer.from(credential.dekNonce, 'base64');
   const encryptedDekBuf = Buffer.from(credential.encryptedDek, 'base64');
+  if (encryptedDekBuf.length < TAG_LENGTH) {
+    throw new Error('Malformed encryptedDek: too short');
+  }
   const dekCiphertext = encryptedDekBuf.subarray(0, encryptedDekBuf.length - TAG_LENGTH);
   const dekTag = encryptedDekBuf.subarray(encryptedDekBuf.length - TAG_LENGTH);
   const dekDecipher = createDecipheriv(ALGORITHM, kek, dekNonce);
@@ -62,6 +65,9 @@ export function decryptToken(credential: EncryptedCredential): string {
 
   const tokenNonce = Buffer.from(credential.tokenNonce, 'base64');
   const encryptedTokenBuf = Buffer.from(credential.encryptedToken, 'base64');
+  if (encryptedTokenBuf.length < TAG_LENGTH) {
+    throw new Error('Malformed encryptedToken: too short');
+  }
   const tokenCiphertext = encryptedTokenBuf.subarray(0, encryptedTokenBuf.length - TAG_LENGTH);
   const tokenTag = encryptedTokenBuf.subarray(encryptedTokenBuf.length - TAG_LENGTH);
   const tokenDecipher = createDecipheriv(ALGORITHM, dek, tokenNonce);

@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-06-19
+# last_updated: 2026-06-20
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-06-19
+last_updated: 2026-06-20
 project: bmad-easy
 
 project_key: NOKEY
@@ -47,7 +47,7 @@ development_status:
   epic-1: in-progress
   1-1-scaffold-the-platform-monorepo-and-ci-pipeline: done
   1-2-sign-in-with-github: done
-  1-3-connect-a-repository-by-url: review
+  1-3-connect-a-repository-by-url: done
   1-4-validate-bmad-initialization-in-the-connected-repository: backlog
   1-5-resolve-git-identity-for-commit-attribution: backlog
   1-6-detect-and-recover-from-credential-failures: backlog

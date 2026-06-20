@@ -9,7 +9,7 @@ export default async function SignInPage({
   const { error, callbackUrl } = await searchParams;
   const hasError = !!error;
   const raw = callbackUrl ?? '/';
-  const redirectTo = raw.startsWith('/') ? raw : '/';
+  const redirectTo = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
 
   return (
     <main className="min-h-screen bg-bg flex items-center justify-center px-4">
