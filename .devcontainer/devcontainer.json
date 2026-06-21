@@ -34,7 +34,8 @@
         "esbenp.prettier-vscode",
         "postman.postman-for-vscode",
         "cweijan.vscode-postgresql-client2",
-        "anthropic.claude-code"
+        "anthropic.claude-code",
+        "fedaykindev.openchamber"
       ]
     }
   }
