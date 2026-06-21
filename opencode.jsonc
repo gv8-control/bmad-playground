@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "planner": {
+      "model": "mistral/mistral-medium-2604",
+      "temperature": 0.6,
+    },
+    "coder": {
+      "model": "mistral/mistral-medium-2604",
+      "temperature": 0.3,
+    },
+    "test": {
+      "model": "opencode/big-pickle",
+    },
+  },
+}
