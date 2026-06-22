@@ -44,7 +44,7 @@
     "NODES_EXCLUDE": "[]",
     "NODE_FUNCTION_ALLOW_EXTERNAL": "uuid"
   },
-  "postCreateCommand": "npm install -g pnpm@10 && pnpm install",
+  "postCreateCommand": "npm install -g pnpm@10 && pnpm install && corepack prepare yarn@stable --activate",
   "postStartCommand": "docker compose up -d",
   "customizations": {
     "vscode": {
