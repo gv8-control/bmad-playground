@@ -1,0 +1,456 @@
+{
+  "updatedAt": "2026-06-22T07:30:58.323Z",
+  "createdAt": "2026-06-20T11:36:57.322Z",
+  "id": "wvEI4B8b2pjAB4a7",
+  "name": "BMAD Session (Claude Code)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-haiku-4-5-20251001",
+          "mode": "list",
+          "cachedResultName": "Claude Haiku 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        272
+      ],
+      "id": "4b9fadc8-8188-4d8d-a956-3fd72a61dfa7",
+      "name": "Cheap",
+      "credentials": {
+        "anthropicApi": {
+          "id": "qsLq66OJbT7LErQP",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "Story"
+            },
+            {
+              "name": "Skill"
+            },
+            {
+              "name": "Initial prompt (without story ID)"
+            },
+            {
+              "name": "Conversation label"
+            }
+          ]
+        }
+      },
+      "id": "c0554f37-6337-476c-8fbb-b4c6e9f9ba84",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -80,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=claude -p \\\n  --dangerously-skip-permissions \\\n  -n \"{{ $json.conversationTitle }}\" \\\n  --session-id \"{{ $('SessionID').item.json.sessionId }}\" \\\n   \"/{{ $('Start').item.json.Skill }} {{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        448,
+        128
+      ],
+      "id": "d678df90-4e22-49c7-8f8d-5a0342333380",
+      "name": "Agent run (initial)"
+    },
+    {
+      "parameters": {
+        "command": "=claude -p \\\n  --dangerously-skip-permissions \\\n  --resume \"{{ $('SessionID').item.json.sessionId }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        448,
+        304
+      ],
+      "id": "e9d79e46-cea7-4091-a9f7-5eaf383a6fa1",
+      "name": "Agent run (follow-up)"
+    },
+    {
+      "parameters": {
+        "action": "generate",
+        "dataPropertyName": "sessionId"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        96,
+        16
+      ],
+      "id": "2a563cd3-ab0e-4286-a33b-022466e5eff6",
+      "name": "SessionID"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "740f3353-2f56-451c-99a6-bfe3b657b647",
+              "name": "storySpecificPrompt",
+              "value": "=Story: {{ $('Start').item.json.Story }}",
+              "type": "string"
+            },
+            {
+              "id": "58fe3664-02f0-40ca-9992-2b7d4c0a7d6f",
+              "name": "conversationTitle",
+              "value": "={{ $('Start').item.json['Conversation label'] }} ({{ $('Start').item.json.Story }})",
+              "type": "string"
+            },
+            {
+              "id": "1c897e45-5961-4f04-9ab0-11ca88da2de9",
+              "name": "Recovery URL",
+              "value": "={{ $execution.resumeUrl }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        272,
+        16
+      ],
+      "id": "557fabf6-3e67-4360-8257-3576a95e38e2",
+      "name": "Variables"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=--- Start Input ---\n{{ $json.stdout }}\n--- End Input ---\n\nTask: evaluate the message.\nIF it:\n  - asks for input before proceeding\n  - reports an error\n  - indicates that work should not proceed before addressing important issues \nTHEN respond only with 'QUESTION';\nIF it:\n  - confirms a successful operation\n  - indicates only minor issues and does not indicate critical issues\n  - politely asks for next steps following successful completion\nTHEN respond with 'COMPLETE';\n\nExamples:\n- 'what task do you want to do next?' -> 'COMPLETE'\n- 'do you want to solve these issues move onto next task?' -> 'QUESTION'\n\nOutput:",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        672,
+        128
+      ],
+      "id": "1eff76dc-0aec-41ea-a667-0c2388819393",
+      "name": "Classify response"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output }}",
+                    "rightValue": "COMPLETE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "057b9171-4546-4ba4-88fc-66912be9aa10"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Ok"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "861bad78-12d3-40f4-9e62-858bd0771ea6",
+                    "leftValue": "={{ $json.output }}",
+                    "rightValue": "QUESTION",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Question"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1024,
+        128
+      ],
+      "id": "d747f6f8-ea9a-495b-9a46-df1c73a39190",
+      "name": "Routing"
+    },
+    {
+      "parameters": {
+        "mode": "markdownToHtml",
+        "markdown": "={{ $('Agent run (initial)').item.json.stdout }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        944,
+        352
+      ],
+      "id": "3b19f5f0-05ae-4aa4-9184-23af225ba3ad",
+      "name": "Agent MD to HTML"
+    },
+    {
+      "parameters": {
+        "resume": "form",
+        "formTitle": "Open question",
+        "formDescription": "The agent cannot proceed with without your decisions",
+        "formFields": {
+          "values": [
+            {
+              "fieldType": "html",
+              "html": "{{ $json.data }}"
+            },
+            {
+              "fieldLabel": "Answer",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        352
+      ],
+      "id": "7125d6eb-8125-4a2b-a1e6-a284384aa316",
+      "name": "Get response",
+      "webhookId": "c7ff09e1-81af-4b5c-ae75-7c2c698b3dc3"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "740f3353-2f56-451c-99a6-bfe3b657b647",
+              "name": "finalResponse",
+              "value": "={{\n  $('Agent run (follow-up)').isExecuted \n    ? $('Agent run (follow-up)').last().json.stdout \n    : $('Agent run (initial)').item.json.stdout\n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1232,
+        32
+      ],
+      "id": "014229e5-19e1-4b5f-b687-bcc41be80dd8",
+      "name": "Output"
+    }
+  ],
+  "connections": {
+    "Cheap": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify response",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "SessionID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent run (initial)": {
+      "main": [
+        [
+          {
+            "node": "Classify response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent run (follow-up)": {
+      "main": [
+        [
+          {
+            "node": "Classify response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SessionID": {
+      "main": [
+        [
+          {
+            "node": "Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Variables": {
+      "main": [
+        [
+          {
+            "node": "Agent run (initial)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify response": {
+      "main": [
+        [
+          {
+            "node": "Routing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routing": {
+      "main": [
+        [
+          {
+            "node": "Output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agent MD to HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent MD to HTML": {
+      "main": [
+        [
+          {
+            "node": "Get response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get response": {
+      "main": [
+        [
+          {
+            "node": "Agent run (follow-up)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {
+    "Start": [
+      {
+        "json": {
+          "Story": "1.3",
+          "Skill": "bmad-create-story",
+          "Initial prompt (without story ID)": "create the story. Resolve _minor_ issues autonomously without asking me for confirmation. Only stop for major decisions.",
+          "Conversation label": "Create story"
+        }
+      }
+    ]
+  },
+  "versionId": "40003b2f-77c5-4230-8cc6-28ffdaa1b070",
+  "activeVersionId": "40003b2f-77c5-4230-8cc6-28ffdaa1b070",
+  "versionCounter": 151,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-06-20T11:36:57.325Z",
+      "createdAt": "2026-06-20T11:36:57.325Z",
+      "role": "workflow:owner",
+      "workflowId": "wvEI4B8b2pjAB4a7",
+      "projectId": "kw9PN4ah89DC1Mas",
+      "project": {
+        "updatedAt": "2026-06-19T23:10:28.888Z",
+        "createdAt": "2026-06-19T23:09:53.584Z",
+        "id": "kw9PN4ah89DC1Mas",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "8a21ec14-f580-468d-ac3a-21f94f756ff3"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 40003b2f",
+    "description": ""
+  }
+}

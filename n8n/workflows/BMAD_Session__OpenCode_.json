@@ -1,0 +1,521 @@
+{
+  "updatedAt": "2026-06-22T18:24:01.318Z",
+  "createdAt": "2026-06-21T10:21:55.123Z",
+  "id": "C8qzMFk2e00sLHJg",
+  "name": "BMAD Session (OpenCode)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "Story"
+            },
+            {
+              "name": "Skill"
+            },
+            {
+              "name": "Initial prompt (without story ID)"
+            },
+            {
+              "name": "Conversation label"
+            },
+            {
+              "name": "Agent"
+            }
+          ]
+        }
+      },
+      "id": "885a9f06-393d-448d-a8a9-bbfefbf0923b",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -80,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        256,
+        16
+      ],
+      "id": "51b942ec-fed0-495a-8fdf-62aa515e03ad",
+      "name": "Agent run (initial)"
+    },
+    {
+      "parameters": {
+        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        256,
+        224
+      ],
+      "id": "e177e1a3-9316-4184-ba34-1eb86b17e80b",
+      "name": "Agent run (follow-up)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "740f3353-2f56-451c-99a6-bfe3b657b647",
+              "name": "storySpecificPrompt",
+              "value": "=Story: {{ $('Start').item.json.Story }}",
+              "type": "string"
+            },
+            {
+              "id": "58fe3664-02f0-40ca-9992-2b7d4c0a7d6f",
+              "name": "conversationTitle",
+              "value": "={{ $('Start').item.json['Conversation label'] }} ({{ $('Start').item.json.Story }})",
+              "type": "string"
+            },
+            {
+              "id": "93916a86-1e53-4b63-8276-9b1ec4085ad9",
+              "name": "opencodeAgent",
+              "value": "={{ $json.Agent }}",
+              "type": "string"
+            },
+            {
+              "id": "1c897e45-5961-4f04-9ab0-11ca88da2de9",
+              "name": "Recovery URL",
+              "value": "={{ $execution.resumeUrl }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        80,
+        16
+      ],
+      "id": "08fca9dd-fec2-4b55-bb66-dd5adbd8a646",
+      "name": "Variables"
+    },
+    {
+      "parameters": {
+        "mode": "markdownToHtml",
+        "markdown": "={{ $('Parse OpenCode Response').item.json.response }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        208
+      ],
+      "id": "a6db536a-f324-4b11-a117-26d688ce61ab",
+      "name": "Agent MD to HTML"
+    },
+    {
+      "parameters": {
+        "resume": "form",
+        "formTitle": "Open question",
+        "formDescription": "The agent cannot proceed with without your decisions",
+        "formFields": {
+          "values": [
+            {
+              "fieldType": "html",
+              "html": "{{ $json.data }}"
+            },
+            {
+              "fieldLabel": "Answer",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        208
+      ],
+      "id": "092f0c0c-9602-43ed-9dd3-155eb832ffd0",
+      "name": "Get response",
+      "webhookId": "40d052b2-c1a6-484d-871d-ee9535ac69f4"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "740f3353-2f56-451c-99a6-bfe3b657b647",
+              "name": "finalResponse",
+              "value": "={{ $('Parse OpenCode Response').last().json.response }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1264,
+        32
+      ],
+      "id": "3156269c-d0de-48ae-9340-3c871482639f",
+      "name": "Output"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tDs1dBlOKDd3aDH8"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "stdout": "={{ $json.stdout }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "stdout",
+              "displayName": "stdout",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        128
+      ],
+      "id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+      "name": "Parse OpenCode Response"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "3D8Jw6GicWiwBQc6"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "response": "={{ $json.response }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "response",
+              "displayName": "response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "m1",
+      "name": "BMAD Outcome",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        864,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.outcome }}",
+                    "rightValue": "COMPLETE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "r1"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Finished"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "r2",
+                    "leftValue": "={{ $json.outcome }}",
+                    "rightValue": "QUESTION",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Question"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "93489431-9544-4237-af9d-695f76fe7ad4",
+      "name": "Routing",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1056,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extract-parsedlines",
+              "name": "sessionId",
+              "value": "={{ JSON.parse($json.stdout.split('\\n')[0]).sessionID }}",
+              "type": "arrayValue"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "24556379-1e60-44f6-b20b-93fca9d0cf5a",
+      "name": "Extract SessionID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        432,
+        16
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent run (initial)": {
+      "main": [
+        [
+          {
+            "node": "Extract SessionID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent run (follow-up)": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenCode Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Variables": {
+      "main": [
+        [
+          {
+            "node": "Agent run (initial)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent MD to HTML": {
+      "main": [
+        [
+          {
+            "node": "Get response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get response": {
+      "main": [
+        [
+          {
+            "node": "Agent run (follow-up)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BMAD Outcome": {
+      "main": [
+        [
+          {
+            "node": "Routing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Routing": {
+      "main": [
+        [
+          {
+            "node": "Output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agent MD to HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OpenCode Response": {
+      "main": [
+        [
+          {
+            "node": "BMAD Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract SessionID": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenCode Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {
+    "Start": [
+      {
+        "json": {
+          "Story": "test",
+          "Skill": "bmad-help",
+          "Initial prompt (without story ID)": "Hello, what shall I do next?",
+          "Conversation label": "BMAD Session testing",
+          "Agent": "test"
+        }
+      }
+    ]
+  },
+  "versionId": "42d411ab-b009-4a34-8377-4f7b29af3590",
+  "activeVersionId": "7562ecb7-2545-4cc6-9c47-e4d4efbc5b01",
+  "versionCounter": 138,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-06-21T10:21:55.125Z",
+      "createdAt": "2026-06-21T10:21:55.125Z",
+      "role": "workflow:owner",
+      "workflowId": "C8qzMFk2e00sLHJg",
+      "projectId": "kw9PN4ah89DC1Mas",
+      "project": {
+        "updatedAt": "2026-06-19T23:10:28.888Z",
+        "createdAt": "2026-06-19T23:09:53.584Z",
+        "id": "kw9PN4ah89DC1Mas",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "8a21ec14-f580-468d-ac3a-21f94f756ff3"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

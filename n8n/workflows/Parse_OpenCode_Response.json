@@ -1,0 +1,108 @@
+{
+  "updatedAt": "2026-06-21T22:36:26.718Z",
+  "createdAt": "2026-06-21T12:02:24.127Z",
+  "id": "tDs1dBlOKDd3aDH8",
+  "name": "Parse OpenCode Response",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "stdout"
+            }
+          ]
+        }
+      },
+      "id": "s1",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "response",
+              "value": "={{ $json.stdout ? $json.stdout.split(\"\\n\").filter(l => l.trim()).map(l => JSON.parse(l)).filter(item => item.type === \"text\").pop().part.text : \"\" }}",
+              "type": "string",
+              "id": "a1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ],
+      "id": "s2",
+      "name": "Extract JSON"
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Extract JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "availableInMCP": true,
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "8a77462a-84f8-4f06-9304-a905c603f05d",
+  "activeVersionId": "8a77462a-84f8-4f06-9304-a905c603f05d",
+  "versionCounter": 11,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-06-21T12:02:24.133Z",
+      "createdAt": "2026-06-21T12:02:24.133Z",
+      "role": "workflow:owner",
+      "workflowId": "tDs1dBlOKDd3aDH8",
+      "projectId": "kw9PN4ah89DC1Mas",
+      "project": {
+        "updatedAt": "2026-06-19T23:10:28.888Z",
+        "createdAt": "2026-06-19T23:09:53.584Z",
+        "id": "kw9PN4ah89DC1Mas",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "8a21ec14-f580-468d-ac3a-21f94f756ff3"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 8a77462a",
+    "description": ""
+  }
+}
