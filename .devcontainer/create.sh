@@ -1,5 +1,6 @@
 #!/bin/bash
-cp -n .env.example .env
-echo 'set -a; source /workspaces/codespaces-blank/.env; set +a' >> "$HOME/.zshrc"
+cp --update=none .env.example .env
 npm install -g pnpm@10
 pnpm install
+
+echo ". /workspaces/bmad-playground/.env" > ~/.bashrc
