@@ -5,18 +5,23 @@ stepsCompleted:
   - step-03-generate-tests
   - step-03c-aggregate
   - step-04-validate-and-summarize
-lastStep: step-04-validate-and-summarize
-lastSaved: '2026-06-19'
+  - step-01-validate
+  - step-02-gap-fill
+lastStep: step-02-gap-fill
+lastSaved: '2026-06-24'
 inputDocuments:
   - _bmad-output/test-artifacts/atdd-checklist-1-2-sign-in-with-github.md
   - _bmad-output/test-artifacts/atdd-checklist-1-3-connect-a-repository-by-url.md
   - _bmad-output/implementation-artifacts/1-3-connect-a-repository-by-url.md
+  - _bmad-output/implementation-artifacts/1-4-validate-bmad-initialization-in-the-connected-repository.md
   - _bmad/tea/config.yaml
   - playwright.config.ts
   - apps/web/src/lib/crypto.ts
   - apps/web/src/lib/auth.ts
   - apps/web/src/actions/repo-connection.actions.ts
+  - apps/web/src/actions/repository-validation.actions.ts
   - apps/web/src/components/onboarding/RepositoryUrlForm.tsx
+  - playwright/e2e/onboarding/bmad-validation.spec.ts
 ---
 
 # Test Automation Expansion Summary
@@ -167,4 +172,94 @@ Was 68 tests; added 2 new tests.
 
 ### Next Recommended Workflow
 
-Run `/bmad-testarch-trace` to validate traceability between acceptance criteria and the full test suite across Stories 1.2 and 1.3.
+Run `/bmad-testarch-trace` to validate traceability between acceptance criteria and the full test suite across Stories 1.2, 1.3, and 1.4.
+
+---
+
+## Story 1.4: Validate BMAD Initialization in the Connected Repository
+
+**Date:** 2026-06-24
+**Mode:** Validate → Create (gap-filling)
+**Story Status:** review
+
+### Context Loaded
+
+| Artifact | Status |
+|---|---|
+| Story 1.4 implementation | All tasks checked off; status: review |
+| `repository-validation.actions.ts` | Core validation logic (`inspectBmadSetup`, `validateRepository`) |
+| `repository-validation.actions.spec.ts` | 40 unit tests covering all ACs |
+| `repo-connection.actions.spec.ts` (1.4 section) | 6 integration tests |
+| `RepositoryUrlForm.test.tsx` (1.4 section) | 6 component tests |
+| `bmad-validation.spec.ts` | 9 E2E tests (all active, mocked Server Action responses) |
+
+### Existing Test Files (Story 1.4)
+
+| File | Level | Tests | Status |
+|---|---|---|---|
+| `apps/web/src/actions/repository-validation.actions.spec.ts` | Unit | 40→46 | PASSING |
+| `apps/web/src/actions/repo-connection.actions.spec.ts` (1.4 section) | Integration | 6 | PASSING |
+| `apps/web/src/components/onboarding/RepositoryUrlForm.test.tsx` (1.4 section) | Component | 6 | PASSING |
+| `playwright/e2e/onboarding/bmad-validation.spec.ts` | E2E | 9 | ACTIVE |
+
+### AC Coverage Summary
+
+| AC | Description | Verdict |
+|---|---|---|
+| AC-1 | Directories present + version 6.x | PASS — 9 tests across unit/integration/E2E |
+| AC-2 | Empty `_bmad-output/` accepted | PASS (enhanced) — 2 tests |
+| AC-3 | Missing directories → blocking message + docs link | PASS — 14 tests across all levels |
+| AC-4 | Missing `.claude/skills/` → blocking message | PASS — 5 tests |
+| AC-5 | Empty `.claude/skills/` → blocking message | PASS — 3 tests |
+| AC-6 | Version outside v6.x → blocking message + detected version | PASS — 9 tests |
+
+### Gaps Identified and Filled
+
+| # | Priority | Gap | Action | File |
+|---|---|---|---|---|
+| 1 | P1 | `validateRepository` — `decryptToken` throws → catch block untested | Added test: mock `decryptToken` to throw; assert `{ errorCode: 'UNKNOWN' }` | `repository-validation.actions.spec.ts` |
+| 2 | P1 | `validateRepository` — `inspectBmadSetup` throws (GitHub 403/500/network) → catch block untested | Added 3 tests: 403, 500, network failure; all assert `{ errorCode: 'UNKNOWN' }` | `repository-validation.actions.spec.ts` |
+| 3 | P2 | Malformed JSON in `_bmad/package.json` fallback parser untested | Added test: malformed JSON content; assert `UNSUPPORTED_VERSION` | `repository-validation.actions.spec.ts` |
+| 4 | P2 | AC-2 test didn't explicitly verify empty `_bmad-output/` scenario | Added test: verify no API call made to `_bmad-output/` contents path | `repository-validation.actions.spec.ts` |
+
+### Files Modified
+
+| Action | File | Detail |
+|---|---|---|
+| Added test | `apps/web/src/actions/repository-validation.actions.spec.ts` | `[P1] returns errorCode UNKNOWN when decryptToken throws (corrupted credential)` |
+| Added test | `apps/web/src/actions/repository-validation.actions.spec.ts` | `[P1] returns errorCode UNKNOWN when inspectBmadSetup throws (GitHub API 403)` |
+| Added test | `apps/web/src/actions/repository-validation.actions.spec.ts` | `[P1] returns errorCode UNKNOWN when inspectBmadSetup throws (GitHub API 500)` |
+| Added test | `apps/web/src/actions/repository-validation.actions.spec.ts` | `[P1] returns errorCode UNKNOWN when inspectBmadSetup throws (network failure)` |
+| Added test | `apps/web/src/actions/repository-validation.actions.spec.ts` | `[P2] returns UNSUPPORTED_VERSION when _bmad/package.json contains malformed JSON` |
+| Added test | `apps/web/src/actions/repository-validation.actions.spec.ts` | `[P2] does NOT fetch _bmad-output/ contents — empty directory is accepted by design (AC-2)` |
+| Updated | `_bmad-output/test-artifacts/automation-summary.md` | This file |
+| Created | `_bmad-output/test-artifacts/automate-validation-report.md` | Full validation report with AC-to-test mapping |
+
+### Test Execution Results
+
+```
+pnpm nx test web
+→ 13 suites, 154 tests: ALL PASSING
+```
+
+Was 148 tests; added 6 new tests.
+
+### Validation Checklist (abbreviated)
+
+- ✅ Framework scaffolding verified
+- ✅ All 6 ACs mapped to tests with PASS verdict
+- ✅ Coverage gaps identified and addressed (4 gaps filled)
+- ✅ No duplicate coverage across test levels
+- ✅ Tests are deterministic (no hard waits, no conditionals)
+- ✅ Priority tags applied ([P0], [P1], [P2])
+- ✅ Tests self-contained, no shared state
+- ✅ All generated tests passing (154/154)
+- ✅ Lint clean (0 errors)
+
+### Tests NOT Generated (justification)
+
+| Scenario | Reason |
+|---|---|
+| E2E with real GitHub API | Requires `TEST_GITHUB_USERNAME`/`TEST_GITHUB_PASSWORD` — intentionally kept mocked |
+| Integration test: Story 1.3 → 1.4 → 1.5 flow | Story 1.5 not yet implemented |
+| Backend (NestJS agent-be) tests | Story 1.4 implemented as Server Actions in `apps/web`, not in `agent-be` |

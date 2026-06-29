@@ -5,6 +5,10 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers-extra/features/n8n:1": {}
   },
+  "runArgs": [
+    "--env-file",
+    ".env"
+  ],
   "forwardPorts": [
     3000,
     3001,
@@ -41,11 +45,12 @@
     "N8N_DIAGNOSTICS_ENABLED": "false",
     "N8N_MCP_MANAGED_BY_ENV": "true",
     "N8N_MCP_ACCESS_ENABLED": "true",
+    "EXTERNAL_HOOK_FILES": "/workspaces/codespaces-blank/n8n/hooks.js",
     "NODES_EXCLUDE": "[]",
     "NODE_FUNCTION_ALLOW_EXTERNAL": "uuid"
   },
-  "postCreateCommand": "npm install -g pnpm@10 && pnpm install && corepack prepare yarn@stable --activate",
-  "postStartCommand": "docker compose up -d",
+  "postCreateCommand": "bash .devcontainer/create.sh",
+  "postStartCommand": "bash .devcontainer/start.sh",
   "customizations": {
     "vscode": {
       "extensions": [

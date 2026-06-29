@@ -32,12 +32,21 @@ jest.mock('@/lib/crypto', () => ({
   decryptToken: (...args: unknown[]) => mockDecryptToken(...args),
 }));
 
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+let mockFetch: jest.Mock;
+
+beforeEach(() => {
+  mockFetch = jest.fn();
+  jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 // ─── Subject under test ───────────────────────────────────────────────────────
 
 import { connectRepository } from './repo-connection.actions';
+import { BMAD_DOCUMENTATION_LINK } from '@bmad-easy/shared-types';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +67,44 @@ const githubOkWithPush = {
   json: async () => ({ permissions: { push: true, pull: true, admin: false } }),
 };
 
+// ─── Validation API fixtures (Story 1.4) ──────────────────────────────────────
+
+const CONTENTS_BASE = 'https://api.github.com/repos/my-org/my-repo/contents';
+const ROOT_DIRS = [
+  { name: '_bmad', type: 'dir' },
+  { name: '_bmad-output', type: 'dir' },
+  { name: '.claude', type: 'dir' },
+];
+const SKILLS_LISTING = [
+  { name: 'bmad-dev-story.md', type: 'file' },
+  { name: 'bmad-create-prd.md', type: 'file' },
+];
+const MANIFEST_V6 = Buffer.from(
+  'installation:\n  version: 6.8.0\n',
+).toString('base64');
+
+function setupValidationHappyPath() {
+  mockFetch.mockImplementation((url: string) => {
+    if (url === 'https://api.github.com/repos/my-org/my-repo') {
+      return Promise.resolve(githubOkWithPush);
+    }
+    if (url === `${CONTENTS_BASE}/` || url === `${CONTENTS_BASE}`) {
+      return Promise.resolve({ ok: true, status: 200, json: async () => ROOT_DIRS });
+    }
+    if (url === `${CONTENTS_BASE}/.claude/skills`) {
+      return Promise.resolve({ ok: true, status: 200, json: async () => SKILLS_LISTING });
+    }
+    if (url === `${CONTENTS_BASE}/_bmad/_config/manifest.yaml`) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ type: 'file', encoding: 'base64', content: MANIFEST_V6 }),
+      });
+    }
+    return Promise.resolve({ ok: false, status: 404, json: async () => ({ message: 'Not Found' }) });
+  });
+}
+
 // ─── URL validation (AC-2, Task 4.2) ─────────────────────────────────────────
 
 describe('connectRepository — URL validation (AC-2)', () => {
@@ -66,7 +113,7 @@ describe('connectRepository — URL validation (AC-2)', () => {
     mockAuth.mockResolvedValue(SESSION);
     mockFindUniqueCredential.mockResolvedValue(ENCRYPTED_CREDENTIAL);
     mockDecryptToken.mockReturnValue(DECRYPTED_TOKEN);
-    mockFetch.mockResolvedValue(githubOkWithPush);
+    setupValidationHappyPath();
     mockUpsertRepoConnection.mockResolvedValue({});
   });
 
@@ -231,7 +278,7 @@ describe('connectRepository — successful connection (AC-2, AC-3)', () => {
     mockAuth.mockResolvedValue(SESSION);
     mockFindUniqueCredential.mockResolvedValue(ENCRYPTED_CREDENTIAL);
     mockDecryptToken.mockReturnValue(DECRYPTED_TOKEN);
-    mockFetch.mockResolvedValue(githubOkWithPush);
+    setupValidationHappyPath();
     mockUpsertRepoConnection.mockResolvedValue({});
   });
 
@@ -278,5 +325,144 @@ describe('connectRepository — successful connection (AC-2, AC-3)', () => {
     const result = await connectRepository(VALID_URL);
     // The raw decrypted token value must not appear anywhere in the return value
     expect(JSON.stringify(result)).not.toContain(DECRYPTED_TOKEN);
+  });
+});
+
+// ─── BMAD validation integration (Story 1.4) ────────────────────────────────
+
+describe('connectRepository — BMAD validation integration (Story 1.4)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuth.mockResolvedValue(SESSION);
+    mockFindUniqueCredential.mockResolvedValue(ENCRYPTED_CREDENTIAL);
+    mockDecryptToken.mockReturnValue(DECRYPTED_TOKEN);
+    mockUpsertRepoConnection.mockResolvedValue({});
+  });
+
+  it('[P0] returns errorCode MISSING_DIRECTORY when _bmad/ is absent from the repo', async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === 'https://api.github.com/repos/my-org/my-repo') {
+        return Promise.resolve(githubOkWithPush);
+      }
+      if (url === `${CONTENTS_BASE}/` || url === `${CONTENTS_BASE}`) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [
+            { name: '_bmad-output', type: 'dir' },
+            { name: '.claude', type: 'dir' },
+          ],
+        });
+      }
+      if (url === `${CONTENTS_BASE}/.claude/skills`) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => SKILLS_LISTING });
+      }
+      if (url === `${CONTENTS_BASE}/_bmad/_config/manifest.yaml`) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ type: 'file', encoding: 'base64', content: MANIFEST_V6 }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({ message: 'Not Found' }) });
+    });
+
+    const result = await connectRepository(VALID_URL);
+    expect(result).toMatchObject({ errorCode: 'MISSING_DIRECTORY' });
+  });
+
+  it('[P0] returns errorCode UNSUPPORTED_VERSION when BMAD version is 5.x', async () => {
+    const manifestV5 = Buffer.from('installation:\n  version: 5.9.9\n').toString('base64');
+    mockFetch.mockImplementation((url: string) => {
+      if (url === 'https://api.github.com/repos/my-org/my-repo') {
+        return Promise.resolve(githubOkWithPush);
+      }
+      if (url === `${CONTENTS_BASE}/` || url === `${CONTENTS_BASE}`) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ROOT_DIRS });
+      }
+      if (url === `${CONTENTS_BASE}/.claude/skills`) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => SKILLS_LISTING });
+      }
+      if (url === `${CONTENTS_BASE}/_bmad/_config/manifest.yaml`) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ type: 'file', encoding: 'base64', content: manifestV5 }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({ message: 'Not Found' }) });
+    });
+
+    const result = await connectRepository(VALID_URL);
+    expect(result).toMatchObject({ errorCode: 'UNSUPPORTED_VERSION' });
+  });
+
+  it('[P0] returns errorCode NO_SKILLS_FOUND when .claude/skills/ is empty', async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === 'https://api.github.com/repos/my-org/my-repo') {
+        return Promise.resolve(githubOkWithPush);
+      }
+      if (url === `${CONTENTS_BASE}/` || url === `${CONTENTS_BASE}`) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ROOT_DIRS });
+      }
+      if (url === `${CONTENTS_BASE}/.claude/skills`) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+      }
+      if (url === `${CONTENTS_BASE}/_bmad/_config/manifest.yaml`) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ type: 'file', encoding: 'base64', content: MANIFEST_V6 }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({ message: 'Not Found' }) });
+    });
+
+    const result = await connectRepository(VALID_URL);
+    expect(result).toMatchObject({ errorCode: 'NO_SKILLS_FOUND' });
+  });
+
+  it('[P0] does NOT upsert RepoConnection when validation fails', async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === 'https://api.github.com/repos/my-org/my-repo') {
+        return Promise.resolve(githubOkWithPush);
+      }
+      if (url === `${CONTENTS_BASE}/` || url === `${CONTENTS_BASE}`) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [{ name: 'README.md', type: 'file' }],
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({ message: 'Not Found' }) });
+    });
+
+    await connectRepository(VALID_URL);
+    expect(mockUpsertRepoConnection).not.toHaveBeenCalled();
+  });
+
+  it('[P0] includes documentationLink in validation error response', async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === 'https://api.github.com/repos/my-org/my-repo') {
+        return Promise.resolve(githubOkWithPush);
+      }
+      if (url === `${CONTENTS_BASE}/` || url === `${CONTENTS_BASE}`) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [{ name: 'README.md', type: 'file' }],
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({ message: 'Not Found' }) });
+    });
+
+    const result = await connectRepository(VALID_URL) as { documentationLink?: string };
+    expect(result.documentationLink).toBe(BMAD_DOCUMENTATION_LINK);
+  });
+
+  it('[P0] upserts RepoConnection when validation passes', async () => {
+    setupValidationHappyPath();
+    await connectRepository(VALID_URL);
+    expect(mockUpsertRepoConnection).toHaveBeenCalledTimes(1);
   });
 });

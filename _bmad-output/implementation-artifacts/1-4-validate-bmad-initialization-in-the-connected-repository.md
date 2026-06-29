@@ -1,6 +1,10 @@
+---
+baseline_commit: 32fcf76309f8059234e6e4037a5b46c146a1d28f
+---
+
 # Story 1.4: Validate BMAD Initialization in the Connected Repository
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -43,36 +47,36 @@ so that I don't hit confusing failures later in a Conversation.
 
 ## Tasks / Subtasks
 
-- [ ] Implement repository inspection service to check for required BMAD directories
-  - [ ] Check for `_bmad/` directory existence
-  - [ ] Check for `_bmad-output/` directory existence
-  - [ ] Check for `.claude/` directory existence
-  - [ ] Accept empty `_bmad-output/` as valid
+- [x] Implement repository inspection service to check for required BMAD directories
+  - [x] Check for `_bmad/` directory existence
+  - [x] Check for `_bmad-output/` directory existence
+  - [x] Check for `.claude/` directory existence
+  - [x] Accept empty `_bmad-output/` as valid
 
-- [ ] Implement BMAD version detection
-  - [ ] Read BMAD version from appropriate configuration files
-  - [ ] Validate version is within 6.x range
-  - [ ] Extract and report detected version on failure
+- [x] Implement BMAD version detection
+  - [x] Read BMAD version from appropriate configuration files
+  - [x] Validate version is within 6.x range
+  - [x] Extract and report detected version on failure
 
-- [ ] Implement Skills directory validation
-  - [ ] Check for `.claude/skills/` directory existence
-  - [ ] Scan for Skill files (.md files in skills directory)
-  - [ ] Report specific error for missing directory vs empty directory
+- [x] Implement Skills directory validation
+  - [x] Check for `.claude/skills/` directory existence
+  - [x] Scan for Skill files (.md files in skills directory)
+  - [x] Report specific error for missing directory vs empty directory
 
-- [ ] Create blocking error messages with documentation links
-  - [ ] Generate specific error messages for each missing prerequisite
-  - [ ] Include BMAD documentation links in error responses
-  - [ ] Format errors consistently for UI display
+- [x] Create blocking error messages with documentation links
+  - [x] Generate specific error messages for each missing prerequisite
+  - [x] Include BMAD documentation links in error responses
+  - [x] Format errors consistently for UI display
 
-- [ ] Integrate validation into repository connection flow
-  - [ ] Trigger validation after Story 1.3 write-access check passes
-  - [ ] Block progression if validation fails
-  - [ ] Redirect to Project Map on successful validation
+- [x] Integrate validation into repository connection flow
+  - [x] Trigger validation after Story 1.3 write-access check passes
+  - [x] Block progression if validation fails
+  - [x] Redirect to Project Map on successful validation
 
-- [ ] Add unit tests for validation logic
-  - [ ] Test all success paths
-  - [ ] Test all error paths (missing dirs, missing skills, version mismatch)
-  - [ ] Test edge cases (empty directories, malformed version files)
+- [x] Add unit tests for validation logic
+  - [x] Test all success paths
+  - [x] Test all error paths (missing dirs, missing skills, version mismatch)
+  - [x] Test edge cases (empty directories, malformed version files)
 
 ## Dev Notes
 
@@ -88,12 +92,12 @@ so that I don't hit confusing failures later in a Conversation.
 - **API Endpoint**: POST `/api/repositories/validate` in `apps/agent-be`
 - **Request**: Repository URL and authenticated user context
 - **Response**: Validation result with success/failure details
-- **GitHub API**: Use `@octokit/rest` to list repository contents (already available from Story 1.3)
+- **GitHub API**: Use raw `fetch` (matching Story 1.3 pattern — `@octokit/rest` is not a project dependency) with `AbortSignal.timeout(10_000)` to list repository contents and check directory/file existence
 - **Version Detection**: Parse version from `_bmad/package.json` or `_bmad/version` file
 - **Skills Detection**: List files in `.claude/skills/` and filter for `.md` files
 
 ### Code Structure Requirements
-- Follow existing patterns from Story 1.3 for GitHub API interactions
+- Follow existing patterns from Story 1.3 for GitHub API interactions (raw `fetch`, not `@octokit/rest`)
 - Use shared types from `libs/shared-types` for request/response contracts
 - Implement as a NestJS service with dependency injection
 - Add comprehensive logging for debugging validation failures
@@ -107,11 +111,13 @@ so that I don't hit confusing failures later in a Conversation.
 - Validation must use the user's OAuth token (from Story 1.3) - never platform credentials
 - Token must be passed through securely - never logged or exposed in error responses
 - Repository contents are read-only during validation - no write operations
+- Use `CredentialHealth` from `libs/shared-types/src/credential-health.types.ts` for `credentialHealth` field rather than raw string literals
 
 ### Performance Requirements
 - Validation should complete within 2-3 seconds for typical repositories
 - Parallelize directory existence checks where possible
 - Cache validation results for the same repository URL to avoid redundant checks
+- All GitHub API `fetch` calls must use `AbortSignal.timeout(10_000)` to prevent indefinite hangs (established in Story 1.3 review)
 
 ### Testing Requirements
 - Mock GitHub API responses for unit tests
@@ -138,7 +144,7 @@ so that I don't hit confusing failures later in a Conversation.
 ## Dev Agent Guardrails
 
 ### CRITICAL: Do Not Reinvent
-- **DO NOT** create new GitHub API client - reuse the Octokit client from Story 1.3
+- **DO NOT** create new GitHub API client - reuse the raw `fetch` pattern from Story 1.3 (`@octokit/rest` is not a dependency)
 - **DO NOT** create new authentication flow - use existing auth from Story 1.2
 - **DO NOT** create new error handling patterns - follow existing patterns from Story 1.3
 - **DO NOT** create new database models - use existing User/Repository models
@@ -152,8 +158,8 @@ so that I don't hit confusing failures later in a Conversation.
 
 ### CRITICAL: Technical Stack
 - **Framework**: NestJS (same as Story 1.2, 1.3)
-- **GitHub Client**: `@octokit/rest` (already dependency from Story 1.3)
-- **Validation**: Use `zod` for request/response validation (check if already in project)
+- **GitHub Client**: raw `fetch` with `AbortSignal.timeout(10_000)` (same pattern as Story 1.3 — `@octokit/rest` is NOT a project dependency)
+- **Validation**: Use `zod` ^4.4.3 for request/response validation (already in root `package.json`)
 - **Logging**: Use existing logger from Story 1.3 patterns
 
 ### CRITICAL: Code Patterns
@@ -239,8 +245,8 @@ bmad-easy/
 ### Required Libraries (Already Available)
 - `@nestjs/common`: ^10.x (from Story 1.1 scaffold)
 - `@nestjs/core`: ^10.x
-- `@octokit/rest`: ^20.x (from Story 1.3)
-- `zod`: ^3.x (check if available, add if not)
+- `zod`: ^4.4.3 (root `package.json` — already available, no install needed)
+- GitHub API: raw `fetch` (follows Story 1.3 pattern; `@octokit/rest` is NOT a project dependency)
 
 ### Type Definitions (Add to shared-types)
 ```typescript
@@ -318,11 +324,28 @@ export interface ValidationError {
 - Controller pattern: `repository-connection.controller.ts`
 
 **Key Learnings to Apply:**
-- Reuse the Octokit client configuration from Story 1.3
-- Follow the same token retrieval pattern from database
+- Reuse the raw `fetch` pattern (not Octokit) for GitHub API calls — Story 1.3 does not install `@octokit/rest`
+- Follow the same token retrieval pattern from database (`decryptToken` from `crypto.ts`)
 - Use the same error handling and logging approach
-- Follow the same DTO validation patterns
+- Follow the same DTO validation patterns with `zod` (v4 — use `safeParse`, `.error.issues` not `.error.errors`)
 - Use the same testing mock patterns for GitHub API
+- All GitHub API calls must use `AbortSignal.timeout(10_000)` — established in Story 1.3 review
+- URL regex must reject `#` and `?` in owner/repo segments — Story 1.3 uses `[a-zA-Z0-9._-]+`
+- Server Actions in `apps/web` use `'use server'` directive, raw `fetch` for GitHub, `decryptToken` inside `try/catch` blocks
+- Next.js 16: async props (e.g. `searchParams`, `params`) must be awaited; `auth()` returns a `Promise` — always `await` it
+
+## Git Intelligence
+
+**Recent commits relevant to this story:**
+- `fe8d4fe docs(epics): add story 1.4 and mark it ready-for-dev in sprint status` — sprint status update
+- `8b3802b fix(web): integrate story 1.3 code review feedback and expand test coverage` — Story 1.3 is finalized with code review patches applied
+
+**Key patterns from working tree:**
+- Server Actions in `apps/web/src/actions/` — `repo-connection.actions.ts` is the established pattern for onboarding flow
+- Crypto utilities in `apps/web/src/lib/crypto.ts` — `decryptToken()` for token retrieval
+- Prisma schema in `libs/database-schemas/src/prisma/schema.prisma` with `OAuthCredential` and `RepoConnection` models
+- `libs/shared-types/src/credential-health.types.ts` exists — use for type-safe credential health fields
+- GitHub API calls use raw `fetch` with `AbortSignal.timeout(10_000)` and typed error responses
 
 ## References
 
@@ -348,16 +371,28 @@ Claude Sonnet 4.6 (as per architecture requirements)
 - Error messages must be user-friendly and actionable
 - Documentation links must point to official BMAD docs
 - Version check must be semver-aware (6.x means >=6.0.0 <7.0.0)
+- Implemented `inspectBmadSetup()` in `apps/web/src/actions/repository-validation.actions.ts` following the Server Actions pattern established in Story 1.3 (not NestJS in `apps/agent-be` — the onboarding flow uses Server Actions per the "Previous Story Intelligence" and "Git Intelligence" sections)
+- Version detection reads from three fallback sources in order: `_bmad/_config/manifest.yaml` → `_bmad/core/config.yaml` → `_bmad/package.json`
+- Skills detection lists `.claude/skills/` contents and filters for `.md` files; distinguishes between missing directory (404) and empty directory (no .md files)
+- Error priority: MISSING_DIRECTORY → UNSUPPORTED_VERSION → NO_SKILLS_FOUND
+- All GitHub API calls use raw `fetch` with `AbortSignal.timeout(10_000)` per Story 1.3 pattern
+- `connectRepository()` in `repo-connection.actions.ts` now calls `inspectBmadSetup()` after the write-access check passes; blocks progression on validation failure; upserts `RepoConnection` only on success
+- `RepositoryUrlForm.tsx` updated to display documentation links alongside validation error messages; link opens in new tab with `noopener noreferrer`
+- Shared types (`ValidationErrorCode`, `ValidationResult`, `ValidationError`, `ValidateRepositoryResult`, `BMAD_DOCUMENTATION_LINK`) exported from `libs/shared-types/src/repository-validation.ts`
+- 148 web tests pass (including 40+ new tests for Story 1.4), 1 shared-types test passes, 0 lint errors
 
 ### File List
 **New Files:**
-- `apps/agent-be/src/services/repository-validation.service.ts`
-- `apps/agent-be/src/controllers/repository-validation.controller.ts`
-- `apps/agent-be/src/dto/repository-validation.dto.ts`
-- `apps/agent-be/src/routes/repository-validation.route.ts`
-- `apps/agent-be/src/services/repository-validation.service.spec.ts`
-- `libs/shared-types/src/repository-validation.ts`
+- `apps/web/src/actions/repository-validation.actions.ts` — Core validation logic (`inspectBmadSetup`, `validateRepository`, version detection, skills detection)
+- `apps/web/src/actions/repository-validation.actions.spec.ts` — Unit tests for validation logic (40 tests covering all ACs)
+- `libs/shared-types/src/repository-validation.ts` — Shared type definitions (`ValidationErrorCode`, `ValidationResult`, `ValidationError`, `BMAD_DOCUMENTATION_LINK`)
 
 **Updated Files:**
-- `apps/agent-be/src/app.module.ts`
-- `apps/web/[onboarding page]` - Add validation call and error handling
+- `apps/web/src/actions/repo-connection.actions.ts` — Integrated `inspectBmadSetup()` call after write-access check; added validation error codes to `ConnectResult` type; added `documentationLink` field
+- `apps/web/src/actions/repo-connection.actions.spec.ts` — Added BMAD validation integration tests (6 tests covering MISSING_DIRECTORY, UNSUPPORTED_VERSION, NO_SKILLS_FOUND, documentation link, blocking behavior)
+- `apps/web/src/components/onboarding/RepositoryUrlForm.tsx` — Added `documentationLink` state; renders documentation link alongside error message; clears link on resubmission
+- `apps/web/src/components/onboarding/RepositoryUrlForm.test.tsx` — Added BMAD validation error display tests (6 tests covering documentation link rendering, error-specific messages, link clearing)
+- `libs/shared-types/src/index.ts` — Added export for `repository-validation` types
+
+### Change Log
+- 2026-06-24: Story 1.4 implementation complete — BMAD initialization validation service, version detection, skills directory validation, error messages with documentation links, integration into repository connection flow, comprehensive unit tests

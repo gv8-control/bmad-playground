@@ -3,6 +3,7 @@
 import { auth } from '@/lib/auth';
 import { getPrisma } from '@/lib/prisma';
 import { decryptToken } from '@/lib/crypto';
+import { inspectBmadSetup, invalidateValidationCache } from './repository-validation.actions';
 import { z } from 'zod';
 
 const connectRepoSchema = z.object({
@@ -25,7 +26,11 @@ type ConnectResult =
         | 'INSUFFICIENT_PERMISSION'
         | 'ORG_RESTRICTION'
         | 'NO_CREDENTIAL'
-        | 'UNKNOWN';
+        | 'UNKNOWN'
+        | 'MISSING_DIRECTORY'
+        | 'NO_SKILLS_FOUND'
+        | 'UNSUPPORTED_VERSION';
+      documentationLink?: string;
     };
 
 export async function connectRepository(repoUrl: string): Promise<ConnectResult> {
@@ -123,6 +128,15 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
       };
     }
 
+    const validation = await inspectBmadSetup(accessToken, owner, repo);
+    if (!validation.valid) {
+      return {
+        error: validation.message,
+        errorCode: validation.code,
+        documentationLink: validation.meta.documentationLink,
+      };
+    }
+
     await getPrisma().repoConnection.upsert({
       where: { userId: session.userId },
       update: {
@@ -135,6 +149,8 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
         credentialHealth: 'healthy',
       },
     });
+
+    invalidateValidationCache(session.userId, cleanUrl);
 
     return { success: true };
   } catch (err) {

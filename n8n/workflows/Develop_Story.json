@@ -1,0 +1,1149 @@
+{
+  "updatedAt": "2026-06-22T19:39:24.276Z",
+  "createdAt": "2026-06-19T23:11:49.051Z",
+  "id": "vDEOX0DPKdBUEIqx",
+  "name": "Develop Story",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        16
+      ],
+      "id": "32ff5a0c-29c6-40cc-af72-deba0d291fdf",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "76d406c2-e979-4abf-a013-53ed8b6b912a",
+              "name": "Story",
+              "value": "1.4",
+              "type": "string"
+            },
+            {
+              "id": "3a5367e2-9b9e-4089-afe2-e8f7a9c613aa",
+              "name": "Plan Agent",
+              "value": "planner",
+              "type": "string"
+            },
+            {
+              "id": "3d26794d-f355-4204-b81d-240520f92629",
+              "name": "Code Agent",
+              "value": "coder",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -32,
+        16
+      ],
+      "id": "9e7ffff4-9d87-443d-9cf6-533e4d3c547b",
+      "name": "Configuration"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Conversation label": "Validate story (1st pass)",
+            "Initial prompt (without story ID)": "validate story. Resolve _minor_ issues autonomously without asking me for confirmation.",
+            "Skill": "bmad-create-story",
+            "Agent": "={{ $('Configuration').item.json['Plan Agent'] }}"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        432,
+        16
+      ],
+      "name": "Validate story",
+      "id": "5d0e4c1a-51e5-430b-90aa-ac5dca1572da",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Initial prompt (without story ID)": "run Creation mode. _Minor_ issues must be resolved autonomously without asking me for confirmation. Only stop for major decisions.",
+            "Conversation label": "Create story",
+            "Skill": "bmad-create-story",
+            "Agent": "={{ $json['Plan Agent'] }}"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        16
+      ],
+      "name": "Create story",
+      "id": "34553854-61ee-4da1-8ed0-d983cb83cd0e",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Initial prompt (without story ID)": "prepare tests",
+            "Conversation label": "Prepare tests",
+            "Skill": "bmad-testarch-atdd",
+            "Agent": "={{ $('Configuration').item.json['Code Agent'] }}"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        -112
+      ],
+      "name": "Prepare tests",
+      "id": "a6368727-663a-4381-b364-cf95d0ea518b",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Conversation label": "Validate story (2nd pass)",
+            "Initial prompt (without story ID)": "validate story. Resolve _minor_ issues autonomously without asking me for confirmation.",
+            "Skill": "bmad-create-story",
+            "Agent": "={{ $('Configuration').item.json['Plan Agent'] }}"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        96
+      ],
+      "name": "Validate story again",
+      "id": "8bd72951-2851-4615-aa6f-8d982260c524",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Conversation label": "Implement story",
+            "Initial prompt (without story ID)": "develop story autonomously. Only ask me if major issues arise.",
+            "Skill": "bmad-dev-story",
+            "Agent": "={{ $('Configuration').item.json['Code Agent'] }}"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1072,
+        16
+      ],
+      "name": "Implement story",
+      "id": "6084749d-fc4d-43ee-a446-bbf292b49361"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        16
+      ],
+      "id": "347b25b5-6708-45b5-8803-9609a34ef850",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Initial prompt (without story ID)": "Review tests",
+            "Skill": "bmad-testarch-test-review",
+            "Agent": "={{ $('Configuration').item.json['Plan Agent'] }}",
+            "Conversation label": "Test review"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1760,
+        0
+      ],
+      "name": "Review tests",
+      "id": "d0ab7ed7-141b-4baf-80cb-67127355353d"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Initial prompt (without story ID)": "Run audit",
+            "Skill": "bmad-testarch-nfr",
+            "Agent": "={{ $('Configuration').item.json['Plan Agent'] }}",
+            "Conversation label": "NFR review"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1760,
+        160
+      ],
+      "name": "Review NFRs",
+      "id": "5894b6bc-21b3-4476-a203-e9080c240e43"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Initial prompt (without story ID)": "Review story implementation",
+            "Skill": "bmad-code-review",
+            "Agent": "={{ $('Configuration').item.json['Plan Agent'] }}",
+            "Conversation label": "Code review"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1760,
+        -160
+      ],
+      "name": "Review code",
+      "id": "206ca00b-ebe5-4a51-8b8d-bc20748ffeea"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Initial prompt (without story ID)": "Autonomously evaluate (Validate) if the Story is sufficiently covered. If needed, expand coverage (Create/Resume).",
+            "Skill": "bmad-testarch-automate",
+            "Agent": "={{ $('Configuration').item.json['Code Agent'] }}",
+            "Conversation label": "Unit tests"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1280,
+        16
+      ],
+      "name": "Unit tests",
+      "id": "0c9643c2-43e1-42dd-96fa-f1ad56d27411"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Skill": "bmad-qa-generate-e2e-tests",
+            "Agent": "={{ $('Configuration').item.json['Plan Agent'] }}",
+            "Conversation label": "E2E tests"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1280,
+        -144
+      ],
+      "name": "E2E tests",
+      "id": "fb09dacc-5798-46ce-a41b-1b229496b341"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1488,
+        0
+      ],
+      "id": "f749e896-0344-42e1-ade4-7388cdd7e1a5",
+      "name": "Merge1"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuration": {
+      "main": [
+        [
+          {
+            "node": "Create story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create story": {
+      "main": [
+        [
+          {
+            "node": "Validate story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate story": {
+      "main": [
+        [
+          {
+            "node": "Validate story again",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare tests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare tests": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate story again": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Implement story": {
+      "main": [
+        [
+          {
+            "node": "Unit tests",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "E2E tests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Implement story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unit tests": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Review tests": {
+      "main": [
+        []
+      ]
+    },
+    "E2E tests": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Review code",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Review tests",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Review NFRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "7262856d-b3db-4ddd-9d4b-b01096f2df10",
+  "activeVersionId": null,
+  "versionCounter": 510,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-06-19T23:11:49.053Z",
+      "createdAt": "2026-06-19T23:11:49.053Z",
+      "role": "workflow:owner",
+      "workflowId": "vDEOX0DPKdBUEIqx",
+      "projectId": "kw9PN4ah89DC1Mas",
+      "project": {
+        "updatedAt": "2026-06-19T23:10:28.888Z",
+        "createdAt": "2026-06-19T23:09:53.584Z",
+        "id": "kw9PN4ah89DC1Mas",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "8a21ec14-f580-468d-ac3a-21f94f756ff3"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}
