@@ -73,13 +73,14 @@ so that every subsequent feature has a consistent, deployable foundation to buil
 The architecture's initialization commands use `npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=pnpm`, which would create a `bmad-easy/` **subdirectory**. Our repository root IS the workspace root, so the command must be adapted:
 
 ```bash
-# Run from /workspaces/codespaces-blank (the repo root)
+# Run from /workspaces/{project} (the repo root)
 npx create-nx-workspace@latest . --preset=empty --packageManager=pnpm --name=bmad-easy --nxCloud=skip
 ```
 
 The `.` target initializes the current directory. Accept the "directory is not empty" prompt. This creates `package.json`, `nx.json`, `pnpm-workspace.yaml`, `tsconfig.base.json` in the repo root.
 
 Alternatively if the interactive prompt is problematic, use:
+
 ```bash
 npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=pnpm --nxCloud=skip
 # then move the contents of bmad-easy/ into the repo root
@@ -91,20 +92,20 @@ Node version: 24 (`.nvmrc`). pnpm version: 9 (from CI workflow).
 
 The following files already exist as untracked working-tree artifacts and must be incorporated — do NOT recreate them:
 
-| File | Status | Action |
-|------|--------|--------|
-| `apps/agent-be/test/helpers/sandbox-service.fake.ts` | Untracked | Keep; update to implement full ISandboxService |
-| `apps/agent-be/test/helpers/test-module-builder.ts` | Untracked | Keep; verify imports compile |
-| `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts` | Untracked | Keep as-is |
-| `apps/agent-be/test/jest-integration.config.ts` | Untracked | Keep as-is |
-| `.github/workflows/test.yml` | Committed (BLUEPRINT MODE) | Activate — see Task 5.3 |
-| `.github/workflows/claude-code-review.yml` | Committed | Leave unchanged |
-| `.github/workflows/claude.yml` | Committed | Leave unchanged |
-| `playwright/` | Committed | Leave as-is |
-| `playwright.config.ts` | Committed | Leave as-is — `webServer` block stays commented (no `/health` endpoint yet) |
-| `.env.example` | Untracked | Leave as-is (already complete) |
-| `.nvmrc` | Untracked | Leave as-is |
-| `scripts/` | Committed | Leave as-is |
+| File                                                                   | Status                     | Action                                                                      |
+| ---------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------- |
+| `apps/agent-be/test/helpers/sandbox-service.fake.ts`                   | Untracked                  | Keep; update to implement full ISandboxService                              |
+| `apps/agent-be/test/helpers/test-module-builder.ts`                    | Untracked                  | Keep; verify imports compile                                                |
+| `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts` | Untracked                  | Keep as-is                                                                  |
+| `apps/agent-be/test/jest-integration.config.ts`                        | Untracked                  | Keep as-is                                                                  |
+| `.github/workflows/test.yml`                                           | Committed (BLUEPRINT MODE) | Activate — see Task 5.3                                                     |
+| `.github/workflows/claude-code-review.yml`                             | Committed                  | Leave unchanged                                                             |
+| `.github/workflows/claude.yml`                                         | Committed                  | Leave unchanged                                                             |
+| `playwright/`                                                          | Committed                  | Leave as-is                                                                 |
+| `playwright.config.ts`                                                 | Committed                  | Leave as-is — `webServer` block stays commented (no `/health` endpoint yet) |
+| `.env.example`                                                         | Untracked                  | Leave as-is (already complete)                                              |
+| `.nvmrc`                                                               | Untracked                  | Leave as-is                                                                 |
+| `scripts/`                                                             | Committed                  | Leave as-is                                                                 |
 
 ### ISandboxService Interface — Reconciliation Required
 
@@ -118,7 +119,7 @@ The pre-existing `sandbox-service.fake.ts` uses `SandboxProvisionOptions` and `S
 export interface ProvisionParams {
   conversationId: string;
   repoUrl: string;
-  credential: string;   // the OAuth access token for git transport
+  credential: string; // the OAuth access token for git transport
 }
 
 export interface SandboxInfo {
@@ -187,9 +188,11 @@ async terminateProcess(sandboxId: string, processId: string): Promise<void> {
 ```
 
 The `test-module-builder.ts` imports `SANDBOX_SERVICE` from `'../../src/sandbox/sandbox.constants'`. Create `apps/agent-be/src/sandbox/sandbox.constants.ts`:
+
 ```typescript
 export { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 ```
+
 This re-export keeps the import path the test expects while the canonical symbol lives in shared-types.
 
 ### Architecture Patterns — Naming Conventions
@@ -236,6 +239,7 @@ model User {
 ```
 
 Export the Prisma client from `libs/database-schemas/src/index.ts`:
+
 ```typescript
 export { PrismaClient } from './generated/client';
 export * from './generated/client';
@@ -257,43 +261,43 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg:             '#0D0D11',
-        surface:        '#16161C',
-        'surface-raised':'#1E1E26',
-        border:         '#2B2B38',
-        'border-subtle':'#1E1E26',
-        'text-1':       '#EDECF5',
-        'text-2':       '#8D8CA0',
-        'text-3':       '#56556A',
-        accent:         '#7B6EE8',
+        bg: '#0D0D11',
+        surface: '#16161C',
+        'surface-raised': '#1E1E26',
+        border: '#2B2B38',
+        'border-subtle': '#1E1E26',
+        'text-1': '#EDECF5',
+        'text-2': '#8D8CA0',
+        'text-3': '#56556A',
+        accent: '#7B6EE8',
         'accent-hover': '#9083F2',
-        'accent-fg':    '#FFFFFF',
-        positive:       '#3ECF8E',
-        'positive-bg':  'rgba(62,207,142,0.08)',
-        caution:        '#F2A944',
-        'caution-bg':   'rgba(242,169,68,0.08)',
-        negative:       '#F06B6B',
-        'negative-bg':  'rgba(240,107,107,0.08)',
-        overlay:        'rgba(0,0,0,0.65)',
+        'accent-fg': '#FFFFFF',
+        positive: '#3ECF8E',
+        'positive-bg': 'rgba(62,207,142,0.08)',
+        caution: '#F2A944',
+        'caution-bg': 'rgba(242,169,68,0.08)',
+        negative: '#F06B6B',
+        'negative-bg': 'rgba(240,107,107,0.08)',
+        overlay: 'rgba(0,0,0,0.65)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Mono', 'monospace'],
       },
       fontSize: {
-        xs:   ['0.75rem',  { lineHeight: '1rem' }],
-        sm:   ['0.875rem', { lineHeight: '1.25rem' }],
-        base: ['1rem',     { lineHeight: '1.5rem' }],
-        lg:   ['1.125rem', { lineHeight: '1.75rem' }],
-        xl:   ['1.25rem',  { lineHeight: '1.75rem' }],
-        '2xl':['1.5rem',   { lineHeight: '2rem' }],
+        xs: ['0.75rem', { lineHeight: '1rem' }],
+        sm: ['0.875rem', { lineHeight: '1.25rem' }],
+        base: ['1rem', { lineHeight: '1.5rem' }],
+        lg: ['1.125rem', { lineHeight: '1.75rem' }],
+        xl: ['1.25rem', { lineHeight: '1.75rem' }],
+        '2xl': ['1.5rem', { lineHeight: '2rem' }],
       },
       borderRadius: {
-        sm:   '4px',
-        md:   '8px',
-        lg:   '12px',
-        xl:   '16px',
-        '2xl':'24px',
+        sm: '4px',
+        md: '8px',
+        lg: '12px',
+        xl: '16px',
+        '2xl': '24px',
         full: '9999px',
       },
     },
@@ -310,17 +314,18 @@ Add `<html class="dark">` to `apps/web/src/app/layout.tsx` — forces dark mode 
 
 Run `pnpm dlx shadcn@latest init` from `apps/web`. Use these answers:
 
-| Prompt | Answer |
-|--------|--------|
-| Style | New York |
-| Base color | Neutral (overridden by DESIGN.md tokens — choice doesn't matter) |
-| CSS variables for colors? | Yes |
+| Prompt                    | Answer                                                           |
+| ------------------------- | ---------------------------------------------------------------- |
+| Style                     | New York                                                         |
+| Base color                | Neutral (overridden by DESIGN.md tokens — choice doesn't matter) |
+| CSS variables for colors? | Yes                                                              |
 
 After init, shadcn writes a `tailwind.config.ts` with its own color variables. **Override the entire `theme.extend` block** with the DESIGN.md tokens from Task 4 — the shadcn defaults are irrelevant given the custom dark-only palette.
 
 ### CI Pipeline Activation (Task 5.3)
 
 The `.github/workflows/test.yml` is in "BLUEPRINT MODE". Remove the `[BLUEPRINT]` comment markers from:
+
 1. The `lint` job's `Lint all apps and libs` step
 2. The `unit` job's `Run unit and integration tests` step
 
@@ -332,12 +337,12 @@ For `playwright.config.ts`: the `webServer` block is already commented and must 
 
 Do NOT install future-story packages (`next-auth`, `@assistant-ui/*`, `@ag-ui/*`, `@anthropic-ai/claude-agent-sdk`, `@daytonaio/sdk`, `nestjs-zod`, `@nestjs/throttler`) in this story — they are scope creep. Install only:
 
-| Package | Where | Story 1.1 reason |
-|---------|-------|-----------------|
-| `prisma@^7.8.0` | `libs/database-schemas` | Schema + migration tooling |
-| `@prisma/client@^7.8.0` | `libs/database-schemas`, `apps/web`, `apps/agent-be` | Generated client import |
-| `shadcn/ui` init | `apps/web` | Radix + Tailwind component library (run `pnpm dlx shadcn@latest init` — see prompt answers below) |
-| `zod@^4.4.3` | `apps/web`, `apps/agent-be` | Needed for AC validation even at scaffold stage |
+| Package                 | Where                                                | Story 1.1 reason                                                                                  |
+| ----------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `prisma@^7.8.0`         | `libs/database-schemas`                              | Schema + migration tooling                                                                        |
+| `@prisma/client@^7.8.0` | `libs/database-schemas`, `apps/web`, `apps/agent-be` | Generated client import                                                                           |
+| `shadcn/ui` init        | `apps/web`                                           | Radix + Tailwind component library (run `pnpm dlx shadcn@latest init` — see prompt answers below) |
+| `zod@^4.4.3`            | `apps/web`, `apps/agent-be`                          | Needed for AC validation even at scaffold stage                                                   |
 
 ### Architecture: Nx `tsconfig.base.json` Path Mappings
 
@@ -361,6 +366,7 @@ These paths are also needed in `apps/agent-be/test/jest-integration.config.ts` (
 ### Build Verification
 
 After all tasks, confirm:
+
 ```bash
 pnpm exec nx build web          # Next.js production build succeeds
 pnpm exec nx build agent-be     # NestJS build succeeds

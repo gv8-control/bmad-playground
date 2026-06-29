@@ -5,7 +5,7 @@
       "Bash(python3 *_bmad/scripts/*)",
       "Bash(python3 *_bmad/scripts/resolve_customization.py *)",
       "Bash(xargs -I{} * {})",
-      "Bash(python3 -c \"import webbrowser, pathlib; webbrowser.open\\(pathlib.Path\\('/workspaces/codespaces-blank/_bmad-output/planning-artifacts/ux-designs/*.html'\\).resolve\\(\\).as_uri\\(\\)\\)\")",
+      "Bash(python3 -c \"import webbrowser, pathlib; webbrowser.open\\(pathlib.Path\\('/workspaces/*/_bmad-output/planning-artifacts/ux-designs/*.html'\\).resolve\\(\\).as_uri\\(\\)\\)\")",
       "WebSearch",
       "WebFetch",
       "Bash(git push *)",
