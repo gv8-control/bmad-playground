@@ -5,6 +5,10 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers-extra/features/n8n:1": {}
   },
+  "runArgs": [
+    "--env-file",
+    ".env"
+  ],
   "forwardPorts": [
     3000,
     3001,
@@ -45,8 +49,8 @@
     "NODES_EXCLUDE": "[]",
     "NODE_FUNCTION_ALLOW_EXTERNAL": "uuid"
   },
-  "postCreateCommand": "npm install -g pnpm@10 && pnpm install",
-  "postStartCommand": "docker compose up -d && until curl -sf http://localhost:5678/healthz > /dev/null; do sleep 2; done && n8n import:workflow --separate --input=n8n/workflows --activeState=fromJson",
+  "postCreateCommand": "bash .devcontainer/create.sh",
+  "postStartCommand": "bash .devcontainer/start.sh",
   "customizations": {
     "vscode": {
       "extensions": [
