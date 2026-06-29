@@ -180,3 +180,89 @@ describe('RepositoryUrlForm — successful connection (AC-3)', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/project-map'));
   });
 });
+
+// ─── BMAD validation error display (Story 1.4) ───────────────────────────────
+
+describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] shows documentation link when validation error includes documentationLink', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({
+      error: 'BMAD initialization is incomplete. Missing: _bmad/.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    const link = await screen.findByRole('link', { name: /bmad documentation/i });
+    expect(link).toHaveAttribute('href', 'https://docs.bmad-method.org');
+  });
+
+  it('[P0] does NOT show documentation link for non-validation errors', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({
+      error: "You don't have write access to this repository.",
+      errorCode: 'INSUFFICIENT_PERMISSION',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('[P0] shows error message for UNSUPPORTED_VERSION with detected version', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({
+      error: 'BMAD version 5.9.9 is not supported. Only BMAD v6 is supported.',
+      errorCode: 'UNSUPPORTED_VERSION',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/5\.9\.9/));
+  });
+
+  it('[P0] shows error message for NO_SKILLS_FOUND', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({
+      error: 'No BMAD Skills were found in .claude/skills/.',
+      errorCode: 'NO_SKILLS_FOUND',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/skill/i));
+  });
+
+  it('[P1] documentation link opens in new tab with noopener', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({
+      error: 'Missing directory.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    const link = await screen.findByRole('link', { name: /bmad documentation/i });
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('[P1] documentation link is cleared on next submission', async () => {
+    (connectRepository as jest.Mock)
+      .mockResolvedValueOnce({
+        error: 'Missing directory.',
+        errorCode: 'MISSING_DIRECTORY',
+        documentationLink: 'https://docs.bmad-method.org',
+      })
+      .mockResolvedValueOnce({ success: true });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    const button = screen.getByRole('button', { name: /connect repository/i });
+    await userEvent.click(button);
+    await screen.findByRole('link', { name: /bmad documentation/i });
+    await userEvent.click(button);
+    await waitFor(() => expect(screen.queryByRole('link')).not.toBeInTheDocument());
+  });
+});
