@@ -5,10 +5,6 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers-extra/features/n8n:1": {}
   },
-  "runArgs": [
-    "--env-file",
-    ".env"
-  ],
   "forwardPorts": [
     3000,
     3001,
@@ -49,8 +45,8 @@
     "NODES_EXCLUDE": "[]",
     "NODE_FUNCTION_ALLOW_EXTERNAL": "uuid"
   },
-  "postCreateCommand": "bash .devcontainer/create.sh",
-  "postStartCommand": "bash .devcontainer/start.sh",
+  "postCreateCommand": ".devcontainer/create.sh",
+  "postStartCommand": ".devcontainer/start.sh",
   "customizations": {
     "vscode": {
       "extensions": [
