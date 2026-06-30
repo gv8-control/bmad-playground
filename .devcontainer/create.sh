@@ -1,6 +1,6 @@
 #!/bin/bash
 cp --update=none .env.example .env
-npm install -g pnpm@10
-pnpm install
+npm install -g nx opencode-ai
+npm install
 
 echo ". .env" > ~/.bashrc
