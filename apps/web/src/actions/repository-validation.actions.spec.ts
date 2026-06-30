@@ -489,9 +489,9 @@ describe('inspectBmadSetup — GitHub API call patterns', () => {
 // ─── validateRepository — Server Action (AC-1 through AC-6) ───────────────────
 
 describe('validateRepository — Server Action', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
-    clearValidationCache();
+    await clearValidationCache();
     mockFetch = jest.fn();
     jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
     mockAuth.mockResolvedValue(SESSION);
@@ -599,7 +599,7 @@ describe('validateRepository — Server Action', () => {
     await validateRepository(REPO_URL);
     const fetchCallsAfterFirst = mockFetch.mock.calls.length;
 
-    invalidateValidationCache(SESSION.userId, REPO_URL);
+    await invalidateValidationCache(SESSION.userId, REPO_URL);
 
     await validateRepository(REPO_URL);
     expect(mockFetch.mock.calls.length).toBeGreaterThan(fetchCallsAfterFirst);

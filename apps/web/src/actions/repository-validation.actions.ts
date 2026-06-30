@@ -138,9 +138,9 @@ function isVersion6x(version: string): boolean {
 function makeValidationError(
   code: ValidationError['code'],
   message: string,
-  meta: ValidationError['meta'],
+  meta: Omit<ValidationError['meta'], 'documentationLink'>,
 ): ValidationError {
-  return { code, message, meta: { documentationLink: BMAD_DOCUMENTATION_LINK, ...meta } };
+  return { code, message, meta: { ...meta, documentationLink: BMAD_DOCUMENTATION_LINK } };
 }
 
 export async function inspectBmadSetup(
@@ -252,7 +252,7 @@ function cacheSet(
   validationCache.set(key, { result, expiresAt: Date.now() + ttlMs });
 }
 
-export function invalidateValidationCache(userId: string, repoUrl: string): void {
+export async function invalidateValidationCache(userId: string, repoUrl: string): Promise<void> {
   const cleaned = repoUrl.replace(/\.git\/?$/, '').replace(/\/$/, '');
   const match = cleaned.match(
     /^https:\/\/github\.com\/([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)$/,
@@ -262,7 +262,7 @@ export function invalidateValidationCache(userId: string, repoUrl: string): void
   }
 }
 
-export function clearValidationCache(): void {
+export async function clearValidationCache(): Promise<void> {
   validationCache.clear();
 }
 

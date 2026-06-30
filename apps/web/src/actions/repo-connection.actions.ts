@@ -129,7 +129,7 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     }
 
     const validation = await inspectBmadSetup(accessToken, owner, repo);
-    if (!validation.valid) {
+    if ('code' in validation) {
       return {
         error: validation.message,
         errorCode: validation.code,
@@ -150,7 +150,7 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
       },
     });
 
-    invalidateValidationCache(session.userId, cleanUrl);
+    await invalidateValidationCache(session.userId, cleanUrl);
 
     return { success: true };
   } catch (err) {
