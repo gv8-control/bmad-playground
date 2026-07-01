@@ -11,12 +11,9 @@ module.exports = {
   workflow: {
     activate: [
       async function (dbWorkflow) {
-        const safeName = dbWorkflow.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const filePath = path.join(exportDir, `${safeName}.json`);
+        await execAsync(`n8n export:workflow --id=${dbWorkflow.id} --separate --pretty --output=${exportDir}`);
 
-        await execAsync(`n8n export:workflow --id=${dbWorkflow.id} --pretty --output=${filePath}`);
-
-        console.log(`[n8n hook] workflow exported to ${filePath}`);
+        console.log(`[n8n hook] workflow exported to ${exportDir}`);
       }
     ],
     delete: [
