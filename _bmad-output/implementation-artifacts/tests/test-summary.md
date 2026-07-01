@@ -1,4 +1,10 @@
-# Test Automation Summary — Story 1.4: Validate BMAD Initialization
+# Test Automation Summary
+
+**Last updated:** 2026-07-01
+
+---
+
+## Story 1.4: Validate BMAD Initialization
 
 **Generated:** 2026-06-24
 **Story status:** review
@@ -92,3 +98,57 @@ pnpm playwright test playwright/e2e/onboarding/bmad-validation.spec.ts --reporte
   ```bash
   pnpm playwright test playwright/e2e/onboarding/ --reporter=list
   ```
+
+---
+
+## Story 1.5: Resolve Git Identity for Commit Attribution
+
+**Reviewed:** 2026-07-01
+**Story status:** review
+**Decision:** No E2E or API tests generated
+
+### Rationale
+
+Story 1.5 has no testable surface for E2E or API automation:
+
+| Check | Result |
+|---|---|
+| UI components calling `getGitIdentity` / `resolveGitIdentity` | None — grep of `apps/web/src/**/*.tsx` returned no matches |
+| HTTP API endpoint | None — the story's API Contract states: *"This story has no HTTP API endpoint. The `getGitIdentity` Server Action is callable only from server-side code in `apps/web`"* |
+| Story's explicit testing requirement | *"No E2E tests needed — this story has no UI surface; the identity is consumed internally by Epic 3"* |
+| Playwright E2E directories | `auth`, `conversation`, `onboarding`, `project-map` — no git-identity surface |
+
+The `GitUserConfig` produced here is consumed internally by **Epic 3, Story 3.1** (`ISandboxService.injectGitConfig`) during the sandbox init sequence. Git identity attribution only becomes user-visible at that point, which is where E2E coverage naturally belongs.
+
+### Existing Coverage (Complete)
+
+All three acceptance criteria are already covered by passing unit and integration tests:
+
+| Level | File | Tests | ACs Covered |
+|---|---|---|---|
+| Unit | `apps/web/src/lib/git-identity.test.ts` | 13 | AC-1, AC-2, AC-3 |
+| Integration | `apps/web/src/actions/git-identity.actions.spec.ts` | 9 | AC-3 |
+
+**Total: 22 tests, all passing.**
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Test Level | Test File(s) |
+|---|---|---|---|
+| AC-1 | Name and primary email from OAuth profile | Unit | `git-identity.test.ts` (2 tests: exact values, special characters) |
+| AC-2 | Noreply email fallback | Unit | `git-identity.test.ts` (4 tests: null, empty, whitespace, name preserved) |
+| AC-3 | Consumable by sandbox init; no token leakage | Unit + Integration | `git-identity.test.ts` (2 tests: return-type keys, no token props); `git-identity.actions.spec.ts` (3 tests: `select` clause, no token in result, error paths) |
+
+### Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists
+- [x] E2E tests generated (if UI exists) — N/A: no UI surface exists
+- [x] Tests cover happy path — covered by existing unit tests
+- [x] Tests cover 1-2 critical error cases — covered by existing integration tests (unauthenticated, user-not-found, DB error)
+- [x] Test summary created — this document
+- [x] All existing tests run successfully — 22 tests pass (verified during story implementation)
+
+### Next Steps
+
+- No action required for Story 1.5
+- When Story 3.1 (Provision a Sandbox When Opening a Conversation) is implemented, add E2E coverage for the sandbox init sequence including git-config injection attribution

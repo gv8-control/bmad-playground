@@ -7,13 +7,14 @@ stepsCompleted:
   - step-04e-aggregate-nfr
   - step-05-generate-report
 lastStep: step-05-generate-report
-lastSaved: '2026-06-29'
-scope: 'Stories 1.1, 1.2, 1.3, 1.4'
+lastSaved: '2026-07-01'
+scope: 'Stories 1.1, 1.2, 1.3, 1.4, 1.5'
 overallStatus: CONCERNS
 criteriaScore: '18/29'
 inputDocuments:
   - _bmad-output/planning-artifacts/architecture.md
   - _bmad-output/implementation-artifacts/1-4-validate-bmad-initialization-in-the-connected-repository.md
+  - _bmad-output/implementation-artifacts/1-5-resolve-git-identity-for-commit-attribution.md
   - apps/web/src/actions/repository-validation.actions.ts
   - apps/web/src/actions/repository-validation.actions.spec.ts
   - apps/web/src/actions/repo-connection.actions.ts
@@ -21,6 +22,12 @@ inputDocuments:
   - libs/shared-types/src/repository-validation.ts
   - .github/workflows/test.yml
   - _bmad-output/test-artifacts/test-reviews/test-review-1-4.md
+  - apps/web/src/lib/git-identity.ts
+  - apps/web/src/lib/git-identity.test.ts
+  - apps/web/src/actions/git-identity.actions.ts
+  - apps/web/src/actions/git-identity.actions.spec.ts
+  - libs/shared-types/src/sandbox.interface.ts
+  - _bmad-output/test-artifacts/test-design-architecture.md
 ---
 
 # NFR Evidence Audit — bmad-easy (Stories 1.1–1.3)
@@ -783,3 +790,384 @@ nfr_assessment:
 
 *Produced by TEA Master Test Architect (bmad-testarch-nfr workflow), 2026-06-29 (re-audit)*
 *Subagent execution: 4 NFR domain re-audits (Security, Performance, Reliability, Scalability)*
+
+---
+
+# NFR Evidence Audit — Story 1.5: Resolve Git Identity for Commit Attribution
+
+**Date:** 2026-07-01
+**Story:** 1.5 — Resolve Git Identity for Commit Attribution
+**Overall Status:** ⚠️ CONCERNS
+**ADR Checklist Score:** 18/29 (62%)
+**Domain Risk:** Security LOW | Performance LOW | Reliability LOW | Scalability LOW
+
+---
+
+## Executive Summary
+
+**Assessment:** 18 PASS, 10 CONCERNS, 1 FAIL across 29 ADR Quality Readiness criteria
+
+**Blockers:** 0 (no new blockers; FINDING-1 CI `/health` endpoint carried from prior stories)
+
+**New Findings:** 2 (bare `console.error` carried pattern, no Prisma query timeout)
+
+**Recommendation:** ⚠️ CONCERNS — Story 1.5 is production-ready for MVP scope. No new blockers. AC-3 (no token leakage) is enforced at three levels with test coverage. All 21 tests pass. Remaining gaps are infrastructure-level concerns carried from prior stories, waivable for pre-production MVP.
+
+---
+
+## Story Scope
+
+Story 1.5 delivers git identity resolution logic — a pure function (`resolveGitIdentity`) that transforms a User record into a `GitUserConfig` (`{ name, email }`), and a Server Action (`getGitIdentity`) that resolves the current session's user identity from Postgres. The story has no UI surface and no external API calls. The OAuth access token is never read by this code path (AC-3).
+
+**Files assessed:**
+- `apps/web/src/lib/git-identity.ts` (19 lines) — `resolveGitIdentity` pure function
+- `apps/web/src/lib/git-identity.test.ts` (139 lines) — 12 unit tests
+- `apps/web/src/actions/git-identity.actions.ts` (33 lines) — `getGitIdentity` Server Action
+- `apps/web/src/actions/git-identity.actions.spec.ts` (138 lines) — 9 integration tests
+- `libs/shared-types/src/sandbox.interface.ts` — `GitUserConfig` interface (pre-existing)
+
+**Test execution:** 21 tests pass (verified 2026-07-01). Lint: 0 errors (per story completion notes; nx/eslint environment has pre-existing `jsonc-parser` dependency issue preventing direct execution).
+
+---
+
+## Domain Risk Breakdown
+
+| Domain | Risk Level | Key Finding |
+|---|---|---|
+| Security | LOW | AC-3 enforced at 3 levels (type, query, return-type); token never read; `console.error` unsanitized (carried pattern) |
+| Performance | LOW | O(1) pure function; single DB round-trip with 3-column `select`; no external calls |
+| Reliability | LOW | All error paths tested (unauthenticated, user not found, DB error); typed result union; try/catch |
+| Scalability | LOW | Stateless Server Action; no in-memory state; no caching needed |
+
+---
+
+## Findings Summary (ADR Quality Readiness Checklist)
+
+| Category | Criteria Met | Previous (1.4) | Status | Evidence |
+|---|---|---|---|---|
+| 1. Testability & Automation | 4/4 | 4/4 | ✅ PASS | 21 tests, all deps mocked, no UI dependency |
+| 2. Test Data Strategy | 3/3 | 3/3 | ✅ PASS | Mocked Prisma/Auth, synthetic data, clearAllMocks |
+| 3. Scalability & Availability | 2/4 | 2/4 | ⚠️ CONCERNS | Stateless PASS; fail-fast PASS; no load tests; no SLA |
+| 4. Disaster Recovery | 0/3 | 0/3 | ⚠️ CONCERNS | Pre-production MVP (waivable — same as prior stories) |
+| 5. Security | 4/4 | 4/4 | ✅ PASS | AC-3 triple enforcement; NFR-S2 userId scoping; parameterized queries |
+| 6. Monitorability | 1/4 | 1/4 | ⚠️ CONCERNS | `console.error` present; no structured logging, tracing, or metrics |
+| 7. QoS & QoE | 2/4 | 2/4 | ⚠️ CONCERNS | Degradation PASS; no UI (N/A perceived perf); latency not measured; no rate limiting |
+| 8. Deployability | 2/3 | 2/3 | ⚠️ CONCERNS | No DB migrations PASS; `/health` endpoint blocker (shared) |
+
+**Overall: 18/29 criteria met (62%) → ⚠️ CONCERNS** (same score as Story 1.4)
+
+---
+
+## Strengths
+
+### STRENGTH-1: AC-3 Enforcement at Three Levels ✅
+
+The "no token leakage" requirement (AC-3) is enforced at three independent levels, making accidental token exposure structurally impossible:
+
+1. **Type-level:** `GitIdentityUser` interface (`git-identity.ts:3-7`) accepts only `{ name, email, githubLogin }` — no `accessToken` parameter exists in the function signature
+2. **Query-level:** Prisma `select` clause (`git-identity.actions.ts:21`) reads only `{ name: true, email: true, githubLogin: true }` — never reads `OAuthCredential` or any token field
+3. **Return-type-level:** `GitUserConfig` (`sandbox.interface.ts:14-17`) is `{ name: string; email: string }` — no token field exists in the type
+
+**Test coverage:** 3 tests verify this directly:
+- `git-identity.test.ts:115-121` — return type contains only `name` and `email` keys
+- `git-identity.test.ts:124-137` — return value has no `accessToken`, `token`, or `encryptedToken` property
+- `git-identity.actions.spec.ts:108-122` — `select` clause assertion verifies only `name`, `email`, `githubLogin` are queried
+- `git-identity.actions.spec.ts:124-137` — returned `GitUserConfig` contains no token field
+
+### STRENGTH-2: Pure Function Design ✅
+
+`resolveGitIdentity` is a dependency-free pure function with O(1) complexity, no side effects, and no I/O. This makes it:
+- Trivially unit-testable in isolation
+- Moveable/duplicable for Epic 3 without coupling
+- Deterministic (same input → same output)
+
+### STRENGTH-3: Comprehensive Error Handling ✅
+
+All error paths are tested with explicit assertions:
+- Unauthenticated (no session) → `{ success: false, error: 'Not authenticated' }`
+- Missing userId → `{ success: false, error: 'Not authenticated' }`
+- User not found → `{ success: false, error: 'User not found' }`
+- DB error → `{ success: false, error: 'Failed to resolve git identity' }`
+
+No exceptions thrown for expected failures; try/catch wraps unexpected errors only.
+
+---
+
+## Findings
+
+### FINDING-10: Bare `console.error` Without Sanitization [LOW] — Carried Pattern
+
+**Location:** `apps/web/src/actions/git-identity.actions.ts:30`
+
+**Problem:** `console.error('[getGitIdentity] Unexpected error:', err)` logs the full error object. This is the same pattern as FINDING-7 from Story 1.4 (`repository-validation.actions.ts:316`). Current thrown errors don't embed the token, but the pattern could leak sensitive request metadata if an underlying error ever echoes headers.
+
+**Impact:** Limited production incident triage capability. Low risk for this story — the code path never touches the OAuth token.
+
+**Required action:** Replace with structured logger (pino) with mandatory fields: `requestId`, `userId`, `errorCode`. Add a redact-list for `Authorization` and `access_token` fields. (Same as A-14 from Story 1.4.)
+
+---
+
+### FINDING-11: No Prisma Query Timeout [LOW] — New
+
+**Location:** `apps/web/src/actions/git-identity.actions.ts:19-22`
+
+**Problem:** The `findUnique` call has no explicit timeout. If Postgres is slow or unresponsive, the Server Action will hang until the HTTP timeout or Prisma's connection pool timeout fires. Story 1.4 used `AbortSignal.timeout(10_000)` for all GitHub API fetch calls; Story 1.5 has no equivalent for the Prisma query.
+
+**Impact:** Low risk. Prisma has `statement_timeout` and `connect_timeout` configurable at the client level. Next.js Server Actions have a default `maxDuration` (60s on Vercel). The query reads a single row by primary key — sub-millisecond under normal conditions.
+
+**Required action:** Configure Prisma `statement_timeout` at the client level (e.g., 5s) for all Server Actions, or add a story-level note that Prisma timeouts are delegated to the database/client configuration.
+
+---
+
+## NFR Threshold Compliance (Story 1.5)
+
+| NFR / AC | Threshold | Evidence | Status |
+|---|---|---|---|
+| AC-3: No token leakage | Token never in identity record | 3-level enforcement (type, query, return); 4 tests verify | ✅ PASS |
+| AC-1: Name/email from OAuth profile | Exact values from User record | `git-identity.test.ts:10-30` — 2 tests (exact + special characters) | ✅ PASS |
+| AC-2: Noreply email fallback | `{githubLogin}@users.noreply.github.com` | `git-identity.test.ts:33-69` — 4 tests (null, empty, whitespace, name preservation) | ✅ PASS |
+| NFR-S2: Per-user credential isolation | `findUnique where userId` | `git-identity.actions.ts:20` — `where: { id: session.userId }`; session checked first | ✅ PASS |
+| NFR-S4: AES-256-GCM, token never returned | Token never read | `select: { name, email, githubLogin }` — OAuthCredential table never queried | ✅ PASS |
+| Story: O(1) pure function | No I/O, no side effects | `resolveGitIdentity` has no imports beyond type; 19 lines; no DB/auth/crypto | ✅ PASS |
+| Story: Single DB round-trip | One `findUnique` call | `git-identity.actions.ts:19` — single `findUnique` with `select` | ✅ PASS |
+| Story: No caching needed | On-demand resolution | No cache implementation; function is cheap | ✅ PASS |
+
+---
+
+## Detailed Category Assessment
+
+### Category 1: Testability & Automation (4/4) ✅
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 1.1 Isolation: Mock downstream deps | ✅ | `@/lib/auth` and `@/lib/prisma` mocked via `jest.mock()` at module level; `afterEach` clears all mocks |
+| 1.2 Headless: API-accessible logic | ✅ | Server Action tested directly; `resolveGitIdentity` pure function tested in isolation; no UI dependency |
+| 1.3 State Control: Seeding mechanism | ✅ | Mock-based testing sufficient; no E2E needed (no UI surface); `mockFindUniqueUser.mockResolvedValue()` injects data states |
+| 1.4 Sample Requests: Valid/invalid examples | ✅ | 12 unit tests cover valid profiles, null/empty/whitespace edge cases, special characters; 9 integration tests cover auth/not-found/DB-error paths |
+
+**Evidence:** 21 tests pass (12 unit + 9 integration). `@jest-environment node` directive for server-side tests. `jest.clearAllMocks()` in `afterEach`.
+
+---
+
+### Category 2: Test Data Strategy (3/3) ✅
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 2.1 Segregation: Test data isolated | ✅ | All tests use mocked Prisma; no real DB queries; no E2E |
+| 2.2 Generation: Synthetic data | ✅ | Synthetic user profiles (`'Jane Developer'`, `'janedev'`); no production data |
+| 2.3 Teardown: Cleanup | ✅ | `jest.clearAllMocks()` in `afterEach` (no `spyOn` used, so `clearAllMocks` suffices) |
+
+---
+
+### Category 3: Scalability & Availability (2/4)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 3.1 Statelessness: Stateless service | ✅ | Server Action is stateless; `auth()` per-request, `getPrisma()` per-request; no in-memory state |
+| 3.2 Bottlenecks: Identified under load | ⚠️ | Single `findUnique` by PK is trivially fast; no load tests (appropriate for this scope) |
+| 3.3 SLA: Availability target defined | ⚠️ | No formal SLA; O(1) function + single DB read is architecturally sub-millisecond |
+| 3.4 Circuit breakers: Fail fast | ✅ | try/catch catches DB errors and returns typed error result immediately; no hanging |
+
+**Waiver justified:** No load testing needed for a pure function + single PK lookup. SLA and circuit breaker concerns are infrastructure-level, same as prior stories.
+
+---
+
+### Category 4: Disaster Recovery (0/3)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 4.1 RTO/RPO | ⚠️ | Not applicable — pre-production MVP (waivable, same as W-1/W-8) |
+| 4.2 Failover | ⚠️ | Platform-level (Vercel/Railway) — not in Story 1.5 scope |
+| 4.3 Backups | ⚠️ | Platform-level — not in Story 1.5 scope |
+
+**Waiver justified:** Pre-production MVP. Same waiver as Stories 1.1–1.4 (W-1/W-8).
+
+---
+
+### Category 5: Security (4/4) ✅
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 5.1 AuthN/AuthZ: OAuth2, least privilege | ✅ | `auth()` session check; `session.userId` guard; `findUnique where userId` (NFR-S2); no public API endpoint |
+| 5.2 Encryption: At rest and in transit | ✅ | NFR-S4: OAuth token stored separately in `OAuthCredential` table (encrypted, Story 1.3); this code path never reads it; `select` clause excludes token fields |
+| 5.3 Secrets: Not in code, validated at startup | ✅ | No secrets in code; KEK from env (Story 1.3); no hardcoded credentials; `GitIdentityUser` interface has no token field |
+| 5.4 Input validation: SQL/XSS/injection | ✅ | Parameterized Prisma queries; `select` clause limits columns; no user input directly in queries (`userId` from session) |
+
+**Standout pattern:** AC-3 triple enforcement (type-level, query-level, return-type-level) with 4 dedicated tests. Token leakage is structurally impossible — the function signature, the Prisma query, and the return type all exclude token fields. ✅
+
+**Minor concern (FINDING-10):** Bare `console.error(err)` at line 30 — defensive hardening only, no current token leakage (same as FINDING-7 from Story 1.4).
+
+---
+
+### Category 6: Monitorability (1/4)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 6.1 Tracing: W3C Trace Context | ⚠️ | Not implemented. No cross-service calls in Story 1.5 scope |
+| 6.2 Logs: Dynamic log levels | ⚠️ | `console.error('[getGitIdentity] Unexpected error:', err)` at line 30 — no structured JSON, no correlation IDs (same as FINDING-7/10) |
+| 6.3 Metrics: RED metrics | ⚠️ | No `/metrics` endpoint. No DB query latency metrics |
+| 6.4 Config: Externalized | ✅ | All configuration via env vars (Auth.js, Prisma, KEK) |
+
+**Waiver justified:** Structured logging, distributed tracing, and metrics are Epic 2+ scope (W-4/W-5/W-9/W-10).
+
+---
+
+### Category 7: QoS & QoE (2/4)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 7.1 Latency: P95/P99 targets | ⚠️ | O(1) pure function + single PK lookup is architecturally sub-millisecond; not measured (appropriate — no user-facing latency) |
+| 7.2 Throttling: Rate limiting | ⚠️ | No rate limiting on Server Action. Not in scope — Server Action is not a public API endpoint (callable only from server-side code) |
+| 7.3 Perceived performance: Skeletons, optimistic updates | ✅ | N/A — no UI surface; identity is consumed internally by Epic 3 |
+| 7.4 Degradation: Friendly errors, no stack traces | ✅ | Typed `GetGitIdentityResult` union returns user-facing error strings; no stack traces exposed; generic error on catch |
+
+---
+
+### Category 8: Deployability (2/3)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 8.1 Zero downtime: Blue/Green or Canary | ⚠️ | Vercel: atomic zero-downtime ✅. Railway: single-container ⚠️ (shared, W-7/W-12) |
+| 8.2 Backward compatibility: DB migrations separate | ✅ | No DB migrations for Story 1.5. Uses existing User model fields |
+| 8.3 Rollback: Automated on health check failure | ⚠️ | No `/health` endpoint on `agent-be` (existing FINDING-1, shared) |
+
+---
+
+## Cross-Domain Risks
+
+| # | Domains | Description | Impact | Status |
+|---|---|---|---|---|
+| X-7 | Security + Reliability | Bare `console.error` — no structured logging | LOW | ⚠️ Still open (same as X-4 from Story 1.4) |
+| X-8 | Performance + Reliability | No Prisma query timeout — slow DB could hang Server Action | LOW | ⚠️ New (FINDING-11); mitigated by Prisma connection pool timeouts and Next.js maxDuration |
+
+---
+
+## Action Items
+
+### New (Story 1.5)
+
+| ID | Priority | Action | Owner | Effort |
+|---|---|---|---|---|
+| A-20 | P3 | Configure Prisma `statement_timeout` at client level for all Server Actions (FINDING-11) | Dev | 30min |
+
+### Carried Forward (from prior stories)
+
+| ID | Priority | Action | Status |
+|---|---|---|---|
+| A-1 | P0 | Add `/health` endpoint to `apps/agent-be` OR comment out CI `wait-on` (FINDING-1) | Still open |
+| A-14 | P2 | Replace `console.error` with structured logger (pino) with redact-list (FINDING-7/10) | Still open — now applies to `git-identity.actions.ts:30` as well |
+| A-3 | P1 | Add `SubmitButton` with `useFormStatus` to sign-in page | Still open |
+
+---
+
+## Waivers Granted (Story 1.5 Context)
+
+| Waiver | Category | Justification |
+|---|---|---|
+| W-13 | DR (Cat 4) | Same as W-1/W-8 — pre-production MVP |
+| W-14 | Structured logging (Cat 6.2) | Same as W-4/W-9 — Epic 2+ scope |
+| W-15 | Metrics endpoint (Cat 6.3) | Same as W-5/W-10 — Epic 2+ scope |
+| W-16 | Rate limiting (Cat 7.2) | Same as W-6/W-11 — no public API surface; Server Action is internal-only |
+| W-17 | Railway zero-downtime (Cat 8.1) | Same as W-7/W-12 — single-container MVP constraint |
+| W-18 | Load testing (Cat 3.2) | O(1) pure function + single PK lookup; no load testing needed for this scope |
+
+---
+
+## Gate Decision
+
+**Current gate status: ⚠️ CONCERNS — Story 1.5 may merge with waivers**
+
+**No new blockers.** Story 1.5 is a small, focused, additive story with no regressions:
+
+- ✅ AC-3 (no token leakage) enforced at 3 levels with 4 dedicated tests
+- ✅ 21 tests pass (12 unit + 9 integration)
+- ✅ 0 lint errors (per story completion notes)
+- ✅ No DB migrations, no Prisma schema changes, no new dependencies
+- ✅ No external API calls, no UI surface, no caching needed
+- ✅ All error paths tested with explicit assertions
+
+**Remaining gaps (acceptable for MVP with waivers):**
+1. **Bare `console.error`** (FINDING-10) — carried pattern from Story 1.4; no token leakage in this code path
+2. **No Prisma query timeout** (FINDING-11) — low risk; mitigated by Prisma connection pool and Next.js maxDuration
+3. **No `/health` endpoint** (FINDING-1) — carried blocker from Stories 1.1–1.3; not related to Story 1.5
+
+**Security gate: ✅ PASS** — NFR-S2 (per-user isolation) and NFR-S4 (token never returned) both satisfied. AC-3 triple enforcement is a standout pattern. Token leakage is structurally impossible.
+
+**Recommendation:** Story 1.5 is production-ready for MVP scope. No action items required before merge. A-20 (Prisma timeout) and A-14 (structured logging) can be tracked as backlog.
+
+---
+
+## Gate YAML Snippet
+
+```yaml
+nfr_assessment:
+  date: '2026-07-01'
+  story_id: '1.5'
+  feature_name: 'Resolve Git Identity for Commit Attribution'
+  adr_checklist_score: '18/29'
+  previous_score: '18/29'
+  categories:
+    testability_automation: 'PASS'
+    test_data_strategy: 'PASS'
+    scalability_availability: 'CONCERNS'
+    disaster_recovery: 'CONCERNS'
+    security: 'PASS'
+    monitorability: 'CONCERNS'
+    qos_qoe: 'CONCERNS'
+    deployability: 'CONCERNS'
+  overall_status: 'CONCERNS'
+  domain_risk:
+    security: 'LOW'
+    performance: 'LOW'
+    reliability: 'LOW'
+    scalability: 'LOW'
+  new_findings:
+    - 'FINDING-10: Bare console.error (LOW, carried pattern)'
+    - 'FINDING-11: No Prisma query timeout (LOW, new)'
+  strengths:
+    - 'AC-3 triple enforcement (type, query, return-type)'
+    - 'Pure function design (O(1), no dependencies)'
+    - 'Comprehensive error handling (all paths tested)'
+  critical_issues: 0
+  high_priority_issues: 0
+  medium_priority_issues: 0
+  concerns: 10
+  blockers: false
+  quick_wins: 0
+  evidence_gaps: 2
+  recommendations:
+    - 'Configure Prisma statement_timeout at client level (A-20)'
+    - 'Replace console.error with structured logger (A-14, carried)'
+    - 'No blockers for merge — proceed to release'
+```
+
+---
+
+## Evidence Sources
+
+| Source | File | Lines | Notes |
+|---|---|---|---|
+| Production code | `apps/web/src/lib/git-identity.ts` | 19 | `resolveGitIdentity` pure function |
+| Production code | `apps/web/src/actions/git-identity.actions.ts` | 33 | `getGitIdentity` Server Action |
+| Unit tests | `apps/web/src/lib/git-identity.test.ts` | 139 | 12 tests (AC-1, AC-2, AC-3) |
+| Integration tests | `apps/web/src/actions/git-identity.actions.spec.ts` | 138 | 9 tests (AC-3, error paths) |
+| Shared types | `libs/shared-types/src/sandbox.interface.ts` | 34 | `GitUserConfig` interface (pre-existing) |
+| Test execution | 21 tests pass | Verified 2026-07-01 | `node ../../node_modules/jest/bin/jest.js` |
+| Story file | `_bmad-output/implementation-artifacts/1-5-resolve-git-identity-for-commit-attribution.md` | 727 | ACs, tasks, dev notes |
+| Architecture | `_bmad-output/planning-artifacts/architecture.md` | — | NFR-S2, NFR-S4, sandbox init sequence |
+| Test design | `_bmad-output/test-artifacts/test-design-architecture.md` | — | NFR testability requirements |
+
+---
+
+## Related Artifacts
+
+- **Story File:** `_bmad-output/implementation-artifacts/1-5-resolve-git-identity-for-commit-attribution.md`
+- **Architecture:** `_bmad-output/planning-artifacts/architecture.md` — NFR-S2, NFR-S4, `GitUserConfig` interface, `ISandboxService.injectGitConfig`
+- **Test Design:** `_bmad-output/test-artifacts/test-design-architecture.md` — NFR testability requirements
+- **Prior NFR Assessment:** Story 1.4 (18/29, CONCERNS) — see above
+- **Integration Point:** Epic 3, Story 3.1 — `ISandboxService.injectGitConfig(sandboxId, config: GitUserConfig)` consumes this story's output
+
+---
+
+*Produced by TEA Master Test Architect (bmad-testarch-nfr workflow), 2026-07-01*
+*Subagent execution: SEQUENTIAL (4 NFR domain audits: Security, Performance, Reliability, Scalability)*

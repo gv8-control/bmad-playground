@@ -60,3 +60,18 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 - Non-GitHub provider path not handled — if a second OAuth provider is added, `token.userId` is never set for it and `session.userId` will be absent for those users.
 - Prisma singleton never resets on stale DB connection — known limitation of the global singleton pattern in Next.js; mitigate when connection resilience is required.
 - Static assets in `/public/` beyond `favicon.ico` not excluded from middleware matcher — theoretical concern; no non-favicon public assets currently exist.
+
+## Deferred from: adversarial review of fix-turbopack-build-root (2026-06-30)
+
+- `next` package is hoisted to workspace root in pnpm workspace — abnormal for pnpm's strict default; investigate `.npmrc`/`pnpm-workspace.yaml` hoisting settings for root cause. The `turbopack.root` config is an escape hatch, not a fix for the underlying workspace config smell.
+- `clearValidationCache` is an unauthenticated server action exported from a `'use server'` file — any client can invoke it to flush the global cache (DoS / cache-thrashing vector). Pre-existing; making it `async` in this change cemented its server-action status without addressing the exposure. [`apps/web/src/actions/repository-validation.actions.ts:265`]
+- `makeValidationError` has zero direct test coverage — the sole constructor for `ValidationError` had its spread order and parameter type changed in this fix, but no spec verifies the `documentationLink` invariant. [`apps/web/src/actions/repository-validation.actions.ts:138`]
+- `invalidateValidationCache` silently no-ops on URL mismatch — if `repoUrl` fails the GitHub regex, the function returns without deleting, throwing, or logging. Current caller passes pre-validated URLs, but future callers get silently stale cache. [`apps/web/src/actions/repository-validation.actions.ts:255`]
+- Cache-clearing in tests scoped to one `describe` block, not the whole spec file — `validationCache` is module-level, so any other suite calling `validateRepository` leaks cached results across tests. [`apps/web/src/actions/repository-validation.actions.spec.ts:493`]
+- `experimental: {}` is dead config in `next.config.js` — empty object serves no purpose. [`apps/web/next.config.js:7`]
+- CommonJS `next.config.js` inconsistent with TS/ESM codebase — file uses `require`/`module.exports` + `//@ts-check` while Next.js 16 supports `next.config.ts`. Migrating would give real type-checking on `turbopack.root` and `path.resolve`. [`apps/web/next.config.js`]
+
+## Deferred from: code review of 1-5-resolve-git-identity-for-commit-attribution (2026-07-01)
+
+- Empty/whitespace `githubLogin` produces invalid fallback [`apps/web/src/lib/git-identity.ts:11,16`] — `githubLogin` is not validated for emptiness before being used as fallback name and noreply email local-part. GitHub guarantees `login` is non-empty from OAuth. Not reachable through normal flows.
+- `auth()` outside try/catch — rejection unhandled [`apps/web/src/actions/git-identity.actions.ts:13`] — `auth()` call sits outside the try/catch block; if it rejects (JWT decode failure, misconfigured secret), the error escapes as unhandled rejection. Consistent with all sibling Server Actions (`repo-connection.actions.ts:46`, `repository-validation.actions.ts:281`). Codebase-wide pattern, not a Story 1.5 issue.
