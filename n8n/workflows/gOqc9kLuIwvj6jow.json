@@ -1,0 +1,321 @@
+{
+  "updatedAt": "2026-07-01T18:53:26.257Z",
+  "createdAt": "2026-07-01T18:29:26.000Z",
+  "id": "gOqc9kLuIwvj6jow",
+  "name": "Develop Story (Webhook)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "develop-story",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        16
+      ],
+      "id": "562fd875-0704-4809-8add-e83bfe4c5b0a",
+      "webhookId": "b09526f2-bfe4-4db9-a9b4-fac2da787e88",
+      "name": "Develop story webhook"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/workspaces/bmad-playground/_bmad-output/implementation-artifacts/sprint-status.yaml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -32,
+        16
+      ],
+      "id": "ece1f3ff-88f1-4bb5-bda4-5f2cdb12f017",
+      "name": "Read sprint status"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        128,
+        16
+      ],
+      "id": "40acdee0-5692-4426-83e9-edbb24afce4e",
+      "name": "Read sprint status as text"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($('Develop story webhook').item.json.body || {}).story;\nconst storyId = typeof raw === 'string' ? raw.trim() : '';\n\nconst formatMatch = storyId.match(/^(\\d+)\\.(\\d+)$/);\nif (!formatMatch) {\n  return [{ json: { valid: false, error: `Invalid story ID \"${storyId}\". Expected format \"<epic>.<story>\", e.g. \"1.7\".` } }];\n}\n\nconst [, epic, story] = formatMatch;\nconst keyPrefix = `${epic}-${story}-`;\n\nconst yaml = $json.data || '';\nlet matchedKey = null;\nlet status = null;\nfor (const line of yaml.split('\\n')) {\n  const m = line.match(/^\\s{2}([\\w-]+):\\s*(\\S+)\\s*$/);\n  if (m && m[1].startsWith(keyPrefix)) {\n    matchedKey = m[1];\n    status = m[2];\n    break;\n  }\n}\n\nif (!matchedKey) {\n  return [{ json: { valid: false, error: `Story \"${storyId}\" was not found in sprint-status.yaml.` } }];\n}\n\nif (status.toLowerCase() === 'done') {\n  return [{ json: { valid: false, error: `Story \"${storyId}\" (${matchedKey}) is already done.` } }];\n}\n\nreturn [{ json: { valid: true, storyId, matchedKey, status } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        16
+      ],
+      "id": "c9cc6153-ed8c-4a8a-98c5-ffa803684059",
+      "name": "Validate story input"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d4b8d5a0-1a2b-4c3d-9e0f-1a2b3c4d5e6f",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        16
+      ],
+      "id": "857d4eac-6acb-48da-91ae-741cc93176f0",
+      "name": "Is story valid?"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "vDEOX0DPKdBUEIqx",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/vDEOX0DPKdBUEIqx",
+          "cachedResultName": "Develop Story"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $json.storyId }}"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        -80
+      ],
+      "id": "5020bf2d-802b-4c93-85ce-8995d5c1a154",
+      "name": "Trigger develop story pipeline"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"message\": \"Workflow was started\", \"story\": $json.storyId } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        768,
+        -80
+      ],
+      "id": "7cab1608-4115-4b3e-82c9-cbb9becaf6ac",
+      "name": "Story accepted"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"message\": $json.error } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        608,
+        160
+      ],
+      "id": "c8e5b2b5-2c0b-4cb9-924b-f0a90e76906b",
+      "name": "Story rejected"
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $json.error }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        768,
+        160
+      ],
+      "id": "60071c74-4ed9-4a15-a55a-06daefe6af0c",
+      "name": "Reject invalid story"
+    }
+  ],
+  "connections": {
+    "Develop story webhook": {
+      "main": [
+        [
+          {
+            "node": "Read sprint status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read sprint status": {
+      "main": [
+        [
+          {
+            "node": "Read sprint status as text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read sprint status as text": {
+      "main": [
+        [
+          {
+            "node": "Validate story input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate story input": {
+      "main": [
+        [
+          {
+            "node": "Is story valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is story valid?": {
+      "main": [
+        [
+          {
+            "node": "Trigger develop story pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Story rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger develop story pipeline": {
+      "main": [
+        [
+          {
+            "node": "Story accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Story rejected": {
+      "main": [
+        [
+          {
+            "node": "Reject invalid story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveExecutionProgress": true,
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {},
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "971ea7ac-e5ce-43e7-9c85-ca38394620ed",
+  "activeVersionId": "7a0aa003-efdc-4d2a-b208-cc205b755255",
+  "versionCounter": 3,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-01T18:30:12.497Z",
+      "createdAt": "2026-07-01T18:30:12.497Z",
+      "role": "workflow:owner",
+      "workflowId": "gOqc9kLuIwvj6jow",
+      "projectId": "AYEhcVrohjJ82DQg",
+      "project": {
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

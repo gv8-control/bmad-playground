@@ -11,7 +11,8 @@
     "test:e2e:debug": "dotenv -e .env.test -- playwright test --debug",
     "test:e2e:auth": "dotenv -e .env.test -- playwright test playwright/e2e/auth/",
     "test:e2e:conversation": "dotenv -e .env.test -- playwright test playwright/e2e/conversation/",
-    "test:e2e:report": "playwright show-report playwright-report"
+    "test:e2e:report": "playwright show-report playwright-report",
+    "develop-story": "curl -s --fail-with-body -X POST http://localhost:5678/webhook/develop-story -H \"Content-Type: application/json\" -d \"{\\\"story\\\":\\\"$0\\\"}\""
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",

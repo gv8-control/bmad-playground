@@ -4,7 +4,7 @@
   "id": "vDEOX0DPKdBUEIqx",
   "name": "Develop Story",
   "description": null,
-  "active": false,
+  "active": true,
   "isArchived": false,
   "nodes": [
     {
@@ -20,12 +20,31 @@
     },
     {
       "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "Story"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -192,
+        160
+      ],
+      "id": "562fd875-0704-4809-8add-e83bfe4c5b0a",
+      "name": "Start"
+    },
+    {
+      "parameters": {
         "assignments": {
           "assignments": [
             {
               "id": "76d406c2-e979-4abf-a013-53ed8b6b912a",
               "name": "Story",
-              "value": "1.6",
+              "value": "={{ $json.Story ?? '1.6' }}",
               "type": "string"
             },
             {
@@ -955,6 +974,17 @@
   ],
   "connections": {
     "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
       "main": [
         [
           {
