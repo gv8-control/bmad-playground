@@ -116,9 +116,10 @@
     }
   },
   "settings": {
+    "binaryMode": "separate",
     "availableInMCP": true,
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "saveExecutionProgress": true
   },
   "staticData": null,
   "meta": {
@@ -136,16 +137,16 @@
       }
     ]
   },
-  "versionId": "c5532a9c-069c-4216-bd97-4e2ef2b80188",
-  "activeVersionId": "c5532a9c-069c-4216-bd97-4e2ef2b80188",
-  "versionCounter": 50,
+  "versionId": "293d70ad-5594-4401-bbfe-a5bc01f45011",
+  "activeVersionId": "293d70ad-5594-4401-bbfe-a5bc01f45011",
+  "versionCounter": 51,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-01T03:21:06.694Z",
-      "createdAt": "2026-07-01T03:21:06.694Z",
+      "updatedAt": "2026-07-01T03:43:25.204Z",
+      "createdAt": "2026-07-01T03:43:25.204Z",
       "role": "workflow:owner",
       "workflowId": "3D8Jw6GicWiwBQc6",
       "projectId": "AYEhcVrohjJ82DQg",

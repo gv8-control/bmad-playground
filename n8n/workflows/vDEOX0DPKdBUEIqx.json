@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-22T19:39:24.276Z",
+  "updatedAt": "2026-07-01T10:34:46.755Z",
   "createdAt": "2026-06-19T23:11:49.051Z",
   "id": "vDEOX0DPKdBUEIqx",
   "name": "Develop Story",
@@ -25,7 +25,7 @@
             {
               "id": "76d406c2-e979-4abf-a013-53ed8b6b912a",
               "name": "Story",
-              "value": "1.4",
+              "value": "1.5",
               "type": "string"
             },
             {
@@ -490,7 +490,8 @@
         16
       ],
       "name": "Implement story",
-      "id": "6084749d-fc4d-43ee-a446-bbf292b49361"
+      "id": "6084749d-fc4d-43ee-a446-bbf292b49361",
+      "disabled": true
     },
     {
       "parameters": {
@@ -505,7 +506,8 @@
         16
       ],
       "id": "347b25b5-6708-45b5-8803-9609a34ef850",
-      "name": "Merge"
+      "name": "Merge",
+      "disabled": true
     },
     {
       "parameters": {
@@ -939,7 +941,8 @@
         -144
       ],
       "name": "E2E tests",
-      "id": "fb09dacc-5798-46ce-a41b-1b229496b341"
+      "id": "fb09dacc-5798-46ce-a41b-1b229496b341",
+      "disabled": true
     },
     {
       "parameters": {
@@ -1106,9 +1109,12 @@
     }
   },
   "settings": {
-    "executionOrder": "v1",
     "binaryMode": "separate",
-    "availableInMCP": true
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedMode": "fixed",
+    "availableInMCP": true,
+    "executionOrder": "v1",
+    "saveExecutionProgress": true
   },
   "staticData": null,
   "meta": {
@@ -1116,16 +1122,16 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "3afea116-951f-4451-98fe-d624ba3c8cc6",
+  "versionId": "83108a37-7b34-4e4e-8218-b7ab2a10df54",
   "activeVersionId": null,
-  "versionCounter": 510,
+  "versionCounter": 516,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-01T03:21:06.694Z",
-      "createdAt": "2026-07-01T03:21:06.694Z",
+      "updatedAt": "2026-07-01T03:43:25.204Z",
+      "createdAt": "2026-07-01T03:43:25.204Z",
       "role": "workflow:owner",
       "workflowId": "vDEOX0DPKdBUEIqx",
       "projectId": "AYEhcVrohjJ82DQg",

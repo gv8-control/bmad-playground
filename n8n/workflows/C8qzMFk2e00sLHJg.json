@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-01T07:08:56.025Z",
+  "updatedAt": "2026-07-01T11:38:23.078Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -121,7 +121,7 @@
       "typeVersion": 1,
       "position": [
         1264,
-        208
+        400
       ],
       "id": "a6db536a-f324-4b11-a117-26d688ce61ab",
       "name": "Agent MD to HTML"
@@ -150,7 +150,7 @@
       "typeVersion": 1.1,
       "position": [
         1440,
-        208
+        400
       ],
       "id": "092f0c0c-9602-43ed-9dd3-155eb832ffd0",
       "name": "Get response",
@@ -347,6 +347,42 @@
         432,
         16
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "agent-outcome"
+            },
+            {
+              "name": "title",
+              "value": "={{ $('Variables').item.json.conversationTitle }} - Action Needed"
+            },
+            {
+              "name": "message",
+              "value": "BMAD run is awaiting your response"
+            },
+            {
+              "name": "click",
+              "value": "={{ $('Variables').item.json['Recovery URL'] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1264,
+        224
+      ],
+      "id": "b1f3a9c2-6e7d-4a2b-9c1e-7f2d8a5b3c4e",
+      "name": "Notify"
     }
   ],
   "connections": {
@@ -442,6 +478,11 @@
             "node": "Agent MD to HTML",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Notify",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -470,9 +511,10 @@
     }
   },
   "settings": {
-    "executionOrder": "v1",
+    "binaryMode": "separate",
     "availableInMCP": true,
-    "binaryMode": "separate"
+    "executionOrder": "v1",
+    "saveExecutionProgress": true
   },
   "staticData": null,
   "meta": {
@@ -487,16 +529,16 @@
         "json": {
           "Story": "test",
           "Skill": "bmad-help",
-          "Initial prompt (without story ID)": "Hello, what shall I do next?",
+          "Initial prompt (without story ID)": "Ask me: 'shall we proceed with plan A or plan B?'",
           "Conversation label": "BMAD Session testing",
           "Agent": "test"
         }
       }
     ]
   },
-  "versionId": "68d260c3-0863-4036-8b97-93031613b37a",
-  "activeVersionId": "bd9d0c4e-70fd-4f74-99cb-97f06f154d8d",
-  "versionCounter": 145,
+  "versionId": "b54c7881-b6ed-46e9-8ffd-8bcea0adf519",
+  "activeVersionId": "68d260c3-0863-4036-8b97-93031613b37a",
+  "versionCounter": 161,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

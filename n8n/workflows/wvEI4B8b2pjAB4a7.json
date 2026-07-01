@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-22T07:30:58.323Z",
+  "updatedAt": "2026-07-01T10:40:49.026Z",
   "createdAt": "2026-06-20T11:36:57.322Z",
   "id": "wvEI4B8b2pjAB4a7",
   "name": "BMAD Session (Claude Code)",
@@ -404,9 +404,10 @@
     }
   },
   "settings": {
+    "binaryMode": "separate",
+    "availableInMCP": true,
     "executionOrder": "v1",
-    "availableInMCP": false,
-    "binaryMode": "separate"
+    "saveExecutionProgress": true
   },
   "staticData": null,
   "meta": null,
@@ -423,16 +424,16 @@
       }
     ]
   },
-  "versionId": "68e0dec8-0af4-43f0-a032-f98a06680289",
-  "activeVersionId": "68e0dec8-0af4-43f0-a032-f98a06680289",
-  "versionCounter": 151,
+  "versionId": "758b3d8c-db9d-4f86-a2a1-1e915fc676d5",
+  "activeVersionId": "758b3d8c-db9d-4f86-a2a1-1e915fc676d5",
+  "versionCounter": 153,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-01T03:21:06.694Z",
-      "createdAt": "2026-07-01T03:21:06.694Z",
+      "updatedAt": "2026-07-01T03:43:25.204Z",
+      "createdAt": "2026-07-01T03:43:25.204Z",
       "role": "workflow:owner",
       "workflowId": "wvEI4B8b2pjAB4a7",
       "projectId": "AYEhcVrohjJ82DQg",
