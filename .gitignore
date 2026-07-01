@@ -53,3 +53,9 @@ test-results/
 .yarn/
 yarn-error.log
 yarn.lock
+
+# pm2
+.pm2/
+pm2.log
+pm2.pid
+dump.pm2
