@@ -8,13 +8,14 @@ stepsCompleted:
   - step-05-generate-report
 lastStep: step-05-generate-report
 lastSaved: '2026-07-01'
-scope: 'Stories 1.1, 1.2, 1.3, 1.4, 1.5'
+scope: 'Stories 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7'
 overallStatus: CONCERNS
 criteriaScore: '18/29'
 inputDocuments:
   - _bmad-output/planning-artifacts/architecture.md
   - _bmad-output/implementation-artifacts/1-4-validate-bmad-initialization-in-the-connected-repository.md
   - _bmad-output/implementation-artifacts/1-5-resolve-git-identity-for-commit-attribution.md
+  - _bmad-output/implementation-artifacts/1-6-detect-and-recover-from-credential-failures.md
   - apps/web/src/actions/repository-validation.actions.ts
   - apps/web/src/actions/repository-validation.actions.spec.ts
   - apps/web/src/actions/repo-connection.actions.ts
@@ -28,6 +29,25 @@ inputDocuments:
   - apps/web/src/actions/git-identity.actions.spec.ts
   - libs/shared-types/src/sandbox.interface.ts
   - _bmad-output/test-artifacts/test-design-architecture.md
+  - apps/web/src/lib/credential-health.ts
+  - apps/web/src/lib/credential-health.test.ts
+  - apps/web/src/actions/credential-health.actions.ts
+  - apps/web/src/actions/credential-health.actions.spec.ts
+  - apps/web/src/lib/auth.ts
+  - apps/web/src/lib/auth.credential.spec.ts
+  - _bmad-output/test-artifacts/test-reviews/test-review-1-6.md
+  - _bmad-output/implementation-artifacts/deferred-work.md
+  - _bmad-output/implementation-artifacts/tests/test-summary.md
+  - _bmad-output/implementation-artifacts/1-7-enforce-authenticated-full-access-for-all-mvp-users.md
+  - apps/web/src/app/(dashboard)/layout.tsx
+  - apps/web/src/app/(dashboard)/layout.test.tsx
+  - apps/web/src/lib/auth.config.ts
+  - apps/web/src/lib/auth.config.spec.ts
+  - apps/web/src/middleware.ts
+  - apps/web/src/middleware.spec.ts
+  - playwright/e2e/auth/access-baseline.spec.ts
+  - _bmad-output/test-artifacts/test-reviews/test-review-1-7.md
+  - _bmad-output/test-artifacts/automate-validation-report-1-7.md
 ---
 
 # NFR Evidence Audit — bmad-easy (Stories 1.1–1.3)
@@ -1166,6 +1186,966 @@ nfr_assessment:
 - **Test Design:** `_bmad-output/test-artifacts/test-design-architecture.md` — NFR testability requirements
 - **Prior NFR Assessment:** Story 1.4 (18/29, CONCERNS) — see above
 - **Integration Point:** Epic 3, Story 3.1 — `ISandboxService.injectGitConfig(sandboxId, config: GitUserConfig)` consumes this story's output
+
+---
+
+*Produced by TEA Master Test Architect (bmad-testarch-nfr workflow), 2026-07-01*
+*Subagent execution: SEQUENTIAL (4 NFR domain audits: Security, Performance, Reliability, Scalability)*
+
+---
+
+# NFR Evidence Audit — Story 1.6: Detect and Recover from Credential Failures
+
+**Date:** 2026-07-01
+**Story:** 1.6 — Detect and Recover from Credential Failures
+**Overall Status:** ⚠️ CONCERNS
+**ADR Checklist Score:** 18/29 (62%)
+**Domain Risk:** Security LOW | Performance LOW | Reliability MEDIUM | Scalability LOW
+
+---
+
+## Executive Summary
+
+**Assessment:** 18 PASS, 10 CONCERNS, 1 FAIL across 29 ADR Quality Readiness criteria
+
+**Blockers:** 0 (no new blockers; FINDING-1 CI `/health` endpoint carried from prior stories)
+
+**New Findings:** 7 (403 over-firing, re-auth race condition, cache staleness delays NFR-R1, error swallowing in `markCredentialFailed`, no error handling in `reauthorizeGitHub`, bare `console.error` in 3 new locations, no DB CHECK constraint)
+
+**Recommendation:** ⚠️ CONCERNS — Story 1.6 is production-ready for MVP scope with waivers. NFR-S2 (tenant-scoped credential isolation) is strongly satisfied with a single resolution point and query-level test assertions. NFR-R1 (credential health propagation) is partially satisfied — the `apps/web` detection path is wired at every call site, but three gaps remain: 403 over-firing on non-credential 403s, validation cache delaying detection up to 120s, and real-time SSE propagation deferred to Epic 3. The re-auth race condition is low-probability but should be tracked. All gaps are acceptable for MVP with waivers.
+
+---
+
+## Story Scope
+
+Story 1.6 delivers credential failure detection, health status management, and the re-auth flow. It introduces `resolveOAuthToken` as the single tenant-scoped credential resolution point (NFR-S2), wires 401/403 detection into existing GitHub API operations (NFR-R1), and implements the re-auth flow that resets credential health to `healthy` (AC-3). The story has no UI surface (AC-4 defers to Epic 2).
+
+**Files assessed:**
+- `apps/web/src/lib/credential-health.ts` (73 lines) — `resolveOAuthToken`, `markCredentialFailed`, `markCredentialHealthy`, `getCredentialHealth`, `CredentialFailureError`
+- `apps/web/src/lib/credential-health.test.ts` (191 lines) — 15 unit tests
+- `apps/web/src/actions/credential-health.actions.ts` (45 lines) — `getCredentialHealthStatus`, `reauthorizeGitHub` Server Actions
+- `apps/web/src/actions/credential-health.actions.spec.ts` (106 lines) — 9 integration tests
+- `apps/web/src/lib/auth.ts` (87 lines) — jwt callback: `repoConnection.updateMany` to reset health
+- `apps/web/src/lib/auth.credential.spec.ts` (236 lines) — 3 new tests for health reset
+- `apps/web/src/actions/repo-connection.actions.ts` (181 lines) — refactored to use `resolveOAuthToken`, `markCredentialFailed` on 401/403
+- `apps/web/src/actions/repo-connection.actions.spec.ts` (512 lines) — 4 new tests for `markCredentialFailed`
+- `apps/web/src/actions/repository-validation.actions.ts` (346 lines) — `fetchGithubContents` throws `CredentialFailureError`, `validateRepository` uses `resolveOAuthToken`
+- `apps/web/src/actions/repository-validation.actions.spec.ts` (621 lines) — 3 new tests for `markCredentialFailed`
+- `libs/shared-types/src/credential-health.types.ts` — fixed `CredentialHealthStatus` to `'healthy' | 'failed'`
+
+**Test execution:** 212 tests pass in 6.8s (verified 2026-07-01). 34 new tests added for Story 1.6. Test review: 99/100 (Grade A, Approved).
+
+---
+
+## Domain Risk Breakdown
+
+| Domain | Risk Level | Previous (1.5) | Change | Key Finding |
+|---|---|---|---|---|
+| Security | LOW | LOW | — | NFR-S2/S4 PASS; `resolveOAuthToken` is single resolution point; token never in errors; 403 over-firing is correctness, not security |
+| Performance | LOW | LOW | — | O(1) operations, single DB round-trips, no new external calls; no load tests needed |
+| Reliability | MEDIUM | LOW | ↑ increased | Race condition, cache staleness delays NFR-R1, error swallowing in `markCredentialFailed`, 403 over-firing, no error handling in `reauthorizeGitHub` |
+| Scalability | LOW | LOW | — | Stateless Server Actions; no new in-memory state; existing cache carries over |
+
+---
+
+## Findings Summary (ADR Quality Readiness Checklist)
+
+| Category | Criteria Met | Previous (1.5) | Status | Evidence |
+|---|---|---|---|---|
+| 1. Testability & Automation | 4/4 | 4/4 | ✅ PASS | 212 tests, 99/100 quality; query-level assertions for NFR-S2; AC-1 at every call site |
+| 2. Test Data Strategy | 3/3 | 3/3 | ✅ PASS | Mocked Prisma/Auth/crypto; synthetic data; clearAllMocks; shared test-utils |
+| 3. Scalability & Availability | 2/4 | 2/4 | ⚠️ CONCERNS | Stateless PASS; fail-fast partial (error swallowing); no load tests; no SLA |
+| 4. Disaster Recovery | 0/3 | 0/3 | ⚠️ CONCERNS | Pre-production MVP (waivable — same as prior stories) |
+| 5. Security | 4/4 | 4/4 | ✅ PASS | NFR-S2 single resolution point; NFR-S4 token never in errors; parameterized queries; `select` clause |
+| 6. Monitorability | 1/4 | 1/4 | ⚠️ CONCERNS | `console.error` in 3 new locations; no structured logging, tracing, or metrics |
+| 7. QoS & QoE | 2/4 | 2/4 | ⚠️ CONCERNS | Degradation PASS (typed error results); no UI (N/A); latency not measured; no rate limiting |
+| 8. Deployability | 2/3 | 2/3 | ⚠️ CONCERNS | No DB migrations PASS; `/health` endpoint blocker (shared) |
+
+**Overall: 18/29 criteria met (62%) → ⚠️ CONCERNS** (same score as Stories 1.4 and 1.5)
+
+---
+
+## Strengths
+
+### STRENGTH-1: NFR-S2 Single Resolution Point ✅
+
+`resolveOAuthToken(userId)` is the single point where plaintext OAuth tokens are resolved. The `where: { userId }` clause IS the tenant authorization check — tokens are never resolved across users. All existing inline credential lookups in `connectRepository` and `validateRepository` have been replaced with calls to this function, eliminating the possibility of a future inline lookup bypassing the tenant check.
+
+**Test coverage:** 6 unit tests verify AC-2, including query-level assertions:
+- `credential-health.test.ts:94-99` — `toHaveBeenCalledWith({ where: { userId: USER_ID } })` verifies the Prisma query is scoped to the requesting user
+- `credential-health.test.ts:101-106` — `JSON.stringify(callArg).not.toContain('usr_other')` verifies no other user ID appears in the query
+- `credential-health.test.ts:71-74` — throws `CredentialFailureError` when no credential exists
+- `credential-health.test.ts:76-85` — `statusCode` is 401 when credential is missing
+
+This is stronger than result-level assertions: if someone changes the `where` clause during a refactor, the test catches it even if the result happens to be correct.
+
+### STRENGTH-2: AC-1 Verified at Every Call Site ✅
+
+401/403 detection (`markCredentialFailed`) is tested at **every** code path where it should be called:
+1. `resolveOAuthToken` throws `CredentialFailureError` (credential resolution failure)
+2. GitHub API returns 401 (token expired/revoked)
+3. GitHub API returns 403 (insufficient permission / org restriction)
+4. `inspectBmadSetup` throws `CredentialFailureError` (cascaded 401/403 from `fetchGithubContents`)
+
+Each test verifies `expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId)`. This exhaustive approach ensures no call site is missed — if a future refactor removes a `markCredentialFailed` call, the corresponding test fails.
+
+### STRENGTH-3: NFR-S4 Token Never in Errors ✅
+
+`CredentialFailureError` carries only the HTTP `statusCode` — never the token. Error messages returned to the client say "Your GitHub access token has expired or been revoked" — never the token itself. The `select: { credentialHealth: true }` clause in `getCredentialHealth` reads only the needed column, minimizing data exposure.
+
+### STRENGTH-4: Re-auth Flow Preserves RepoConnection ✅
+
+The `signIn('github')` flow only touches `OAuthCredential` (via the jwt callback). `RepoConnection` is only updated to reset `credentialHealth` — `repoUrl` is never modified by re-auth. The `updateMany` is a no-op if no RepoConnection exists yet (first sign-in before connection).
+
+---
+
+## Findings
+
+### FINDING-12: 403 Blanket-Treated as Credential Failure [MEDIUM] — New
+
+**Location:** `apps/web/src/actions/repository-validation.actions.ts:67-68`, `apps/web/src/actions/repo-connection.actions.ts:101-102`
+
+**Problem:** `fetchGithubContents` throws `CredentialFailureError` for ALL 403 responses, and `connectRepository` calls `markCredentialFailed` on the 403 path BEFORE the org-restriction / insufficient-permission disambiguation. A 403 from org OAuth App restrictions or repo-level permission denials incorrectly marks a valid token as `failed`, potentially causing a re-auth loop where the user re-authorizes but the next operation still gets a 403 for a non-credential reason and marks the credential as failed again.
+
+**Impact:** Users with org-restriction or repo-level permission issues will see the Credential Error Banner (in Epic 2) and be prompted to re-auth, but re-auth won't fix the underlying permission problem. This is a correctness issue — NFR-R1's "no silent failure" is met (the failure IS surfaced), but it over-fires on non-credential 403s.
+
+**NFR alignment:** NFR-R1 — the requirement says "credential health status must update within one git operation cycle of a 401/403 response." The implementation treats ALL 403s as credential failures, but not all 403s ARE credential failures. The 403 disambiguation logic exists in `connectRepository` (org-restriction vs insufficient-permission) but `markCredentialFailed` is called before that disambiguation runs.
+
+**Required action:** Move `markCredentialFailed` to AFTER the 403 disambiguation in `connectRepository`. Only call it for genuine credential failures (token expired/revoked), not for org-restriction or permission-denied 403s. In `fetchGithubContents`, consider only throwing `CredentialFailureError` for 401 (not 403), or add a separate 403 handling path that lets the caller disambiguate.
+
+---
+
+### FINDING-13: Re-auth Race Condition — `updateMany('healthy')` Races with `markCredentialFailed('failed')` [MEDIUM] — New
+
+**Location:** `apps/web/src/lib/auth.ts:68-73`, `apps/web/src/lib/credential-health.ts:38-47`
+
+**Problem:** Two non-transactional writers to `RepoConnection.credentialHealth` for the same `userId`:
+1. Re-auth flow: jwt callback calls `repoConnection.updateMany({ data: { credentialHealth: 'healthy' } })` (auth.ts:68)
+2. In-flight 401 handling: `markCredentialFailed` calls `repoConnection.updateMany({ data: { credentialHealth: 'failed' } })` (credential-health.ts:40)
+
+If a user re-authorizes while an in-flight git operation is still processing a 401 with the old token, the `markCredentialFailed('failed')` write can commit AFTER the re-auth `updateMany('healthy')` write, leaving a valid fresh token marked as `failed`. The user would then see the Credential Error Banner despite having just re-authenticated.
+
+**Impact:** Low probability (requires re-auth during in-flight 401 handling), but the resulting state is confusing — a valid credential marked as failed. The user would need to refresh or trigger another operation to reset the status.
+
+**Required action:** Use optimistic concurrency control (e.g., `updatedAt` version column) or a transaction that checks the token hasn't changed before committing the health update. Alternatively, have `markCredentialFailed` verify the credential being marked is still the same one that failed (compare token hash).
+
+---
+
+### FINDING-14: Validation Cache Delays Credential Failure Detection [MEDIUM] — New
+
+**Location:** `apps/web/src/actions/repository-validation.actions.ts:321-323`
+
+**Problem:** `cacheGet` returns a stale success result after credential expiry. Once a positive validation is cached (120s TTL from Story 1.4), subsequent `validateRepository` calls short-circuit before touching GitHub, so a revoked credential is not detected until the cache expires. This means NFR-R1's "within one operation cycle" requirement is violated for cached paths — the credential health status can remain `healthy` for up to 120 seconds after the token is actually revoked.
+
+**Impact:** A user whose token is revoked will not see the Credential Error Banner (Epic 2) until the cache expires or they trigger an uncached operation (e.g., `connectRepository`). The `connectRepository` path is NOT cached, so connecting a new repo will detect the failure immediately — but `validateRepository` (the re-validation path) will not.
+
+**NFR alignment:** NFR-R1 — "Credential health status must update within one git operation cycle of a 401/403 response." For cached paths, the "operation cycle" is effectively 120s (the cache TTL), not one git operation. This is a design trade-off: the cache reduces GitHub API consumption (Story 1.4 FINDING-3) but delays credential failure detection.
+
+**Required action:** Invalidate the validation cache for a user when `markCredentialFailed` is called, or add a credential-health check before returning cached results. Alternatively, reduce the cache TTL or add a `credentialHealth === 'failed'` short-circuit that bypasses the cache.
+
+---
+
+### FINDING-15: `markCredentialFailed` Swallows DB Errors Silently [LOW] — New
+
+**Location:** `apps/web/src/lib/credential-health.ts:38-47`
+
+**Problem:** `markCredentialFailed` wraps `updateMany` in a try/catch that swallows errors and only logs to `console.error`. If the DB update fails, the credential health is NOT marked as `failed`, which could violate NFR-R1's "no silent failure" requirement. However, the original GitHub API error IS still returned to the user (the function returns the error result regardless of whether `markCredentialFailed` succeeds), so the user is notified — it's the health STATUS that might not update.
+
+The asymmetry with `markCredentialHealthy` (which does NOT have a try/catch and will throw on `updateMany` rejection) is a maintainability concern. The jwt callback in `auth.ts:71-73` wraps `markCredentialHealthy` in `.catch()`, so the asymmetry is safe at the call site today, but a future caller calling `markCredentialHealthy` directly without a try/catch could encounter an unhandled rejection.
+
+**Impact:** Low. The user-facing error is still returned. The health status might not persist, but the next operation cycle will re-detect the failure (unless cached — see FINDING-14).
+
+**Required action:** Either add a try/catch to `markCredentialHealthy` to match `markCredentialFailed` (best-effort for both), or document the asymmetry and add a test verifying `markCredentialHealthy`'s actual rejection behaviour (test review L-3).
+
+---
+
+### FINDING-16: `reauthorizeGitHub` Has No Error Handling [LOW] — New
+
+**Location:** `apps/web/src/actions/credential-health.actions.ts:43-44`
+
+**Problem:** `reauthorizeGitHub` is a thin wrapper around `signIn('github')` with no try/catch. `signIn` can reject on provider misconfiguration, network failure, or invalid `redirectTo`. The Server Action returns `void` and propagates raw rejection as an opaque server-action error.
+
+**Impact:** Low for MVP — error handling for the UI is Epic 2's concern (the re-auth modal). But if `signIn` rejects, the user sees an opaque error rather than a friendly message.
+
+**Required action:** Add a try/catch that returns a typed error result, or document that error handling is deferred to Epic 2's UI layer. The `callbackUrl` parameter should be validated (open-redirect prevention) before being passed to `signIn`.
+
+---
+
+### FINDING-17: Bare `console.error` in 3 New Locations [LOW] — Carried Pattern
+
+**Location:** `apps/web/src/lib/credential-health.ts:45`, `apps/web/src/actions/credential-health.actions.ts:29`, `apps/web/src/lib/auth.ts:72`
+
+**Problem:** `console.error` logs the full error object without sanitization. Same pattern as FINDING-7 (Story 1.4) and FINDING-10 (Story 1.5). Current thrown errors don't embed the token, but the pattern could leak sensitive request metadata if an underlying error ever echoes headers.
+
+**Impact:** Limited production incident triage capability. Low risk — `CredentialFailureError` carries only the statusCode, never the token.
+
+**Required action:** Replace with structured logger (pino) with mandatory fields: `requestId`, `userId`, `errorCode`. Add a redact-list for `Authorization` and `access_token` fields. (Same as A-14 from Story 1.4, now applies to 3 additional locations.)
+
+---
+
+### FINDING-18: No DB CHECK Constraint on `credentialHealth` [LOW] — Carried
+
+**Location:** `libs/database-schemas/src/prisma/schema.prisma` — `RepoConnection.credentialHealth`
+
+**Problem:** The `credentialHealth` column is `String @default("healthy")` with no DB-level CHECK constraint. Valid values `"healthy"` / `"failed"` are enforced only at the TypeScript layer. A typo or direct DB write could store an invalid value without a constraint violation.
+
+**Impact:** Low. All writes go through `markCredentialFailed`/`markCredentialHealthy` which use hardcoded string literals. But a future migration or direct DB operation could introduce an invalid value.
+
+**Required action:** Add a CHECK constraint: `CHECK ("credentialHealth" IN ('healthy', 'failed'))`. Tracked in deferred-work.md (line 50).
+
+---
+
+## NFR Threshold Compliance
+
+| NFR | Threshold | Previous (1.5) | Evidence | Status |
+|---|---|---|---|---|
+| NFR-S2 | Per-user credential isolation | ✅ PASS | `resolveOAuthToken` is single resolution point; `where: { userId }` IS the tenant check; 6 tests including query-level assertions | ✅ PASS |
+| NFR-S4 | AES-256-GCM, token never returned | ✅ PASS | `CredentialFailureError` carries only statusCode; error messages never include token; `select: { credentialHealth: true }` minimizes data exposure | ✅ PASS |
+| NFR-R1 | Credential health ≤ 1 git cycle | ⬜ Not Assessed (1.5) | Partially satisfied — see below | ⚠️ CONCERNS |
+| NFR-P1–P5 | Latency targets | ⬜ Not Assessed | Not in Epic 1 scope (Conversations/Project Map) | ⬜ Not Assessed |
+| NFR-R3/R4 | SSE back-pressure / concurrency | ⬜ Not Assessed | No SSE in Epic 1 scope | ⬜ Not Assessed |
+| NFR-S1 | Sandbox credential/network isolation | ⬜ Not Assessed | Not in Epic 1 scope | ⬜ Not Assessed |
+| NFR-O1 | Per-user LLM spend monitoring | ⬜ Not Assessed | Not in Epic 1 scope (B-04 scope) | ⬜ Not Assessed |
+
+**NFR-R1 detailed assessment:**
+
+NFR-R1 states: "Credential health status must update within one git operation cycle of a 401/403 response; silent credential failures are not acceptable."
+
+- ✅ **Detection wired:** `fetchGithubContents` throws `CredentialFailureError` on 401/403; `connectRepository` and `validateRepository` catch it and call `markCredentialFailed` at every call site (4 integration tests verify).
+- ✅ **No silent failure:** The GitHub API error is always returned to the user with a `NO_CREDENTIAL` error code. The user is notified even if `markCredentialFailed` fails to persist the health status.
+- ⚠️ **403 over-firing (FINDING-12):** ALL 403s are treated as credential failures, including org-restriction and permission-denied 403s. This over-fires but does not silently fail.
+- ⚠️ **Cache delays detection (FINDING-14):** The validation cache (120s TTL) can delay credential failure detection for `validateRepository` calls. The `connectRepository` path is not cached and detects failures immediately.
+- ⚠️ **Real-time SSE propagation deferred:** Mid-conversation 401/403 detection via `tool-pill-classifier.service.ts` emitting `CREDENTIAL_FAILURE` events is Epic 3, Story 3.7 — explicitly out of scope.
+
+**Verdict:** NFR-R1 is ⚠️ CONCERNS for Epic 1 scope. The `apps/web` detection path is correctly wired, but the cache interaction and 403 over-firing prevent a clean PASS. Real-time propagation is appropriately deferred to Epic 3.
+
+---
+
+## Detailed Category Assessment
+
+### Category 1: Testability & Automation (4/4) ✅
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 1.1 Isolation: Mock downstream deps | ✅ | All deps mocked via `jest.mock()` at module level; `resolveOAuthToken`/`markCredentialFailed`/`CredentialFailureError` mocked from `@/lib/credential-health`; `auth()`/`getPrisma()`/`decryptToken` mocked; `jest.clearAllMocks()` in `afterEach` |
+| 1.2 Headless: API-accessible logic | ✅ | Server Actions tested directly; `resolveOAuthToken` and `getCredentialHealth` are exported pure-ish functions tested in isolation; no UI dependency (AC-4) |
+| 1.3 State Control: Seeding mechanism | ✅ | Mock-based testing sufficient; `beforeEach` default authenticated state in `credential-health.actions.spec.ts` (implements Story 1.5 review L-1 recommendation); `mockFindUniqueCredential.mockResolvedValue()` injects data states |
+| 1.4 Sample Requests: Valid/invalid examples | ✅ | 15 unit tests cover valid credential, missing credential, decrypt failure, tenant isolation, no-op on missing RepoConnection, best-effort error handling; 9 integration tests cover authenticated/unauthenticated/DB-error paths |
+
+**Evidence:** 212 tests pass in 6.8s (verified 2026-07-01). 34 new tests for Story 1.6. Test review: 99/100 (Grade A, Approved). Query-level assertions for NFR-S2 (tenant isolation). AC-1 verified at every call site (4 integration tests across 2 action files).
+
+---
+
+### Category 2: Test Data Strategy (3/3) ✅
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 2.1 Segregation: Test data isolated | ✅ | All tests use mocked Prisma; no real DB queries; no E2E (no UI surface, AC-4) |
+| 2.2 Generation: Synthetic data | ✅ | Synthetic credentials (`ENCRYPTED_CREDENTIAL` fixture), mock tokens (`'gho_real_token'`), synthetic user IDs (`'usr_abc123'`); no production data |
+| 2.3 Teardown: Cleanup | ✅ | `jest.clearAllMocks()` in every `afterEach`; `clearValidationCache()` in `beforeEach` for cache tests; `delete process.env.CREDENTIAL_ENCRYPTION_KEK` in auth credential spec |
+
+---
+
+### Category 3: Scalability & Availability (2/4)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 3.1 Statelessness: Stateless service | ✅ | Server Actions are stateless; `auth()` per-request, `getPrisma()` per-request; `resolveOAuthToken`/`markCredentialFailed`/`markCredentialHealthy`/`getCredentialHealth` are stateless DB operations |
+| 3.2 Bottlenecks: Identified under load | ⚠️ | O(1) operations (single `findUnique`/`updateMany`); no new external calls; no load tests (appropriate for this scope) |
+| 3.3 SLA: Availability target defined | ⚠️ | No formal SLA; O(1) operations are architecturally sub-millisecond; not measured |
+| 3.4 Circuit breakers: Fail fast | ⚠️ | `markCredentialFailed` swallows DB errors (FINDING-15) — does NOT fail fast on DB failure; `AbortSignal.timeout(10_000)` on GitHub fetch calls (carried from Story 1.4); validation cache (120s TTL) delays failure detection (FINDING-14) |
+
+**Waiver justified:** No load testing needed for O(1) DB operations. SLA and circuit breaker concerns are infrastructure-level, same as prior stories. The error-swallowing in `markCredentialFailed` is a deliberate best-effort design (the user-facing error is still returned).
+
+---
+
+### Category 4: Disaster Recovery (0/3)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 4.1 RTO/RPO | ⚠️ | Not applicable — pre-production MVP (waivable, same as W-1/W-8/W-13) |
+| 4.2 Failover | ⚠️ | Platform-level (Vercel/Railway) — not in Story 1.6 scope |
+| 4.3 Backups | ⚠️ | Platform-level — not in Story 1.6 scope |
+
+**Waiver justified:** Pre-production MVP. Same waiver as Stories 1.1–1.5 (W-1/W-8/W-13).
+
+---
+
+### Category 5: Security (4/4) ✅
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 5.1 AuthN/AuthZ: OAuth2, least privilege | ✅ | `auth()` session check; `session.userId` guard; `resolveOAuthToken` is single tenant-scoped resolution point (NFR-S2); `where: { userId }` IS the tenant check; no public API endpoint |
+| 5.2 Encryption: At rest and in transit | ✅ | NFR-S4: OAuth token stored AES-256-GCM encrypted (Story 1.3); `CredentialFailureError` carries only statusCode, never the token; `getCredentialHealth` uses `select: { credentialHealth: true }` — reads only needed column; TLS via `https://api.github.com` |
+| 5.3 Secrets: Not in code, validated at startup | ✅ | No secrets in code; KEK from env (Story 1.3); no hardcoded credentials; `CredentialFailureError` message contains only HTTP status, never the token |
+| 5.4 Input validation: SQL/XSS/injection | ✅ | Parameterized Prisma queries (`findUnique`/`updateMany` with `where: { userId }`); `userId` from session (not user input); Zod URL validation in `connectRepository` (carried from Story 1.3) |
+
+**Standout pattern:** NFR-S2 single resolution point with query-level test assertions. `resolveOAuthToken` is the only function that calls `oAuthCredential.findUnique` and `decryptToken`. All inline credential lookups have been eliminated. The `where: { userId }` clause is verified by `toHaveBeenCalledWith({ where: { userId: USER_ID } })` — a query-level assertion, not just a result-level one. ✅
+
+**Minor concern (FINDING-12):** 403 over-firing marks valid credentials as `failed` on org-restriction/permission-denied 403s. This is a correctness issue, not a security vulnerability — no token leakage occurs.
+
+---
+
+### Category 6: Monitorability (1/4)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 6.1 Tracing: W3C Trace Context | ⚠️ | Not implemented. No cross-service calls in Story 1.6 scope |
+| 6.2 Logs: Dynamic log levels | ⚠️ | `console.error` in 3 new locations (FINDING-17): `credential-health.ts:45`, `credential-health.actions.ts:29`, `auth.ts:72` — no structured JSON, no correlation IDs |
+| 6.3 Metrics: RED metrics | ⚠️ | No `/metrics` endpoint. No credential failure rate or health-status-transition metrics |
+| 6.4 Config: Externalized | ✅ | All configuration via env vars (Auth.js, Prisma, KEK) |
+
+**Waiver justified:** Structured logging, distributed tracing, and metrics are Epic 2+ scope (W-4/W-5/W-9/W-10/W-14/W-15).
+
+---
+
+### Category 7: QoS & QoE (2/4)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 7.1 Latency: P95/P99 targets | ⚠️ | O(1) operations (single DB round-trip); architecturally sub-millisecond; not measured (appropriate — no user-facing latency in this story) |
+| 7.2 Throttling: Rate limiting | ⚠️ | No rate limiting on Server Actions. Not in scope — Server Actions are not public API endpoints (callable only from server-side code) |
+| 7.3 Perceived performance: Skeletons, optimistic updates | ✅ | N/A — no UI surface (AC-4 defers to Epic 2) |
+| 7.4 Degradation: Friendly errors, no stack traces | ✅ | Typed `GetCredentialHealthResult` union returns user-facing error strings; `NO_CREDENTIAL` error code with "Your GitHub access token has expired or been revoked" message; no stack traces exposed; generic error on catch |
+
+---
+
+### Category 8: Deployability (2/3)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 8.1 Zero downtime: Blue/Green or Canary | ⚠️ | Vercel: atomic zero-downtime ✅. Railway: single-container ⚠️ (shared, W-7/W-12/W-17) |
+| 8.2 Backward compatibility: DB migrations separate | ✅ | No DB migrations for Story 1.6. `CredentialHealthStatus` type fix is backward-compatible (old values were never used in the codebase). `RepoConnection.credentialHealth` column already existed |
+| 8.3 Rollback: Automated on health check failure | ⚠️ | No `/health` endpoint on `agent-be` (existing FINDING-1, shared) |
+
+---
+
+## Cross-Domain Risks
+
+| # | Domains | Description | Impact | Status |
+|---|---|---|---|---|
+| X-7 | Security + Reliability | Bare `console.error` — no structured logging | LOW | ⚠️ Still open (now 3 new locations in Story 1.6) |
+| X-8 | Performance + Reliability | No Prisma query timeout — slow DB could hang Server Action | LOW | ⚠️ Still open (carried from Story 1.5) |
+| X-9 | Reliability + Security | 403 over-firing — non-credential 403s mark valid tokens as failed | MEDIUM | ⚠️ New (FINDING-12) |
+| X-10 | Reliability | Re-auth race condition — concurrent writers to credentialHealth | MEDIUM | ⚠️ New (FINDING-13) |
+| X-11 | Reliability + Scalability | Cache delays credential failure detection up to 120s | MEDIUM | ⚠️ New (FINDING-14) |
+| X-12 | Reliability + Maintainability | Error swallowing asymmetry — `markCredentialFailed` swallows, `markCredentialHealthy` throws | LOW | ⚠️ New (FINDING-15) |
+
+---
+
+## Action Items
+
+### New (Story 1.6)
+
+| ID | Priority | Action | Owner | Effort |
+|---|---|---|---|---|
+| A-21 | P2 | Move `markCredentialFailed` to AFTER 403 disambiguation in `connectRepository`; only mark genuine credential failures, not org-restriction/permission 403s (FINDING-12) | Dev | 1h |
+| A-22 | P2 | Invalidate validation cache when `markCredentialFailed` is called, or add credential-health check before returning cached results (FINDING-14) | Dev | 30min |
+| A-23 | P3 | Add optimistic concurrency control or token-hash verification to prevent re-auth race condition (FINDING-13) | Dev | 2h |
+| A-24 | P3 | Add try/catch to `markCredentialHealthy` to match `markCredentialFailed` best-effort pattern, or document the asymmetry (FINDING-15, test review L-3) | Dev | 15min |
+| A-25 | P3 | Add error handling to `reauthorizeGitHub` or document that error handling is deferred to Epic 2 UI (FINDING-16) | Dev | 30min |
+| A-26 | P3 | Add DB CHECK constraint on `credentialHealth` column: `CHECK ("credentialHealth" IN ('healthy', 'failed'))` (FINDING-18, deferred-work line 50) | Dev | 15min |
+
+### Carried Forward (from prior stories)
+
+| ID | Priority | Action | Status |
+|---|---|---|---|
+| A-1 | P0 | Add `/health` endpoint to `apps/agent-be` OR comment out CI `wait-on` (FINDING-1) | Still open |
+| A-14 | P2 | Replace `console.error` with structured logger (pino) with redact-list (FINDING-7/10/17) | Still open — now applies to 3 additional locations in Story 1.6 |
+| A-3 | P1 | Add `SubmitButton` with `useFormStatus` to sign-in page | Still open |
+| A-20 | P3 | Configure Prisma `statement_timeout` at client level for all Server Actions (FINDING-11) | Still open |
+
+---
+
+## Waivers Granted (Story 1.6 Context)
+
+| Waiver | Category | Justification |
+|---|---|---|
+| W-19 | DR (Cat 4) | Same as W-1/W-8/W-13 — pre-production MVP |
+| W-20 | Structured logging (Cat 6.2) | Same as W-4/W-9/W-14 — Epic 2+ scope |
+| W-21 | Metrics endpoint (Cat 6.3) | Same as W-5/W-10/W-15 — Epic 2+ scope |
+| W-22 | Rate limiting (Cat 7.2) | Same as W-6/W-11/W-16 — no public API surface; Server Actions are internal-only |
+| W-23 | Railway zero-downtime (Cat 8.1) | Same as W-7/W-12/W-17 — single-container MVP constraint |
+| W-24 | Load testing (Cat 3.2) | O(1) DB operations; no load testing needed for this scope |
+| W-25 | Real-time SSE propagation (NFR-R1) | Mid-conversation 401/403 detection via `tool-pill-classifier.service.ts` is Epic 3, Story 3.7 — explicitly out of scope |
+
+---
+
+## Gate Decision
+
+**Current gate status: ⚠️ CONCERNS — Story 1.6 may merge with waivers**
+
+**No new blockers.** Story 1.6 is production-ready for MVP scope with waivers:
+
+- ✅ NFR-S2 (tenant-scoped credential isolation) strongly satisfied — single resolution point with query-level test assertions
+- ✅ NFR-S4 (token never returned) maintained — `CredentialFailureError` carries only statusCode
+- ✅ NFR-R1 (credential health propagation) partially satisfied — `apps/web` detection path wired at every call site; real-time SSE propagation deferred to Epic 3
+- ✅ 212 tests pass in 6.8s; 34 new tests; test review 99/100 (Grade A)
+- ✅ No DB migrations, no Prisma schema changes, no new dependencies
+- ✅ AC-1 verified at every call site (4 integration tests)
+- ✅ AC-2 verified at query level (6 unit tests)
+- ✅ AC-3 re-auth flow tested (3 auth tests + 3 integration tests)
+
+**Remaining gaps (acceptable for MVP with waivers):**
+1. **403 over-firing** (FINDING-12) — non-credential 403s mark valid tokens as failed; correctness issue, not a security vulnerability
+2. **Re-auth race condition** (FINDING-13) — low-probability; requires re-auth during in-flight 401 handling
+3. **Cache delays NFR-R1** (FINDING-14) — validation cache can delay detection up to 120s; `connectRepository` path is not cached
+4. **Error swallowing asymmetry** (FINDING-15) — `markCredentialFailed` swallows, `markCredentialHealthy` throws; safe at call site today
+5. **`reauthorizeGitHub` no error handling** (FINDING-16) — error handling deferred to Epic 2 UI
+6. **Bare `console.error`** (FINDING-17) — carried pattern; no token leakage
+7. **No DB CHECK constraint** (FINDING-18) — tracked in deferred-work
+
+**Security gate: ✅ PASS** — NFR-S2 and NFR-S4 both satisfied. `resolveOAuthToken` is the single tenant-scoped credential resolution point. Token never appears in error messages, error objects, or log statements. Query-level test assertions verify the `where: { userId }` clause. `select: { credentialHealth: true }` minimizes data exposure.
+
+**Recommendation:** Story 1.6 is production-ready for MVP scope. Address A-21 (403 disambiguation) and A-22 (cache invalidation) before Epic 2 — they affect the Credential Error Banner UX. All other items can be tracked as backlog.
+
+---
+
+## Gate YAML Snippet
+
+```yaml
+nfr_assessment:
+  date: '2026-07-01'
+  story_id: '1.6'
+  feature_name: 'Detect and Recover from Credential Failures'
+  adr_checklist_score: '18/29'
+  previous_score: '18/29'
+  categories:
+    testability_automation: 'PASS'
+    test_data_strategy: 'PASS'
+    scalability_availability: 'CONCERNS'
+    disaster_recovery: 'CONCERNS'
+    security: 'PASS'
+    monitorability: 'CONCERNS'
+    qos_qoe: 'CONCERNS'
+    deployability: 'CONCERNS'
+  overall_status: 'CONCERNS'
+  domain_risk:
+    security: 'LOW'
+    performance: 'LOW'
+    reliability: 'MEDIUM'
+    scalability: 'LOW'
+  nfr_compliance:
+    nfr_s2: 'PASS'
+    nfr_s4: 'PASS'
+    nfr_r1: 'CONCERNS'
+  new_findings:
+    - 'FINDING-12: 403 over-firing — non-credential 403s mark valid tokens as failed (MEDIUM)'
+    - 'FINDING-13: Re-auth race condition — concurrent writers to credentialHealth (MEDIUM)'
+    - 'FINDING-14: Cache delays credential failure detection up to 120s (MEDIUM)'
+    - 'FINDING-15: markCredentialFailed swallows DB errors; markCredentialHealthy does not (LOW)'
+    - 'FINDING-16: reauthorizeGitHub has no error handling (LOW)'
+    - 'FINDING-17: Bare console.error in 3 new locations (LOW, carried pattern)'
+    - 'FINDING-18: No DB CHECK constraint on credentialHealth (LOW, carried)'
+  strengths:
+    - 'NFR-S2 single resolution point with query-level test assertions'
+    - 'AC-1 verified at every call site (4 integration tests)'
+    - 'NFR-S4 token never in errors — CredentialFailureError carries only statusCode'
+    - 'Re-auth flow preserves RepoConnection — only credentialHealth is reset'
+  critical_issues: 0
+  high_priority_issues: 0
+  medium_priority_issues: 3
+  concerns: 10
+  blockers: false
+  quick_wins: 2
+  evidence_gaps: 1
+  recommendations:
+    - 'Move markCredentialFailed after 403 disambiguation (A-21, before Epic 2)'
+    - 'Invalidate validation cache on credential failure (A-22, before Epic 2)'
+    - 'Add optimistic concurrency control for re-auth race (A-23, backlog)'
+    - 'No blockers for merge — proceed to release'
+```
+
+---
+
+## Evidence Sources
+
+| Source | File | Lines | Notes |
+|---|---|---|---|
+| Production code | `apps/web/src/lib/credential-health.ts` | 73 | `resolveOAuthToken`, `markCredentialFailed/Healthy`, `getCredentialHealth`, `CredentialFailureError` |
+| Production code | `apps/web/src/actions/credential-health.actions.ts` | 45 | `getCredentialHealthStatus`, `reauthorizeGitHub` Server Actions |
+| Production code | `apps/web/src/lib/auth.ts` | 87 | jwt callback: `repoConnection.updateMany` to reset health |
+| Production code | `apps/web/src/actions/repo-connection.actions.ts` | 181 | Refactored to use `resolveOAuthToken`, `markCredentialFailed` on 401/403 |
+| Production code | `apps/web/src/actions/repository-validation.actions.ts` | 346 | `fetchGithubContents` throws `CredentialFailureError`, `validateRepository` uses `resolveOAuthToken` |
+| Unit tests | `apps/web/src/lib/credential-health.test.ts` | 191 | 15 tests (AC-1, AC-2, AC-3) |
+| Integration tests | `apps/web/src/actions/credential-health.actions.spec.ts` | 106 | 9 tests (AC-3, error paths) |
+| Updated tests | `apps/web/src/lib/auth.credential.spec.ts` | 236 | 3 new tests (health reset, no-reset, rejection-safe) |
+| Updated tests | `apps/web/src/actions/repo-connection.actions.spec.ts` | 512 | 4 new tests (markCredentialFailed on 401/403/CredentialFailureError) |
+| Updated tests | `apps/web/src/actions/repository-validation.actions.spec.ts` | 621 | 3 new tests (markCredentialFailed, NO_CREDENTIAL error codes) |
+| Test execution | 212 tests pass in 6.8s | Verified 2026-07-01 | `yarn nx test web` |
+| Test review | `_bmad-output/test-artifacts/test-reviews/test-review-1-6.md` | 99/100 (Grade A) | Approved |
+| Test summary | `_bmad-output/implementation-artifacts/tests/test-summary.md` | — | No E2E needed (AC-4) |
+| Deferred work | `_bmad-output/implementation-artifacts/deferred-work.md` | 90 | 5 Story 1.6 findings |
+| Story file | `_bmad-output/implementation-artifacts/1-6-detect-and-recover-from-credential-failures.md` | 764 | ACs, tasks, dev notes |
+| Architecture | `_bmad-output/planning-artifacts/architecture.md` | — | NFR-S2, NFR-S4, NFR-R1, credential failure propagation |
+| Shared types | `libs/shared-types/src/credential-health.types.ts` | — | `CredentialHealthStatus` type (fixed) |
+
+---
+
+## Related Artifacts
+
+- **Story File:** `_bmad-output/implementation-artifacts/1-6-detect-and-recover-from-credential-failures.md`
+- **Architecture:** `_bmad-output/planning-artifacts/architecture.md` — NFR-S2, NFR-S4, NFR-R1, credential failure propagation (line 655)
+- **Test Design:** `_bmad-output/test-artifacts/test-design-architecture.md` — NFR testability requirements
+- **Test Review:** `_bmad-output/test-artifacts/test-reviews/test-review-1-6.md` — 99/100 (Grade A, Approved)
+- **Prior NFR Assessment:** Story 1.5 (18/29, CONCERNS) — see above
+- **Deferred Work:** `_bmad-output/implementation-artifacts/deferred-work.md` — 5 Story 1.6 findings (lines 84-90)
+- **Integration Points:** Epic 2, Story 2.2 (Project Map Credential Error Banner); Epic 2, Story 2.4 (Artifact Browser); Epic 3, Story 3.7 (real-time SSE `CREDENTIAL_FAILURE` event)
+
+---
+
+*Produced by TEA Master Test Architect (bmad-testarch-nfr workflow), 2026-07-01*
+*Subagent execution: SEQUENTIAL (4 NFR domain audits: Security, Performance, Reliability, Scalability)*
+
+---
+
+# NFR Evidence Audit — Story 1.7: Enforce Authenticated, Full Access for All MVP Users
+
+**Date:** 2026-07-01
+**Story:** 1.7 — Enforce Authenticated, Full Access for All MVP Users
+**Overall Status:** ⚠️ CONCERNS
+**ADR Checklist Score:** 18/29 (62%)
+**Domain Risk:** Security LOW | Performance LOW | Reliability LOW | Scalability LOW
+
+---
+
+## Executive Summary
+
+**Assessment:** 18 PASS, 10 CONCERNS, 1 FAIL across 29 ADR Quality Readiness criteria
+
+**Blockers:** 0 (no new blockers; FINDING-1 CI `/health` endpoint carried from prior stories — still open in `test.yml` lines 136, 199)
+
+**New Findings:** 0 (Story 1.7 introduces no new NFR findings — it is a verification/enforcement story that adds defense-in-depth and comprehensive tests to an already-correct auth baseline)
+
+**Recommendation:** ⚠️ CONCERNS — Story 1.7 is production-ready for MVP scope. No new blockers, no new findings. The defense-in-depth auth guard, comprehensive matcher tests, and E2E full-access baseline verification are all clean. All 5 review findings from story implementation were patched during development. The 4 pre-existing deferred issues (middleware `/api/internal/test` exemption, `clearValidationCache` server action, `callbackUrl` query stripping, `User.active` never updated) are documented and out of scope. FINDING-1 (CI `/health` endpoint) remains the only carried blocker.
+
+---
+
+## Story Scope
+
+Story 1.7 delivers the access baseline enforcement for all MVP users. It is primarily a verification and defense-in-depth story — most of AC-1 was already implemented in Story 1.2 (middleware + `authorized` callback). The concrete additions are:
+
+1. **Defense-in-depth auth guard in `(dashboard)/layout.tsx`** — calls `auth()`, redirects to `/sign-in` if no `session?.user`. Secondary check for all `(dashboard)/` pages in case middleware is bypassed.
+2. **Comprehensive middleware/auth tests** — 3 new `auth.config.spec.ts` edge cases (nested path callbackUrl, API internal test 401, session-without-userId), 15 `middleware.spec.ts` matcher composition tests (8 excluded + 7 matched paths via `it.each`).
+3. **E2E full-access baseline test** — 5 tests in `access-baseline.spec.ts` verifying AC-2 (no paywall/billing/trial/upgrade text on authenticated navigation).
+4. **Removed `/api/hello`** — Nx scaffold artifact cleanup (no references anywhere).
+
+**Files assessed:**
+- `apps/web/src/app/(dashboard)/layout.tsx` (10 lines) — defense-in-depth auth guard
+- `apps/web/src/app/(dashboard)/layout.test.tsx` (46 lines) — 3 unit tests (redirect, session-without-user, renders children)
+- `apps/web/src/lib/auth.config.spec.ts` (131 lines) — 9 tests (6 pre-existing + 3 new for Story 1.7)
+- `apps/web/src/middleware.spec.ts` (59 lines) — 15 integration tests (matcher composition)
+- `playwright/e2e/auth/access-baseline.spec.ts` (90 lines) — 5 E2E tests (AC-2 full-access baseline)
+- `apps/web/src/lib/auth.config.ts` (33 lines) — UNCHANGED (already correct from Story 1.2)
+- `apps/web/src/middleware.ts` (10 lines) — UNCHANGED (matcher already correct from Story 1.2)
+
+**Test execution:** 233 Jest tests pass across 19 suites (up from 215 at Story 1.6). 5 E2E tests pass. Lint: 0 errors, 11 warnings (1 new in `middleware.spec.ts:24` — non-null assertion, cosmetic). Test review: 99/100 (Grade A, Approved).
+
+---
+
+## Domain Risk Breakdown
+
+| Domain | Risk Level | Previous (1.6) | Change | Key Finding |
+|---|---|---|---|---|
+| Security | LOW | LOW | — | Auth baseline enforced at 3 levels (middleware, layout, E2E); no token handling; AC-2 verified; 4 pre-existing deferred issues documented |
+| Performance | LOW | LOW | — | `auth()` is JWT decode (no DB round-trip); middleware already in place; no new overhead |
+| Reliability | LOW | MEDIUM | ↓ improved | Middleware fails closed (unauthenticated → redirect/401); layout guard fails closed; all error paths are redirects; no error swallowing |
+| Scalability | LOW | LOW | — | Stateless JWT auth; no in-memory state; no caching needed |
+
+---
+
+## Findings Summary (ADR Quality Readiness Checklist)
+
+| Category | Criteria Met | Previous (1.6) | Status | Evidence |
+|---|---|---|---|---|
+| 1. Testability & Automation | 4/4 | 4/4 | ✅ PASS | 233 tests, 99/100 quality; 3-level test separation (unit/integration/E2E); no duplicate coverage |
+| 2. Test Data Strategy | 3/3 | 3/3 | ✅ PASS | Mocked deps; synthetic session; `jest.clearAllMocks`; E2E shared `page` fixture |
+| 3. Scalability & Availability | 2/4 | 2/4 | ⚠️ CONCERNS | Stateless PASS; fail-fast PASS (fails closed); no load tests; no SLA |
+| 4. Disaster Recovery | 0/3 | 0/3 | ⚠️ CONCERNS | Pre-production MVP (waivable — same as prior stories) |
+| 5. Security | 4/4 | 4/4 | ✅ PASS | Auth at 3 levels; AC-2 verified by E2E; `authorized` checks `auth?.user`; callbackUrl open-redirect safe |
+| 6. Monitorability | 1/4 | 1/4 | ⚠️ CONCERNS | No `console.error` in Story 1.7 code; but no structured logging infrastructure (carried) |
+| 7. QoS & QoE | 2/4 | 2/4 | ⚠️ CONCERNS | Degradation PASS (friendly redirects); no UI loading states (N/A — server component); latency not measured; no rate limiting |
+| 8. Deployability | 2/3 | 2/3 | ⚠️ CONCERNS | No DB migrations PASS; `/api/hello` removal clean; `/health` endpoint blocker (shared) |
+
+**Overall: 18/29 criteria met (62%) → ⚠️ CONCERNS** (same score as Stories 1.4, 1.5, 1.6)
+
+---
+
+## Strengths
+
+### STRENGTH-1: Defense-in-Depth Auth Guard ✅
+
+The `(dashboard)/layout.tsx` auth guard is a secondary check that protects all pages under the `(dashboard)/` route group even if the middleware matcher is somehow bypassed (e.g., misconfigured matcher, future route added outside the group). It follows the existing `auth()` + `redirect('/sign-in')` pattern from `page.tsx` and `onboarding/page.tsx`.
+
+The guard checks `session?.user` (not `session?.userId`), aligning with the middleware's `auth?.user` check. This was a review fix applied during story implementation — the original implementation checked `userId`, but a user without an ID is nonsense; the guard should check user existence.
+
+**Test coverage:** 3 unit tests verify all branches:
+- Unauthenticated (null session) → throws `NEXT_REDIRECT`, calls `redirect('/sign-in')`
+- Session without user → throws `NEXT_REDIRECT`, calls `redirect('/sign-in')`
+- Authenticated session → renders children without redirect
+
+The `redirect()` mock correctly throws `NEXT_REDIRECT` to simulate production short-circuit semantics — verifies children are never returned on the redirect path.
+
+### STRENGTH-2: Three-Level Test Separation with No Duplicate Coverage ✅
+
+The auth/access concern spans three enforcement points, each tested at exactly one level:
+
+- **Unit** (`auth.config.spec.ts`): `authorized` callback branches — pure logic, no framework
+- **Integration** (`middleware.spec.ts`): matcher regex composition — regex evaluation against path strings
+- **Unit** (`layout.test.tsx`): layout redirect logic — mocked `auth()` + `redirect()`
+- **E2E** (`access-baseline.spec.ts`): real browser navigation with synthetic session — end-to-end behavior
+
+No level duplicates another. The `authorized` callback is NOT re-tested at E2E. The layout guard is tested at unit level (redirect logic) and E2E level (authenticated user passes through) — different aspects, not duplication.
+
+### STRENGTH-3: E2E Negative + Positive Assertion Pairing ✅
+
+AC-2 is a "negative" AC — it verifies the ABSENCE of feature gates (no paywall, billing, trial, or upgrade text). A pure negative assertion can pass on a broken, blank, or error page. The E2E tests pair negative assertions with positive assertions:
+
+```typescript
+// Positive: the real page rendered (onboarding form visible)
+await expect(page.getByLabel(/repository url/i)).toBeVisible();
+// Negative: no forbidden terms on the rendered page
+const bodyText = (await page.locator('body').textContent()) ?? '';
+expect(bodyText).not.toMatch(FORBIDDEN_TERMS);
+```
+
+This prevents false passes on broken pages. This was a review fix applied during story implementation.
+
+### STRENGTH-4: `it.each` Parameterized Matcher Testing ✅
+
+The middleware matcher regex has 8 excluded paths and 7 matched paths. Instead of 15 individual `it()` blocks, `it.each` parameterizes the test with a single assertion template. This is more maintainable (add a path by adding one line), more readable (paths listed in one place), and more efficient (one test function, 15 data rows).
+
+---
+
+## Findings
+
+Story 1.7 introduces **no new NFR findings**. All 5 review findings from story implementation were patched during development. The following are pre-existing deferred issues documented in the story's "Known Issues" and "Review Findings (Deferred)" sections:
+
+### Pre-Existing Deferred Issues (Not New, Not Fixed in This Story)
+
+| # | Issue | Location | Deferred Reference | Severity |
+|---|---|---|---|---|
+| 1 | `/api/internal/test/*` bypasses auth in production | `apps/web/src/middleware.ts:8` | deferred-work.md line 35; story Review Findings [Defer] | LOW (TEST_ENV guard exists) |
+| 2 | Layout redirect omits `callbackUrl` (unlike middleware) | `apps/web/src/app/(dashboard)/layout.tsx:7` | story Review Findings [Defer] — spec-prescribed pattern | LOW (existing pages follow same pattern) |
+| 3 | Matcher regex over-excludes prefix-colliding paths (e.g., `/api/authors`) | `apps/web/src/middleware.ts:8` | story Review Findings [Defer] — spec says DO NOT modify | LOW (no colliding paths exist in MVP) |
+| 4 | `auth()` throwing in layout guard is unhandled | `apps/web/src/app/(dashboard)/layout.tsx:5` | story Review Findings [Defer] — existing pages follow same pattern | LOW (no error boundary in any page) |
+| 5 | `clearValidationCache` unauthenticated server action | `apps/web/src/actions/repository-validation.actions.ts` | deferred-work.md line 67 | LOW (middleware protects POST; DoS vector only) |
+| 6 | `User.active` and `lastActiveAt` never updated | Prisma schema | deferred-work.md line 58; NFR-S3 deferred | N/A (post-MVP) |
+
+### Carried Blocker (Still Open)
+
+**FINDING-1: CI E2E Jobs Reference Non-Existent `/health` Endpoint [BLOCKER] — Still Open**
+
+**Location:** `.github/workflows/test.yml`, lines 136 and 199
+
+**Evidence:**
+```yaml
+# Both e2e and burn-in jobs contain:
+- name: Wait for services
+  run: yarn wait-on http://localhost:3000 http://localhost:3001/api/health --timeout 60000
+```
+
+**Problem:** `apps/agent-be` has no `/health` endpoint. The `wait-on` command will time out after 60 seconds on every CI run, causing all E2E and burn-in jobs to fail. This is the same blocker documented in Stories 1.1–1.3 (FINDING-1) and carried through Stories 1.4, 1.5, and 1.6.
+
+**Impact:** CI E2E (4 shards) and burn-in jobs will never execute. The burn-in flakiness gate is effectively disabled.
+
+**Status:** Still open — A-1 has not been resolved.
+
+---
+
+## NFR Threshold Compliance
+
+| NFR | Threshold | Previous (1.6) | Evidence | Status |
+|---|---|---|---|---|
+| AC-1: Unauthenticated redirect | All unmatched routes redirect to /sign-in | N/A (new story) | `auth.config.spec.ts` (9 tests), `middleware.spec.ts` (15 tests), `layout.test.tsx` (3 tests), `sign-in.spec.ts` (3 E2E from Story 1.2) | ✅ PASS |
+| AC-2: Authenticated full access | No paywall/billing/trial/upgrade | N/A (new story) | `access-baseline.spec.ts` (5 E2E tests — negative + positive assertion pairing) | ✅ PASS |
+| NFR-S2 | Per-user credential isolation | ✅ PASS | Not touched by Story 1.7 — auth config unchanged; no credential resolution in this story | ✅ PASS (maintained) |
+| NFR-S4 | AES-256-GCM, token never returned | ✅ PASS | Not touched by Story 1.7 — no token handling; `authorized` callback checks `auth?.user`, never reads tokens | ✅ PASS (maintained) |
+| NFR-S3 | Active sandbox termination on deactivation | Deferred | Deferred to post-MVP — no in-app deactivation flow | ⬜ Not Assessed (deferred) |
+| NFR-P1–P5 | Latency targets | ⬜ Not Assessed | Not in Epic 1 scope | ⬜ Not Assessed |
+| NFR-R1 | Credential health ≤ 1 git cycle | ⚠️ CONCERNS | Not touched by Story 1.7 — carried from Story 1.6 | ⚠️ CONCERNS (carried) |
+| NFR-R3/R4 | SSE back-pressure / concurrency | ⬜ Not Assessed | No SSE in Epic 1 scope | ⬜ Not Assessed |
+| NFR-O1 | Per-user LLM spend monitoring | ⬜ Not Assessed | Not in Epic 1 scope (B-04 scope) | ⬜ Not Assessed |
+
+NFRs scoped to Conversations/Epic 2+ are Not Assessed — appropriate. NFR-S2 and NFR-S4 are maintained (no regression). AC-1 and AC-2 are both **PASS** with comprehensive test coverage.
+
+---
+
+## Detailed Category Assessment
+
+### Category 1: Testability & Automation (4/4) ✅
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 1.1 Isolation: Mock downstream deps | ✅ | `jest.mock()` at module level for `next/navigation`, `@/lib/auth`, `next-auth`, `next-auth/providers/github`, `next/server`; `jest.clearAllMocks()` in `beforeEach`; E2E uses shared `page` fixture with synthetic session storage state |
+| 1.2 Headless: API-accessible logic | ✅ | `authorized` callback tested directly (pure function); layout tested as unit (mocked `auth()` + `redirect()`); matcher regex tested as integration (regex evaluation); no UI dependency for logic |
+| 1.3 State Control: Seeding mechanism | ✅ | Mock-based testing sufficient for unit/integration; E2E uses synthetic session via JWT minting (`auth.setup.ts`); `mockAuth.mockResolvedValue()` injects session states |
+| 1.4 Sample Requests: Valid/invalid examples | ✅ | 15 matcher path combinations (8 excluded + 7 matched); 3 layout scenarios (unauthenticated, session-without-user, authenticated); 3 new auth.config edge cases (nested path, API internal test, session-without-userId) |
+
+**Evidence:** 233 Jest tests pass across 19 suites (18 new for Story 1.7: 3 layout + 3 auth.config + 15 middleware — minus 6 pre-existing auth.config from Story 1.2 = 21 new, web count 215 → 233 = +18 after accounting for modified pre-existing tests). 5 E2E tests pass. Test review: 99/100 (Grade A, Approved). Test execution: 6.5 seconds.
+
+---
+
+### Category 2: Test Data Strategy (3/3) ✅
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 2.1 Segregation: Test data isolated | ✅ | All unit/integration tests use mocked deps; E2E uses `.auth/local/default/storage-state.json` synthetic session; no real DB queries |
+| 2.2 Generation: Synthetic data | ✅ | Synthetic session objects (`{ name: 'Alice', email: 'alice@example.com' }`); path strings for matcher tests; `FORBIDDEN_TERMS` constant at module level |
+| 2.3 Teardown: Cleanup | ✅ | `jest.clearAllMocks()` in `beforeEach`/`afterEach`; E2E uses isolated page fixtures (Playwright handles lifecycle) |
+
+---
+
+### Category 3: Scalability & Availability (2/4)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 3.1 Statelessness: Stateless service | ✅ | JWT-based auth (stateless); `auth()` is JWT decode (no DB round-trip per story dev notes); middleware runs on every matched request (already in place); layout guard is per-request `auth()` call |
+| 3.2 Bottlenecks: Identified under load | ⚠️ | `auth()` is JWT decode (negligible overhead); no load tests (appropriate — auth check is sub-millisecond) |
+| 3.3 SLA: Availability target defined | ⚠️ | No formal SLA; JWT decode is architecturally sub-millisecond; not measured |
+| 3.4 Circuit breakers: Fail fast | ✅ | Middleware fails closed (unauthenticated → redirect/401); layout guard fails closed (no session → redirect); `authorized` callback has no external dependencies (Edge-safe, no Prisma) |
+
+**Waiver justified:** JWT decode is trivially fast. SLA and load testing concerns are infrastructure-level, same as prior stories.
+
+---
+
+### Category 4: Disaster Recovery (0/3)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 4.1 RTO/RPO | ⚠️ | Not applicable — pre-production MVP (waivable, same as W-1/W-8/W-13/W-19) |
+| 4.2 Failover | ⚠️ | Platform-level (Vercel/Railway) — not in Story 1.7 scope |
+| 4.3 Backups | ⚠️ | Platform-level — not in Story 1.7 scope |
+
+**Waiver justified:** Pre-production MVP. Same waiver as Stories 1.1–1.6 (W-1/W-8/W-13/W-19).
+
+---
+
+### Category 5: Security (4/4) ✅
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 5.1 AuthN/AuthZ: OAuth2, least privilege | ✅ | GitHub OAuth 2.0 via Auth.js v5; middleware is primary gate (`authorized` callback); layout is defense-in-depth; `authorized` checks `auth?.user` (not `userId`); all authenticated users have full access (AC-2 — no paywall/billing); `repo` scope |
+| 5.2 Encryption: At rest and in transit | ✅ | NFR-S4 maintained — no changes to token storage; JWT sessions; `authorized` callback never reads tokens; TLS via GitHub OAuth |
+| 5.3 Secrets: Not in code, validated at startup | ✅ | No secrets in Story 1.7 code; `AUTH_SECRET` from env; no hardcoded credentials; `auth.config.ts` is edge-safe (no Prisma, no secrets) |
+| 5.4 Input validation: SQL/XSS/injection | ✅ | `callbackUrl` uses `pathname` only (open-redirect safe — starts with `/`); matcher regex is static (no user input); parameterized Prisma queries (none in this story); React auto-escaping |
+
+**Standout pattern:** AC-2 verified by E2E with negative + positive assertion pairing. The 5 E2E tests assert the ABSENCE of feature gates ("upgrade", "trial", "billing", "paywall") paired with positive assertions (onboarding form visible) to prevent false passes on broken pages. ✅
+
+**Pre-existing deferred concerns (documented, not new):**
+- `/api/internal/test/*` bypasses auth in production (matcher exemption, `TEST_ENV` guard exists)
+- `clearValidationCache` unauthenticated server action (DoS vector, middleware protects POST)
+- Matcher regex over-excludes prefix-colliding paths (e.g., `/api/authors` — no colliding paths exist in MVP)
+
+---
+
+### Category 6: Monitorability (1/4)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 6.1 Tracing: W3C Trace Context | ⚠️ | Not implemented. No cross-service calls in Story 1.7 scope |
+| 6.2 Logs: Dynamic log levels | ⚠️ | No `console.error` in Story 1.7 code (`layout.tsx` has no logging); but no structured logging infrastructure (carried from prior stories) |
+| 6.3 Metrics: RED metrics | ⚠️ | No `/metrics` endpoint. No auth redirect rate or 401 response metrics |
+| 6.4 Config: Externalized | ✅ | All configuration via env vars (Auth.js, `AUTH_SECRET`, `AUTH_GITHUB_ID/SECRET`) |
+
+**Waiver justified:** Structured logging, distributed tracing, and metrics are Epic 2+ scope (W-4/W-5/W-9/W-10/W-14/W-15/W-20/W-21).
+
+---
+
+### Category 7: QoS & QoE (2/4)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 7.1 Latency: P95/P99 targets | ⚠️ | `auth()` is JWT decode (negligible overhead per story dev notes); not measured (appropriate — sub-millisecond) |
+| 7.2 Throttling: Rate limiting | ⚠️ | No rate limiting on auth routes. Not in scope — auth redirect is not a resource-intensive operation |
+| 7.3 Perceived performance: Skeletons, optimistic updates | ✅ | N/A — layout is a server component; redirect is immediate (no loading state needed); authenticated users render children without delay |
+| 7.4 Degradation: Friendly errors, no stack traces | ✅ | Unauthenticated page → redirect to `/sign-in?callbackUrl=...` (friendly); unauthenticated API → 401 JSON `{ error: 'Unauthorized' }` (structured); no stack traces exposed |
+
+---
+
+### Category 8: Deployability (2/3)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| 8.1 Zero downtime: Blue/Green or Canary | ⚠️ | Vercel: atomic zero-downtime ✅. Railway: single-container ⚠️ (shared, W-7/W-12/W-17/W-23) |
+| 8.2 Backward compatibility: DB migrations separate | ✅ | No DB migrations for Story 1.7; no Prisma schema changes; `/api/hello` removal is clean (no references — verified via ripgrep); production build succeeds |
+| 8.3 Rollback: Automated on health check failure | ⚠️ | No `/health` endpoint on `agent-be` (existing FINDING-1, shared — `test.yml` lines 136, 199 still reference `http://localhost:3001/api/health`) |
+
+**See FINDING-1 above for the CI blocker related to 8.3.**
+
+---
+
+## Cross-Domain Risks
+
+| # | Domains | Description | Impact | Status |
+|---|---|---|---|---|
+| X-7 | Security + Reliability | Bare `console.error` — no structured logging | LOW | ⚠️ Carried (not in Story 1.7 code; applies to prior stories' action files) |
+| X-13 | Security + Deployability | `/api/internal/test/*` bypasses auth in production | LOW | ⚠️ Pre-existing deferred (deferred-work.md line 35; `TEST_ENV` guard exists) |
+| X-14 | Security + Reliability | `clearValidationCache` unauthenticated server action | LOW | ⚠️ Pre-existing deferred (deferred-work.md line 67; DoS vector only) |
+| X-15 | Security | Matcher regex over-excludes prefix-colliding paths | LOW | ⚠️ Pre-existing deferred (spec says DO NOT modify; no colliding paths in MVP) |
+
+No new cross-domain risks introduced by Story 1.7.
+
+---
+
+## Action Items
+
+### New (Story 1.7)
+
+None — Story 1.7 introduces no new action items. All 5 review findings were patched during story implementation. The 3 test-review findings (L-1, L-2, L-3) are P3 maintainability improvements tracked in the test review.
+
+### Carried Forward (from prior stories)
+
+| ID | Priority | Action | Status |
+|---|---|---|---|
+| A-1 | P0 | Add `/health` endpoint to `apps/agent-be` OR comment out CI `wait-on` (FINDING-1) | Still open — `test.yml` lines 136, 199 still reference `/api/health` |
+| A-14 | P2 | Replace `console.error` with structured logger (pino) with redact-list (FINDING-7/10/17) | Still open — not in Story 1.7 code |
+| A-3 | P1 | Add `SubmitButton` with `useFormStatus` to sign-in page | Still open |
+| A-20 | P3 | Configure Prisma `statement_timeout` at client level for all Server Actions (FINDING-11) | Still open |
+
+### Test Review Follow-ups (P3, Optional)
+
+| ID | Priority | Action | File(s) | Effort |
+|---|---|---|---|---|
+| L-1 | P3 | Extract shared `createMockSession()` fixture to eliminate duplicated session object across 2 files | `layout.test.tsx`, `auth.config.spec.ts` | 15 min |
+| L-2 | P3 | Extract `assertFullAccess(page)` helper to reduce repetitive E2E assertion blocks | `access-baseline.spec.ts` | 10 min |
+| L-3 | P3 | Replace non-null assertion `config.matcher![0]` with safer pattern | `middleware.spec.ts` | 5 min |
+
+---
+
+## Waivers Granted (Story 1.7 Context)
+
+| Waiver | Category | Justification |
+|---|---|---|
+| W-26 | DR (Cat 4) | Same as W-1/W-8/W-13/W-19 — pre-production MVP |
+| W-27 | Structured logging (Cat 6.2) | Same as W-4/W-9/W-14/W-20 — Epic 2+ scope; no `console.error` in Story 1.7 code |
+| W-28 | Metrics endpoint (Cat 6.3) | Same as W-5/W-10/W-15/W-21 — Epic 2+ scope |
+| W-29 | Rate limiting (Cat 7.2) | Same as W-6/W-11/W-16/W-22 — auth redirect is not resource-intensive |
+| W-30 | Railway zero-downtime (Cat 8.1) | Same as W-7/W-12/W-17/W-23 — single-container MVP constraint |
+| W-31 | Load testing (Cat 3.2) | JWT decode is sub-millisecond; no load testing needed for auth check |
+
+---
+
+## Gate Decision
+
+**Current gate status: ⚠️ CONCERNS — Story 1.7 may merge with waivers**
+
+**No new blockers. No new findings.** Story 1.7 is a clean verification/enforcement story:
+
+- ✅ AC-1 (unauthenticated redirect) verified at 3 levels: unit (9 `auth.config` tests + 3 `layout` tests), integration (15 `middleware` matcher tests), E2E (3 `sign-in.spec.ts` tests from Story 1.2)
+- ✅ AC-2 (authenticated full access) verified by 5 E2E tests with negative + positive assertion pairing
+- ✅ Defense-in-depth auth guard in `(dashboard)/layout.tsx` — checks `session?.user`, fails closed
+- ✅ 233 Jest tests pass in 6.5s; 5 E2E tests pass; 0 lint errors
+- ✅ No DB migrations, no Prisma schema changes, no new dependencies
+- ✅ `/api/hello` scaffold artifact removed cleanly (no references)
+- ✅ Test review 99/100 (Grade A, Approved) — all 5 review findings patched during implementation
+- ✅ NFR-S2 and NFR-S4 maintained (no regression — auth config unchanged)
+
+**Remaining gaps (all pre-existing, acceptable for MVP with waivers):**
+1. **No `/health` endpoint** (FINDING-1) — carried blocker from Stories 1.1–1.3; not related to Story 1.7
+2. **`/api/internal/test` middleware exemption** — pre-existing deferred (deferred-work.md line 35)
+3. **`clearValidationCache` unauthenticated server action** — pre-existing deferred (deferred-work.md line 67)
+4. **Layout redirect omits `callbackUrl`** — pre-existing deferred (spec-prescribed pattern)
+5. **Matcher regex over-excludes prefix-colliding paths** — pre-existing deferred (spec says DO NOT modify)
+6. **`auth()` throwing in layout guard is unhandled** — pre-existing deferred (existing pages follow same pattern)
+7. **Bare `console.error`** — carried from prior stories; not in Story 1.7 code
+
+**Security gate: ✅ PASS** — Auth baseline enforced at 3 levels (middleware, layout, E2E). AC-2 verified by E2E with negative + positive assertion pairing. `authorized` callback checks `auth?.user` (not `userId`). `callbackUrl` is open-redirect safe (pathname only). No token handling in this story. NFR-S2 and NFR-S4 maintained.
+
+**Recommendation:** Story 1.7 is production-ready for MVP scope. No action items required before merge. The 3 test-review follow-ups (L-1, L-2, L-3) are optional P3 maintainability improvements. FINDING-1 (CI `/health` endpoint) remains the only carried blocker and should be resolved before CI E2E jobs can execute.
+
+---
+
+## Gate YAML Snippet
+
+```yaml
+nfr_assessment:
+  date: '2026-07-01'
+  story_id: '1.7'
+  feature_name: 'Enforce Authenticated, Full Access for All MVP Users'
+  adr_checklist_score: '18/29'
+  previous_score: '18/29'
+  categories:
+    testability_automation: 'PASS'
+    test_data_strategy: 'PASS'
+    scalability_availability: 'CONCERNS'
+    disaster_recovery: 'CONCERNS'
+    security: 'PASS'
+    monitorability: 'CONCERNS'
+    qos_qoe: 'CONCERNS'
+    deployability: 'CONCERNS'
+  overall_status: 'CONCERNS'
+  domain_risk:
+    security: 'LOW'
+    performance: 'LOW'
+    reliability: 'LOW'
+    scalability: 'LOW'
+  nfr_compliance:
+    ac_1_unauthenticated_redirect: 'PASS'
+    ac_2_authenticated_full_access: 'PASS'
+    nfr_s2: 'PASS (maintained)'
+    nfr_s4: 'PASS (maintained)'
+    nfr_s3: 'Not Assessed (deferred to post-MVP)'
+  new_findings: []
+  strengths:
+    - 'Defense-in-depth auth guard in (dashboard)/layout.tsx — checks session?.user, fails closed'
+    - 'Three-level test separation with no duplicate coverage (unit/integration/E2E)'
+    - 'E2E negative + positive assertion pairing prevents false passes on AC-2'
+    - 'it.each parameterized matcher testing (15 paths in 2 concise blocks)'
+    - 'redirect() mock throws NEXT_REDIRECT to simulate production short-circuit semantics'
+  critical_issues: 0
+  high_priority_issues: 0
+  medium_priority_issues: 0
+  concerns: 10
+  blockers: false
+  quick_wins: 0
+  evidence_gaps: 0
+  carried_blocker: 'FINDING-1: CI /health endpoint (test.yml lines 136, 199)'
+  recommendations:
+    - 'No blockers for merge — proceed to release'
+    - 'Resolve FINDING-1 (CI /health endpoint) before CI E2E jobs can execute'
+    - 'Optional: extract shared createMockSession() fixture (L-1, P3)'
+    - 'Optional: extract assertFullAccess(page) E2E helper (L-2, P3)'
+    - 'Optional: replace non-null assertion in middleware.spec.ts (L-3, P3)'
+```
+
+---
+
+## Evidence Sources
+
+| Source | File | Lines | Notes |
+|---|---|---|---|
+| Production code | `apps/web/src/app/(dashboard)/layout.tsx` | 10 | Defense-in-depth auth guard (`auth()` + `redirect('/sign-in')`) |
+| Production code | `apps/web/src/lib/auth.config.ts` | 33 | UNCHANGED — `authorized` callback (already correct from Story 1.2) |
+| Production code | `apps/web/src/middleware.ts` | 10 | UNCHANGED — matcher regex (already correct from Story 1.2) |
+| Unit tests | `apps/web/src/app/(dashboard)/layout.test.tsx` | 46 | 3 tests (redirect, session-without-user, renders children) |
+| Unit tests | `apps/web/src/lib/auth.config.spec.ts` | 131 | 9 tests (6 pre-existing + 3 new for Story 1.7) |
+| Integration tests | `apps/web/src/middleware.spec.ts` | 59 | 15 tests (matcher composition via `it.each`) |
+| E2E tests | `playwright/e2e/auth/access-baseline.spec.ts` | 90 | 5 tests (AC-2 full-access baseline) |
+| Deleted | `apps/web/src/app/api/hello/route.ts` | — | Nx scaffold artifact removed (no references) |
+| Test execution | 233 Jest tests pass in 6.5s; 5 E2E tests pass | Verified 2026-07-01 | `yarn nx test web` |
+| Lint | 0 errors, 11 warnings (1 new in `middleware.spec.ts:24`) | Verified 2026-07-01 | `yarn nx run-many --target=lint --all` |
+| Build | Production build succeeds | Verified 2026-07-01 | `yarn nx build web` |
+| Test review | `_bmad-output/test-artifacts/test-reviews/test-review-1-7.md` | 99/100 (Grade A) | Approved |
+| Automate validation | `_bmad-output/test-artifacts/automate-validation-report-1-7.md` | PASS | 3 P2 gaps (all non-functional) |
+| Test summary | `_bmad-output/implementation-artifacts/tests/test-summary.md` | — | 5 E2E tests for AC-2 |
+| Story file | `_bmad-output/implementation-artifacts/1-7-enforce-authenticated-full-access-for-all-mvp-users.md` | 353 | ACs, tasks, dev notes, review findings |
+| Architecture | `_bmad-output/planning-artifacts/architecture.md` | — | FR18 (Platform Auth), FR19 (Access Control), NFR-S3 deferred |
+| CI pipeline | `.github/workflows/test.yml` | 299 | FINDING-1 still open (lines 136, 199) |
+| Deferred work | `_bmad-output/implementation-artifacts/deferred-work.md` | — | 4 pre-existing deferred issues (lines 25, 35, 58, 67) |
+
+---
+
+## Related Artifacts
+
+- **Story File:** `_bmad-output/implementation-artifacts/1-7-enforce-authenticated-full-access-for-all-mvp-users.md`
+- **Architecture:** `_bmad-output/planning-artifacts/architecture.md` — FR18 (Platform Authentication), FR19 (Access Control), middleware (line 506), `authorized` callback (lines 287–288), NFR-S3 deferred (line 274)
+- **Test Design:** `_bmad-output/test-artifacts/test-design-architecture.md` — NFR testability requirements
+- **Test Review:** `_bmad-output/test-artifacts/test-reviews/test-review-1-7.md` — 99/100 (Grade A, Approved)
+- **Automate Validation:** `_bmad-output/test-artifacts/automate-validation-report-1-7.md` — PASS (3 P2 gaps, all non-functional)
+- **Prior NFR Assessment:** Story 1.6 (18/29, CONCERNS) — see above
+- **Deferred Work:** `_bmad-output/implementation-artifacts/deferred-work.md` — 4 pre-existing deferred issues
+- **Integration Points:** Story 1.8 (Persistent App Shell) — adds side navigation to `(dashboard)/layout.tsx`; all Epic 2 pages inherit the auth guard established here
 
 ---
 

@@ -1,4 +1,4 @@
-export type CredentialHealthStatus = 'valid' | 'expired' | 'revoked' | 'unknown';
+export type CredentialHealthStatus = 'healthy' | 'failed';
 
 export interface CredentialHealthEvent {
   status: CredentialHealthStatus;

@@ -1,8 +1,11 @@
 'use server';
 
 import { auth } from '@/lib/auth';
-import { getPrisma } from '@/lib/prisma';
-import { decryptToken } from '@/lib/crypto';
+import {
+  CredentialFailureError,
+  resolveOAuthToken,
+  markCredentialFailed,
+} from '@/lib/credential-health';
 import { z } from 'zod';
 import {
   BMAD_DOCUMENTATION_LINK,
@@ -60,6 +63,10 @@ async function fetchGithubContents(
     signal: AbortSignal.timeout(10_000),
     headers: githubHeaders(accessToken),
   });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new CredentialFailureError(response.status);
+  }
 
   if (response.status === 404) return null;
 
@@ -283,19 +290,25 @@ export async function validateRepository(
     return { error: 'Not authenticated', errorCode: 'UNKNOWN' };
   }
 
-  const credential = await getPrisma().oAuthCredential.findUnique({
-    where: { userId: session.userId },
-  });
-  if (!credential) {
+  let accessToken: string;
+  try {
+    accessToken = await resolveOAuthToken(session.userId);
+  } catch (err) {
+    if (err instanceof CredentialFailureError) {
+      await markCredentialFailed(session.userId);
+      return {
+        error: 'No OAuth credential found. Please sign out and sign in again.',
+        errorCode: 'NO_CREDENTIAL',
+      };
+    }
+    console.error('[validateRepository] Credential resolution failed:', err);
     return {
-      error: 'No OAuth credential found. Please sign out and sign in again.',
-      errorCode: 'NO_CREDENTIAL',
+      error: 'An unexpected error occurred during validation. Please try again.',
+      errorCode: 'UNKNOWN',
     };
   }
 
   try {
-    const accessToken = decryptToken(credential);
-
     const match = cleanUrl.match(/^https:\/\/github\.com\/([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)$/);
     if (!match) {
       return {
@@ -309,9 +322,20 @@ export async function validateRepository(
     const cached = cacheGet(key);
     if (cached) return cached;
 
-    const result = await inspectBmadSetup(accessToken, owner, repo);
-    cacheSet(key, result);
-    return result;
+    try {
+      const result = await inspectBmadSetup(accessToken, owner, repo);
+      cacheSet(key, result);
+      return result;
+    } catch (err) {
+      if (err instanceof CredentialFailureError) {
+        await markCredentialFailed(session.userId);
+        return {
+          error: 'Your GitHub access token has expired or been revoked. Please sign out and sign in again.',
+          errorCode: 'NO_CREDENTIAL',
+        };
+      }
+      throw err;
+    }
   } catch (err) {
     console.error('[validateRepository] Unexpected error:', err);
     return {

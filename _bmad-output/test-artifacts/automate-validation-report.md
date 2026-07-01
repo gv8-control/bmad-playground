@@ -1,6 +1,6 @@
 # Automate Workflow Validation Report
 
-**Story:** 1.5 — Resolve Git Identity for Commit Attribution
+**Story:** 1.6 — Detect and Recover from Credential Failures
 **Date:** 2026-07-01
 **Mode:** Validate
 **Validator:** Master Test Architect (TEA)
@@ -15,7 +15,7 @@
 | Framework scaffolding (`playwright.config.ts`) | PASS | Configured with setup project, Chromium, storageState auth |
 | Test directory structure (`tests/` folder) | PASS | `apps/web/src/**/*.test.ts` / `*.spec.ts` for Jest (co-located) |
 | Package.json test dependencies | PASS | `jest`, `ts-jest`, `@testing-library/react` installed |
-| BMad artifacts (story) | PASS | `_bmad-output/implementation-artifacts/1-5-resolve-git-identity-for-commit-attribution.md` loaded |
+| BMad artifacts (story) | PASS | `_bmad-output/implementation-artifacts/1-6-detect-and-recover-from-credential-failures.md` loaded |
 
 ---
 
@@ -23,14 +23,14 @@
 
 ### Mode Detection
 
-- **Mode:** BMad-Integrated (story_file = `1-5-resolve-git-identity-for-commit-attribution.md`)
+- **Mode:** BMad-Integrated (story_file = `1-6-detect-and-recover-from-credential-failures.md`)
 - **Status:** PASS
 
 ### BMad Artifacts
 
 | Artifact | Status |
 |---|---|
-| Story 1.5 markdown | PASS — loaded, 3 ACs extracted |
+| Story 1.6 markdown | PASS — loaded, 4 ACs extracted |
 | Tech-spec | N/A (not used) |
 | Test-design | N/A (not used) |
 | PRD | N/A (not used) |
@@ -41,22 +41,25 @@
 |---|---|
 | `playwright.config.ts` loaded | PASS |
 | `apps/web/jest.config.ts` loaded | PASS |
-| Existing test patterns reviewed | PASS — follows Stories 1.2–1.4 patterns (jest.mock at module level, `@jest-environment node`, `jest.clearAllMocks` in afterEach) |
-| Test runner capabilities noted | PASS — Jest (unit/integration), Playwright (E2E, not needed for this story) |
+| Existing test patterns reviewed | PASS — follows Stories 1.2–1.5 patterns (jest.mock at module level, `@jest-environment node`, `jest.clearAllMocks` in afterEach) |
+| Test runner capabilities noted | PASS — Jest (unit/integration), Playwright (E2E, not needed for this story — AC-4 explicitly defers UI to Epic 2) |
 
 ### Coverage Analysis
 
 | File | Level | Tests | Status |
 |---|---|---|---|
-| `apps/web/src/lib/git-identity.test.ts` | Unit | 12 | PASSING |
-| `apps/web/src/actions/git-identity.actions.spec.ts` | Integration | 9 | PASSING |
+| `apps/web/src/lib/credential-health.test.ts` | Unit | 14 | PASSING |
+| `apps/web/src/actions/credential-health.actions.spec.ts` | Integration | 9 | PASSING |
+| `apps/web/src/lib/auth.credential.spec.ts` | Integration | 9 (2 new for 1.6) | PASSING |
+| `apps/web/src/actions/repo-connection.actions.spec.ts` | Integration | 32 (3 new for 1.6) | PASSING |
+| `apps/web/src/actions/repository-validation.actions.spec.ts` | Unit | 50 (1 new + 2 updated for 1.6) | PASSING |
 
-**Total: 21 tests across 2 suites — ALL PASSING**
+**Total: 207 tests across 17 suites — ALL PASSING** (was 178 at Story 1.5 completion; 29 new tests added)
 
-**Test execution command:** `yarn nx test web -- --testPathPatterns="git-identity"`
-**Result:** 2 suites passed, 21 tests passed, 0 failures
+**Test execution command:** `yarn nx test web`
+**Result:** 17 suites passed, 207 tests passed, 0 failures
 
-**Lint:** 0 errors (9 pre-existing warnings in other files, none in Story 1.5 files)
+**Lint:** 0 errors across all projects
 
 ---
 
@@ -64,69 +67,97 @@
 
 ### AC-to-Test Mapping
 
-#### AC-1: Name and primary email from OAuth profile
+#### AC-1: 401/403 detection updates credential health to `failed` within one operation cycle
 
 | Test | Level | Priority | File:Line |
 |---|---|---|---|
-| returns name and email exactly as provided | Unit | P0 | git-identity.test.ts:10 |
-| returns name and email with special characters preserved | Unit | P1 | git-identity.test.ts:22 |
-| returns GitUserConfig for authenticated user with complete profile | Integration | P0 | git-identity.actions.spec.ts:23 |
+| updates credentialHealth to "failed" | Unit | P0 | credential-health.test.ts:117 |
+| is a no-op (no throw) when no RepoConnection exists | Unit | P0 | credential-health.test.ts:125 |
+| calls markCredentialFailed on 401 response | Integration | P0 | repo-connection.actions.spec.ts:274 |
+| calls markCredentialFailed on 403 response | Integration | P0 | repo-connection.actions.spec.ts:280 |
+| calls markCredentialFailed when inspectBmadSetup throws CredentialFailureError (connectRepository) | Integration | P0 | repo-connection.actions.spec.ts:290 |
+| calls markCredentialFailed when inspectBmadSetup throws CredentialFailureError (validateRepository) | Unit | P0 | repository-validation.actions.spec.ts:573 |
 
-**Verdict: PASS** — Name and email resolution from a complete OAuth profile is covered at both unit and integration levels. Special characters (Unicode, subdomains) are preserved.
+**Verdict: PASS** — 401/403 detection is covered at both the service layer (`markCredentialFailed` unit tests) and the integration layer (wiring into `connectRepository` and `validateRepository`). The "within one operation cycle" requirement (NFR-R1) is verified by testing that `markCredentialFailed` is called in the same error-handling block as the 401/403 detection, before returning the error result.
 
-#### AC-2: Noreply email fallback
-
-| Test | Level | Priority | File:Line |
-|---|---|---|---|
-| falls back to noreply email when email is null | Unit | P0 | git-identity.test.ts:34 |
-| falls back to noreply email when email is empty string | Unit | P0 | git-identity.test.ts:43 |
-| falls back to noreply email when email is whitespace-only | Unit | P1 | git-identity.test.ts:52 |
-| preserves name when only email is missing | Unit | P1 | git-identity.test.ts:61 |
-| returns noreply fallback email when user email is null | Integration | P0 | git-identity.actions.spec.ts:40 |
-
-**Verdict: PASS** — Noreply fallback (`{githubLogin}@users.noreply.github.com`) is covered for null, empty string, and whitespace-only email at the unit level, and for null email through the Server Action. Name preservation when only email is missing is verified.
-
-#### AC-3: Consumable by sandbox initialization; no token leakage
+#### AC-2: Tenant authorization check before token resolution
 
 | Test | Level | Priority | File:Line |
 |---|---|---|---|
-| return type contains only name and email keys | Unit | P0 | git-identity.test.ts:115 |
-| function accepts no token parameter in its signature | Unit | P0 | git-identity.test.ts:124 |
-| returns error when not authenticated | Integration | P0 | git-identity.actions.spec.ts:74 |
-| returns error when session has no userId | Integration | P0 | git-identity.actions.spec.ts:82 |
-| returns error when User row is not found | Integration | P0 | git-identity.actions.spec.ts:90 |
-| returns error on unexpected DB failure | Integration | P0 | git-identity.actions.spec.ts:99 |
-| selects only name, email, githubLogin — never token fields | Integration | P0 | git-identity.actions.spec.ts:108 |
-| returned GitUserConfig contains no token field | Integration | P0 | git-identity.actions.spec.ts:124 |
+| returns decrypted token for valid userId | Unit | P0 | credential-health.test.ts:64 |
+| throws CredentialFailureError when no OAuthCredential exists | Unit | P0 | credential-health.test.ts:71 |
+| CredentialFailureError carries statusCode 401 when credential is missing | Unit | P0 | credential-health.test.ts:76 |
+| throws when decryptToken fails (tampered credential, KEK rotation mismatch) | Unit | P0 | credential-health.test.ts:87 |
+| queries only by the provided userId — never another user (tenant isolation) | Unit | P0 | credential-health.test.ts:94 |
+| does not query for any other userId | Unit | P1 | credential-health.test.ts:101 |
+| returns errorCode NO_CREDENTIAL when OAuthCredential row is absent (connectRepository) | Integration | P0 | repo-connection.actions.spec.ts:164 |
+| returns errorCode NO_CREDENTIAL when resolveOAuthToken throws (validateRepository) | Unit | P1 | repository-validation.actions.spec.ts:561 |
 
-**Verdict: PASS** — No-token-leakage is enforced and verified at both the function signature level (no token parameter), the Prisma query level (`select` clause excludes token fields), and the return type level (no token properties in result). Server Action error handling (unauthenticated, user not found, DB error) is fully covered.
+**Verdict: PASS** — Tenant-scoped resolution is verified at the query level (`where: { userId }` clause asserted), the function signature level (only `userId` parameter), and the integration level (both `connectRepository` and `validateRepository` use `resolveOAuthToken` instead of inline credential lookup). The `where: { userId }` clause IS the tenant authorization check — verified by direct assertion on the Prisma call arguments.
+
+#### AC-3: Re-auth flow restores credential health to `healthy`
+
+| Test | Level | Priority | File:Line |
+|---|---|---|---|
+| updates credentialHealth to "healthy" | Unit | P0 | credential-health.test.ts:139 |
+| is a no-op when no RepoConnection exists | Unit | P0 | credential-health.test.ts:147 |
+| calls repoConnection.updateMany with healthy status after credential upsert | Integration | P0 | auth.credential.spec.ts:201 |
+| does NOT call repoConnection.updateMany when account.access_token is absent | Integration | P0 | auth.credential.spec.ts:214 |
+| calls signIn with "github" provider | Integration | P0 | credential-health.actions.spec.ts:90 |
+| passes callbackUrl as redirectTo to signIn | Integration | P0 | credential-health.actions.spec.ts:96 |
+| passes undefined redirectTo when no callbackUrl provided | Integration | P1 | credential-health.actions.spec.ts:102 |
+
+**Verdict: PASS** — The re-auth flow is covered end-to-end: `reauthorizeGitHub` Server Action calls `signIn('github')` with correct params, the jwt callback resets `credentialHealth` to `healthy` after storing the new token, and `markCredentialHealthy` is unit-tested for both update and no-op scenarios. The negative case (no reset when `access_token` absent) is also verified.
+
+#### AC-4: UI display deferred to Epic 2
+
+**Verdict: PASS (N/A)** — No tests needed. The story explicitly defers UI display to Epic 2, Story 2.2. This story delivers detection, status, and the re-auth flow only. No E2E tests are needed (confirmed in story spec: "No E2E tests needed — this story has no UI surface").
 
 ### Additional Coverage (Beyond ACs)
 
 | Area | Tests | Level | Status |
 |---|---|---|---|
-| Name fallback to `githubLogin` when null | 1 | Unit | PASS |
-| Name fallback to `githubLogin` when empty string | 1 | Unit | PASS |
-| Name fallback to `githubLogin` when whitespace-only | 1 | Unit | PASS |
-| Name fallback through Server Action (null name) | 1 | Integration | PASS |
-| Both name and email absent — both fall back | 1 | Unit | PASS |
+| `getCredentialHealth` returns "healthy" for existing RepoConnection | 1 | Unit | PASS |
+| `getCredentialHealth` returns "failed" for existing RepoConnection | 1 | Unit | PASS |
+| `getCredentialHealth` returns null when no RepoConnection exists | 1 | Unit | PASS |
+| `getCredentialHealth` selects only credentialHealth column | 1 | Unit | PASS |
+| `getCredentialHealthStatus` returns healthy for authenticated user with healthy connection | 1 | Integration | PASS |
+| `getCredentialHealthStatus` returns failed for authenticated user with failed connection | 1 | Integration | PASS |
+| `getCredentialHealthStatus` returns healthy for authenticated user with no RepoConnection | 1 | Integration | PASS |
+| `getCredentialHealthStatus` returns error for unauthenticated request | 1 | Integration | PASS |
+| `getCredentialHealthStatus` returns error on unexpected DB failure | 1 | Integration | PASS |
+| `getCredentialHealthStatus` passes session.userId to getCredentialHealth | 1 | Integration | PASS |
+| Updated error codes: UNKNOWN → NO_CREDENTIAL for decrypt failure (validateRepository) | 1 | Unit | PASS |
+| Updated error codes: UNKNOWN → NO_CREDENTIAL for 403 (validateRepository) | 1 | Unit | PASS |
 
 ### Duplicate Coverage Avoidance
 
-- Unit tests cover pure function edge cases (null/empty/whitespace for name and email)
-- Integration tests cover Server Action wiring (auth, DB, error handling, select clause)
-- Edge case variations (empty string, whitespace) are tested at unit level only — NOT duplicated at integration level
-- Integration tests prove the wiring works; unit tests prove the logic is correct
+- Unit tests cover pure service logic (`resolveOAuthToken`, `markCredentialFailed`/`Healthy`, `getCredentialHealth`) — DB mocking, no Server Action wiring
+- Integration tests cover Server Action wiring (`getCredentialHealthStatus`, `reauthorizeGitHub`) — auth mocking, service mocking
+- Integration tests cover action-level wiring (`connectRepository`, `validateRepository`) — verify `markCredentialFailed` is called in the right error paths
+- The jwt callback test covers the auth-layer health reset — separate from the service-layer `markCredentialHealthy` unit test
+- Edge case variations (no-op on missing RepoConnection) are tested at unit level only — NOT duplicated at integration level
 - **Verdict: PASS** — No unnecessary duplicate coverage. Test level selection is appropriate.
 
 ### Test Level Selection
 
 | Level | Used? | Justification |
 |---|---|---|
-| Unit | Yes | Pure function edge cases (null/empty/whitespace, special characters, type assertions) |
-| Integration | Yes | Server Action wiring (auth, Prisma, error handling, select clause) |
-| E2E | No | No UI surface — story spec explicitly states "No E2E tests needed" |
-| Component | No | No UI component — Server Action only |
+| Unit | Yes | Pure service logic (credential-health.ts), inspectBmadSetup core logic |
+| Integration | Yes | Server Action wiring (credential-health.actions, auth.credential, repo-connection, repository-validation) |
+| E2E | No | No UI surface — story spec explicitly states "No E2E tests needed" (AC-4) |
+| Component | No | No UI component — Server Actions and service layer only |
+
+### Priority Assignment
+
+| Priority | Count | Examples |
+|---|---|---|
+| P0 | 22 | Credential resolution, 401/403 detection, health reset, tenant isolation |
+| P1 | 7 | No-op verification, select clause, error message content, undefined redirectTo |
+| P2 | 0 | — |
+| P3 | 0 | — |
+
+**Verdict: PASS** — Priority tags ([P0], [P1]) are present on all 29 new tests. This is an improvement over Story 1.5 which had no priority tags.
 
 ---
 
@@ -134,9 +165,9 @@
 
 | Check | Status |
 |---|---|
-| Fixtures needed | N/A — Pure function tests use inline objects; integration tests use jest.mock at module level |
-| Factories needed | N/A — Test data is simple User objects, not entities requiring faker |
-| Helper utilities | N/A — No complex setup or teardown needed |
+| Fixtures needed | N/A — Service tests use jest.mock at module level; integration tests use mock functions |
+| Factories needed | N/A — Test data is simple credential/user objects, not entities requiring faker |
+| Helper utilities | N/A — No complex setup or teardown needed; `jest.clearAllMocks()` in afterEach suffices |
 
 ---
 
@@ -146,14 +177,15 @@
 |---|---|---|
 | Test files organized correctly | PASS | Co-located with source (`*.test.ts` / `*.spec.ts` next to implementation) |
 | Given-When-Then format | PASS | Describe blocks provide "Given" context; test names describe "When-Then" |
-| Priority tags in test names | WARN | Tests do not have [P0]/[P1]/[P2] tags — see Gap 1 |
+| Priority tags in test names | PASS | All 29 new tests have [P0] or [P1] tags |
 | One assertion per test (atomic) | PASS | Most tests have focused assertions; some verify multiple related properties (acceptable) |
 | No hard waits | N/A | Jest tests — no Playwright waits |
 | No flaky patterns | PASS | Deterministic mocks, no race conditions |
 | No shared state | PASS | `jest.clearAllMocks()` in `afterEach` |
 | No page objects | N/A | No E2E tests |
-| `@jest-environment node` directive | PASS | Both test files have the directive |
-| Module-level `jest.mock()` pattern | PASS | Follows Stories 1.2–1.4 pattern |
+| `@jest-environment node` directive | PASS | All test files have the directive |
+| Module-level `jest.mock()` pattern | PASS | Follows Stories 1.2–1.5 pattern |
+| `CredentialFailureError` mock class in spec files | PASS | Both `repo-connection.actions.spec.ts` and `repository-validation.actions.spec.ts` define a local `CredentialFailureError` class for `instanceof` checks — matches the real class interface |
 
 ---
 
@@ -161,8 +193,8 @@
 
 | Check | Status |
 |---|---|
-| Tests executed | PASS — 21/21 tests pass |
-| Lint clean | PASS — 0 errors (9 pre-existing warnings in other files) |
+| Tests executed | PASS — 207/207 tests pass across 17 suites |
+| Lint clean | PASS — 0 errors across all projects |
 | Flaky patterns | PASS — None detected |
 | Healing needed | N/A — No failures |
 
@@ -170,19 +202,26 @@
 
 ## Identified Gaps
 
-### Gap 1 (P2 — Convention): Priority tags missing from test names
+### Gap 1 (P2 — Coverage): `fetchGithubContents` 401 path not directly tested
 
-- **What's missing:** The checklist requires all tests to have priority tags ([P0], [P1], [P2], [P3]) in test names. None of the 21 Story 1.5 tests have these tags.
-- **Why it matters:** Priority tags enable selective test execution (P0 on every commit, P1 on PR, P2 nightly). Without them, the selective execution strategy from the checklist cannot be applied.
-- **Impact:** Low — the tests are comprehensive and all passing. This is a convention/style gap, not a functional coverage gap.
-- **Action:** Not filled — this is a style change, not a coverage expansion. Recommend adding priority tags in a future pass or when the dev agent convention is updated.
+- **What's missing:** No test directly verifies that `fetchGithubContents` throws `CredentialFailureError` on a 401 response. The 403 path IS tested (through `inspectBmadSetup` 403 → `validateRepository` returns `NO_CREDENTIAL` + `markCredentialFailed` called).
+- **Why it matters:** Low — 401 and 403 share the exact same code branch (`if (response.status === 401 || response.status === 403)` at `repository-validation.actions.ts:67`). If 403 works, 401 works. The 401 path through `connectRepository`'s direct `fetch` call IS tested (`repo-connection.actions.spec.ts:274`).
+- **Impact:** Very low — shared code branch, 403 variant is tested.
+- **Action:** Not filled — the code branch is shared and the 403 variant provides sufficient coverage.
 
-### Gap 2 (P2 — Observability): `console.error` not verified in DB error test
+### Gap 2 (P2 — Observability): `getCredentialHealthStatus` console.error not verified in DB error test
 
-- **What's missing:** The DB error test (`git-identity.actions.spec.ts:99`) verifies the return value (`{ success: false, error: 'Failed to resolve git identity' }`) but does not verify that `console.error` was called with the expected message.
-- **Why it matters:** The error logging at line 30 of `git-identity.actions.ts` is for debugging/observability. Verifying it ensures the error is logged for troubleshooting.
-- **Impact:** Very low — the return value is the primary behavior and is tested. The `console.error` call is a secondary concern.
-- **Action:** Not filled — the return value is the critical behavior and is fully tested. Adding a `console.error` spy would be a minor improvement but doesn't expand functional coverage.
+- **What's missing:** The DB error test (`credential-health.actions.spec.ts:69`) verifies the return value (`{ success: false, error: 'Failed to check credential health' }`) but does not verify that `console.error` was called with the expected message.
+- **Why it matters:** The error logging at line 29 of `credential-health.actions.ts` is for debugging/observability. Verifying it ensures the error is logged for troubleshooting.
+- **Impact:** Very low — the return value is the primary behavior and is tested.
+- **Action:** Not filled — the return value is the critical behavior and is fully tested.
+
+### Gap 3 (P2 — Design Note): `markCredentialHealthy` is tested but not called in production code
+
+- **What's missing:** The `markCredentialHealthy` function is unit-tested (2 tests) but never called in production code. The jwt callback in `auth.ts` resets health inline via `getPrisma().repoConnection.updateMany(...)` rather than calling `markCredentialHealthy`.
+- **Why it matters:** This is by design — the story spec's code example for the jwt callback shows the inline `updateMany` call, not a call to `markCredentialHealthy`. The function exists for Epic 3 consumption (`tool-pill-classifier.service.ts`).
+- **Impact:** None — this is intentional. The function is tested for correctness so it can be called by Epic 3 without additional test work.
+- **Action:** Not filled — by design, not a gap.
 
 ---
 
@@ -194,30 +233,36 @@
 | Mode Detection | PASS |
 | BMad Artifacts | PASS |
 | Framework Configuration | PASS |
-| Coverage Analysis | PASS — 21 tests, all passing |
-| AC-1 Mapping | PASS — 3 tests (2 unit, 1 integration) |
-| AC-2 Mapping | PASS — 5 tests (4 unit, 1 integration) |
-| AC-3 Mapping | PASS — 8 tests (2 unit, 6 integration) |
-| Additional Coverage | PASS — 5 tests for name fallback and both-absent |
+| Coverage Analysis | PASS — 207 tests, all passing |
+| AC-1 Mapping | PASS — 6 tests (2 unit, 4 integration) |
+| AC-2 Mapping | PASS — 8 tests (6 unit, 2 integration) |
+| AC-3 Mapping | PASS — 7 tests (2 unit, 5 integration) |
+| AC-4 Mapping | PASS (N/A) — no tests needed, UI deferred to Epic 2 |
+| Additional Coverage | PASS — 12 tests for getCredentialHealth, getCredentialHealthStatus, updated error codes |
 | Duplicate Coverage Avoidance | PASS — Appropriate test level selection |
 | Test Infrastructure | N/A — No fixtures/factories/helpers needed |
-| Test File Quality | WARN (Gap 1: priority tags) |
-| Test Validation | PASS — 21/21 tests, 0 lint errors |
-| **Overall** | **PASS — Story 1.5 is sufficiently covered** |
+| Test File Quality | PASS — Priority tags present, Given-When-Then format, co-located |
+| Test Validation | PASS — 207/207 tests, 0 lint errors |
+| **Overall** | **PASS — Story 1.6 is sufficiently covered** |
 
 ### Gap Summary
 
 | # | Priority | Gap | Action |
 |---|---|---|---|
-| 1 | P2 | Priority tags missing from test names | Not filled (convention, not coverage) |
-| 2 | P2 | `console.error` not verified in DB error test | Not filled (observability, not coverage) |
+| 1 | P2 | `fetchGithubContents` 401 path not directly tested (shares code branch with 403) | Not filled (shared code branch, 403 variant tested) |
+| 2 | P2 | `getCredentialHealthStatus` console.error not verified in DB error test | Not filled (observability, not coverage) |
+| 3 | P2 | `markCredentialHealthy` tested but not called in production code | Not filled (by design — for Epic 3) |
 
 ### Verdict
 
 **PASS — No coverage expansion needed.**
 
-Story 1.5 has comprehensive test coverage across all 3 acceptance criteria:
-- 12 unit tests for the `resolveGitIdentity` pure function (all edge cases: null/empty/whitespace for name and email, special characters, both-absent, type assertions)
-- 9 integration tests for the `getGitIdentity` Server Action (auth, DB, error handling, select clause, no-token-in-result)
+Story 1.6 has comprehensive test coverage across all 4 acceptance criteria:
+- 14 unit tests for the credential health service (`resolveOAuthToken`, `markCredentialFailed`/`Healthy`, `getCredentialHealth`, `CredentialFailureError`)
+- 9 integration tests for the credential health Server Actions (`getCredentialHealthStatus`, `reauthorizeGitHub`)
+- 2 new integration tests for the jwt callback health reset (AC-3)
+- 3 new integration tests for `markCredentialFailed` wiring into `connectRepository` 401/403/CredentialFailureError paths (AC-1)
+- 1 new unit test for `markCredentialFailed` wiring into `validateRepository` CredentialFailureError path (AC-1)
+- 2 updated tests for changed error codes (UNKNOWN → NO_CREDENTIAL)
 
-Both gaps are P2 (low priority) and are convention/observability issues, not functional coverage gaps. All ACs are fully covered at appropriate test levels with no duplicate coverage.
+All 3 gaps are P2 (low priority) and are coverage-adjacent or design-intentional, not functional coverage gaps. All ACs are fully covered at appropriate test levels with no duplicate coverage.

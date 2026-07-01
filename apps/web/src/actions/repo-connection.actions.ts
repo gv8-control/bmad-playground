@@ -2,7 +2,11 @@
 
 import { auth } from '@/lib/auth';
 import { getPrisma } from '@/lib/prisma';
-import { decryptToken } from '@/lib/crypto';
+import {
+  resolveOAuthToken,
+  markCredentialFailed,
+  CredentialFailureError,
+} from '@/lib/credential-health';
 import { inspectBmadSetup, invalidateValidationCache } from './repository-validation.actions';
 import { z } from 'zod';
 
@@ -48,19 +52,22 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     return { error: 'Not authenticated', errorCode: 'UNKNOWN' };
   }
 
-  const credential = await getPrisma().oAuthCredential.findUnique({
-    where: { userId: session.userId },
-  });
-  if (!credential) {
-    return {
-      error: 'No OAuth credential found. Please sign out and sign in again.',
-      errorCode: 'NO_CREDENTIAL',
-    };
+  let accessToken: string;
+  try {
+    accessToken = await resolveOAuthToken(session.userId);
+  } catch (err) {
+    if (err instanceof CredentialFailureError) {
+      await markCredentialFailed(session.userId);
+      return {
+        error: 'No OAuth credential found. Please sign out and sign in again.',
+        errorCode: 'NO_CREDENTIAL',
+      };
+    }
+    console.error('[connectRepository] Credential resolution failed:', err);
+    return { error: 'An unexpected error occurred. Please try again.', errorCode: 'UNKNOWN' };
   }
 
   try {
-    const accessToken = decryptToken(credential);
-
     const match = cleanUrl.match(/^https:\/\/github\.com\/([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)$/);
     if (!match) {
       return { error: 'Invalid GitHub repository URL format', errorCode: 'INVALID_URL' };
@@ -77,6 +84,7 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     });
 
     if (response.status === 401) {
+      await markCredentialFailed(session.userId);
       return {
         error: 'Your GitHub access token has expired or been revoked. Please sign out and sign in again.',
         errorCode: 'NO_CREDENTIAL',
@@ -91,6 +99,7 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     }
 
     if (response.status === 403) {
+      await markCredentialFailed(session.userId);
       const body = await response.json().catch(() => ({}));
       const message: string = body?.message ?? '';
       const isOrgRestriction =
@@ -128,7 +137,19 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
       };
     }
 
-    const validation = await inspectBmadSetup(accessToken, owner, repo);
+    let validation;
+    try {
+      validation = await inspectBmadSetup(accessToken, owner, repo);
+    } catch (err) {
+      if (err instanceof CredentialFailureError) {
+        await markCredentialFailed(session.userId);
+        return {
+          error: 'Your GitHub access token has expired or been revoked. Please sign out and sign in again.',
+          errorCode: 'NO_CREDENTIAL',
+        };
+      }
+      throw err;
+    }
     if ('code' in validation) {
       return {
         error: validation.message,

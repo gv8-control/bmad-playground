@@ -18,18 +18,27 @@
 const mockAuth = jest.fn();
 jest.mock('@/lib/auth', () => ({ auth: (...args: unknown[]) => mockAuth(...args) }));
 
-const mockFindUniqueCredential = jest.fn();
+const mockResolveOAuthToken = jest.fn();
+const mockMarkCredentialFailed = jest.fn();
+
+class CredentialFailureError extends Error {
+  constructor(public readonly statusCode: number) {
+    super(`Credential failure: GitHub API returned ${statusCode}`);
+    this.name = 'CredentialFailureError';
+  }
+}
+
+jest.mock('@/lib/credential-health', () => ({
+  resolveOAuthToken: (...args: unknown[]) => mockResolveOAuthToken(...args),
+  markCredentialFailed: (...args: unknown[]) => mockMarkCredentialFailed(...args),
+  CredentialFailureError,
+}));
+
 const mockUpsertRepoConnection = jest.fn();
 jest.mock('@/lib/prisma', () => ({
   getPrisma: () => ({
-    oAuthCredential: { findUnique: mockFindUniqueCredential },
     repoConnection: { upsert: mockUpsertRepoConnection },
   }),
-}));
-
-const mockDecryptToken = jest.fn();
-jest.mock('@/lib/crypto', () => ({
-  decryptToken: (...args: unknown[]) => mockDecryptToken(...args),
 }));
 
 let mockFetch: jest.Mock;
@@ -52,13 +61,6 @@ import { BMAD_DOCUMENTATION_LINK } from '@bmad-easy/shared-types';
 
 const SESSION = { userId: 'usr_abc123' };
 const VALID_URL = 'https://github.com/my-org/my-repo';
-const ENCRYPTED_CREDENTIAL = {
-  userId: 'usr_abc123',
-  encryptedDek: 'enc_dek',
-  dekNonce: 'dek_nonce',
-  encryptedToken: 'enc_token',
-  tokenNonce: 'token_nonce',
-};
 const DECRYPTED_TOKEN = 'gho_real_token';
 
 const githubOkWithPush = {
@@ -111,8 +113,8 @@ describe('connectRepository — URL validation (AC-2)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuth.mockResolvedValue(SESSION);
-    mockFindUniqueCredential.mockResolvedValue(ENCRYPTED_CREDENTIAL);
-    mockDecryptToken.mockReturnValue(DECRYPTED_TOKEN);
+    mockResolveOAuthToken.mockResolvedValue(DECRYPTED_TOKEN);
+    mockMarkCredentialFailed.mockResolvedValue(undefined);
     setupValidationHappyPath();
     mockUpsertRepoConnection.mockResolvedValue({});
   });
@@ -161,16 +163,30 @@ describe('connectRepository — session and credential checks', () => {
 
   it('[P0] returns errorCode NO_CREDENTIAL when OAuthCredential row is absent', async () => {
     mockAuth.mockResolvedValue(SESSION);
-    mockFindUniqueCredential.mockResolvedValue(null);
+    mockResolveOAuthToken.mockRejectedValue(new CredentialFailureError(401));
     const result = await connectRepository(VALID_URL);
     expect(result).toMatchObject({ errorCode: 'NO_CREDENTIAL' });
   });
 
   it('[P1] NO_CREDENTIAL error message tells user to sign out and sign in again', async () => {
     mockAuth.mockResolvedValue(SESSION);
-    mockFindUniqueCredential.mockResolvedValue(null);
+    mockResolveOAuthToken.mockRejectedValue(new CredentialFailureError(401));
     const result = await connectRepository(VALID_URL) as { error: string };
     expect(result.error).toMatch(/sign.*(out|in)/i);
+  });
+
+  it('[P1] returns errorCode UNKNOWN when resolveOAuthToken throws non-CredentialFailureError', async () => {
+    mockAuth.mockResolvedValue(SESSION);
+    mockResolveOAuthToken.mockRejectedValue(new Error('DB connection lost'));
+    const result = await connectRepository(VALID_URL);
+    expect(result).toMatchObject({ errorCode: 'UNKNOWN' });
+  });
+
+  it('[P0] calls markCredentialFailed when resolveOAuthToken throws CredentialFailureError (AC-1)', async () => {
+    mockAuth.mockResolvedValue(SESSION);
+    mockResolveOAuthToken.mockRejectedValue(new CredentialFailureError(401));
+    await connectRepository(VALID_URL);
+    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
   });
 });
 
@@ -180,8 +196,8 @@ describe('connectRepository — GitHub API errors (AC-4)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuth.mockResolvedValue(SESSION);
-    mockFindUniqueCredential.mockResolvedValue(ENCRYPTED_CREDENTIAL);
-    mockDecryptToken.mockReturnValue(DECRYPTED_TOKEN);
+    mockResolveOAuthToken.mockResolvedValue(DECRYPTED_TOKEN);
+    mockMarkCredentialFailed.mockResolvedValue(undefined);
   });
 
   it('[P0] returns errorCode NOT_FOUND when GitHub API returns 404 (AC-4)', async () => {
@@ -268,6 +284,34 @@ describe('connectRepository — GitHub API errors (AC-4)', () => {
     const result = await connectRepository(VALID_URL);
     expect(result).toMatchObject({ errorCode: 'UNKNOWN' });
   });
+
+  it('[P0] calls markCredentialFailed on 401 response (AC-1)', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
+    await connectRepository(VALID_URL);
+    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
+  });
+
+  it('[P0] calls markCredentialFailed on 403 response (AC-1)', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ message: 'Forbidden' }),
+    });
+    await connectRepository(VALID_URL);
+    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
+  });
+
+  it('[P0] calls markCredentialFailed when inspectBmadSetup throws CredentialFailureError (AC-1)', async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === 'https://api.github.com/repos/my-org/my-repo') {
+        return Promise.resolve(githubOkWithPush);
+      }
+      return Promise.resolve({ ok: false, status: 403, json: async () => ({ message: 'Forbidden' }) });
+    });
+    const result = await connectRepository(VALID_URL);
+    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
+    expect(result).toMatchObject({ errorCode: 'NO_CREDENTIAL' });
+  });
 });
 
 // ─── Successful connection (AC-2, AC-3, Task 4.6) ────────────────────────────
@@ -276,8 +320,8 @@ describe('connectRepository — successful connection (AC-2, AC-3)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuth.mockResolvedValue(SESSION);
-    mockFindUniqueCredential.mockResolvedValue(ENCRYPTED_CREDENTIAL);
-    mockDecryptToken.mockReturnValue(DECRYPTED_TOKEN);
+    mockResolveOAuthToken.mockResolvedValue(DECRYPTED_TOKEN);
+    mockMarkCredentialFailed.mockResolvedValue(undefined);
     setupValidationHappyPath();
     mockUpsertRepoConnection.mockResolvedValue({});
   });
@@ -334,8 +378,8 @@ describe('connectRepository — BMAD validation integration (Story 1.4)', () => 
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuth.mockResolvedValue(SESSION);
-    mockFindUniqueCredential.mockResolvedValue(ENCRYPTED_CREDENTIAL);
-    mockDecryptToken.mockReturnValue(DECRYPTED_TOKEN);
+    mockResolveOAuthToken.mockResolvedValue(DECRYPTED_TOKEN);
+    mockMarkCredentialFailed.mockResolvedValue(undefined);
     mockUpsertRepoConnection.mockResolvedValue({});
   });
 

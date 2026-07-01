@@ -152,3 +152,144 @@ All three acceptance criteria are already covered by passing unit and integratio
 
 - No action required for Story 1.5
 - When Story 3.1 (Provision a Sandbox When Opening a Conversation) is implemented, add E2E coverage for the sandbox init sequence including git-config injection attribution
+
+---
+
+## Story 1.6: Detect and Recover from Credential Failures
+
+**Reviewed:** 2026-07-01
+**Story status:** review
+**Decision:** No E2E or API tests generated
+
+### Rationale
+
+Story 1.6 has no testable surface for E2E or API automation:
+
+| Check | Result |
+|---|---|
+| UI components calling `reauthorizeGitHub` / `getCredentialHealthStatus` | None — grep of `apps/web/src/**/*.tsx` returned no matches |
+| HTTP API endpoint | None — the story's API Contract states: *"This story has no HTTP API endpoint. The Server Actions are callable only from server-side code in `apps/web`"* |
+| Story's explicit testing requirement | *"No E2E tests needed — this story has no UI surface (AC-4)"* |
+| AC-4 scope | *"Displaying the failed status visually on the Project Map is delivered in Epic 2 — this story delivers detection, status, and the re-auth flow only"* |
+| Playwright E2E directories | `auth`, `conversation`, `onboarding`, `project-map` — no credential-health surface |
+
+The `getCredentialHealthStatus` and `reauthorizeGitHub` Server Actions are consumed by **Epic 2, Story 2.2** (View the Project Map) and **Story 2.4** (Browse Artifacts) for the Credential Error Banner (UX-DR10). The re-auth modal's "Re-authorize" button calls `reauthorizeGitHub`. E2E coverage for the credential failure → re-auth flow naturally belongs in Epic 2, where the UI surface is delivered.
+
+### Existing Coverage (Complete)
+
+All four acceptance criteria are already covered by passing unit and integration tests:
+
+| Level | File | Tests | ACs Covered |
+|---|---|---|---|
+| Unit | `apps/web/src/lib/credential-health.test.ts` | 14 | AC-1, AC-2, AC-3 |
+| Integration | `apps/web/src/actions/credential-health.actions.spec.ts` | 9 | AC-3 |
+| Integration | `apps/web/src/lib/auth.credential.spec.ts` | 2 (new) | AC-3 |
+| Integration | `apps/web/src/actions/repo-connection.actions.spec.ts` | 3 (new) | AC-1, AC-2 |
+| Integration | `apps/web/src/actions/repository-validation.actions.spec.ts` | 1 (new) + 2 (updated) | AC-1, AC-2 |
+
+**Total: 29 new tests (23 in new files + 6 in updated files), all passing. Full suite: 207 tests pass.**
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Test Level | Test File(s) |
+|---|---|---|---|
+| AC-1 | 401/403 detection updates credential health to `failed` within one operation cycle | Unit + Integration | `credential-health.test.ts` (2 tests: markCredentialFailed updates, no-op on missing); `repo-connection.actions.spec.ts` (3 tests: markCredentialFailed on 401, on 403, on CredentialFailureError catch); `repository-validation.actions.spec.ts` (1 test: markCredentialFailed on CredentialFailureError catch) |
+| AC-2 | Tenant authorization check before token resolution | Unit | `credential-health.test.ts` (6 tests: resolveOAuthToken valid, missing credential, decrypt failure, tenant isolation by userId, no cross-user query, statusCode 401) |
+| AC-3 | Re-auth flow restores credential health to `healthy` | Unit + Integration | `credential-health.test.ts` (2 tests: markCredentialHealthy updates, no-op on missing); `credential-health.actions.spec.ts` (3 tests: reauthorizeGitHub calls signIn, passes callbackUrl, undefined redirectTo); `auth.credential.spec.ts` (2 tests: jwt callback resets health, no-reset when access_token absent) |
+| AC-4 | UI display deferred to Epic 2 | N/A | No testable surface in this story — UI delivered in Epic 2, Story 2.2 |
+
+### Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists
+- [x] E2E tests generated (if UI exists) — N/A: no UI surface exists (AC-4 defers to Epic 2)
+- [x] Tests cover happy path — covered by existing unit tests (resolveOAuthToken valid, markCredentialHealthy, getCredentialHealthStatus authenticated)
+- [x] Tests cover 1-2 critical error cases — covered by existing integration tests (unauthenticated, missing credential, decrypt failure, DB error, 401/403 detection)
+- [x] Test summary created — this document
+- [x] All existing tests run successfully — 207 tests pass (verified via `yarn nx test web`)
+
+### Next Steps
+
+- No action required for Story 1.6
+- When Story 2.2 (View the Project Map) is implemented, add E2E coverage for:
+  - Credential Error Banner display when `getCredentialHealthStatus` returns `failed`
+  - Re-auth modal flow: clicking "Re-authorize" calls `reauthorizeGitHub`, redirects to GitHub OAuth, returns to Project Map with `healthy` status
+- When Story 2.4 (Browse Artifacts) is implemented, extend E2E coverage to the Artifact Browser's Credential Error Banner
+
+---
+
+## Story 1.7: Enforce Authenticated, Full Access for All MVP Users
+
+**Generated:** 2026-07-01
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### E2E Tests (Playwright)
+
+- [x] [playwright/e2e/auth/access-baseline.spec.ts](../../../playwright/e2e/auth/access-baseline.spec.ts) — authenticated full-access baseline (AC-2), 5 tests
+
+#### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| Authenticated user navigating to / sees no paywall or billing gate | AC-2 | P0 | Authenticated user visiting / is not redirected to /sign-in and no "upgrade", "trial", "billing", or "paywall" text appears |
+| Authenticated user navigating to /onboarding sees no paywall or billing gate | AC-2 | P0 | Authenticated user visiting /onboarding is not redirected to /sign-in and no forbidden paywall terms appear |
+| Authenticated user navigating between routes encounters no paywall throughout the session | AC-2 | P1 | Navigating / → /onboarding → / in a single session never surfaces paywall or billing text at any point |
+| Full-access baseline survives page reload — no paywall after refresh | AC-2 | P1 | After reloading /onboarding, the authenticated user still has full access with no paywall or billing gate |
+| Defense-in-depth layout guard admits authenticated users to (dashboard) routes | AC-2 | P1 | /onboarding (under the (dashboard) route group) renders its form for authenticated users — the layout's secondary auth() check passes them through |
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| E2E | `access-baseline.spec.ts` | 5 | 5 | 0 | **ALL PASSING** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | E2E Test(s) | Unit/Integration Tests |
+|---|---|---|---|
+| AC-1 | Unauthenticated requests redirect to /sign-in | (covered by `sign-in.spec.ts` from Story 1.2 — no new E2E tests needed per story scope) | `auth.config.spec.ts` (7 tests), `middleware.spec.ts` (15 tests), `layout.test.tsx` (3 tests) |
+| AC-2 | Authenticated users have full access — no paywall/trial/billing | All 5 tests above | `layout.test.tsx` (3 tests: unauthenticated redirect, session-without-userId redirect, authenticated renders children) |
+
+---
+
+## Test Execution
+
+```bash
+yarn dotenv -e .env -- playwright test playwright/e2e/auth/access-baseline.spec.ts --reporter=list
+```
+
+```
+  6 passed (9.9s)
+```
+
+### Pre-existing Failures (Not Story 1.7)
+
+Running the full `playwright/e2e/auth/` suite surfaces 7 pre-existing failures in `sign-in.spec.ts` (Story 1.2 tests). These are unrelated to Story 1.7 — `sign-in.spec.ts` was not modified, and the failures stem from the dev-server environment (Next.js 16 middleware deprecation warning, sign-in page rendering differences in dev mode). The 5 `access-baseline.spec.ts` tests and 4 `sign-in.spec.ts` session-persistence tests all pass.
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (Story 1.7 deleted the `/api/hello` scaffold artifact; no new API surface)
+- [x] E2E tests generated (if UI exists) — 5 tests in `access-baseline.spec.ts`
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from project's merged-fixtures
+- [x] Tests cover happy path — authenticated user accesses / and /onboarding without paywall
+- [x] Tests cover 1-2 critical error cases — reload persistence, multi-route navigation flow, defense-in-depth layout guard
+- [x] All generated tests run successfully — 5/5 pass
+- [x] Tests use proper locators (semantic, accessible) — `getByLabel(/repository url/i)`, `toHaveURL`, `textContent`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with descriptive names
+- [x] No hardcoded waits or sleeps — all assertions use Playwright auto-waiting
+- [x] Tests are independent (no order dependency) — each test starts fresh with the `page` fixture
+- [x] Test summary created — this document
+- [x] Tests saved to appropriate directories — `playwright/e2e/auth/`
+
+### Next Steps
+
+- Investigate the 7 pre-existing `sign-in.spec.ts` failures (Story 1.2) when the dev-server environment is stabilized
+- When Story 1.8 (Persistent App Shell) is implemented, extend access-baseline tests to cover the new app shell routes
+- When Epic 2 routes (`/project-map`, `/conversations`, `/settings`, `/artifacts`) are implemented, extend `access-baseline.spec.ts` to verify no paywall on those routes

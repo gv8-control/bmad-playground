@@ -90,6 +90,32 @@ describe('authConfig.callbacks.authorized', () => {
     const body = await result.json();
     expect(body).toMatchObject({ error: 'Unauthorized' });
   });
+
+  it('[P1] redirects unauthenticated request to nested path with correct callbackUrl', async () => {
+    const result = authorized({ auth: null, request: mockRequest('/conversations/abc-123') }) as Response;
+
+    expect(result.status).toBe(302);
+    const location = result.headers.get('Location')!;
+    const locationUrl = new URL(location, 'http://localhost:3000');
+    expect(locationUrl.searchParams.get('callbackUrl')).toBe('/conversations/abc-123');
+  });
+
+  it('[P1] returns 401 for unauthenticated /api/internal/test/* (callback treats it as any API path; matcher excludes it in production)', async () => {
+    const result = authorized({ auth: null, request: mockRequest('/api/internal/test/seed-user') }) as Response;
+
+    expect(result.status).toBe(401);
+    const body = await result.json();
+    expect(body).toMatchObject({ error: 'Unauthorized' });
+  });
+
+  it('[P1] returns true for authenticated session with user but no userId (edge case)', () => {
+    const sessionWithoutUserId: Session = {
+      user: { name: 'Bob', email: 'bob@example.com', image: null },
+      expires: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+    };
+    const result = authorized({ auth: sessionWithoutUserId, request: mockRequest('/dashboard') });
+    expect(result).toBe(true);
+  });
 });
 
 // ─── Provider configuration (AC-1c) ──────────────────────────────────────────

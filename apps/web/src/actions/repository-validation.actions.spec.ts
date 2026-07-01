@@ -18,16 +18,20 @@
 const mockAuth = jest.fn();
 jest.mock('@/lib/auth', () => ({ auth: (...args: unknown[]) => mockAuth(...args) }));
 
-const mockFindUniqueCredential = jest.fn();
-jest.mock('@/lib/prisma', () => ({
-  getPrisma: () => ({
-    oAuthCredential: { findUnique: mockFindUniqueCredential },
-  }),
-}));
+const mockResolveOAuthToken = jest.fn();
+const mockMarkCredentialFailed = jest.fn();
 
-const mockDecryptToken = jest.fn();
-jest.mock('@/lib/crypto', () => ({
-  decryptToken: (...args: unknown[]) => mockDecryptToken(...args),
+class CredentialFailureError extends Error {
+  constructor(public readonly statusCode: number) {
+    super(`Credential failure: GitHub API returned ${statusCode}`);
+    this.name = 'CredentialFailureError';
+  }
+}
+
+jest.mock('@/lib/credential-health', () => ({
+  resolveOAuthToken: (...args: unknown[]) => mockResolveOAuthToken(...args),
+  markCredentialFailed: (...args: unknown[]) => mockMarkCredentialFailed(...args),
+  CredentialFailureError,
 }));
 
 let mockFetch: jest.Mock;
@@ -43,7 +47,7 @@ import {
 import { BMAD_DOCUMENTATION_LINK } from '@bmad-easy/shared-types';
 import {
   ACCESS_TOKEN, OWNER, REPO, REPO_URL, SESSION,
-  ENCRYPTED_CREDENTIAL, DECRYPTED_TOKEN, API_BASE,
+  DECRYPTED_TOKEN, API_BASE,
   ROOT_WITH_ALL_DIRS, SKILLS_WITH_MD, MANIFEST_V6_8,
   CONFIG_YAML_V6_8, PACKAGE_JSON_V6,
   githubDirListing, githubFileContent, github404, github403, github500,
@@ -495,8 +499,8 @@ describe('validateRepository — Server Action', () => {
     mockFetch = jest.fn();
     jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
     mockAuth.mockResolvedValue(SESSION);
-    mockFindUniqueCredential.mockResolvedValue(ENCRYPTED_CREDENTIAL);
-    mockDecryptToken.mockReturnValue(DECRYPTED_TOKEN);
+    mockResolveOAuthToken.mockResolvedValue(DECRYPTED_TOKEN);
+    mockMarkCredentialFailed.mockResolvedValue(undefined);
     setupFetchWithOverrides(mockFetch, {});
   });
 
@@ -516,7 +520,7 @@ describe('validateRepository — Server Action', () => {
   });
 
   it('[P0] returns errorCode NO_CREDENTIAL when OAuthCredential row is absent', async () => {
-    mockFindUniqueCredential.mockResolvedValue(null);
+    mockResolveOAuthToken.mockRejectedValue(new CredentialFailureError(401));
     const result = await validateRepository(REPO_URL);
     expect(result).toMatchObject({ errorCode: 'NO_CREDENTIAL' });
   });
@@ -554,18 +558,28 @@ describe('validateRepository — Server Action', () => {
     expect(result).toMatchObject({ valid: true });
   });
 
-  it('[P1] returns errorCode UNKNOWN when decryptToken throws (corrupted credential)', async () => {
-    mockDecryptToken.mockImplementation(() => {
-      throw new Error('Decryption failed: invalid auth tag');
-    });
+  it('[P1] returns errorCode UNKNOWN when resolveOAuthToken throws non-CredentialFailureError (corrupted credential)', async () => {
+    mockResolveOAuthToken.mockRejectedValue(new Error('Decryption failed: invalid auth tag'));
     const result = await validateRepository(REPO_URL);
     expect(result).toMatchObject({ errorCode: 'UNKNOWN' });
   });
 
-  it('[P1] returns errorCode UNKNOWN when inspectBmadSetup throws (GitHub API 403)', async () => {
+  it('[P0] calls markCredentialFailed when resolveOAuthToken throws CredentialFailureError (AC-1)', async () => {
+    mockResolveOAuthToken.mockRejectedValue(new CredentialFailureError(401));
+    await validateRepository(REPO_URL);
+    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
+  });
+
+  it('[P1] returns errorCode NO_CREDENTIAL when inspectBmadSetup throws CredentialFailureError (GitHub API 403)', async () => {
     mockFetch.mockResolvedValue(github403());
     const result = await validateRepository(REPO_URL);
-    expect(result).toMatchObject({ errorCode: 'UNKNOWN' });
+    expect(result).toMatchObject({ errorCode: 'NO_CREDENTIAL' });
+  });
+
+  it('[P0] calls markCredentialFailed when inspectBmadSetup throws CredentialFailureError (AC-1)', async () => {
+    mockFetch.mockResolvedValue(github403());
+    await validateRepository(REPO_URL);
+    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
   });
 
   it('[P1] returns errorCode UNKNOWN when inspectBmadSetup throws (GitHub API 500)', async () => {

@@ -21,11 +21,13 @@ import type { JWT } from '@auth/core/jwt';
 
 const mockUserUpsert = jest.fn();
 const mockOAuthCredentialUpsert = jest.fn();
+const mockRepoConnectionUpdateMany = jest.fn();
 
 jest.mock('./prisma', () => ({
   getPrisma: () => ({
     user: { upsert: mockUserUpsert },
     oAuthCredential: { upsert: mockOAuthCredentialUpsert },
+    repoConnection: { updateMany: mockRepoConnectionUpdateMany },
   }),
 }));
 
@@ -87,6 +89,7 @@ describe('auth.ts jwt callback — OAuthCredential storage (AC-3, Task 3.1)', ()
     jest.clearAllMocks();
     mockUserUpsert.mockResolvedValue({ id: 'usr_abc123' });
     mockOAuthCredentialUpsert.mockResolvedValue({});
+    mockRepoConnectionUpdateMany.mockResolvedValue({ count: 0 });
     mockEncryptToken.mockReturnValue(ENCRYPTED_MOCK);
     process.env.CREDENTIAL_ENCRYPTION_KEK = 'a'.repeat(64);
   });
@@ -193,5 +196,41 @@ describe('auth.ts jwt callback — OAuthCredential storage (AC-3, Task 3.1)', ()
     });
 
     expect(callOrder).toEqual(['userUpsert', 'credentialUpsert']);
+  });
+
+  it('[P0] calls repoConnection.updateMany with healthy status after credential upsert (AC-3)', async () => {
+    await capturedConfig.callbacks.jwt({
+      token: {},
+      account: ACCOUNT_WITH_TOKEN,
+      profile: GITHUB_PROFILE,
+    });
+
+    expect(mockRepoConnectionUpdateMany).toHaveBeenCalledWith({
+      where: { userId: 'usr_abc123' },
+      data: { credentialHealth: 'healthy' },
+    });
+  });
+
+  it('[P0] does NOT call repoConnection.updateMany when account.access_token is absent', async () => {
+    await capturedConfig.callbacks.jwt({
+      token: {},
+      account: ACCOUNT_WITHOUT_TOKEN,
+      profile: GITHUB_PROFILE,
+    });
+
+    expect(mockRepoConnectionUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('[P1] does not abort sign-in when repoConnection.updateMany rejects', async () => {
+    mockRepoConnectionUpdateMany.mockRejectedValue(new Error('DB connection lost'));
+
+    const result = await capturedConfig.callbacks.jwt({
+      token: {},
+      account: ACCOUNT_WITH_TOKEN,
+      profile: GITHUB_PROFILE,
+    });
+
+    expect(result).toBeDefined();
+    expect(mockRepoConnectionUpdateMany).toHaveBeenCalled();
   });
 });

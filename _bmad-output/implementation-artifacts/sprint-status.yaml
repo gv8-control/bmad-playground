@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-06-21
+# last_updated: 2026-07-01
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -50,8 +50,8 @@ development_status:
   1-3-connect-a-repository-by-url: done
   1-4-validate-bmad-initialization-in-the-connected-repository: review
   1-5-resolve-git-identity-for-commit-attribution: done
-  1-6-detect-and-recover-from-credential-failures: backlog
-  1-7-enforce-authenticated-full-access-for-all-mvp-users: backlog
+  1-6-detect-and-recover-from-credential-failures: done
+  1-7-enforce-authenticated-full-access-for-all-mvp-users: done
   1-8-build-the-persistent-app-shell: backlog
   1-9-document-and-validate-the-kek-rotation-runbook: backlog
   epic-1-retrospective: optional

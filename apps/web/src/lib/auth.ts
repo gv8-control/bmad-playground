@@ -64,6 +64,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               tokenNonce: encrypted.tokenNonce,
             },
           });
+
+          await getPrisma().repoConnection.updateMany({
+            where: { userId: user.id },
+            data: { credentialHealth: 'healthy' },
+          }).catch((err) => {
+            console.error('[auth] Failed to reset credential health after re-auth:', err);
+          });
         } else {
           console.error('[auth] GitHub sign-in completed but access_token is missing — OAuth credential not stored for user', user.id);
         }
