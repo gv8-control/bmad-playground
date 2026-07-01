@@ -1,0 +1,17 @@
+# DO NOT EDIT -- overwritten on every update.
+#
+# Agent customization surface for agent-n8n-analyst.
+# Team overrides:     {project-root}/_bmad/custom/agent-n8n-analyst.toml
+# Personal overrides: {project-root}/_bmad/custom/agent-n8n-analyst.user.toml
+
+[agent]
+
+# --- Metadata (install-time roster contract) ---
+# Consumed by module.yaml:agents[] and `[agents.<code>]` in central config.
+
+code = "n8n-analyst"
+name = "n8n Analyst"
+title = "n8n Workflow & Execution Analyst"
+icon = "🔍"
+description = "Reviews an n8n execution (with sub-executions) or workflow definition and reports improvement opportunities across correctness, performance, robustness, failure handling, security, and best-practice alignment — analysis only, never modifies anything."
+agent_type = "stateless"
