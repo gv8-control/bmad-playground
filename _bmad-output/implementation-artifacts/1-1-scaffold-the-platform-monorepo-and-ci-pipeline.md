@@ -1,11 +1,11 @@
 ---
-status: done
+status: in-progress
 baseline_commit: e23128d014f0830a69777dfd410bc9d70229435e
 ---
 
 # Story 1.1: Scaffold the Platform Monorepo and CI Pipeline
 
-Status: done
+Status: in-progress
 
 ## Story
 
@@ -15,13 +15,15 @@ so that every subsequent feature has a consistent, deployable foundation to buil
 
 ## Acceptance Criteria
 
-**AC-1:** `apps/web` (Next.js 15, App Router, Tailwind, TypeScript strict), `apps/agent-be` (NestJS), `libs/shared-types`, and `libs/database-schemas` all exist and build successfully via `nx build`.
+**AC-1:** `apps/web` (Next.js 15, App Router, Tailwind, TypeScript strict), `apps/agent-be` (NestJS), `libs/shared-types`, and `libs/database-schemas` all exist and build successfully via `nx build`, scaffolded using Yarn (Berry, via Corepack) as the package manager.
 
 **AC-2:** `libs/database-schemas` contains the initial Prisma schema (User model at minimum) and generates a Prisma client that can be imported by both apps against a single Railway Postgres instance.
 
 **AC-3:** The DESIGN.md color/typography/spacing/radius tokens are applied as the Tailwind theme in `apps/web` (UX-DR1), with no light-mode variant — dark mode only.
 
-**AC-4:** GitHub Actions CI (`.github/workflows/test.yml`) runs lint and all available test suites (unit/integration/E2E) as a merge gate on push/PR to `main`/`develop`. Deploy for both Vercel (`apps/web`) and Railway (`apps/agent-be`) is a manual trigger, not automatic on merge.
+**AC-4:** GitHub Actions CI (`.github/workflows/test.yml`) runs lint and all available test suites (unit/integration/E2E) as a merge gate on push/PR to `main`/`develop`, using Yarn (Corepack-based setup, `yarn install --immutable`). Deploy for both Vercel (`apps/web`) and Railway (`apps/agent-be`) is a manual trigger, not automatic on merge.
+
+**AC-5:** `yarn.lock` is committed to the repository, with no `pnpm-lock.yaml` or `.pnpm-store/` remaining tracked or untracked; `package.json` pins the package manager via a `packageManager` field; `.yarnrc.yml` sets `nodeLinker: node-modules`.
 
 ## Tasks / Subtasks
 
@@ -65,6 +67,21 @@ so that every subsequent feature has a consistent, deployable foundation to buil
   - [x] 5.4 Leave `playwright.config.ts` `webServer` block commented — `apps/agent-be` has no `/health` endpoint yet (delivered in a later story); E2E tests use `BASE_URL` env var against a manually-started server
   - [x] 5.5 Verify lint passes: `pnpm exec nx run-many --target=lint --all --parallel=4`
   - [x] 5.6 Verify unit/integration tests pass: `pnpm exec nx run-many --target=test --all --parallel=4 --passWithNoTests`
+
+- [ ] Task 6: Migrate package manager from pnpm to Yarn (AC: 1, 4, 5) — per `sprint-change-proposal-2026-07-01.md`
+  - [ ] 6.1 Update `package.json`: `dev` script → `yarn nx run-many -t dev serve`; add `"packageManager"` field pinned to the installed Yarn version
+  - [ ] 6.2 Confirm no `pnpm-lock.yaml`/`.pnpm-store/` remain (tracked or untracked); regenerate `yarn.lock` via `yarn install`
+  - [ ] 6.3 `.gitignore`: remove the `yarn.lock` line so the lockfile can be committed
+  - [ ] 6.4 Create `.yarnrc.yml` with `nodeLinker: node-modules` (required for Next.js/Nx compatibility with Yarn Berry)
+  - [ ] 6.5 `.github/workflows/test.yml`: replace all `pnpm/action-setup` blocks + `PNPM_VERSION` with Corepack (`corepack enable`) + `actions/setup-node` `cache: 'yarn'`; `pnpm install --frozen-lockfile` → `yarn install --immutable`; `pnpm exec <cmd>` → `yarn <cmd>`; cache key `hashFiles('**/pnpm-lock.yaml')` → `hashFiles('**/yarn.lock')`
+  - [ ] 6.6 `scripts/burn-in.sh`, `scripts/ci-local.sh`, `scripts/test-changed.sh`: `pnpm exec` → `yarn`
+  - [ ] 6.7 `docs/ci.md`: update stack description, lockfile-exists check, and pnpm-specific troubleshooting entries to Yarn equivalents
+  - [ ] 6.8 `playwright/README.md`: update all `pnpm` example commands to `yarn`
+  - [ ] 6.9 `.vscode/launch.json`: `"runtimeExecutable": "pnpm"` → `"yarn"`
+  - [ ] 6.10 `apps/agent-be/project.json`: `prune-lockfile` target's declared output `pnpm-lock.yaml` → `yarn.lock`
+  - [ ] 6.11 `.devcontainer/create.sh`: simplify `corepack prepare yarn@stable --activate` → `corepack enable` (version now comes from `package.json`'s `packageManager` field)
+  - [ ] 6.12 `CLAUDE.md`: cosmetic update of the generic Nx example command to `yarn nx build`
+  - [ ] 6.13 Verify `nx build` succeeds for all 4 projects, lint passes, and unit/integration tests pass using Yarn
 
 ## Dev Notes
 
