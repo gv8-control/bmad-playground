@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-30T19:29:30.915Z",
+  "updatedAt": "2026-07-01T07:08:56.025Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -89,7 +89,7 @@
             {
               "id": "1c897e45-5961-4f04-9ab0-11ca88da2de9",
               "name": "Recovery URL",
-              "value": "={{ $execution.resumeUrl }}",
+              "value": "={{ $execution.resumeUrl.replace('webhook', 'form') }}",
               "type": "string"
             },
             {
@@ -494,16 +494,16 @@
       }
     ]
   },
-  "versionId": "b671b914-61f6-40c5-a792-e526f2147c65",
-  "activeVersionId": "b671b914-61f6-40c5-a792-e526f2147c65",
-  "versionCounter": 141,
+  "versionId": "68d260c3-0863-4036-8b97-93031613b37a",
+  "activeVersionId": "bd9d0c4e-70fd-4f74-99cb-97f06f154d8d",
+  "versionCounter": 145,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-01T03:30:56.677Z",
-      "createdAt": "2026-07-01T03:30:56.677Z",
+      "updatedAt": "2026-07-01T03:43:25.204Z",
+      "createdAt": "2026-07-01T03:43:25.204Z",
       "role": "workflow:owner",
       "workflowId": "C8qzMFk2e00sLHJg",
       "projectId": "AYEhcVrohjJ82DQg",
