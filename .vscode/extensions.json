@@ -4,6 +4,7 @@
     "esbenp.prettier-vscode",
     "cweijan.vscode-postgresql-client2",
     "anthropic.claude-code",
-    "fedaykindev.openchamber"
+    "fedaykindev.openchamber",
+    "thejenos.ntfysh-vscode"
   ]
 }
