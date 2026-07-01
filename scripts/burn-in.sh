@@ -11,7 +11,7 @@ for i in $(seq 1 "$COUNT"); do
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "Burn-in iteration $i/$COUNT"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  CI=true pnpm exec playwright test || exit 1
+  CI=true yarn playwright test || exit 1
 done
 
 echo "Burn-in complete — no flaky tests detected"

@@ -50,12 +50,12 @@ export default defineConfig({
 
   webServer: [
     {
-      command: 'pnpm nx run web:dev',
+      command: 'yarn nx run web:dev',
       url: 'http://localhost:3000',
       reuseExistingServer: !process.env.CI,
     },
     {
-      command: 'pnpm nx run agent-be:serve',
+      command: 'yarn nx run agent-be:serve',
       url: 'http://localhost:3001/api/health',
       reuseExistingServer: !process.env.CI,
     },

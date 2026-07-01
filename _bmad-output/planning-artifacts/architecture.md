@@ -152,7 +152,7 @@ circuit-breaker and SSE heartbeat mitigations already captured in Cross-Cutting 
 
 ### Monorepo Structure
 
-Nx workspace with pnpm.
+Nx workspace with Yarn (Berry, via Corepack).
 
 ```
 bmad-easy/
@@ -183,8 +183,8 @@ schemas against one database.
 ### Initialization Commands
 
 ```bash
-# 1. Create Nx workspace (empty preset, pnpm)
-npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=pnpm
+# 1. Create Nx workspace (empty preset, yarn)
+npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=yarn
 
 # 2. Next.js BFF + frontend
 nx generate @nx/next:app apps/web --style=none --appDir --src --e2eTestRunner=none
@@ -489,7 +489,7 @@ export const SANDBOX_SERVICE = Symbol('ISandboxService');
 bmad-easy/
 ├── README.md
 ├── package.json
-├── pnpm-workspace.yaml
+├── .yarnrc.yml
 ├── nx.json
 ├── tsconfig.base.json
 ├── .env.example
@@ -820,4 +820,4 @@ Two issues were raised and resolved collaboratively during this step: (1) the NF
 - Refer to this document for all architectural questions.
 
 **First Implementation Priority:**
-Scaffold the Nx workspace via the Initialization Commands in Starter Template Evaluation (`npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=pnpm`, then generate `apps/web`, `apps/agent-be`, `libs/shared-types`, `libs/database-schemas`), per Decision Impact Analysis's Implementation Sequence step 1.
+Scaffold the Nx workspace via the Initialization Commands in Starter Template Evaluation (`npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=yarn`, then generate `apps/web`, `apps/agent-be`, `libs/shared-types`, `libs/database-schemas`), per Decision Impact Analysis's Implementation Sequence step 1.

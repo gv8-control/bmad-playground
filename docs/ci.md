@@ -2,7 +2,7 @@
 
 **Platform:** GitHub Actions  
 **Config:** `.github/workflows/test.yml`  
-**Stack:** fullstack — Nx monorepo (pnpm), Next.js 15 + NestJS  
+**Stack:** fullstack — Nx monorepo (Yarn), Next.js 15 + NestJS  
 **Frameworks:** Playwright (E2E) · Jest + @nestjs/testing (unit/integration)
 
 ---
@@ -50,7 +50,7 @@ All blueprint steps were activated when the Nx monorepo was scaffolded (2026-06-
 
 | Step | Status |
 |------|--------|
-| pnpm lockfile exists | ✅ `pnpm-lock.yaml` |
+| Yarn lockfile exists | ✅ `yarn.lock` |
 | Nx targets confirmed (`lint`, `test`, `serve`, `dev`) | ✅ |
 | `agent-be` health endpoint (`GET /api/health`) | ✅ `app.controller.ts` |
 | Service startup steps uncommented in `test.yml` | ✅ |
@@ -109,16 +109,16 @@ Traces and videos are captured on failure per `playwright.config.ts` settings (`
 ## Troubleshooting
 
 **Lint fails with "project not found"**  
-→ Nx workspace not yet scaffolded. Run `pnpm create nx-workspace` first.
+→ Nx workspace not yet scaffolded. Run `yarn create nx-workspace` first.
 
 **E2E fails with "page.goto: net::ERR_CONNECTION_REFUSED"**  
 → Either `BASE_URL` variable is not set, or the webServer blocks in `playwright.config.ts` need uncommenting.
 
 **Playwright browser cache miss every run**  
-→ `pnpm-lock.yaml` changed or does not exist. Confirm `pnpm install --frozen-lockfile` succeeded.
+→ `yarn.lock` changed or does not exist. Confirm `yarn install --immutable` succeeded.
 
 **Burn-in iterations vary in pass/fail**  
 → Flaky test detected. Check `burn-in-failures` artifact for trace and video.
 
-**`pnpm: command not found` on runner**  
-→ `pnpm/action-setup@v4` step failed. Verify PNPM_VERSION env var is set to a valid version (`9`).
+**`yarn: command not found` on runner**  
+→ `corepack enable` step failed or Node.js setup ran before it. Verify the `packageManager` field in `package.json` is set to a valid Yarn version.

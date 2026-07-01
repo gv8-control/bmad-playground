@@ -5,18 +5,18 @@ Playwright E2E tests for the bmad-easy SaaS platform, scaffolded by the TEA Mast
 ## Prerequisites
 
 - Node 24 (see `.nvmrc` — `nvm use` from the repo root)
-- pnpm workspace initialized (`pnpm install` at monorepo root)
-- Playwright browsers: `pnpm exec playwright install --with-deps chromium`
+- Yarn workspace initialized (`yarn install` at monorepo root)
+- Playwright browsers: `yarn playwright install --with-deps chromium`
 - A `.env.test` file populated from `.env.example`
 
 ## Setup
 
 ```sh
 # 1. Install dependencies
-pnpm install
+yarn install
 
 # 2. Install Playwright browsers
-pnpm exec playwright install --with-deps chromium
+yarn playwright install --with-deps chromium
 
 # 3. Copy and fill in env vars
 cp .env.example .env.test
@@ -28,23 +28,23 @@ cp .env.example .env.test
 ### Local (headed, useful for debugging)
 
 ```sh
-pnpm test:e2e:headed            # Opens browser window
-pnpm test:e2e:debug             # Step through tests with Playwright Inspector
-pnpm test:e2e -- --grep "OAuth" # Run a specific test by name
+yarn test:e2e:headed            # Opens browser window
+yarn test:e2e:debug             # Step through tests with Playwright Inspector
+yarn test:e2e -- --grep "OAuth" # Run a specific test by name
 ```
 
 ### Local (headless, standard)
 
 ```sh
-pnpm test:e2e                   # All tests
-pnpm test:e2e:auth              # Auth tests only
-pnpm test:e2e:conversation      # Conversation/SSE tests only
+yarn test:e2e                   # All tests
+yarn test:e2e:auth              # Auth tests only
+yarn test:e2e:conversation      # Conversation/SSE tests only
 ```
 
 ### CI
 
 ```sh
-pnpm test:e2e:ci                # CI mode: 4 workers, JUnit reporter, retries=2
+yarn test:e2e:ci                # CI mode: 4 workers, JUnit reporter, retries=2
 ```
 
 Add these scripts to the **root** `package.json` when the Nx workspace is scaffolded:
@@ -173,7 +173,7 @@ Recommended GitHub Actions jobs pattern:
 
 ```yaml
 - name: Run E2E tests
-  run: pnpm test:e2e:ci
+  run: yarn test:e2e:ci
   env:
     BASE_URL: ${{ secrets.STAGING_URL }}
     TEST_GITHUB_USERNAME: ${{ secrets.TEST_GITHUB_USERNAME }}
@@ -195,7 +195,7 @@ strategy:
   matrix:
     shard: [1/4, 2/4, 3/4, 4/4]
 steps:
-  - run: pnpm test:e2e:ci --shard=${{ matrix.shard }}
+  - run: yarn test:e2e:ci --shard=${{ matrix.shard }}
 ```
 
 ## NestJS Integration Tests
@@ -204,7 +204,7 @@ Integration tests live in `apps/agent-be/test/integration/`.
 
 ```sh
 # From apps/agent-be/ (or via Nx):
-pnpm test:integration
+yarn test:integration
 ```
 
 The `buildTestModule()` helper automatically wires `SANDBOX_SERVICE` to `SandboxServiceFake`.

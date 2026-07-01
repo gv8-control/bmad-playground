@@ -1,5 +1,5 @@
 # CI quality pipeline — bmad-easy
-# Stack: fullstack (Nx monorepo — pnpm, Next.js + NestJS)
+# Stack: fullstack (Nx monorepo — Yarn, Next.js + NestJS)
 # Framework: Playwright (E2E) + Jest/@nestjs/testing (unit/integration)
 #
 # All stages active: lint, unit/integration, E2E (4 shards), burn-in.
@@ -21,7 +21,6 @@ concurrency:
 
 env:
   NODE_VERSION: '24'
-  PNPM_VERSION: '9'
 
 jobs:
   # ── Lint ──────────────────────────────────────────────────────────────────────
@@ -33,22 +32,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: 'yarn'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Lint all apps and libs
-        run: pnpm exec nx run-many --target=lint --all --parallel=4
+        run: yarn nx run-many --target=lint --all --parallel=4
 
   # ── Unit & integration tests (NestJS / Jest) ──────────────────────────────────
   unit:
@@ -60,22 +57,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: 'yarn'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Run unit and integration tests
-        run: pnpm exec nx run-many --target=test --all --parallel=4 --passWithNoTests
+        run: yarn nx run-many --target=test --all --parallel=4 --passWithNoTests
         env:
           CI: true
 
@@ -104,46 +99,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: 'yarn'
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        run: yarn playwright install --with-deps chromium
 
       - name: Start web app (dev server)
-        run: pnpm exec nx run web:dev &
+        run: yarn nx run web:dev &
         env:
           PORT: 3000
 
       - name: Start agent-be
-        run: pnpm exec nx run agent-be:serve &
+        run: yarn nx run agent-be:serve &
         env:
           PORT: 3001
 
       - name: Wait for services
-        run: pnpm exec wait-on http://localhost:3000 http://localhost:3001/api/health --timeout 60000
+        run: yarn wait-on http://localhost:3000 http://localhost:3001/api/health --timeout 60000
 
       - name: Run E2E tests (shard ${{ matrix.shard }}/4)
-        run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
+        run: yarn playwright test --shard=${{ matrix.shard }}/4
         env:
           CI: true
           BASE_URL: http://localhost:3000
@@ -169,43 +162,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: 'yarn'
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        run: yarn playwright install --with-deps chromium
 
       - name: Start web app (dev server)
-        run: pnpm exec nx run web:dev &
+        run: yarn nx run web:dev &
         env:
           PORT: 3000
 
       - name: Start agent-be
-        run: pnpm exec nx run agent-be:serve &
+        run: yarn nx run agent-be:serve &
         env:
           PORT: 3001
 
       - name: Wait for services
-        run: pnpm exec wait-on http://localhost:3000 http://localhost:3001/api/health --timeout 60000
+        run: yarn wait-on http://localhost:3000 http://localhost:3001/api/health --timeout 60000
 
       - name: Run burn-in loop (10 iterations)
         env:
@@ -219,7 +210,7 @@ jobs:
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "Burn-in iteration $i/$BURN_IN_COUNT"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            pnpm exec playwright test || exit 1
+            yarn playwright test || exit 1
           done
           echo "Burn-in complete — no flaky tests detected"
 
@@ -301,8 +292,8 @@ jobs:
 #         run: |
 #           # Security: inputs passed through env: to prevent script injection
 #           if [ -n "$TEST_GREP" ]; then
-#             pnpm exec playwright test --grep "$TEST_GREP"
+#             yarn playwright test --grep "$TEST_GREP"
 #           else
-#             pnpm exec playwright test
+#             yarn playwright test
 #           fi
 # ============================================================================

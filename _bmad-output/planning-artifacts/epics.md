@@ -95,7 +95,7 @@ NFR-O1: Platform must track per-user LLM spend via the Agent SDK's cost reportin
 
 ### Additional Requirements
 
-- Starter/greenfield template: Nx workspace with pnpm (`npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=pnpm`), generating `apps/web` (Next.js 15, App Router, Tailwind, Turbopack), `apps/agent-be` (NestJS), `libs/shared-types`, `libs/database-schemas`. This is the first implementation story (Epic 1, Story 1).
+- Starter/greenfield template: Nx workspace with Yarn (`npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=yarn`), generating `apps/web` (Next.js 15, App Router, Tailwind, Turbopack), `apps/agent-be` (NestJS), `libs/shared-types`, `libs/database-schemas`. Yarn is pinned via a `packageManager` field in `package.json` and installed through Corepack, with `nodeLinker: node-modules` in `.yarnrc.yml` for Next.js/Nx compatibility. This is the first implementation story (Epic 1, Story 1).
 - Single shared Prisma schema/client library (`libs/database-schemas`) consumed independently by `apps/web` and `apps/agent-be` against one Railway Postgres instance — eliminates schema drift structurally.
 - Boundary JWT between `apps/web` and `apps/agent-be`, decoupled from Auth.js's internal session JWE; transported via `Authorization` header (REST) and query parameter (SSE, since `EventSource` cannot set headers); long-lived, re-minted per page load; logs sanitized to strip the token.
 - OAuth token at rest: per-user DEK + platform KEK envelope encryption (AES-256-GCM); KEK stored as a Railway env var for MVP with a documented rotation runbook and enforced GCM nonce-uniqueness.
@@ -240,9 +240,10 @@ So that every subsequent feature has a consistent, deployable foundation to buil
 **Acceptance Criteria:**
 
 **Given** an empty repository
-**When** the Nx workspace is initialized per the architecture's Initialization Commands
+**When** the Nx workspace is initialized per the architecture's Initialization Commands (Yarn-based, Corepack-pinned)
 **Then** `apps/web` (Next.js 15, App Router, Tailwind, TypeScript strict), `apps/agent-be` (NestJS), `libs/shared-types`, and `libs/database-schemas` exist and build successfully via `nx build`
 **And** `libs/database-schemas` contains the initial Prisma schema (User model at minimum) and generates a client consumed by both apps against a single Railway Postgres instance
+**And** `yarn.lock` is committed to the repository and CI installs with `yarn install --immutable`
 
 **Given** the scaffolded `apps/web`
 **When** the Tailwind theme is configured

@@ -5,8 +5,8 @@
       "type": "node",
       "request": "launch",
       "name": "Debug agent-be with Nx",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["exec", "nx", "serve", "agent-be"],
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["nx", "serve", "agent-be"],
       "env": {
         "NODE_OPTIONS": "--inspect=9229"
       },

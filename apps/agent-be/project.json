@@ -32,7 +32,7 @@
       "executor": "@nx/js:prune-lockfile",
       "outputs": [
         "{workspaceRoot}/dist/apps/agent-be/package.json",
-        "{workspaceRoot}/dist/apps/agent-be/pnpm-lock.yaml"
+        "{workspaceRoot}/dist/apps/agent-be/yarn.lock"
       ],
       "options": {
         "buildTarget": "build"
