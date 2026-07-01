@@ -1,4 +1,4 @@
 #!/bin/bash
-docker compose up -d
-until curl -sf http://localhost:5678/healthz > /dev/null; do sleep 2; done
-n8n import:workflow --separate --input=n8n/workflows --activeState=fromJson
+
+until docker info > /dev/null 2>&1; do sleep 1; done
+docker compose up -d --wait
