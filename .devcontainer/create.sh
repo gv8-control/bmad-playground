@@ -1,6 +1,8 @@
 #!/bin/bash
 cp --update=none .env.example .env
-npm install -g nx opencode-ai
-npm install
+corepack prepare yarn@stable --activate
+
+yarn install
+yarn global add nx opencode-ai
 
 echo ". .env" > ~/.bashrc

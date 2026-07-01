@@ -46,3 +46,10 @@ test-results/
 # n8n
 .cache/
 .n8n/
+
+# Yarn
+.pnp.cjs
+.pnp.loader.mjs
+.yarn/
+yarn-error.log
+yarn.lock
