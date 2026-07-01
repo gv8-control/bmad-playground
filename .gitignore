@@ -52,7 +52,6 @@ test-results/
 .pnp.loader.mjs
 .yarn/
 yarn-error.log
-yarn.lock
 
 # pm2
 .pm2/
