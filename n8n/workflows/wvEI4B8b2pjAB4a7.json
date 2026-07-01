@@ -119,7 +119,7 @@
             {
               "id": "1c897e45-5961-4f04-9ab0-11ca88da2de9",
               "name": "Recovery URL",
-              "value": "={{ $execution.resumeUrl }}",
+              "value": "={{ $execution.resumeUrl.replace('webhook', 'form') }}",
               "type": "string"
             }
           ]
@@ -282,6 +282,42 @@
       ],
       "id": "014229e5-19e1-4b5f-b687-bcc41be80dd8",
       "name": "Output"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "agent-outcome"
+            },
+            {
+              "name": "title",
+              "value": "={{ $('Variables').item.json.conversationTitle }} - Action Needed"
+            },
+            {
+              "name": "message",
+              "value": "BMAD run is awaiting your response"
+            },
+            {
+              "name": "click",
+              "value": "={{ $('Variables').item.json['Recovery URL'] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        944,
+        480
+      ],
+      "id": "56f32eda-9a4c-443c-b676-9064407e820d",
+      "name": "Notify"
     }
   ],
   "connections": {
@@ -374,6 +410,11 @@
         [
           {
             "node": "Agent MD to HTML",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify",
             "type": "main",
             "index": 0
           }
