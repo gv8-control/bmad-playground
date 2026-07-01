@@ -75,3 +75,8 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 - Empty/whitespace `githubLogin` produces invalid fallback [`apps/web/src/lib/git-identity.ts:11,16`] — `githubLogin` is not validated for emptiness before being used as fallback name and noreply email local-part. GitHub guarantees `login` is non-empty from OAuth. Not reachable through normal flows.
 - `auth()` outside try/catch — rejection unhandled [`apps/web/src/actions/git-identity.actions.ts:13`] — `auth()` call sits outside the try/catch block; if it rejects (JWT decode failure, misconfigured secret), the error escapes as unhandled rejection. Consistent with all sibling Server Actions (`repo-connection.actions.ts:46`, `repository-validation.actions.ts:281`). Codebase-wide pattern, not a Story 1.5 issue.
+
+## Deferred from: adversarial review of git-identity.test.ts comment fix (2026-07-01)
+
+- Test name/body mismatch, pre-existing [`apps/web/src/lib/git-identity.test.ts:124`] — `'function accepts no token parameter in its signature'` describes a signature check, but the body only asserts on the return value; no signature-level check exists. Predates this comment fix.
+- Near-duplicate test coverage, pre-existing [`apps/web/src/lib/git-identity.test.ts:115-137`] — the `'return type contains only name and email keys'` test and the `'function accepts no token parameter'` test both assert the same return shape at runtime. Predates this comment fix.

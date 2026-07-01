@@ -122,10 +122,8 @@ describe('resolveGitIdentity (AC-1, AC-2, AC-3)', () => {
     });
 
     it('function accepts no token parameter in its signature', () => {
-      // Type-level assertion: GitIdentityUser has no token field
-      // This is enforced by the TypeScript compiler — if someone adds a
-      // token field to GitIdentityUser, this test will fail at compile time.
-      // The runtime assertion here confirms the return shape.
+      // Runtime check only: an optional `token?: string` added to
+      // GitIdentityUser would still type-check and pass this test unnoticed.
       const result = resolveGitIdentity({
         name: 'Jane',
         email: 'jane@example.com',

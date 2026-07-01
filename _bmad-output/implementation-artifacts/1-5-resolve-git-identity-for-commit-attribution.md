@@ -4,7 +4,7 @@ baseline_commit: 134bef67c712748ff495710ec6008417ffc41b06
 
 # Story 1.5: Resolve Git Identity for Commit Attribution
 
-Status: review
+Status: done
 
 ## Story
 
@@ -725,9 +725,10 @@ glm-5.2 (neuralwatt/glm-5.2)
 ## Change Log
 
 - 2026-06-30: Story 1.5 implemented — added `resolveGitIdentity` pure function and `getGitIdentity` Server Action with full unit and integration test coverage. All ACs satisfied (AC-1, AC-2, AC-3). 21 new tests, 0 lint errors. Build failure is pre-existing (Turbopack workspace root config).
+- 2026-07-01: Resolved the outstanding review patch — corrected the misleading compile-time-enforcement claim in `git-identity.test.ts:125-127`'s comment. Adversarial review of the fix surfaced two pre-existing issues (test name/body mismatch, near-duplicate test coverage), logged to `deferred-work.md` rather than fixed here (out of scope for this patch). Status moved to done.
 
 ### Review Findings
 
-- [ ] [Review][Patch] AC-3 test comment claims false compile-time enforcement [`apps/web/src/lib/git-identity.test.ts:125-138`] — The test comment states "if someone adds a token field to GitIdentityUser, this test will fail at compile time." This is misleading: an *optional* `token?: string` field would compile fine and the test would still pass. Fix: correct the comment to accurately describe what the test enforces (runtime assertion on return type).
+- [x] [Review][Patch] AC-3 test comment claims false compile-time enforcement [`apps/web/src/lib/git-identity.test.ts:125-138`] — The test comment states "if someone adds a token field to GitIdentityUser, this test will fail at compile time." This is misleading: an *optional* `token?: string` field would compile fine and the test would still pass. Fix: correct the comment to accurately describe what the test enforces (runtime assertion on return type).
 - [x] [Review][Defer] Empty/whitespace `githubLogin` produces invalid fallback [`apps/web/src/lib/git-identity.ts:11,16`] — deferred, pre-existing: GitHub guarantees `login` is non-empty from OAuth. Not reachable through normal flows.
 - [x] [Review][Defer] `auth()` outside try/catch — rejection unhandled [`apps/web/src/actions/git-identity.actions.ts:13`] — deferred, pre-existing: consistent with all sibling Server Actions (`repo-connection.actions.ts:46`, `repository-validation.actions.ts:281`). Codebase-wide pattern, not a Story 1.5 issue.
