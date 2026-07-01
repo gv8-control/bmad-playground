@@ -24,3 +24,7 @@ Set these in `.env` and the matching n8n credential is created (or updated) auto
 | `MISTRAL_API_KEY` | Mistral Cloud account |
 
 To add more, edit `n8n/credentials.json`.
+
+### Notifications
+
+This project publishes to [ntfy.sh](https://ntfy.sh) on topic `agent-outcome` to notify you when something needs your input. Subscribe to the topic from any ntfy client to get alerted — the `thejenos.ntfysh-vscode` VS Code extension (already recommended in `.vscode/extensions.json`), the ntfy mobile/desktop app, or a browser tab at https://ntfy.sh/agent-outcome.
