@@ -448,7 +448,8 @@
     "binaryMode": "separate",
     "availableInMCP": true,
     "executionOrder": "v1",
-    "saveExecutionProgress": true
+    "saveExecutionProgress": true,
+    "errorWorkflow": "bmadErrNotify001"
   },
   "staticData": null,
   "meta": null,
@@ -465,9 +466,9 @@
       }
     ]
   },
-  "versionId": "758b3d8c-db9d-4f86-a2a1-1e915fc676d5",
-  "activeVersionId": "758b3d8c-db9d-4f86-a2a1-1e915fc676d5",
-  "versionCounter": 153,
+  "versionId": "c29395c1-6160-4321-b4f8-da0a2aa1b6ff",
+  "activeVersionId": "c29395c1-6160-4321-b4f8-da0a2aa1b6ff",
+  "versionCounter": 155,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

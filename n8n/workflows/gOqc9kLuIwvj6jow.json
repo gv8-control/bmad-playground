@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-01T18:53:26.257Z",
+  "updatedAt": "2026-07-01T19:54:32.833Z",
   "createdAt": "2026-07-01T18:29:26.000Z",
   "id": "gOqc9kLuIwvj6jow",
   "name": "Develop Story (Webhook)",
@@ -282,15 +282,16 @@
     "executionOrder": "v1",
     "callerPolicy": "workflowsFromSameOwner",
     "saveExecutionProgress": true,
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "errorWorkflow": "bmadErrNotify001"
   },
   "staticData": null,
   "meta": {},
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "971ea7ac-e5ce-43e7-9c85-ca38394620ed",
-  "activeVersionId": "7a0aa003-efdc-4d2a-b208-cc205b755255",
-  "versionCounter": 3,
+  "versionId": "be226ada-856b-4ca7-afec-933518fc91d2",
+  "activeVersionId": "be226ada-856b-4ca7-afec-933518fc91d2",
+  "versionCounter": 4,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],
@@ -315,7 +316,7 @@
     }
   ],
   "versionMetadata": {
-    "name": null,
-    "description": null
+    "name": "Version 971ea7ac",
+    "description": ""
   }
 }

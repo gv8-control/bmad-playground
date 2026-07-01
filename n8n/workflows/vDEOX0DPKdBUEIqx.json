@@ -1137,7 +1137,8 @@
     "timeSavedMode": "fixed",
     "availableInMCP": true,
     "executionOrder": "v1",
-    "saveExecutionProgress": true
+    "saveExecutionProgress": true,
+    "errorWorkflow": "bmadErrNotify001"
   },
   "staticData": null,
   "meta": {
@@ -1145,9 +1146,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "da24f339-2af3-4917-8d26-3add5357c61c",
-  "activeVersionId": null,
-  "versionCounter": 518,
+  "versionId": "e77ee7b7-55fa-4795-ba37-e32aba924a8f",
+  "activeVersionId": "e77ee7b7-55fa-4795-ba37-e32aba924a8f",
+  "versionCounter": 519,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

@@ -67,7 +67,8 @@
     "binaryMode": "separate",
     "availableInMCP": true,
     "executionOrder": "v1",
-    "saveExecutionProgress": true
+    "saveExecutionProgress": true,
+    "errorWorkflow": "bmadErrNotify001"
   },
   "staticData": null,
   "meta": {
@@ -76,9 +77,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "2592d0b7-b7ca-4f2d-9747-8478231d8219",
-  "activeVersionId": "2592d0b7-b7ca-4f2d-9747-8478231d8219",
-  "versionCounter": 12,
+  "versionId": "162c51bd-1aa9-4876-93d9-383007f6b419",
+  "activeVersionId": "162c51bd-1aa9-4876-93d9-383007f6b419",
+  "versionCounter": 13,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

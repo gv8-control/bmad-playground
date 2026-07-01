@@ -1,0 +1,109 @@
+{
+  "updatedAt": "2026-07-01T20:04:35.218Z",
+  "createdAt": "2026-07-01T19:54:02.503Z",
+  "id": "bmadErrNotify001",
+  "name": "Error Handler (ntfy)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5b1a7c3e-9d2f-4e8a-b6c4-1f0d9e8a7b6c",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "agent-outcome"
+            },
+            {
+              "name": "title",
+              "value": "={{ $json.workflow.name }} failed"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.execution?.error?.message ?? 'Unknown error' }} (node: {{ $json.execution?.lastNodeExecuted ?? 'n/a' }}, execution: {{ $json.execution?.id ?? '?' }})"
+            },
+            {
+              "name": "click",
+              "value": "={{ $json.execution?.url ?? '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "8c2d4f6a-1b3e-4a5c-9d7f-2e8b6a4c0d1e",
+      "name": "Notify failure"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Notify failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "bd936b74-d0fd-4742-bbef-57b68bc6b843",
+  "activeVersionId": "1eed4bf2-d937-4ba5-902f-ddb4ac7f351a",
+  "versionCounter": 3,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-01T19:54:02.503Z",
+      "createdAt": "2026-07-01T19:54:02.503Z",
+      "role": "workflow:owner",
+      "workflowId": "bmadErrNotify001",
+      "projectId": "AYEhcVrohjJ82DQg",
+      "project": {
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}
