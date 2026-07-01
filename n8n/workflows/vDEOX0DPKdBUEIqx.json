@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-01T10:34:46.755Z",
+  "updatedAt": "2026-07-01T11:46:55.778Z",
   "createdAt": "2026-06-19T23:11:49.051Z",
   "id": "vDEOX0DPKdBUEIqx",
   "name": "Develop Story",
@@ -25,7 +25,7 @@
             {
               "id": "76d406c2-e979-4abf-a013-53ed8b6b912a",
               "name": "Story",
-              "value": "1.5",
+              "value": "1.6",
               "type": "string"
             },
             {
@@ -138,8 +138,7 @@
         16
       ],
       "name": "Validate story",
-      "id": "5d0e4c1a-51e5-430b-90aa-ac5dca1572da",
-      "disabled": true
+      "id": "5d0e4c1a-51e5-430b-90aa-ac5dca1572da"
     },
     {
       "parameters": {
@@ -226,8 +225,7 @@
         16
       ],
       "name": "Create story",
-      "id": "34553854-61ee-4da1-8ed0-d983cb83cd0e",
-      "disabled": true
+      "id": "34553854-61ee-4da1-8ed0-d983cb83cd0e"
     },
     {
       "parameters": {
@@ -314,8 +312,7 @@
         -112
       ],
       "name": "Prepare tests",
-      "id": "a6368727-663a-4381-b364-cf95d0ea518b",
-      "disabled": true
+      "id": "a6368727-663a-4381-b364-cf95d0ea518b"
     },
     {
       "parameters": {
@@ -402,8 +399,7 @@
         96
       ],
       "name": "Validate story again",
-      "id": "8bd72951-2851-4615-aa6f-8d982260c524",
-      "disabled": true
+      "id": "8bd72951-2851-4615-aa6f-8d982260c524"
     },
     {
       "parameters": {
@@ -490,8 +486,7 @@
         16
       ],
       "name": "Implement story",
-      "id": "6084749d-fc4d-43ee-a446-bbf292b49361",
-      "disabled": true
+      "id": "6084749d-fc4d-43ee-a446-bbf292b49361"
     },
     {
       "parameters": {
@@ -506,8 +501,7 @@
         16
       ],
       "id": "347b25b5-6708-45b5-8803-9609a34ef850",
-      "name": "Merge",
-      "disabled": true
+      "name": "Merge"
     },
     {
       "parameters": {
@@ -941,8 +935,7 @@
         -144
       ],
       "name": "E2E tests",
-      "id": "fb09dacc-5798-46ce-a41b-1b229496b341",
-      "disabled": true
+      "id": "fb09dacc-5798-46ce-a41b-1b229496b341"
     },
     {
       "parameters": {
@@ -1122,9 +1115,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "83108a37-7b34-4e4e-8218-b7ab2a10df54",
+  "versionId": "da24f339-2af3-4917-8d26-3add5357c61c",
   "activeVersionId": null,
-  "versionCounter": 516,
+  "versionCounter": 518,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

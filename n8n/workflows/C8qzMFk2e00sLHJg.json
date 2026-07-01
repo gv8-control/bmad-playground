@@ -537,7 +537,7 @@
     ]
   },
   "versionId": "b54c7881-b6ed-46e9-8ffd-8bcea0adf519",
-  "activeVersionId": "68d260c3-0863-4036-8b97-93031613b37a",
+  "activeVersionId": "b54c7881-b6ed-46e9-8ffd-8bcea0adf519",
   "versionCounter": 161,
   "triggerCount": 0,
   "sourceWorkflowId": null,
@@ -563,7 +563,7 @@
     }
   ],
   "versionMetadata": {
-    "name": null,
-    "description": null
+    "name": "With ntfy.sh",
+    "description": ""
   }
 }
