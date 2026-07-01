@@ -48,7 +48,7 @@ import { BMAD_DOCUMENTATION_LINK } from '@bmad-easy/shared-types';
 import {
   ACCESS_TOKEN, OWNER, REPO, REPO_URL, SESSION,
   DECRYPTED_TOKEN, API_BASE,
-  ROOT_WITH_ALL_DIRS, SKILLS_WITH_MD, MANIFEST_V6_8,
+  ROOT_WITH_ALL_DIRS, SKILLS_WITH_MD, SKILLS_WITH_SUBDIRS, MANIFEST_V6_8,
   CONFIG_YAML_V6_8, PACKAGE_JSON_V6,
   githubDirListing, githubFileContent, github404, github403, github500,
   setupFetchWithOverrides,
@@ -358,6 +358,59 @@ describe('inspectBmadSetup — skills directory validation (AC-4, AC-5)', () => 
     setupFetchWithOverrides(mockFetch, { '.claude/skills': github404() });
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO) as { meta: { documentationLink: string } };
     expect(result.meta.documentationLink).toBe(BMAD_DOCUMENTATION_LINK);
+  });
+
+  it('[P0] counts a directory-style skill when SKILL.md exists inside it', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '.claude/skills': githubDirListing(SKILLS_WITH_SUBDIRS),
+      '.claude/skills/bmad-agent-architect/SKILL.md': githubFileContent('# Architect'),
+      '.claude/skills/bmad-agent-dev/SKILL.md': githubFileContent('# Dev'),
+    });
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ valid: true, skillsCount: 2 });
+  });
+
+  it('[P0] excludes a directory-style entry with no SKILL.md inside it', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '.claude/skills': githubDirListing(SKILLS_WITH_SUBDIRS),
+      '.claude/skills/bmad-agent-architect/SKILL.md': githubFileContent('# Architect'),
+      '.claude/skills/bmad-agent-dev/SKILL.md': github404(),
+    });
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ valid: true, skillsCount: 1 });
+  });
+
+  it('[P0] sums flat .md files and valid skill directories in a mixed layout', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '.claude/skills': githubDirListing([
+        { name: 'bmad-dev-story.md', type: 'file' },
+        { name: 'bmad-agent-architect', type: 'dir' },
+        { name: 'bmad-agent-dev', type: 'dir' },
+      ]),
+      '.claude/skills/bmad-agent-architect/SKILL.md': githubFileContent('# Architect'),
+      '.claude/skills/bmad-agent-dev/SKILL.md': github404(),
+    });
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ valid: true, skillsCount: 2 });
+  });
+
+  it('[P0] returns NO_SKILLS_FOUND when all entries are dirs and none contain SKILL.md', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '.claude/skills': githubDirListing(SKILLS_WITH_SUBDIRS),
+      '.claude/skills/bmad-agent-architect/SKILL.md': github404(),
+      '.claude/skills/bmad-agent-dev/SKILL.md': github404(),
+    });
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ code: 'NO_SKILLS_FOUND' });
+  });
+
+  it('[P1] propagates a GitHub error from a per-directory SKILL.md probe', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '.claude/skills': githubDirListing(SKILLS_WITH_SUBDIRS),
+      '.claude/skills/bmad-agent-architect/SKILL.md': github500(),
+      '.claude/skills/bmad-agent-dev/SKILL.md': githubFileContent('# Dev'),
+    });
+    await expect(inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO)).rejects.toThrow();
   });
 });
 

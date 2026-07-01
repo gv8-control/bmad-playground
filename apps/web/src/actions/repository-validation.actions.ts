@@ -136,6 +136,25 @@ async function detectBmadVersion(
   }
 }
 
+async function countSkills(
+  accessToken: string,
+  owner: string,
+  repo: string,
+  entries: GithubContentEntry[],
+): Promise<number> {
+  const flatMdCount = entries.filter(
+    (e) => e.type === 'file' && e.name.endsWith('.md'),
+  ).length;
+  const dirEntries = entries.filter((e) => e.type === 'dir');
+  const dirChecks = await Promise.all(
+    dirEntries.map((d) =>
+      fetchGithubContents(accessToken, owner, repo, `.claude/skills/${encodeURIComponent(d.name)}/SKILL.md`),
+    ),
+  );
+  const dirSkillCount = dirChecks.filter((r) => r !== null && !Array.isArray(r)).length;
+  return flatMdCount + dirSkillCount;
+}
+
 function isVersion6x(version: string): boolean {
   const match = version.match(/^(\d+)\./);
   if (!match) return false;
@@ -192,9 +211,7 @@ export async function inspectBmadSetup(
   }
 
   const skillsEntries = Array.isArray(skillsResult) ? skillsResult : [];
-  const skillsCount = skillsEntries.filter(
-    (e) => e.type === 'file' && e.name.endsWith('.md'),
-  ).length;
+  const skillsCount = await countSkills(accessToken, owner, repo, skillsEntries);
 
   if (skillsCount === 0) {
     const hasDir = skillsResult !== null;

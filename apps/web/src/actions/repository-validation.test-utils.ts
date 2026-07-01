@@ -28,6 +28,11 @@ export const SKILLS_WITH_MD = [
   { name: 'README.md', type: 'file' },
 ];
 
+export const SKILLS_WITH_SUBDIRS = [
+  { name: 'bmad-agent-architect', type: 'dir' },
+  { name: 'bmad-agent-dev', type: 'dir' },
+];
+
 export const MANIFEST_V6_8 = `installation:\n  version: 6.8.0\n  installDate: 2026-06-11T18:58:05.904Z\n`;
 
 export const CONFIG_YAML_V6_8 = `# Core Module Configuration\n# Version: 6.8.0\n# Date: 2026-06-11T18:58:05.813Z\n\nuser_name: Marius\n`;
