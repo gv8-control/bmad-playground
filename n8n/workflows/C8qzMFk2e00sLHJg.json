@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-22T18:24:01.318Z",
+  "updatedAt": "2026-06-30T19:29:30.915Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null"
+        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null | tail -n 10"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null"
+        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null | tail -n 10"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -90,6 +90,12 @@
               "id": "1c897e45-5961-4f04-9ab0-11ca88da2de9",
               "name": "Recovery URL",
               "value": "={{ $execution.resumeUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "86929567-73ce-43f0-bf2a-55faeb1fbbb7",
+              "name": "",
+              "value": "",
               "type": "string"
             }
           ]
@@ -488,29 +494,29 @@
       }
     ]
   },
-  "versionId": "42d411ab-b009-4a34-8377-4f7b29af3590",
-  "activeVersionId": "7562ecb7-2545-4cc6-9c47-e4d4efbc5b01",
-  "versionCounter": 138,
+  "versionId": "b671b914-61f6-40c5-a792-e526f2147c65",
+  "activeVersionId": "b671b914-61f6-40c5-a792-e526f2147c65",
+  "versionCounter": 141,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-06-21T10:21:55.125Z",
-      "createdAt": "2026-06-21T10:21:55.125Z",
+      "updatedAt": "2026-07-01T03:30:56.677Z",
+      "createdAt": "2026-07-01T03:30:56.677Z",
       "role": "workflow:owner",
       "workflowId": "C8qzMFk2e00sLHJg",
-      "projectId": "kw9PN4ah89DC1Mas",
+      "projectId": "AYEhcVrohjJ82DQg",
       "project": {
-        "updatedAt": "2026-06-19T23:10:28.888Z",
-        "createdAt": "2026-06-19T23:09:53.584Z",
-        "id": "kw9PN4ah89DC1Mas",
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "8a21ec14-f580-468d-ac3a-21f94f756ff3"
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
       }
     }
   ],

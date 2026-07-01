@@ -75,29 +75,29 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "8a77462a-84f8-4f06-9304-a905c603f05d",
-  "activeVersionId": "8a77462a-84f8-4f06-9304-a905c603f05d",
+  "versionId": "f3a06430-d5ab-4dcd-bbf1-b5c15da4d9e0",
+  "activeVersionId": "f3a06430-d5ab-4dcd-bbf1-b5c15da4d9e0",
   "versionCounter": 11,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-06-21T12:02:24.133Z",
-      "createdAt": "2026-06-21T12:02:24.133Z",
+      "updatedAt": "2026-07-01T03:21:06.694Z",
+      "createdAt": "2026-07-01T03:21:06.694Z",
       "role": "workflow:owner",
       "workflowId": "tDs1dBlOKDd3aDH8",
-      "projectId": "kw9PN4ah89DC1Mas",
+      "projectId": "AYEhcVrohjJ82DQg",
       "project": {
-        "updatedAt": "2026-06-19T23:10:28.888Z",
-        "createdAt": "2026-06-19T23:09:53.584Z",
-        "id": "kw9PN4ah89DC1Mas",
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "8a21ec14-f580-468d-ac3a-21f94f756ff3"
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
       }
     }
   ],

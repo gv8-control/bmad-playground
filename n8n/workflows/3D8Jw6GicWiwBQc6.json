@@ -136,29 +136,29 @@
       }
     ]
   },
-  "versionId": "75db6a6c-1921-4eb0-877a-cee88cc66857",
-  "activeVersionId": "75db6a6c-1921-4eb0-877a-cee88cc66857",
+  "versionId": "c5532a9c-069c-4216-bd97-4e2ef2b80188",
+  "activeVersionId": "c5532a9c-069c-4216-bd97-4e2ef2b80188",
   "versionCounter": 50,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-06-21T12:41:40.929Z",
-      "createdAt": "2026-06-21T12:41:40.929Z",
+      "updatedAt": "2026-07-01T03:21:06.694Z",
+      "createdAt": "2026-07-01T03:21:06.694Z",
       "role": "workflow:owner",
       "workflowId": "3D8Jw6GicWiwBQc6",
-      "projectId": "kw9PN4ah89DC1Mas",
+      "projectId": "AYEhcVrohjJ82DQg",
       "project": {
-        "updatedAt": "2026-06-19T23:10:28.888Z",
-        "createdAt": "2026-06-19T23:09:53.584Z",
-        "id": "kw9PN4ah89DC1Mas",
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "8a21ec14-f580-468d-ac3a-21f94f756ff3"
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
       }
     }
   ],
