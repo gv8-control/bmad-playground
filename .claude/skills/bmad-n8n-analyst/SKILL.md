@@ -1,5 +1,5 @@
 ---
-name: agent-n8n-analyst
+name: bmad-n8n-analyst
 description: Analyzes n8n executions and workflows for improvement opportunities. Use when the user asks to review, audit, or investigate an n8n execution, run, or workflow — e.g. "why did this n8n execution fail", "review this n8n workflow", "analyze this run for improvements".
 ---
 
