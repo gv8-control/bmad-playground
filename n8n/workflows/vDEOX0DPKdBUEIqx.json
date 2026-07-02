@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-01T20:13:30.346Z",
+  "updatedAt": "2026-07-02T20:38:35.332Z",
   "createdAt": "2026-06-19T23:11:49.051Z",
   "id": "vDEOX0DPKdBUEIqx",
   "name": "Develop Story",
@@ -157,8 +157,7 @@
         16
       ],
       "name": "Validate story",
-      "id": "5d0e4c1a-51e5-430b-90aa-ac5dca1572da",
-      "disabled": true
+      "id": "5d0e4c1a-51e5-430b-90aa-ac5dca1572da"
     },
     {
       "parameters": {
@@ -245,8 +244,7 @@
         16
       ],
       "name": "Create story",
-      "id": "34553854-61ee-4da1-8ed0-d983cb83cd0e",
-      "disabled": true
+      "id": "34553854-61ee-4da1-8ed0-d983cb83cd0e"
     },
     {
       "parameters": {
@@ -333,8 +331,7 @@
         -112
       ],
       "name": "Prepare tests",
-      "id": "a6368727-663a-4381-b364-cf95d0ea518b",
-      "disabled": true
+      "id": "a6368727-663a-4381-b364-cf95d0ea518b"
     },
     {
       "parameters": {
@@ -421,8 +418,7 @@
         96
       ],
       "name": "Validate story again",
-      "id": "8bd72951-2851-4615-aa6f-8d982260c524",
-      "disabled": true
+      "id": "8bd72951-2851-4615-aa6f-8d982260c524"
     },
     {
       "parameters": {
@@ -509,8 +505,7 @@
         16
       ],
       "name": "Implement story",
-      "id": "6084749d-fc4d-43ee-a446-bbf292b49361",
-      "disabled": true
+      "id": "6084749d-fc4d-43ee-a446-bbf292b49361"
     },
     {
       "parameters": {
@@ -525,8 +520,7 @@
         16
       ],
       "id": "347b25b5-6708-45b5-8803-9609a34ef850",
-      "name": "Merge",
-      "disabled": true
+      "name": "Merge"
     },
     {
       "parameters": {
@@ -610,7 +604,7 @@
       "typeVersion": 1.2,
       "position": [
         1760,
-        0
+        80
       ],
       "name": "Review tests",
       "id": "d0ab7ed7-141b-4baf-80cb-67127355353d"
@@ -697,7 +691,7 @@
       "typeVersion": 1.2,
       "position": [
         1760,
-        160
+        240
       ],
       "name": "Review NFRs",
       "id": "5894b6bc-21b3-4476-a203-e9080c240e43"
@@ -784,7 +778,7 @@
       "typeVersion": 1.2,
       "position": [
         1760,
-        -160
+        -80
       ],
       "name": "Review code",
       "id": "206ca00b-ebe5-4a51-8b8d-bc20748ffeea"
@@ -1008,26 +1002,10 @@
       "typeVersion": 4.2,
       "position": [
         208,
-        -140
+        -144
       ],
       "id": "4a3ed405-7b32-4594-9dd0-0601ffdb5c72",
       "name": "Notify pipeline started"
-    },
-    {
-      "parameters": {
-        "mode": "combine",
-        "combineBy": "combineByPosition",
-        "numberInputs": 3,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1968,
-        0
-      ],
-      "id": "b1e0a6a3-3f2a-4c8b-9e2f-6d6a2c1e9a04",
-      "name": "Merge2"
     },
     {
       "parameters": {
@@ -1042,7 +1020,7 @@
           "mappingMode": "defineBelow",
           "value": {
             "Story": "={{ $('Configuration').item.json.Story }}",
-            "Initial prompt (without story ID)": "Review the story spec and the code implemented for it. Identify any new, repeatable patterns or conventions that emerged and aren't already captured in project-context.md. If none exist, do nothing. Otherwise, append them to project-context.md — keep entries lean, document only what's unobvious and repeatable.",
+            "Initial prompt (without story ID)": "Review the story artifacts and the code implemented for it. Identify any new, repeatable patterns or conventions that emerged and aren't already captured in project-context.md. If none exist, do nothing. Otherwise, append them to project-context.md — keep entries lean, document only what's unobvious and repeatable. This is routine work, its outcome size depends on the uniqueness of the story.",
             "Skill": "bmad-agent-tech-writer",
             "Agent": "={{ $('Configuration').item.json['Plan Agent'] }}",
             "Conversation label": "Update project context"
@@ -1110,11 +1088,27 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        2176,
-        0
+        1760,
+        -224
       ],
       "name": "Update project context",
       "id": "c2f1b7d4-5a3e-4b91-8c0d-7e4f2a9b6c15"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 4,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1984,
+        -32
+      ],
+      "id": "b1e0a6a3-3f2a-4c8b-9e2f-6d6a2c1e9a04",
+      "name": "Merge2"
     }
   ],
   "connections": {
@@ -1249,7 +1243,7 @@
           {
             "node": "Merge2",
             "type": "main",
-            "index": 1
+            "index": 2
           }
         ]
       ]
@@ -1260,7 +1254,7 @@
           {
             "node": "Merge2",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -1271,18 +1265,7 @@
           {
             "node": "Merge2",
             "type": "main",
-            "index": 2
-          }
-        ]
-      ]
-    },
-    "Merge2": {
-      "main": [
-        [
-          {
-            "node": "Update project context",
-            "type": "main",
-            "index": 0
+            "index": 3
           }
         ]
       ]
@@ -1315,6 +1298,27 @@
             "node": "Review NFRs",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Update project context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        []
+      ]
+    },
+    "Update project context": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -1335,9 +1339,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "2ecde7b2-2e05-4d2b-88d9-79376f1437a0",
-  "activeVersionId": "2ecde7b2-2e05-4d2b-88d9-79376f1437a0",
-  "versionCounter": 521,
+  "versionId": "34ea96ac-dce8-4047-9b9b-e5edfc7beb13",
+  "activeVersionId": "e12ab3a5-2b37-43b5-93c3-8dfd52d1ebe0",
+  "versionCounter": 537,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
