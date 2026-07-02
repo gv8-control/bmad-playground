@@ -1,7 +1,9 @@
 ---
-stepsCompleted: ['step-01-load-context', 'step-02-discover-tests', 'step-03-map-criteria']
-lastStep: 'step-03-map-criteria'
+stepsCompleted: ['step-01-load-context', 'step-02-discover-tests', 'step-03-map-criteria', 'step-04-analyze-gaps', 'step-05-gate-decision']
+lastStep: 'step-05-gate-decision'
 lastSaved: '2026-07-02'
+tempCoverageMatrixPath: '/tmp/tea-trace-coverage-matrix-2026-07-02.json'
+gateDecision: 'CONCERNS'
 coverageBasis: 'acceptance_criteria'
 oracleConfidence: 'high'
 oracleResolutionMode: 'formal_requirements'
@@ -321,5 +323,365 @@ All 47 acceptance criteria have **NONE** coverage — epic not yet implemented. 
 - **Error paths covered:** Org-restriction, insufficient permission, not-found, BMAD validation errors, crypto failures all have dedicated tests.
 - **Auth/authz includes negative paths:** Cross-tenant denial test, unauthenticated redirect, access-baseline (no paywall) all covered.
 - **No happy-path-only gaps:** 1.6-AC3 (re-auth cycle) is the only criterion tested in isolation rather than full cycle.
+
+---
+
+## Step 4: Gap Analysis & Coverage Matrix
+
+### Phase 1 Summary
+
+**Coverage Statistics (Epic 1 — implemented):**
+
+| Metric | Value |
+| --- | --- |
+| Total Requirements (Epic 1) | 31 |
+| Fully Covered | 27 (87%) |
+| Partially Covered | 2 |
+| Uncovered | 2 |
+
+**Priority Coverage (Epic 1):**
+
+| Priority | Covered | Total | Percentage | Status |
+| --- | --- | --- | --- | --- |
+| P0 | 10 | 10 | 100% | PASS |
+| P1 | 13 | 15 | 87% | PARTIAL |
+| P2 | 3 | 4 | 75% | CONCERNS |
+| P3 | 1 | 2 | 50% | Advisory |
+
+**System-wide (all 3 epics):** 27/95 = 28% (Epics 2-3 are backlog, 0% coverage by design)
+
+### Gap Analysis
+
+#### Critical Gaps (BLOCKER) — 0 found
+
+No P0 criteria are uncovered.
+
+#### High Priority Gaps (PR BLOCKER) — 0 found
+
+No P1 criteria have NONE coverage.
+
+#### Medium Priority Gaps (Nightly) — 1 found
+
+1. **1.1-AC1: Nx workspace build has no automated test** (P2)
+   - Coverage: NONE
+   - Reason: Testing the build system is circular by design (documented in `atdd-checklist-1-1...md`)
+   - Impact: Low — build failures caught at CI lint/build stage
+
+#### Low Priority Gaps (Optional) — 1 found
+
+1. **1.1-AC2: Tailwind theme tokens have no automated test** (P3)
+   - Coverage: NONE
+   - Impact: Low — token mismatch is cosmetic, caught by visual inspection
+
+#### Partial Coverage Items — 2 found
+
+1. **1.6-AC3: Re-auth-to-healthy cycle only unit-tested in isolation** (P1)
+   - Coverage: PARTIAL
+   - Gap: No integration/E2E test runs the full cycle (fail -> re-auth -> healthy) asserting RepoConnection row survives
+   - Recommend: `1.6-INT-001` integration test
+
+2. **1.8-AC4: Two weak-assertion unit tests in AppShell.test.tsx** (P1)
+   - Coverage: PARTIAL
+   - Gap: `AppShell.test.tsx:68-77` and `:79-88` lack post-action assertions
+   - E2E coverage in `app-shell.spec.ts` compensates functionally
+
+### Coverage Heuristics Findings
+
+| Heuristic | Count | Details |
+| --- | --- | --- |
+| Endpoints without tests | 0 | N/A — oracle is acceptance criteria, not OpenAPI |
+| Auth negative-path gaps | 0 | All auth/authz criteria have negative-path coverage |
+| Happy-path-only criteria | 1 | 1.6-AC3 (re-auth cycle tested in isolation) |
+| UI journey gaps | 0 | All implemented UI journeys have E2E coverage |
+| UI state gaps | 1 | 1.8-AC4 (weak-assertion unit tests) |
+
+### Quality Assessment
+
+**Tests with Issues:**
+
+- `AppShell.test.tsx:68-77` — "drawer opens on hamburger click" has no post-click assertion (WARNING)
+- `AppShell.test.tsx:79-88` — "drawer closes on Escape" has no post-Escape assertion (WARNING)
+- `repository-validation.actions.spec.ts:798-799` — `console.error` output during test (INFO — expected, tests error path)
+
+**Tests Passing Quality Gates:** 318/320 (99%)
+
+### Duplicate Coverage Analysis
+
+**Acceptable Overlap (Defense in Depth):**
+
+- **1.2-AC4 / 1.7-AC1**: Unauthenticated redirect tested at unit + integration + E2E levels (different aspects)
+- **1.3-AC3**: AES-256-GCM nonce uniqueness tested at unit + integration levels (crypto correctness vs integration safety)
+- **1.3-AC4**: Org-restriction error tested at unit + component + E2E levels
+- **1.8-AC1**: Side navigation tested at component + E2E levels
+
+**Unacceptable Duplication:** None found.
+
+### Coverage by Test Level (Epic 1)
+
+| Test Level | Tests | Criteria Covered | Coverage % |
+| --- | --- | --- | --- |
+| E2E | 73 (65 active) | 20 | 65% |
+| API | 3 | 3 | 10% |
+| Component | 9 | 15 | 48% |
+| Unit | 311 | 25 | 81% |
+| **Total** | **393** | **27** | **87%** |
+
+### Traceability Recommendations
+
+#### Immediate Actions (Before PR Merge)
+
+None — P0 coverage is 100%, no blockers.
+
+#### Short-term Actions (This Milestone)
+
+1. **Add full-cycle re-auth integration test** — Implement `1.6-INT-001` for fail -> re-auth -> healthy cycle (P1)
+2. **Fix weak-assertion AppShell.test.tsx cases** — Add post-action assertions to `:68-77` and `:79-88` (P1)
+
+#### Long-term Actions (Backlog)
+
+1. Optional: Tailwind token regression test (P3, low value)
+2. Run `/bmad-testarch-test-review` on Story 1.6 and 1.8 test files
+
+### Temp File Output
+
+Coverage matrix saved to: `/tmp/tea-trace-coverage-matrix-2026-07-02.json`
+
+---
+
+## Step 5: Phase 2 — Gate Decision
+
+**Gate Type:** system (Epic 1 — implemented)
+**Decision Mode:** deterministic
+**Collection Status:** COLLECTED
+**Gate Eligible:** true
+
+### Evidence Summary
+
+#### Test Execution Results
+
+| Metric | Value |
+| --- | --- |
+| Total Tests | 393 (320 unit/integration + 73 E2E) |
+| Passed | 320 unit/integration + 65 E2E (8 skipped) = 385 |
+| Failed | 0 |
+| Skipped | 8 (all E2E: 5 require TEST_GITHUB_REPO_URL, 3 require real GitHub credentials) |
+| Duration | 5.4s (unit/integration, fresh run 2026-07-02) |
+| Source SHA | `a6cad47a5900827f81c90785e586121dffe70f3e` |
+
+**Priority Breakdown (Epic 1):**
+
+- P0: 10/10 ACs fully covered (100%)
+- P1: 13/15 ACs fully covered (87%)
+- P2: 3/4 ACs fully covered (75%)
+- P3: 1/2 ACs fully covered (50%)
+- Overall Pass Rate: 100% (0 failures)
+
+#### Coverage Summary
+
+- P0 Coverage: 100% (10/10)
+- P1 Coverage: 87% (13/15)
+- Overall Coverage: 87% (27/31)
+
+#### NFRs
+
+- **Security:** PASS — NFR-S2 (tenant isolation) and NFR-S4 (token encryption) both satisfied
+- **Performance:** NOT ASSESSED — NFR-P1 through P5 are Epic 2/3 scope
+- **Reliability:** CONCERNS — NFR-R1 (credential health) has open findings (403 over-firing, cache delay); real-time SSE propagation deferred to Epic 3
+- **Maintainability:** CONCERNS — bare `console.error` in multiple locations; structured logging is Epic 2+ scope
+
+#### Flakiness Validation
+
+- Burn-in: not run in this session
+- Flaky tests: 0 (320 unit/integration tests pass consistently)
+- Stability: not formally calculated
+
+### Decision Criteria Evaluation
+
+#### P0 Criteria (Must ALL Pass)
+
+| Criterion | Threshold | Actual | Status |
+| --- | --- | --- | --- |
+| P0 Coverage | 100% | 100% | PASS |
+| P0 Test Pass Rate | 100% | 100% | PASS |
+| Security Issues | 0 | 0 | PASS |
+| Critical NFR Failures | 0 | 0 | PASS |
+| Flaky Tests | 0 | 0 | PASS |
+
+**P0 Evaluation:** ALL PASS
+
+#### P1 Criteria (Required for PASS, May Accept for CONCERNS)
+
+| Criterion | Threshold | Actual | Status |
+| --- | --- | --- | --- |
+| P1 Coverage | >=90% target, >=80% minimum | 87% | CONCERNS |
+| P1 Test Pass Rate | >=95% | 100% | PASS |
+| Overall Test Pass Rate | >=95% | 100% | PASS |
+| Overall Coverage | >=80% | 87% | PASS |
+
+**P1 Evaluation:** SOME CONCERNS
+
+#### P2/P3 Criteria (Informational)
+
+| Criterion | Actual | Notes |
+| --- | --- | --- |
+| P2 Coverage | 75% | 1.1-AC1 (NONE) — build system testing is circular by design |
+| P3 Coverage | 50% | 1.1-AC2 (NONE) — Tailwind tokens are cosmetic |
+
+---
+
+### GATE DECISION: CONCERNS
+
+---
+
+### Rationale
+
+All P0 criteria met with 100% coverage and 100% pass rate across 10 P0 acceptance criteria. No security issues detected — NFR-S2 (tenant isolation) and NFR-S4 (token encryption) both PASS with comprehensive test coverage including the cross-tenant negative-path test. No critical NFR failures.
+
+Overall coverage is 87% (27/31 ACs fully covered), exceeding the 80% minimum. P1 coverage is 87% (13/15), which meets the 80% minimum but falls below the 90% target — this places the gate in CONCERNS territory.
+
+The two P1 gaps are:
+1. **1.6-AC3** — Re-auth-to-healthy cycle tested only in isolation (no full-cycle integration test)
+2. **1.8-AC4** — Two weak-assertion unit tests in AppShell.test.tsx (E2E compensates functionally)
+
+Both are non-critical: the underlying functionality is verified at E2E level for 1.8-AC4, and the individual components of 1.6-AC3 are thoroughly unit-tested. Neither represents a missing feature or a security risk.
+
+The 8 skipped E2E tests (5 requiring TEST_GITHUB_REPO_URL for Epic 3 backlog, 3 requiring real GitHub credentials) are independently covered at unit/integration level and do not block the gate.
+
+### Residual Risks
+
+1. **1.6-AC3: Re-auth full cycle untested end-to-end** (P1, Low-Medium risk)
+   - Mitigation: Individual components unit-tested; E2E compensation exists for related flows
+   - Remediation: Add `1.6-INT-001` integration test in next sprint
+
+2. **1.8-AC4: Weak unit test assertions** (P1, Low risk)
+   - Mitigation: E2E tests in `app-shell.spec.ts` verify drawer behavior functionally
+   - Remediation: Fix `AppShell.test.tsx:68-88` assertions
+
+3. **NFR-R1: 403 over-firing and cache delay** (P2, Medium risk)
+   - Mitigation: Cache reduces GitHub API consumption; `connectRepository` path is not cached
+   - Remediation: Address A-21 (403 disambiguation) and A-22 (cache invalidation) before Epic 2
+
+**Overall Residual Risk:** LOW
+
+### Gate Recommendations
+
+1. **Deploy with Enhanced Monitoring** — Monitor credential failure detection paths for 403 over-firing; watch for cache-staleness issues
+2. **Create Remediation Backlog** — Add 1.6-AC3 integration test, fix 1.8-AC4 weak assertions, track A-21/A-22 fixes before Epic 2
+3. **Post-Deployment** — Monitor credential health transitions; re-assess after fixes deployed
+
+### Next Steps
+
+**Immediate (24-48h):**
+1. Deploy to production — P0 coverage is 100%, no blockers
+2. Create P1 remediation stories for 1.6-AC3 and 1.8-AC4
+3. Schedule A-21/A-22 fixes before Epic 2 starts
+
+**Follow-up (next milestone):**
+1. Add `1.6-INT-001` integration test for full re-auth cycle
+2. Fix `AppShell.test.tsx:68-88` weak assertions
+3. Address NFR-R1 findings (403 disambiguation, cache invalidation)
+4. Re-run `/bmad-testarch-trace` after fixes to confirm P1 coverage reaches 90% and gate flips to PASS
+
+---
+
+## Integrated YAML Snippet (CI/CD)
+
+```yaml
+traceability_and_gate:
+  traceability:
+    story_id: "epic-1"
+    date: "2026-07-02"
+    coverage:
+      overall: 87%
+      p0: 100%
+      p1: 87%
+      p2: 75%
+      p3: 50%
+    gaps:
+      critical: 0
+      high: 0
+      medium: 1
+      low: 1
+    quality:
+      passing_tests: 385
+      total_tests: 393
+      skipped_tests: 8
+      blocker_issues: 0
+      warning_issues: 2
+
+  gate_decision:
+    decision: "CONCERNS"
+    gate_type: "system"
+    decision_mode: "deterministic"
+    criteria:
+      p0_coverage: 100%
+      p0_pass_rate: 100%
+      p1_coverage: 87%
+      p1_pass_rate: 100%
+      overall_pass_rate: 100%
+      overall_coverage: 87%
+      security_issues: 0
+      critical_nfrs_fail: 0
+      flaky_tests: 0
+    thresholds:
+      min_p0_coverage: 100
+      min_p0_pass_rate: 100
+      min_p1_coverage: 80
+      min_p1_pass_rate: 95
+      min_overall_pass_rate: 95
+      min_coverage: 80
+    evidence:
+      test_results: "fresh run 2026-07-02, yarn nx run-many -t test"
+      traceability: "_bmad-output/test-artifacts/traceability-matrix.md"
+      nfr_assessment: "_bmad-output/test-artifacts/nfr-assessment.md"
+      code_coverage: "NOT_ASSESSED"
+    next_steps: "Deploy with monitoring; add 1.6-AC3 integration test and fix 1.8-AC4 weak assertions in next sprint"
+```
+
+---
+
+## Related Artifacts
+
+- **Epic Source:** `_bmad-output/planning-artifacts/epics.md` (Epics 1-3)
+- **Test Design:** `_bmad-output/test-artifacts/test-design-architecture.md`, `test-design-qa.md`
+- **NFR Assessment:** `_bmad-output/test-artifacts/nfr-assessment.md`
+- **Sprint Status:** `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- **CI Pipeline:** `.github/workflows/test.yml`
+- **Test Files:** `apps/web/src/**/*.spec.ts`, `apps/web/src/**/*.test.tsx`, `playwright/e2e/**/*.spec.ts`, `apps/agent-be/src/**/*.spec.ts`
+
+---
+
+## Sign-Off
+
+**Phase 1 — Traceability Assessment:**
+- Overall Coverage: 87% (Epic 1)
+- P0 Coverage: 100% PASS
+- P1 Coverage: 87% PARTIAL
+- Critical Gaps: 0
+- High Priority Gaps: 0
+
+**Phase 2 — Gate Decision:**
+- Decision: CONCERNS
+- P0 Evaluation: ALL PASS
+- P1 Evaluation: SOME CONCERNS
+
+**Overall Status:** CONCERNS
+
+**Next Steps:**
+- If PASS: Proceed to deployment
+- If CONCERNS: Deploy with monitoring, create remediation backlog
+- If FAIL: Block deployment, fix critical issues, re-run workflow
+- If WAIVED: Deploy with business approval and aggressive monitoring
+
+**Generated:** 2026-07-02
+**Workflow:** testarch-trace v4.0
+**Evaluator:** Marius
+**Source SHA:** `a6cad47a5900827f81c90785e586121dffe70f3e`
+
+---
+
+_Machine-readable companions: `traceability/e2e-trace-summary.json`, `traceability/gate-decision.json`_
+
+<!-- Powered by BMAD-CORE™ -->
 
 

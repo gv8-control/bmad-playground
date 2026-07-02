@@ -1,0 +1,106 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_at": "2026-07-02T00:00:00.000Z",
+  "repo": "bmad-easy",
+  "collection_mode": "sequential",
+  "collection_status": "COLLECTED",
+  "inventory_basis": "acceptance_criteria",
+  "gate_basis": "priority_thresholds",
+  "source_sha": "a6cad47a5900827f81c90785e586121dffe70f3e",
+  "target": {
+    "type": "system",
+    "id": "bmad-easy-epic-1",
+    "label": "Epic 1: Authentication & Repository Connection (done)"
+  },
+  "decision_mode": "deterministic",
+  "evaluator": "Marius",
+  "confidence": "high",
+  "oracle": {
+    "resolution_mode": "formal_requirements",
+    "confidence": "high",
+    "sources": [
+      "_bmad-output/planning-artifacts/epics.md",
+      "_bmad-output/test-artifacts/test-design-architecture.md",
+      "_bmad-output/test-artifacts/test-design-qa.md",
+      "_bmad-output/implementation-artifacts/sprint-status.yaml",
+      "_bmad-output/project-context.md"
+    ],
+    "external_pointer_status": "not_used",
+    "synthetic": false
+  },
+  "coverage": {
+    "inventory": {
+      "covered": 27,
+      "total": 31,
+      "pct": 87
+    },
+    "priority_breakdown": {
+      "P0": { "total": 10, "covered": 10, "pct": 100 },
+      "P1": { "total": 15, "covered": 13, "pct": 87 },
+      "P2": { "total": 4, "covered": 3, "pct": 75 },
+      "P3": { "total": 2, "covered": 1, "pct": 50 }
+    },
+    "by_level": {
+      "e2e": { "tests": 73, "criteria_covered": 20 },
+      "api": { "tests": 3, "criteria_covered": 3 },
+      "component": { "tests": 9, "criteria_covered": 15 },
+      "unit": { "tests": 311, "criteria_covered": 25 },
+      "other": { "tests": 0, "criteria_covered": 0 }
+    }
+  },
+  "tests": {
+    "files": 34,
+    "cases": 393,
+    "skipped_cases": 8,
+    "fixme_cases": 0,
+    "pending_cases": 0
+  },
+  "risk_summary": {
+    "critical_open": 0,
+    "high_open": 0,
+    "medium_open": 1,
+    "low_open": 1
+  },
+  "heuristics": {
+    "endpoint_gaps": 0,
+    "auth_negative_path_status": "present",
+    "error_path_status": "partial",
+    "ui_journey_status": "not_applicable",
+    "ui_state_status": "not_applicable"
+  },
+  "blockers": [
+    { "id": "sandbox-lifecycle.spec.ts:13", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
+    { "id": "sandbox-lifecycle.spec.ts:31", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
+    { "id": "sandbox-lifecycle.spec.ts:51", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
+    { "id": "sandbox-lifecycle.spec.ts:68", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
+    { "id": "sandbox-lifecycle.spec.ts:85", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
+    { "id": "sign-in.spec.ts:124", "severity": "high", "reason": "Requires real GitHub OAuth credentials" },
+    { "id": "onboarding.spec.ts:215", "severity": "high", "reason": "Requires real GitHub credentials" },
+    { "id": "onboarding.spec.ts:265", "severity": "high", "reason": "Requires real GitHub credentials" }
+  ],
+  "recommendations": [
+    { "priority": "MEDIUM", "action": "Complete coverage for 2 partially covered requirements", "requirements": ["1.6-AC3", "1.8-AC4"] },
+    { "priority": "MEDIUM", "action": "Add error/edge scenario tests for 1 happy-path-only criterion", "requirements": ["1.6-AC3"] },
+    { "priority": "MEDIUM", "action": "Add state coverage for 1 UI journey", "requirements": ["1.8-AC4"] },
+    { "priority": "LOW", "action": "Run /bmad:tea:test-review to assess test quality", "requirements": [] }
+  ],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability-matrix.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  },
+  "gate_status": "CONCERNS",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "100%",
+    "p0_status": "MET",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "87%",
+    "p1_status": "PARTIAL",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "87%",
+    "overall_status": "MET"
+  }
+}

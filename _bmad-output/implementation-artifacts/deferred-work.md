@@ -71,22 +71,7 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 ## Deferred from: code review of 1-6-detect-and-recover-from-credential-failures (2026-07-01)
 
-### FINDING-14: Cache delays credential-failure detection — RESOLVED ✅
-
-- `cacheGet` returns stale success after credential expiry [`apps/web/src/actions/repository-validation.actions.ts:94`] — once a positive validation is cached (120s TTL), subsequent `validateRepository` calls short-circuit before touching GitHub, so a revoked credential is not detected until cache expiry.
-- **Resolution:** `validateRepository` now calls `getCredentialHealth(userId)` before returning a cached result. If health is `'failed'`, the cache is bypassed and validation re-fetches from GitHub. The credential health check uses the existing `getCredentialHealth` function from `credential-health.ts`, avoiding a cross-module import from `markCredentialFailed` into the cache layer. Three tests added covering `failed` bypass, `healthy` cache-hit, and `null` (no RepoConnection) cache-hit paths.
-
-### FINDING-13: Re-auth race condition — RESOLVED ✅
-
-- Re-auth `updateMany('healthy')` races with concurrent `markCredentialFailed('failed')` [`apps/web/src/lib/auth.ts:70-72`, `apps/web/src/lib/credential-health.ts:46-55`] — two non-transactional writers to `RepoConnection.credentialHealth` for the same `userId`. An in-flight 401-handling request using the old token can commit `failed` AFTER re-auth commits `healthy`, leaving a valid fresh token marked `failed`.
-- **Resolution:** Strengthened the optimistic concurrency guard from `updatedAt: { lte: capturedAt }` to `updatedAt: { lt: capturedAt }` (strict less-than), so a stale `failed` write cannot clobber a `healthy` write even in the same millisecond. The guard already existed — the fix is the strictness improvement `lte` → `lt`.
-
 ### Tenant-isolation test is tautological [`apps/web/src/lib/credential-health.test.ts`] — the test asserts the mock was not called with `'usr_other'`, but since the test only invokes `resolveOAuthToken(USER_ID)`, the mock could never have been called with another user's ID. The `expect(callArg).toEqual({ where: { userId: USER_ID } })` assertion is meaningful; the `not.toContain('usr_other')` check is redundant. Implementation is correct (`findUnique({ where: { userId } })`).
-
-### FINDING-12: 403 over-firing marks valid credentials as failed — RESOLVED ✅
-
-- `fetchGithubContents` throws `CredentialFailureError` for ALL 403s, and `connectRepository` calls `markCredentialFailed` on `inspectBmadSetup` 403s. A 403 from org OAuth App restrictions or repo-level permission denials incorrectly marks a valid token as `failed`, causing a re-auth loop. [`apps/web/src/lib/repository-validation.ts:139-146`, `apps/web/src/actions/repo-connection.actions.ts:121-146`]
-- **Resolution:** `fetchGithubContents` now only throws `CredentialFailureError` for 401 (genuine bad-creds). Non-rate-limit 403s return `null` (path inaccessible) — the caller treats it like a 404 without marking the credential as failed. In `connectRepository`, the direct-fetch 403 handler no longer calls `markCredentialFailed` after ruling out org-restriction; `INSUFFICIENT_PERMISSION` is returned without marking the credential.
 
 ## Deferred from: code review of 1-7-enforce-authenticated-full-access-for-all-mvp-users (2026-07-01)
 
@@ -101,9 +86,7 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 ## Deferred from: code review of 1-8-build-the-persistent-app-shell (2026-07-01)
 
-- Global `*:focus { outline: none }` strips focus indicators from elements without explicit ring [`apps/web/src/app/global.css:9-11`] — every element loses its native focus outline; only elements with individual `focus:ring-*` classes get a visible indicator. Latent today (all interactive elements in the shell carry ring classes), but the first native `<button>`/`<a>`/third-party widget added without a ring class will have no visible focus indicator, violating WCAG 2.4.7. Spec-prescribed pattern (Task 8.1).
-- Authenticated user without repo connection stranded on non-onboarding dashboard routes [`apps/web/src/app/(dashboard)/layout.tsx:21`] — layout renders bare `<>{children}</>` when no `RepoConnection` exists; only `/onboarding` redirects connected users away. A user without a repo connection who directly visits `/project-map`, `/artifacts`, `/settings`, or `/conversations/new` gets a chrome-less page with no navigation path to onboarding. Pre-existing behavior (bare render predates this story); redirect logic is out of scope for Story 1.8.
-- `repoConnection.findUnique` has no error boundary; DB failure 500s every dashboard route [`apps/web/src/app/(dashboard)/layout.tsx:17`] — `getPrisma().repoConnection.findUnique()` is awaited with no `try/catch` and no `error.tsx` exists in the route tree. A transient DB error or unset `DATABASE_URL` turns every dashboard page into an unhandled 500. Codebase-wide pattern (spec Known Issues says do not fix `auth()` try/catch; same applies here).
+- `repoConnection.findUnique` has no error boundary; DB failure 500s every guarded dashboard route [`apps/web/src/app/(dashboard)/(app)/layout.tsx:20`] — `getPrisma().repoConnection.findUnique()` is awaited with no `try/catch` and no `error.tsx` exists in the route tree. A transient DB error or unset `DATABASE_URL` turns every guarded dashboard page into an unhandled 500. Codebase-wide pattern (spec Known Issues says do not fix `auth()` try/catch; same applies here).
 
 ## Deferred from: code review of 1-4-validate-bmad-initialization-in-the-connected-repository (2026-07-02)
 
@@ -112,7 +95,6 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 - GitHub contents API truncates directory listings at 1000 entries [`apps/web/src/actions/repository-validation.actions.ts`] — a repo whose root or `.claude/skills/` exceeds 1000 entries could produce a false `MISSING_DIRECTORY`/skills undercount. Exotic for MVP; the git trees API would be the fix.
 - Required dirs tracked as submodules/symlinks report as missing [`apps/web/src/actions/repository-validation.actions.ts`] — the `type === 'dir'` filter rejects `submodule`/`symlink` entries even though the directory exists after checkout.
 - `config.yaml` version parsed from a `# Version:` comment [`apps/web/src/actions/repository-validation.actions.ts`] — comment-based format is not guaranteed by BMAD; a regeneration that drops the comment silently downgrades detection to the `package.json` fallback. Works against real BMAD 6.x output today.
-- ~~Rate-limit 403 still conflated with credential failure~~ **RESOLVED per FINDING-12** [`apps/web/src/lib/repository-validation.ts`] — `detectGithubRateLimit` now classifies rate-limit 403s (primary: `X-RateLimit-Remaining: 0` header; secondary: "secondary rate limit" / "abuse detection" body message) and throws `RateLimitError`, not `CredentialFailureError`. Genuine 403s return `null` (path inaccessible). Neither path calls `markCredentialFailed`. See FINDING-12 above.
 - Story 1.4 integration-test checklist (onboarding flow 1.3→1.4→1.5, retry-after-fix e2e) unchecked [`_bmad-output/implementation-artifacts/1-4-validate-bmad-initialization-in-the-connected-repository.md`] — component-level coverage only; onboarding e2e specs exist but do not cover the BMAD-validation retry path.
 
 ## Deferred from: code review of 1-9-document-and-validate-the-kek-rotation-runbook (2026-07-02)

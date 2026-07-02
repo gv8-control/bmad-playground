@@ -8,12 +8,10 @@ import {
   CredentialFailureError,
 } from '@/lib/credential-health';
 import {
-  inspectBmadSetup,
-  invalidateValidationCache,
   detectGithubRateLimit,
   rateLimitMessage,
-  RateLimitError,
 } from '@/lib/repository-validation';
+import { validateRepository } from './repository-validation.actions';
 import { z } from 'zod';
 
 const connectRepoSchema = z.object({
@@ -161,22 +159,7 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
       };
     }
 
-    let validation;
-    try {
-      validation = await inspectBmadSetup(accessToken, owner, repo);
-    } catch (err) {
-      if (err instanceof RateLimitError) {
-        return { error: rateLimitMessage(err), errorCode: 'RATE_LIMITED' };
-      }
-      if (err instanceof CredentialFailureError) {
-        await markCredentialFailed(session.userId, capturedAt);
-        return {
-          error: 'Your GitHub access token has expired or been revoked. Please sign out and sign in again.',
-          errorCode: 'NO_CREDENTIAL',
-        };
-      }
-      throw err;
-    }
+    const validation = await validateRepository(cleanUrl);
     if ('code' in validation) {
       console.info(
         '[repository:validation] %s for %s/%s during connect',
@@ -188,6 +171,12 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
         error: validation.message,
         errorCode: validation.code,
         documentationLink: validation.meta.documentationLink,
+      };
+    }
+    if ('errorCode' in validation) {
+      return {
+        error: validation.error,
+        errorCode: validation.errorCode,
       };
     }
 
@@ -203,8 +192,6 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
         credentialHealth: 'healthy',
       },
     });
-
-    invalidateValidationCache(session.userId, cleanUrl);
 
     return { success: true };
   } catch (err) {

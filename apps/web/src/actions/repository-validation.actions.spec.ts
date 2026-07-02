@@ -20,7 +20,6 @@ jest.mock('@/lib/auth', () => ({ auth: (...args: unknown[]) => mockAuth(...args)
 
 const mockResolveOAuthToken = jest.fn();
 const mockMarkCredentialFailed = jest.fn();
-const mockGetCredentialHealth = jest.fn();
 
 class CredentialFailureError extends Error {
   constructor(public readonly statusCode: number) {
@@ -32,7 +31,6 @@ class CredentialFailureError extends Error {
 jest.mock('@/lib/credential-health', () => ({
   resolveOAuthToken: (...args: unknown[]) => mockResolveOAuthToken(...args),
   markCredentialFailed: (...args: unknown[]) => mockMarkCredentialFailed(...args),
-  getCredentialHealth: (...args: unknown[]) => mockGetCredentialHealth(...args),
   CredentialFailureError,
 }));
 
@@ -41,11 +39,7 @@ let mockFetch: jest.Mock;
 // ─── Subject under test ───────────────────────────────────────────────────────
 
 import { validateRepository } from './repository-validation.actions';
-import {
-  inspectBmadSetup,
-  clearValidationCache,
-  invalidateValidationCache,
-} from '@/lib/repository-validation';
+import { inspectBmadSetup } from '@/lib/repository-validation';
 import { BMAD_DOCUMENTATION_LINK } from '@bmad-easy/shared-types';
 import {
   ACCESS_TOKEN, OWNER, REPO, REPO_URL, SESSION,
@@ -676,13 +670,11 @@ describe('inspectBmadSetup — GitHub API call patterns', () => {
 describe('validateRepository — Server Action', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
-    await clearValidationCache();
     mockFetch = jest.fn();
     jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
     mockAuth.mockResolvedValue(SESSION);
     mockResolveOAuthToken.mockResolvedValue(DECRYPTED_TOKEN);
     mockMarkCredentialFailed.mockResolvedValue(undefined);
-    mockGetCredentialHealth.mockResolvedValue('healthy');
     setupFetchWithOverrides(mockFetch, {});
   });
 
@@ -798,85 +790,5 @@ describe('validateRepository — Server Action', () => {
     mockFetch.mockRejectedValue(new Error('ECONNREFUSED'));
     const result = await validateRepository(REPO_URL);
     expect(result).toMatchObject({ errorCode: 'UNKNOWN' });
-  });
-
-  // ─── Cache behavior (A-10) ──────────────────────────────────────────────
-
-  it('[P1] returns cached result on repeated validation of same repo (A-10)', async () => {
-    const result1 = await validateRepository(REPO_URL);
-    expect(result1).toMatchObject({ valid: true });
-
-    const fetchCallsAfterFirst = mockFetch.mock.calls.length;
-
-    const result2 = await validateRepository(REPO_URL);
-    expect(result2).toMatchObject({ valid: true });
-
-    expect(mockFetch.mock.calls.length).toBe(fetchCallsAfterFirst);
-    expect(result2).toEqual(result1);
-  });
-
-  it('[P1] invalidateValidationCache forces re-fetch on next call (A-10)', async () => {
-    await validateRepository(REPO_URL);
-    const fetchCallsAfterFirst = mockFetch.mock.calls.length;
-
-    invalidateValidationCache(SESSION.userId, REPO_URL);
-
-    await validateRepository(REPO_URL);
-    expect(mockFetch.mock.calls.length).toBeGreaterThan(fetchCallsAfterFirst);
-  });
-
-  it('[P1] does NOT cache failed validation results — a fixed repo validates cleanly on retry', async () => {
-    setupFetchWithOverrides(mockFetch, {
-      '': githubDirListing([{ name: 'README.md', type: 'file' }]),
-    });
-    const result1 = await validateRepository(REPO_URL);
-    expect(result1).toMatchObject({ code: 'MISSING_DIRECTORY' });
-
-    // Repo is "fixed" — same user + repo revalidates within the TTL window.
-    setupFetchWithOverrides(mockFetch, {});
-    const result2 = await validateRepository(REPO_URL);
-    expect(result2).toMatchObject({ valid: true });
-  });
-
-  // ─── Cache + credential health interaction (FINDING-14) ─────────────────
-
-  it('[P1] bypasses cache and re-fetches when credential health is "failed" (FINDING-14)', async () => {
-    // First call succeeds and populates the cache
-    const result1 = await validateRepository(REPO_URL);
-    expect(result1).toMatchObject({ valid: true });
-
-    const fetchCallsAfterFirst = mockFetch.mock.calls.length;
-
-    // Credential is now marked failed
-    mockGetCredentialHealth.mockResolvedValue('failed');
-
-    // Second call should NOT use the cached result despite same URL
-    const result2 = await validateRepository(REPO_URL);
-    // validateRepository would get {valid: true} from inspectBmadSetup again,
-    // then cache it — that's fine, the key point is it re-fetched
-    expect(mockFetch.mock.calls.length).toBeGreaterThan(fetchCallsAfterFirst);
-  });
-
-  it('[P1] health="healthy" with cache hit returns cached result without re-fetch', async () => {
-    const result1 = await validateRepository(REPO_URL);
-    expect(result1).toMatchObject({ valid: true });
-
-    const fetchCallsAfterFirst = mockFetch.mock.calls.length;
-
-    // Credential health is still healthy — should use cache
-    mockGetCredentialHealth.mockResolvedValue('healthy');
-    const result2 = await validateRepository(REPO_URL);
-    expect(mockFetch.mock.calls.length).toBe(fetchCallsAfterFirst);
-  });
-
-  it('[P1] health=null (no RepoConnection) with cache hit returns cached result', async () => {
-    const result1 = await validateRepository(REPO_URL);
-    expect(result1).toMatchObject({ valid: true });
-
-    const fetchCallsAfterFirst = mockFetch.mock.calls.length;
-
-    mockGetCredentialHealth.mockResolvedValue(null);
-    const result2 = await validateRepository(REPO_URL);
-    expect(mockFetch.mock.calls.length).toBe(fetchCallsAfterFirst);
   });
 });

@@ -5,12 +5,9 @@ import {
   CredentialFailureError,
   resolveOAuthToken,
   markCredentialFailed,
-  getCredentialHealth,
 } from '@/lib/credential-health';
 import {
   inspectBmadSetup,
-  getCachedValidation,
-  cacheValidation,
   RateLimitError,
   rateLimitMessage,
 } from '@/lib/repository-validation';
@@ -92,17 +89,8 @@ export async function validateRepository(
       return INVALID_URL_RESULT;
     }
 
-    const cached = getCachedValidation(session.userId, owner, repo);
-    if (cached) {
-      const health = await getCredentialHealth(session.userId);
-      if (health !== 'failed') return cached;
-    }
-
     try {
       const result = await inspectBmadSetup(accessToken, owner, repo);
-      if ('valid' in result) {
-        cacheValidation(session.userId, owner, repo, result);
-      }
       return result;
     } catch (err) {
       if (err instanceof RateLimitError) {

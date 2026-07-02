@@ -2146,7 +2146,7 @@ nfr_assessment:
 
 **New Findings:** 0 (Story 1.8 introduces no new NFR findings — it is a frontend-only story delivering the persistent app shell. All review findings from story implementation were either patched during development or deferred with justification. The only backend touch is the layout's `repoConnection.findUnique` DB query, which follows the existing tenant-scoped pattern from Story 1.7.)
 
-**Recommendation:** ⚠️ CONCERNS — Story 1.8 is production-ready for MVP scope. No new blockers, no new findings. The accessibility floor (AC-4) is a standout — focus rings never suppressed on click (`focus:` not `focus-visible:`), route focus management with `onCloseAutoFocus` suppression for Radix Dialog interaction, `prefers-reduced-motion` CSS, and comprehensive aria-labels. All 3 review findings from story implementation were patched during development. The 4 deferred review findings are spec-prescribed or codebase-wide patterns. FINDING-1 was the only carried blocker and is now RESOLVED.
+**Recommendation:** ⚠️ CONCERNS — Story 1.8 is production-ready for MVP scope. No new blockers, no new findings. The accessibility floor (AC-4) is a standout — focus rings never suppressed on click (`focus:` not `focus-visible:`), route focus management with `onCloseAutoFocus` suppression for Radix Dialog interaction, `prefers-reduced-motion` CSS, and comprehensive aria-labels. The global `*:focus:not(:focus-visible) { outline: none; }` safety net ensures elements without an explicit ring class fall back to the browser default outline on keyboard focus (WCAG 2.4.7). All 3 review findings from story implementation were patched during development. Of the 4 deferred review findings, 1 was subsequently patched (global focus-outline reset) and 3 remain spec-prescribed or codebase-wide patterns. FINDING-1 was the only carried blocker and is now RESOLVED.
 
 ---
 
@@ -2203,7 +2203,7 @@ Story 1.8 delivers the persistent app shell — the structural wrapper around ev
 
 Story 1.8's AC-4 (accessibility floor) is a standout implementation. The accessibility requirements are enforced at multiple levels:
 
-1. **Focus rings never suppressed on click** — All interactive elements use `focus:ring-2 focus:ring-accent` (NOT `focus-visible:`), ensuring the ring appears on both keyboard and click focus. The global `*:focus { outline: none; }` in `global.css` removes the default browser outline, with Tailwind `focus:ring-*` classes providing the visible ring.
+1. **Focus rings never suppressed on click** — All interactive elements use `focus:ring-2 focus:ring-accent` (NOT `focus-visible:`), ensuring the ring appears on both keyboard and click focus. The global `*:focus:not(:focus-visible) { outline: none; }` in `global.css` removes the default browser outline on mouse-click focus only; elements without an explicit ring class fall back to the browser default outline on keyboard focus (WCAG 2.4.7 safety net), while Tailwind `focus:ring-*` classes provide the visible accent ring.
 
 2. **Route focus management** — `AppShell.tsx:20-38` — `useEffect` on `usePathname()` change sets `tabindex={-1}` on the page's `h1` and focuses it. Falls back to first interactive element if no `h1` exists. Tested at unit level (`AppShell.test.tsx:109-130`) and E2E level (`app-shell.spec.ts:201-207`).
 
@@ -2250,7 +2250,7 @@ Story 1.8 introduces **no new NFR findings**. All 3 review findings from story i
 
 | # | Issue | Location | Deferred Reference | Severity |
 |---|---|---|---|---|
-| 1 | Global `*:focus { outline: none }` strips focus indicators from elements without explicit ring | `apps/web/src/app/global.css:9-11` | Story Review Findings [Defer] — spec-prescribed (Task 8.1 explicitly mandates this pattern) | LOW |
+| 1 | ~~Global `*:focus { outline: none }` strips focus indicators from elements without explicit ring~~ **RESOLVED** — changed to `*:focus:not(:focus-visible) { outline: none; }`; elements without a ring class now fall back to the browser default outline on keyboard focus (WCAG 2.4.7 safety net) | `apps/web/src/app/global.css:9-11` | Story Review Findings [Patch] — resolved ahead of Epic 2 | LOW |
 | 2 | Authenticated user without repo connection stranded on non-onboarding dashboard routes | `apps/web/src/app/(dashboard)/layout.tsx:21` | Story Review Findings [Defer] — pre-existing (bare render predates this story; redirect logic is out of scope) | LOW |
 | 3 | `repoConnection.findUnique` has no error boundary; DB failure 500s every dashboard route | `apps/web/src/app/(dashboard)/layout.tsx:17` | Story Review Findings [Defer] — codebase-wide pattern (spec Known Issues says do not fix `auth()` try/catch; same applies) | LOW |
 | 4 | Route-focus effect doesn't recover when `<h1>` mounts after effect runs (async/streamed content) | `apps/web/src/components/shell/AppShell.tsx:19` | Story Review Findings [Defer] — latent (all current pages render `<h1>` synchronously) | LOW |
@@ -2345,10 +2345,10 @@ NFRs scoped to Conversations/Epic 2+ are Not Assessed — appropriate. NFR-S2 an
 | 5.3 Secrets: Not in code, validated at startup | ✅ | No secrets in Story 1.8 code; `AUTH_SECRET` from env (Story 1.2); no hardcoded credentials; `cn()` utility is a pure function with no secrets |
 | 5.4 Input validation: SQL/XSS/injection | ✅ | Parameterized Prisma queries (`findUnique` with `where: { userId }`); `userId` from session (not user input); React auto-escaping; `usePathname()` is framework-managed (not user input); Radix Dialog is a well-vetted library with no known XSS vectors |
 
-**Standout pattern:** AC-4 accessibility floor with `focus:` (not `focus-visible:`) on all interactive elements — the ring is never suppressed on click, directly satisfying UX-DR16's "never suppressed on click" requirement. The `onCloseAutoFocus` suppression pattern correctly handles the interaction between Radix Dialog's focus-restore and route focus management. ✅
+**Standout pattern:** AC-4 accessibility floor with `focus:` (not `focus-visible:`) on all interactive elements — the ring is never suppressed on click, directly satisfying UX-DR16's "never suppressed on click" requirement. The global `*:focus:not(:focus-visible) { outline: none; }` safety net ensures any element without an explicit ring class still shows the browser default outline on keyboard focus (WCAG 2.4.7). The `onCloseAutoFocus` suppression pattern correctly handles the interaction between Radix Dialog's focus-restore and route focus management. ✅
 
 **Minor deferred concerns (documented, not new):**
-- Global `*:focus { outline: none }` strips default focus indicators — spec-prescribed (Task 8.1 mandates this; Tailwind `focus:ring-*` provides the visible ring)
+- ~~Global `*:focus { outline: none }` strips default focus indicators~~ **RESOLVED** — changed to `*:focus:not(:focus-visible) { outline: none; }`; elements without a ring class now fall back to the browser default outline on keyboard focus (WCAG 2.4.7 safety net)
 - `repoConnection.findUnique` has no error boundary — codebase-wide pattern (same as `auth()` throwing, deferred)
 
 ---
@@ -2461,16 +2461,16 @@ None — Story 1.8 introduces no new action items. All 3 review findings were pa
 - ✅ Test review 95/100 (Grade A, Approved with comments)
 - ✅ Automate validation PASS (2 gaps filled, 3 deferred with low impact)
 - ✅ NFR-S2 and NFR-S4 maintained (no regression — no token handling, tenant-scoped query)
-- ✅ Accessibility floor is a standout — `focus:` not `focus-visible:`, route focus management, `onCloseAutoFocus` suppression, `prefers-reduced-motion`, comprehensive aria-labels
+- ✅ Accessibility floor is a standout — `focus:` not `focus-visible:`, route focus management, `onCloseAutoFocus` suppression, `prefers-reduced-motion`, comprehensive aria-labels, `*:focus:not(:focus-visible)` WCAG 2.4.7 safety net
 
 **Remaining gaps (all pre-existing, acceptable for MVP with waivers):**
-1. **Global `*:focus { outline: none }`** — spec-prescribed (Task 8.1 mandates; Tailwind `focus:ring-*` provides visible ring)
+1. ~~**Global `*:focus { outline: none }`**~~ **RESOLVED** — changed to `*:focus:not(:focus-visible) { outline: none; }`; elements without a ring class now fall back to the browser default outline on keyboard focus (WCAG 2.4.7 safety net)
 3. **`repoConnection.findUnique` no error boundary** — codebase-wide pattern (same as `auth()` throwing, deferred)
 4. **Route-focus effect latent issue** — all current pages render `<h1>` synchronously; deferred
 5. **Authenticated user without repo connection** — pre-existing, redirect logic out of scope
 6. **Bare `console.error`** — carried from prior stories; not in Story 1.8 code
 
-**Security gate: ✅ PASS** — Auth baseline enforced at 3 levels (middleware, layout, E2E). NFR-S2 maintained (`repoConnection.findUnique` uses `where: { userId }`). NFR-S4 maintained (no token handling). Accessibility floor with `focus:` (not `focus-visible:`) ensures ring never suppressed on click. Radix Dialog provides accessible focus management. No new security surface.
+**Security gate: ✅ PASS** — Auth baseline enforced at 3 levels (middleware, layout, E2E). NFR-S2 maintained (`repoConnection.findUnique` uses `where: { userId }`). NFR-S4 maintained (no token handling). Accessibility floor with `focus:` (not `focus-visible:`) ensures ring never suppressed on click; global `*:focus:not(:focus-visible)` safety net restores the browser default outline on keyboard focus for any element without an explicit ring class (WCAG 2.4.7). Radix Dialog provides accessible focus management. No new security surface.
 
 **Recommendation:** Story 1.8 is production-ready for MVP scope. No action items required before merge. The 5 test-review follow-ups (M-1, M-2, L-1, L-2, L-3) are optional P2/P3 maintainability improvements. FINDING-1 was the only carried blocker and is now RESOLVED.
 
@@ -2511,7 +2511,7 @@ nfr_assessment:
     nfr_s3: 'Not Assessed (deferred to post-MVP)'
   new_findings: []
   strengths:
-    - 'Accessibility floor — focus: not focus-visible:, route focus management, onCloseAutoFocus suppression, prefers-reduced-motion, comprehensive aria-labels'
+    - 'Accessibility floor — focus: not focus-visible:, route focus management, onCloseAutoFocus suppression, prefers-reduced-motion, comprehensive aria-labels, *:focus:not(:focus-visible) WCAG 2.4.7 safety net'
     - 'Three-zone scroll model verified behaviorally via DOM injection and position comparison'
     - 'Controlled drawer with route-change close — prevents focus trap after navigation'
     - 'Accessibility-based E2E selectors — verifies aria-labels as side effect of testing'
@@ -2543,7 +2543,7 @@ nfr_assessment:
 | Production code | `apps/web/src/components/shell/AppShell.tsx` | 75 | Desktop sidebar + mobile drawer + route focus management |
 | Production code | `apps/web/src/components/shell/Breadcrumb.tsx` | 14 | Breadcrumb nav |
 | Production code | `apps/web/src/app/(dashboard)/layout.tsx` | 26 | Conditional shell rendering with RepoConnection query |
-| Production code | `apps/web/src/app/global.css` | 26 | Focus outline reset + prefers-reduced-motion |
+| Production code | `apps/web/src/app/global.css` | 26 | Focus outline reset (`:focus:not(:focus-visible)`) + prefers-reduced-motion |
 | E2E tests | `playwright/e2e/shell/app-shell.spec.ts` | 288 | 26 E2E tests (AC-1 through AC-5) |
 | Test execution | 272 Jest tests pass in 5.2s; 26 E2E tests pass | Verified 2026-07-02 | `yarn nx test web` |
 | Lint | 0 errors (12 pre-existing warnings) | Verified 2026-07-02 | `yarn nx run-many --target=lint --all` |

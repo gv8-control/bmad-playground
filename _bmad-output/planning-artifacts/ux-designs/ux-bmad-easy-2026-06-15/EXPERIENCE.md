@@ -374,6 +374,7 @@ Behavioral accessibility baseline. Visual contrast ratios are governed by DESIGN
 - All interactive elements have a visible focus ring: `{colors.accent}` 2px outline, 2px offset.
 - Focus is not suppressed on click; the focus ring is always visible.
 - On route change, focus moves to the page's main heading `h1` or the first interactive element in the content area.
+- Safety net: the global CSS removes the browser default outline only on mouse-click focus (`*:focus:not(:focus-visible) { outline: none; }`); any element that lacks an explicit ring class still shows the browser default outline on keyboard focus, so a forgotten ring class degrades to an unstyled-but-visible indicator rather than no indicator (WCAG 2.4.7).
 
 **Keyboard navigation:**
 - The full interface is navigable by keyboard.

@@ -83,7 +83,7 @@ so that navigation, scrolling, and keyboard use feel predictable everywhere, on 
   - [x] 7.4 Create `apps/web/src/app/(dashboard)/conversations/new/page.tsx` — depth-1 page; renders `<Breadcrumb />` + `<h1>New Conversation</h1>` + placeholder text "Press `/` to browse available skills, or type a message to start." (actual chat UI comes in Story 3.1+)
 
 - [x] Task 8: Update global CSS for accessibility floor (AC: 4)
-  - [x] 8.1 Update `apps/web/src/app/global.css` — add `*:focus { outline: none; }` (Tailwind `focus:ring-*` classes provide the visible ring); add `@media (prefers-reduced-motion: reduce)` block to disable animations/transitions; ensure `h1` elements in main content get `tabindex` via `RouteFocusManager` (JS, not CSS)
+  - [x] 8.1 Update `apps/web/src/app/global.css` — add `*:focus:not(:focus-visible) { outline: none; }` (removes the default browser outline only on mouse-click focus; elements without an explicit `focus:ring-*` class fall back to the browser default outline on keyboard focus, satisfying WCAG 2.4.7; Tailwind `focus:ring-*` classes provide the visible accent ring); add `@media (prefers-reduced-motion: reduce)` block to disable animations/transitions; ensure `h1` elements in main content get `tabindex` via `RouteFocusManager` (JS, not CSS)
 
 - [x] Task 9: E2E tests for the app shell (AC: 1, 2, 3, 4, 5)
   - [x] 9.1 Create `playwright/e2e/shell/app-shell.spec.ts` — E2E tests using `withRepoConnection` fixture: side nav visible with all items, active nav item highlighted, keyboard tab order, breadcrumb on depth-1 pages, focus moves to h1 on route change, mobile drawer (hamburger visible at tablet viewport, opens/closes on Escape, closes on nav link click — verifies drawer is not visible after navigation), side nav NOT shown on onboarding page (no repo connection)
@@ -366,7 +366,7 @@ Depth-1 pages (artifacts, settings, conversations/new) include `<Breadcrumb />` 
 
 | Requirement | Implementation |
 |---|---|
-| 2px accent focus ring, 2px offset, never suppressed on click | Use `focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg` (NOT `focus-visible:`) on all interactive elements. Add `*:focus { outline: none; }` in global.css to remove default browser outlines. |
+| 2px accent focus ring, 2px offset, never suppressed on click | Use `focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg` (NOT `focus-visible:`) on all interactive elements. Add `*:focus:not(:focus-visible) { outline: none; }` in global.css to remove the default browser outline on mouse-click focus only; elements without an explicit ring class fall back to the browser default outline on keyboard focus (WCAG 2.4.7 safety net). |
 | Route change moves focus to `h1` or first interactive element | `RouteFocusManager` logic in `AppShell.tsx` — `useEffect` on `usePathname()` change, sets `tabindex={-1}` on `h1` and focuses it. |
 | Modals trap focus and return focus to trigger on close | Radix Dialog (Sheet) handles this automatically. No custom implementation needed. |
 | State never signaled by color alone | Nav items use `text-1`/`text-2` (color) + `bg-surface-raised` (background) + font weight differences. Avatar has initials (text). |
@@ -672,7 +672,7 @@ glm-5.2 (neuralwatt/glm-5.2)
 - **Task 5:** Created Breadcrumb component at `apps/web/src/components/shell/Breadcrumb.tsx`. Server Component rendering `<nav aria-label="Breadcrumb">` with "← Project Map" link. 3 unit tests pass.
 - **Task 6:** Updated dashboard layout at `apps/web/src/app/(dashboard)/layout.tsx` to query `RepoConnection` by `userId` and conditionally render `AppShell` (when repo connection exists) or bare children (pre-app shell / onboarding). Added `userId` guard. Updated layout tests with prisma mock and AppShell mock — 7 tests pass.
 - **Task 7:** Created 4 placeholder pages: `/project-map` (depth-0, no breadcrumb), `/artifacts` (depth-1, with breadcrumb), `/settings` (depth-1, with breadcrumb), `/conversations/new` (depth-1, with breadcrumb). All follow three-zone scroll structure.
-- **Task 8:** Updated `apps/web/src/app/global.css` with `*:focus { outline: none; }` (Tailwind `focus:ring-*` provides visible ring) and `@media (prefers-reduced-motion: reduce)` block to disable animations/transitions.
+- **Task 8:** Updated `apps/web/src/app/global.css` with `*:focus:not(:focus-visible) { outline: none; }` (removes the default browser outline on mouse-click focus only; elements without an explicit ring class fall back to the browser default outline on keyboard focus — WCAG 2.4.7 safety net; Tailwind `focus:ring-*` provides the visible accent ring) and `@media (prefers-reduced-motion: reduce)` block to disable animations/transitions.
 - **Task 9:** Created E2E test suite at `playwright/e2e/shell/app-shell.spec.ts` covering: side nav visibility, active nav highlighting, keyboard tab order, breadcrumb on depth-1 pages, no breadcrumb on depth-0, focus moves to h1 on route change, side nav not shown on onboarding, mobile drawer open/close/Escape/nav-link-click behavior.
 - **Task 10:** Lint: 0 errors (12 pre-existing warnings). Tests: 267 web tests + 4 other project tests all pass. Build: production build succeeds with all new routes (`/artifacts`, `/conversations/new`, `/project-map`, `/settings`).
 
@@ -697,7 +697,7 @@ glm-5.2 (neuralwatt/glm-5.2)
 **Modified files:**
 - `apps/web/src/app/(dashboard)/layout.tsx` — Added conditional shell rendering with RepoConnection query
 - `apps/web/src/app/(dashboard)/layout.test.tsx` — Added shell rendering tests with prisma mock
-- `apps/web/src/app/global.css` — Added focus outline reset and prefers-reduced-motion media query
+- `apps/web/src/app/global.css` — Added focus outline reset (`:focus:not(:focus-visible)`) and prefers-reduced-motion media query
 - `package.json` — Added `@radix-ui/react-dialog` dependency
 - `yarn.lock` — Updated lockfile
 
@@ -710,7 +710,7 @@ glm-5.2 (neuralwatt/glm-5.2)
 - [x] [Review][Patch] Route-change focus to `<h1>` undone on mobile drawer navigation [apps/web/src/components/shell/AppShell.tsx:19-34] — Radix Dialog restores focus to the hamburger trigger on close, overriding the `h1.focus()` call when navigating via the mobile drawer. AC-4 requires focus to move to `h1` on route change.
 - [x] [Review][Patch] `getInitials` returns empty string for whitespace-only names [apps/web/src/components/shell/SideNavigation.tsx:11-16] — `!name` guard only catches null/undefined/`""`; whitespace-only strings like `"   "` are truthy and produce `""` from `charAt(0)`, rendering a blank avatar instead of the `?` fallback.
 - [x] [Review][Patch] Mobile hamburger button uses `position: fixed` instead of in-flow placement [apps/web/src/components/shell/AppShell.tsx:47] — Spec says "inside the main content area's header, not floating." The `fixed top-4 left-4` styling overlays the Breadcrumb link and page `<h1>` on tablet/mobile viewports.
-- [x] [Review][Defer] Global `*:focus { outline: none }` strips focus indicators from elements without explicit ring [apps/web/src/app/global.css:9-11] — deferred, spec-prescribed (Task 8.1 explicitly mandates this pattern)
+- [x] [Review][Patch] Global `*:focus { outline: none }` strips focus indicators from elements without explicit ring [apps/web/src/app/global.css:9-11] — **RESOLVED**: changed to `*:focus:not(:focus-visible) { outline: none; }` ahead of Epic 2; elements without an explicit ring class now fall back to the browser default outline on keyboard focus (WCAG 2.4.7 safety net), while elements with `focus:outline-none focus:ring-*` are unaffected
 - [x] [Review][Defer] Authenticated user without repo connection stranded on non-onboarding dashboard routes [apps/web/src/app/(dashboard)/layout.tsx:21] — deferred, pre-existing (bare render predates this story; redirect logic is out of scope)
 - [x] [Review][Defer] `repoConnection.findUnique` has no error boundary; DB failure 500s every dashboard route [apps/web/src/app/(dashboard)/layout.tsx:17] — deferred, codebase-wide pattern (spec Known Issues says do not fix `auth()` try/catch; same applies)
 - [x] [Review][Defer] Route-focus effect doesn't recover when `<h1>` mounts after effect runs (async/streamed content) [apps/web/src/components/shell/AppShell.tsx:19] — deferred, latent (all current pages render `<h1>` synchronously)

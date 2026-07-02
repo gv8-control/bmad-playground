@@ -373,7 +373,7 @@ describe('connectRepository — GitHub API errors (AC-4)', () => {
     expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
   });
 
-  it('[P0] does NOT call markCredentialFailed when inspectBmadSetup encounters 403 — access denied per-path, not credential failure', async () => {
+  it('[P0] does NOT call markCredentialFailed when validation encounters 403 — access denied per-path, not credential failure', async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === 'https://api.github.com/repos/my-org/my-repo') {
         return Promise.resolve(githubOkWithPush);
