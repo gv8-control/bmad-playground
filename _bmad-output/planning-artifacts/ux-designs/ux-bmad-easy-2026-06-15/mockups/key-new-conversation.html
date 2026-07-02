@@ -75,91 +75,75 @@
     padding: 0 16px;
     border-bottom: 1px solid #1E1E26;
   }
-  .wordmark-text {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: #EDECF5;
-    letter-spacing: -0.2px;
-  }
+  .wordmark-text { font-size: 1rem; font-weight: 600; color: #EDECF5; letter-spacing: -0.02em; }
+  .wordmark-dot  { color: #7B6EE8; }
 
-  .nav-body {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: 12px 8px;
-    gap: 2px;
-    overflow: hidden;
-  }
-
-  .new-conv-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .nav-new-btn {
+    margin: 12px 12px 8px;
     padding: 8px 12px;
+    background: transparent;
     border: 1px solid #7B6EE8;
     border-radius: 8px;
     color: #7B6EE8;
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
-    margin-bottom: 8px;
-    background: transparent;
+    text-align: center;
     font-family: inherit;
-    width: 100%;
-    text-align: left;
   }
-  .new-conv-btn:hover { background: rgba(123,110,232,0.08); }
-  .new-conv-btn-icon { font-size: 1rem; line-height: 1; }
+  .nav-new-btn:hover { background: rgba(123,110,232,0.08); }
+
+  .nav-conversations {
+    flex: 1;
+    overflow: hidden;
+    padding: 4px 0;
+  }
 
   .nav-item {
-    display: flex;
-    align-items: center;
-    padding: 6px 12px;
-    border-radius: 8px;
+    display: block;
+    padding: 7px 12px;
     font-size: 0.875rem;
     color: #8D8CA0;
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    gap: 8px;
   }
   .nav-item:hover { background: #1E1E26; color: #EDECF5; }
-  .nav-item.active { background: #1E1E26; color: #EDECF5; }
+  .nav-item.active {
+    background: #1E1E26;
+    color: #EDECF5;
+    border-radius: 6px;
+    margin: 1px 6px;
+    padding: 7px 6px;
+  }
 
-  .nav-sep {
+  .nav-separator {
     height: 1px;
     background: #1E1E26;
-    margin: 8px 12px;
+    margin: 8px 16px;
   }
 
-  .nav-footer {
-    padding: 12px 8px;
-    border-top: 1px solid #1E1E26;
+  .nav-bottom {
+    padding: 8px 12px 12px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     cursor: pointer;
   }
-  .nav-footer:hover .avatar-circle { background: #9083F2; }
+  .nav-bottom:hover .avatar-circle { background: #9083F2; }
 
   .avatar-circle {
-    width: 32px;
-    height: 32px;
+    width: 32px; height: 32px;
     border-radius: 9999px;
     background: #7B6EE8;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    color: #FFFFFF;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #FFFFFF;
+    display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   }
-  .avatar-label {
-    font-size: 0.75rem;
-    color: #8D8CA0;
-  }
+  .nav-bottom-label { font-size: 0.75rem; color: #8D8CA0; }
 
   /* Content area */
   .content-area {
@@ -449,24 +433,27 @@
   <!-- Side nav -->
   <nav class="side-nav">
     <div class="nav-wordmark">
-      <span class="wordmark-text">bmad-easy</span>
+      <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
     </div>
-    <div class="nav-body">
-      <button class="new-conv-btn active">
-        <span class="new-conv-btn-icon">+</span>
-        New conversation
-      </button>
-      <!-- Conversation list (recent) -->
+
+    <button class="nav-new-btn">+ New Conversation</button>
+
+    <div class="nav-conversations">
+      <div class="nav-item">Product requirements session</div>
+      <div class="nav-item">Architecture review prep</div>
+      <div class="nav-item">Sprint planning — Q3</div>
       <div class="nav-item">Onboarding docs review</div>
-      <div class="nav-item">Q3 roadmap brainstorm</div>
-      <div class="nav-item">Feature epic refinement</div>
-      <div class="nav-sep"></div>
+      <div class="nav-item">Competitor research</div>
+
+      <div class="nav-separator"></div>
+
       <div class="nav-item">Project Map</div>
       <div class="nav-item">Artifact Browser</div>
     </div>
-    <div class="nav-footer">
-      <div class="avatar-circle">SM</div>
-      <span class="avatar-label">Settings</span>
+
+    <div class="nav-bottom">
+      <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+      <span class="nav-bottom-label">Settings</span>
     </div>
   </nav>
 
@@ -555,26 +542,6 @@
     </div>
   </div>
 
-</div>
-
-<!-- Annotation band -->
-<div class="annotation-band">
-  <div class="annotation">
-    <div class="annotation-dot" style="background:#7B6EE8;"></div>
-    No stable URL until first message sent
-  </div>
-  <div class="annotation">
-    <div class="annotation-dot" style="background:#8D8CA0;"></div>
-    Working tree indicator hidden — no session yet
-  </div>
-  <div class="annotation">
-    <div class="annotation-dot" style="background:#7B6EE8;"></div>
-    Sandbox provisioning begins on page load (background)
-  </div>
-  <div class="annotation">
-    <div class="annotation-dot" style="background:#F2A944;"></div>
-    "Starting session…" only if sandbox not ready when message sent
-  </div>
 </div>
 
 <script>
