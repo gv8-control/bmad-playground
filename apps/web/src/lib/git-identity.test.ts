@@ -113,25 +113,15 @@ describe('resolveGitIdentity (AC-1, AC-2, AC-3)', () => {
 
   describe('AC-3: no token leakage', () => {
     it('return type contains only name and email keys', () => {
+      // Note: this is a runtime check only. An optional `token?: string`
+      // added to GitIdentityUser would still type-check and pass this test
+      // unnoticed — it does not guard the function's input signature.
       const result = resolveGitIdentity({
         name: 'Jane',
         email: 'jane@example.com',
         githubLogin: 'janedev',
       });
       expect(Object.keys(result).sort()).toEqual(['email', 'name']);
-    });
-
-    it('function accepts no token parameter in its signature', () => {
-      // Runtime check only: an optional `token?: string` added to
-      // GitIdentityUser would still type-check and pass this test unnoticed.
-      const result = resolveGitIdentity({
-        name: 'Jane',
-        email: 'jane@example.com',
-        githubLogin: 'janedev',
-      });
-      expect(result).not.toHaveProperty('accessToken');
-      expect(result).not.toHaveProperty('token');
-      expect(result).not.toHaveProperty('encryptedToken');
     });
   });
 });

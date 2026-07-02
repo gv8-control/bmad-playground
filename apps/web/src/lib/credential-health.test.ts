@@ -65,7 +65,7 @@ describe('resolveOAuthToken (AC-2 — tenant-scoped credential resolution)', () 
     const token = await resolveOAuthToken(USER_ID);
     expect(token).toBe(DECRYPTED_TOKEN);
     expect(mockDecryptToken).toHaveBeenCalledTimes(1);
-    expect(mockDecryptToken).toHaveBeenCalledWith(ENCRYPTED_CREDENTIAL);
+    expect(mockDecryptToken).toHaveBeenCalledWith(ENCRYPTED_CREDENTIAL, USER_ID);
   });
 
   it('[P0] throws CredentialFailureError when no OAuthCredential exists (AC-2)', async () => {

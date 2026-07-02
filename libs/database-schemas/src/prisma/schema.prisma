@@ -13,9 +13,7 @@ model User {
   githubId        String           @unique @map("github_id")
   githubLogin     String           @map("github_login")
   name            String?
-  email           String?
-  active          Boolean          @default(true)
-  lastActiveAt    DateTime?        @map("last_active_at")
+  email           String?          @unique
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
   oauthCredential OAuthCredential?
@@ -31,6 +29,7 @@ model OAuthCredential {
   dekNonce       String   @map("dek_nonce")
   encryptedToken String   @map("encrypted_token")
   tokenNonce     String   @map("token_nonce")
+  kekId          String   @map("kek_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

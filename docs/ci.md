@@ -52,7 +52,7 @@ All blueprint steps were activated when the Nx monorepo was scaffolded (2026-06-
 |------|--------|
 | Yarn lockfile exists | ✅ `yarn.lock` |
 | Nx targets confirmed (`lint`, `test`, `serve`, `dev`) | ✅ |
-| `agent-be` health endpoint (`GET /api/health`) | ✅ `app.controller.ts` |
+| `agent-be` health endpoint (`GET /health`) | ✅ `app.controller.ts` |
 | Service startup steps uncommented in `test.yml` | ✅ |
 | `wait-on` added to devDependencies | ✅ |
 | `BASE_URL` hardcoded to `http://localhost:3000` in pipeline | ✅ |
@@ -64,7 +64,7 @@ The pipeline is now fully active. No repository variable `BASE_URL` is needed.
 | App | Nx target | Port | Readiness check |
 |-----|-----------|------|-----------------|
 | `web` | `nx run web:dev` | 3000 | `http://localhost:3000` |
-| `agent-be` | `nx run agent-be:serve` | 3001 | `http://localhost:3001/api/health` |
+| `agent-be` | `nx run agent-be:serve` | 3001 | `http://localhost:3001/health` |
 
 Both are started in the background (`&`) before `wait-on` polls for readiness (60 s timeout).
 

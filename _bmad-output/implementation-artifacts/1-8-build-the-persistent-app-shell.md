@@ -4,7 +4,7 @@ baseline_commit: 61570f4fcb15c07932862474463157a9018d9cd2
 
 # Story 1.8: Build the Persistent App Shell
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -704,3 +704,13 @@ glm-5.2 (neuralwatt/glm-5.2)
 ## Change Log
 
 - 2026-07-01: Implemented Story 1.8 — persistent app shell with side navigation, three-zone scroll model, breadcrumb, accessibility floor, responsive mobile drawer, and placeholder pages for shell-dependent routes.
+
+### Review Findings
+
+- [x] [Review][Patch] Route-change focus to `<h1>` undone on mobile drawer navigation [apps/web/src/components/shell/AppShell.tsx:19-34] — Radix Dialog restores focus to the hamburger trigger on close, overriding the `h1.focus()` call when navigating via the mobile drawer. AC-4 requires focus to move to `h1` on route change.
+- [x] [Review][Patch] `getInitials` returns empty string for whitespace-only names [apps/web/src/components/shell/SideNavigation.tsx:11-16] — `!name` guard only catches null/undefined/`""`; whitespace-only strings like `"   "` are truthy and produce `""` from `charAt(0)`, rendering a blank avatar instead of the `?` fallback.
+- [x] [Review][Patch] Mobile hamburger button uses `position: fixed` instead of in-flow placement [apps/web/src/components/shell/AppShell.tsx:47] — Spec says "inside the main content area's header, not floating." The `fixed top-4 left-4` styling overlays the Breadcrumb link and page `<h1>` on tablet/mobile viewports.
+- [x] [Review][Defer] Global `*:focus { outline: none }` strips focus indicators from elements without explicit ring [apps/web/src/app/global.css:9-11] — deferred, spec-prescribed (Task 8.1 explicitly mandates this pattern)
+- [x] [Review][Defer] Authenticated user without repo connection stranded on non-onboarding dashboard routes [apps/web/src/app/(dashboard)/layout.tsx:21] — deferred, pre-existing (bare render predates this story; redirect logic is out of scope)
+- [x] [Review][Defer] `repoConnection.findUnique` has no error boundary; DB failure 500s every dashboard route [apps/web/src/app/(dashboard)/layout.tsx:17] — deferred, codebase-wide pattern (spec Known Issues says do not fix `auth()` try/catch; same applies)
+- [x] [Review][Defer] Route-focus effect doesn't recover when `<h1>` mounts after effect runs (async/streamed content) [apps/web/src/components/shell/AppShell.tsx:19] — deferred, latent (all current pages render `<h1>` synchronously)

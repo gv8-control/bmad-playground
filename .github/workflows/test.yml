@@ -70,7 +70,7 @@ jobs:
         run: yarn install --immutable
 
       - name: Run unit and integration tests
-        run: yarn nx run-many --target=test --all --parallel=4 --passWithNoTests
+        run: yarn nx run-many --target=test,test-integration --all --parallel=4 --passWithNoTests
         env:
           CI: true
 
@@ -126,6 +126,8 @@ jobs:
         run: yarn nx run web:dev &
         env:
           PORT: 3000
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
 
       - name: Start agent-be
         run: yarn nx run agent-be:serve &
@@ -133,7 +135,7 @@ jobs:
           PORT: 3001
 
       - name: Wait for services
-        run: yarn wait-on http://localhost:3000 http://localhost:3001/api/health --timeout 60000
+        run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
 
       - name: Run E2E tests (shard ${{ matrix.shard }}/4)
         run: yarn playwright test --shard=${{ matrix.shard }}/4
@@ -189,6 +191,8 @@ jobs:
         run: yarn nx run web:dev &
         env:
           PORT: 3000
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
 
       - name: Start agent-be
         run: yarn nx run agent-be:serve &
@@ -196,7 +200,7 @@ jobs:
           PORT: 3001
 
       - name: Wait for services
-        run: yarn wait-on http://localhost:3000 http://localhost:3001/api/health --timeout 60000
+        run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
 
       - name: Run burn-in loop (10 iterations)
         env:

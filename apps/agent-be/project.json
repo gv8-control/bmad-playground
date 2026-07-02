@@ -52,6 +52,13 @@
       "executor": "nx:noop"
     },
     "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "apps/agent-be/jest.config.ts",
+        "passWithNoTests": true
+      }
+    },
+    "test-integration": {
       "executor": "nx:run-commands",
       "options": {
         "command": "jest --config test/jest-integration.config.ts --passWithNoTests",

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-01
+last_updated: 2026-07-02
 project: bmad-easy
 
 project_key: NOKEY
@@ -44,16 +44,16 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # ── Epic 1: Authentication & Repository Connection ──
-  epic-1: in-progress
+  epic-1: done
   1-1-scaffold-the-platform-monorepo-and-ci-pipeline: done
   1-2-sign-in-with-github: done
   1-3-connect-a-repository-by-url: done
-  1-4-validate-bmad-initialization-in-the-connected-repository: review
+  1-4-validate-bmad-initialization-in-the-connected-repository: done
   1-5-resolve-git-identity-for-commit-attribution: done
   1-6-detect-and-recover-from-credential-failures: done
   1-7-enforce-authenticated-full-access-for-all-mvp-users: done
-  1-8-build-the-persistent-app-shell: review
-  1-9-document-and-validate-the-kek-rotation-runbook: backlog
+  1-8-build-the-persistent-app-shell: done
+  1-9-document-and-validate-the-kek-rotation-runbook: done
   epic-1-retrospective: optional
 
   # ── Epic 2: Project Map & Artifact Browser ──

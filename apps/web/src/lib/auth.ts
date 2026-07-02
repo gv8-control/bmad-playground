@@ -47,7 +47,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.userId = user.id;
 
         if (account.access_token) {
-          const encrypted = encryptToken(account.access_token);
+          const encrypted = encryptToken(account.access_token, user.id);
           await getPrisma().oAuthCredential.upsert({
             where: { userId: user.id },
             update: {
@@ -55,6 +55,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               dekNonce: encrypted.dekNonce,
               encryptedToken: encrypted.encryptedToken,
               tokenNonce: encrypted.tokenNonce,
+              kekId: encrypted.kekId,
             },
             create: {
               userId: user.id,
@@ -62,6 +63,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               dekNonce: encrypted.dekNonce,
               encryptedToken: encrypted.encryptedToken,
               tokenNonce: encrypted.tokenNonce,
+              kekId: encrypted.kekId,
             },
           });
 

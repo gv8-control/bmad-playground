@@ -56,7 +56,7 @@ export default defineConfig({
     },
     {
       command: 'yarn nx run agent-be:serve',
-      url: 'http://localhost:3001/api/health',
+      url: 'http://localhost:3001/health',
       reuseExistingServer: !process.env.CI,
     },
   ],

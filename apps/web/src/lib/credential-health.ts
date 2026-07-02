@@ -27,7 +27,7 @@ export async function resolveOAuthToken(userId: string): Promise<string> {
   if (!credential) {
     throw new CredentialFailureError(401);
   }
-  return decryptToken(credential);
+  return decryptToken(credential, userId);
 }
 
 /**

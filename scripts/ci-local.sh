@@ -7,7 +7,7 @@ echo "── ci-local: lint ─────────────────�
 yarn nx run-many --target=lint --all --parallel=4
 
 echo "── ci-local: unit & integration tests ──────────────"
-CI=true yarn nx run-many --target=test --all --parallel=4 --passWithNoTests
+CI=true yarn nx run-many --target=test,test-integration --all --parallel=4 --passWithNoTests
 
 echo "── ci-local: E2E tests ─────────────────────────────"
 CI=true yarn playwright test

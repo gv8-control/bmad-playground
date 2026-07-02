@@ -6,10 +6,10 @@ export type ValidationErrorCode =
   | 'UNSUPPORTED_VERSION';
 
 export interface ValidationResult {
-  valid: boolean;
+  valid: true;
   repositoryUrl: string;
-  bmadVersion?: string;
-  skillsCount?: number;
+  bmadVersion: string;
+  skillsCount: number;
   checkedAt: string;
 }
 

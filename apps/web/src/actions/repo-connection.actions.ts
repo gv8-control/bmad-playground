@@ -7,7 +7,7 @@ import {
   markCredentialFailed,
   CredentialFailureError,
 } from '@/lib/credential-health';
-import { inspectBmadSetup, invalidateValidationCache } from './repository-validation.actions';
+import { inspectBmadSetup, invalidateValidationCache } from '@/lib/repository-validation';
 import { z } from 'zod';
 
 const connectRepoSchema = z.object({
@@ -38,6 +38,13 @@ type ConnectResult =
     };
 
 export async function connectRepository(repoUrl: string): Promise<ConnectResult> {
+  if (typeof repoUrl !== 'string') {
+    return {
+      error: 'Must be a GitHub repository URL (e.g. https://github.com/owner/repo)',
+      errorCode: 'INVALID_URL',
+    };
+  }
+
   const parsed = connectRepoSchema.safeParse({ repoUrl: repoUrl.trim() });
   if (!parsed.success) {
     return {
@@ -57,9 +64,11 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     accessToken = await resolveOAuthToken(session.userId);
   } catch (err) {
     if (err instanceof CredentialFailureError) {
-      await markCredentialFailed(session.userId);
+      await markCredentialFailed(session.userId).catch((markErr) =>
+        console.error('[connectRepository] markCredentialFailed failed:', markErr),
+      );
       return {
-        error: 'No OAuth credential found. Please sign out and sign in again.',
+        error: 'Your GitHub credential is missing or invalid. Please sign out and sign in again.',
         errorCode: 'NO_CREDENTIAL',
       };
     }
@@ -73,6 +82,9 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
       return { error: 'Invalid GitHub repository URL format', errorCode: 'INVALID_URL' };
     }
     const [, owner, repo] = match;
+    if (/^\.{1,2}$/.test(owner) || /^\.{1,2}$/.test(repo)) {
+      return { error: 'Invalid GitHub repository URL format', errorCode: 'INVALID_URL' };
+    }
 
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
       signal: AbortSignal.timeout(10_000),
@@ -151,6 +163,12 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
       throw err;
     }
     if ('code' in validation) {
+      console.info(
+        '[repository:validation] %s for %s/%s during connect',
+        validation.code,
+        owner,
+        repo,
+      );
       return {
         error: validation.message,
         errorCode: validation.code,
@@ -171,7 +189,7 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
       },
     });
 
-    await invalidateValidationCache(session.userId, cleanUrl);
+    invalidateValidationCache(session.userId, cleanUrl);
 
     return { success: true };
   } catch (err) {

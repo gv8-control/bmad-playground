@@ -12,7 +12,7 @@ import userEvent from '@testing-library/user-event';
 import { Sheet, SheetTrigger, SheetContent, SheetClose } from './sheet';
 
 describe('Sheet UI primitive', () => {
-  it('renders the trigger button', () => {
+  it('[P0] renders the trigger button', () => {
     render(
       <Sheet>
         <SheetTrigger asChild>
@@ -26,7 +26,7 @@ describe('Sheet UI primitive', () => {
     expect(screen.getByRole('button', { name: /open/i })).toBeInTheDocument();
   });
 
-  it('opens content on trigger click', async () => {
+  it('[P0] opens content on trigger click', async () => {
     render(
       <Sheet>
         <SheetTrigger asChild>
@@ -42,7 +42,7 @@ describe('Sheet UI primitive', () => {
     expect(screen.getByText('Drawer content')).toBeInTheDocument();
   });
 
-  it('closes on Escape key', async () => {
+  it('[P0] closes on Escape key', async () => {
     render(
       <Sheet>
         <SheetTrigger asChild>
@@ -59,7 +59,7 @@ describe('Sheet UI primitive', () => {
     expect(screen.queryByText('Drawer content')).not.toBeInTheDocument();
   });
 
-  it('closes on overlay click', async () => {
+  it('[P0] closes on overlay click', async () => {
     render(
       <Sheet>
         <SheetTrigger asChild>
@@ -78,7 +78,7 @@ describe('Sheet UI primitive', () => {
     expect(screen.queryByText('Drawer content')).not.toBeInTheDocument();
   });
 
-  it('renders SheetClose as a close button', async () => {
+  it('[P1] renders SheetClose as a close button', async () => {
     render(
       <Sheet>
         <SheetTrigger asChild>

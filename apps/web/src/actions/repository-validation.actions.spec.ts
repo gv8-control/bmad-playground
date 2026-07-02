@@ -38,16 +38,16 @@ let mockFetch: jest.Mock;
 
 // ─── Subject under test ───────────────────────────────────────────────────────
 
+import { validateRepository } from './repository-validation.actions';
 import {
   inspectBmadSetup,
-  validateRepository,
   clearValidationCache,
   invalidateValidationCache,
-} from './repository-validation.actions';
+} from '@/lib/repository-validation';
 import { BMAD_DOCUMENTATION_LINK } from '@bmad-easy/shared-types';
 import {
   ACCESS_TOKEN, OWNER, REPO, REPO_URL, SESSION,
-  DECRYPTED_TOKEN, API_BASE,
+  DECRYPTED_TOKEN,
   ROOT_WITH_ALL_DIRS, SKILLS_WITH_MD, SKILLS_WITH_SUBDIRS, MANIFEST_V6_8,
   CONFIG_YAML_V6_8, PACKAGE_JSON_V6,
   githubDirListing, githubFileContent, github404, github403, github500,
@@ -73,7 +73,7 @@ describe('inspectBmadSetup — successful validation (AC-1)', () => {
     expect(result).toMatchObject({
       valid: true,
       bmadVersion: '6.8.0',
-      skillsCount: 3,
+      skillsCount: 2,
     });
   });
 
@@ -99,7 +99,7 @@ describe('inspectBmadSetup — successful validation (AC-1)', () => {
     expect(bmadOutputContentsCall).toBeUndefined();
   });
 
-  it('[P1] counts only .md files as skills', async () => {
+  it('[P1] counts only skill .md files — README.md and non-md files excluded', async () => {
     const skillsWithMixedFiles = [
       { name: 'bmad-dev-story.md', type: 'file' },
       { name: 'README.md', type: 'file' },
@@ -111,7 +111,7 @@ describe('inspectBmadSetup — successful validation (AC-1)', () => {
     });
 
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
-    expect(result).toMatchObject({ valid: true, skillsCount: 2 });
+    expect(result).toMatchObject({ valid: true, skillsCount: 1 });
   });
 });
 
@@ -222,6 +222,33 @@ describe('inspectBmadSetup — version detection (AC-1, AC-6)', () => {
     });
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO) as { code: string };
     expect(result.code).toBe('UNSUPPORTED_VERSION');
+  });
+
+  it('[P0] prefers manifest.yaml over package.json when both exist and disagree (deterministic priority)', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '_bmad/_config/manifest.yaml': githubFileContent('installation:\n  version: 6.8.0\n'),
+      '_bmad/core/config.yaml': github404(),
+      '_bmad/package.json': githubFileContent(JSON.stringify({ name: 'bmad', version: '5.0.0' })),
+    });
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ valid: true, bmadVersion: '6.8.0' });
+  });
+
+  it('[P1] parses quoted version strings from manifest.yaml', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '_bmad/_config/manifest.yaml': githubFileContent('installation:\n  version: "6.8.0"\n'),
+    });
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ valid: true, bmadVersion: '6.8.0' });
+  });
+
+  it('[P1] throws (not UNSUPPORTED_VERSION) when a version probe fails transiently (GitHub 500)', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '_bmad/_config/manifest.yaml': github500(),
+      '_bmad/core/config.yaml': github404(),
+      '_bmad/package.json': github404(),
+    });
+    await expect(inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO)).rejects.toThrow();
   });
 });
 
@@ -337,6 +364,14 @@ describe('inspectBmadSetup — skills directory validation (AC-4, AC-5)', () => 
         { name: 'config.json', type: 'file' },
         { name: 'template.txt', type: 'file' },
       ]),
+    });
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ code: 'NO_SKILLS_FOUND' });
+  });
+
+  it('[P0] returns NO_SKILLS_FOUND when .claude/skills/ contains only README.md (AC-5)', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '.claude/skills': githubDirListing([{ name: 'README.md', type: 'file' }]),
     });
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
     expect(result).toMatchObject({ code: 'NO_SKILLS_FOUND' });
@@ -584,8 +619,18 @@ describe('validateRepository — Server Action', () => {
       valid: true,
       repositoryUrl: REPO_URL,
       bmadVersion: '6.8.0',
-      skillsCount: 3,
+      skillsCount: 2,
     });
+  });
+
+  it('[P0] rejects a non-string repoUrl with errorCode INVALID_URL instead of throwing', async () => {
+    const result = await validateRepository(null as unknown as string);
+    expect(result).toMatchObject({ errorCode: 'INVALID_URL' });
+  });
+
+  it('[P0] rejects dot-segment owner/repo (path traversal) with errorCode INVALID_URL', async () => {
+    const result = await validateRepository('https://github.com/../..');
+    expect(result).toMatchObject({ errorCode: 'INVALID_URL' });
   });
 
   it('[P0] propagates validation errors from inspectBmadSetup', async () => {
@@ -666,9 +711,22 @@ describe('validateRepository — Server Action', () => {
     await validateRepository(REPO_URL);
     const fetchCallsAfterFirst = mockFetch.mock.calls.length;
 
-    await invalidateValidationCache(SESSION.userId, REPO_URL);
+    invalidateValidationCache(SESSION.userId, REPO_URL);
 
     await validateRepository(REPO_URL);
     expect(mockFetch.mock.calls.length).toBeGreaterThan(fetchCallsAfterFirst);
+  });
+
+  it('[P1] does NOT cache failed validation results — a fixed repo validates cleanly on retry', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '': githubDirListing([{ name: 'README.md', type: 'file' }]),
+    });
+    const result1 = await validateRepository(REPO_URL);
+    expect(result1).toMatchObject({ code: 'MISSING_DIRECTORY' });
+
+    // Repo is "fixed" — same user + repo revalidates within the TTL window.
+    setupFetchWithOverrides(mockFetch, {});
+    const result2 = await validateRepository(REPO_URL);
+    expect(result2).toMatchObject({ valid: true });
   });
 });

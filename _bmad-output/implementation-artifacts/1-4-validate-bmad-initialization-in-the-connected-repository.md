@@ -4,7 +4,7 @@ baseline_commit: 32fcf76309f8059234e6e4037a5b46c146a1d28f
 
 # Story 1.4: Validate BMAD Initialization in the Connected Repository
 
-Status: review
+Status: done
 
 ## Story
 
@@ -77,6 +77,30 @@ so that I don't hit confusing failures later in a Conversation.
   - [x] Test all success paths
   - [x] Test all error paths (missing dirs, missing skills, version mismatch)
   - [x] Test edge cases (empty directories, malformed version files)
+
+### Review Findings
+
+- [x] [Review][Patch] Unauthenticated `'use server'` exports expose internal helpers (`inspectBmadSetup`, `clearValidationCache`, `invalidateValidationCache`) as public endpoints — `inspectBmadSetup` relays arbitrary bearer tokens to GitHub with no auth check [apps/web/src/actions/repository-validation.actions.ts:1]
+- [x] [Review][Defer] Rate-limit 403 misdiagnosed as credential failure — `markCredentialFailed` poisons credential health on transient GitHub rate limits [apps/web/src/actions/repository-validation.actions.ts:67] — deferred, prior decision on record: 403-conflation handling explicitly deferred post-MVP (deferred-work.md, story 1.6 review)
+- [x] [Review][Patch] `detectBmadVersion` uses `Promise.any` — version source priority is a network race, nondeterministic pass/fail when sources disagree [apps/web/src/actions/repository-validation.actions.ts:132]
+- [x] [Review][Patch] Transient version-probe failures (5xx/timeout/credential) silently collapse into `UNSUPPORTED_VERSION: unknown` [apps/web/src/actions/repository-validation.actions.ts:132]
+- [x] [Review][Patch] `Promise.all` in `inspectBmadSetup` lets a secondary fetch failure mask the actionable `MISSING_DIRECTORY` result; also spends skills/version calls when validation already failed [apps/web/src/actions/repository-validation.actions.ts:177]
+- [x] [Review][Patch] Failed validation results cached for 120s — user who fixes their repo keeps seeing the stale failure [apps/web/src/actions/repository-validation.actions.ts:344]
+- [x] [Review][Patch] Validation cache grows without bound — expired entries evicted only on key re-read [apps/web/src/actions/repository-validation.actions.ts:254]
+- [x] [Review][Patch] Any `.md` file counts as a skill — a skills dir containing only `README.md` bypasses AC-5 [apps/web/src/actions/repository-validation.actions.ts:145]
+- [x] [Review][Defer] Unbounded parallel `SKILL.md` probes (real repo: 71 subdirs → ~76 concurrent calls) invite secondary rate limits [apps/web/src/actions/repository-validation.actions.ts:149] — deferred, prior decision on record: concurrency limiter rejected as speculative for MVP (deferred-work.md, spec-1-4 review)
+- [x] [Review][Patch] Owner/repo pattern accepts `.`/`..` — dot-segment normalization steers authenticated fetches to unintended api.github.com paths [apps/web/src/actions/repository-validation.actions.ts:21]
+- [x] [Review][Patch] Misleading `NO_CREDENTIAL` message for rejected-but-present credentials; `markCredentialFailed` rejection escapes the handler in the `resolveOAuthToken` catch [apps/web/src/actions/repo-connection.actions.ts:59]
+- [x] [Review][Patch] Weak type discriminant: `ValidationResult.valid` is `boolean` and success fields optional — `{ valid: false }` would be treated as success by `'code' in x` narrowing [libs/shared-types/src/repository-validation.ts:10]
+- [x] [Review][Patch] Quoted (`version: "6.8.0"`) or `v`-prefixed versions unparseable → valid v6 installs rejected as `UNSUPPORTED_VERSION` [apps/web/src/actions/repository-validation.actions.ts:88]
+- [x] [Review][Patch] Non-string `repoUrl` crashes the action (`repoUrl.trim()` before any guard) instead of returning `INVALID_URL` [apps/web/src/actions/repository-validation.actions.ts:296]
+- [x] [Review][Patch] No logging on validation failure paths — spec requires debug logging for validation failures [apps/web/src/actions/repository-validation.actions.ts:196]
+- [x] [Review][Defer] `validateRepository` is not wired into any UI flow (connection flow uses `connectRepository`) — wiring it up is a product decision [apps/web/src/actions/repository-validation.actions.ts:293] — deferred, pre-existing
+- [x] [Review][Defer] In-process validation cache is ineffective/inconsistent on multi-instance or serverless deployments — accepted MVP limitation [apps/web/src/actions/repository-validation.actions.ts:254] — deferred, pre-existing
+- [x] [Review][Defer] GitHub contents API truncates directory listings at 1000 entries — very large repos could yield false `MISSING_DIRECTORY` [apps/web/src/actions/repository-validation.actions.ts:183] — deferred, pre-existing
+- [x] [Review][Defer] Required dirs tracked as git submodules/symlinks fail the `type === 'dir'` filter and report as missing [apps/web/src/actions/repository-validation.actions.ts:184] — deferred, pre-existing
+- [x] [Review][Defer] `config.yaml` version parsed from a `# Version:` comment — fragile format dependency (works against real BMAD 6.x output) [apps/web/src/actions/repository-validation.actions.ts:92] — deferred, pre-existing
+- [x] [Review][Defer] Spec's integration-test checklist (full onboarding flow 1.3→1.4→1.5, retry-after-fix e2e) remains unchecked — component-level coverage only [_bmad-output/implementation-artifacts/1-4-validate-bmad-initialization-in-the-connected-repository.md:310] — deferred, pre-existing
 
 ## Dev Notes
 
@@ -396,3 +420,4 @@ Claude Sonnet 4.6 (as per architecture requirements)
 
 ### Change Log
 - 2026-06-24: Story 1.4 implementation complete — BMAD initialization validation service, version detection, skills directory validation, error messages with documentation links, integration into repository connection flow, comprehensive unit tests
+- 2026-07-02: Adversarial code review complete (Blind Hunter + Edge Case Hunter + Acceptance Auditor). All 6 ACs verified implemented and tested. 13 patches applied, headline fixes: (1) internal helpers (`inspectBmadSetup`, cache functions) moved out of the `'use server'` module into `apps/web/src/lib/repository-validation.ts` — they were unauthenticated network-callable endpoints; (2) version detection switched from `Promise.any` race to deterministic priority order with transient-failure propagation; (3) failed validation results are no longer cached; (4) `README.md`/`CHANGELOG.md` etc. no longer count as Skills (AC-5); (5) dot-segment owner/repo rejected, non-string input guarded, cache bounded, quoted versions parseable, validation-failure logging added, `ValidationResult` made a proper discriminated union. 8 findings deferred (2 per prior recorded decisions: 403-conflation post-MVP, no concurrency limiter for MVP), 3 dismissed as spec-mandated behavior (story 1.6 AC-1). 279 web tests pass, lint and typecheck clean. Status → done.

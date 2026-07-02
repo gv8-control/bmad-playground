@@ -80,6 +80,7 @@ const ENCRYPTED_MOCK = {
   dekNonce: 'dek_nonce_base64',
   encryptedToken: 'enc_token_base64',
   tokenNonce: 'token_nonce_base64',
+  kekId: 'fingerprint123ab',
 };
 
 // ─── Credential storage tests (AC-3) ─────────────────────────────────────────
@@ -106,7 +107,7 @@ describe('auth.ts jwt callback — OAuthCredential storage (AC-3, Task 3.1)', ()
     });
 
     expect(mockEncryptToken).toHaveBeenCalledTimes(1);
-    expect(mockEncryptToken).toHaveBeenCalledWith('gho_real_access_token');
+    expect(mockEncryptToken).toHaveBeenCalledWith('gho_real_access_token', 'usr_abc123');
   });
 
   it('[P0] upserts OAuthCredential with encrypted fields keyed by userId (AC-3)', async () => {
@@ -123,6 +124,7 @@ describe('auth.ts jwt callback — OAuthCredential storage (AC-3, Task 3.1)', ()
         dekNonce: ENCRYPTED_MOCK.dekNonce,
         encryptedToken: ENCRYPTED_MOCK.encryptedToken,
         tokenNonce: ENCRYPTED_MOCK.tokenNonce,
+        kekId: ENCRYPTED_MOCK.kekId,
       },
       create: {
         userId: 'usr_abc123',
@@ -130,6 +132,7 @@ describe('auth.ts jwt callback — OAuthCredential storage (AC-3, Task 3.1)', ()
         dekNonce: ENCRYPTED_MOCK.dekNonce,
         encryptedToken: ENCRYPTED_MOCK.encryptedToken,
         tokenNonce: ENCRYPTED_MOCK.tokenNonce,
+        kekId: ENCRYPTED_MOCK.kekId,
       },
     });
   });

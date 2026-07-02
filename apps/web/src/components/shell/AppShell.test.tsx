@@ -8,8 +8,9 @@
  */
 
 import '@testing-library/jest-dom';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useEffect, useState } from 'react';
 
 const mockUsePathname = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -127,5 +128,54 @@ describe('AppShell', () => {
     const newH1 = screen.getByRole('heading', { level: 1, name: /artifacts/i });
     expect(newH1).toHaveAttribute('tabindex', '-1');
     expect(newH1).toHaveFocus();
+  });
+
+  it('[P0] moves focus to an h1 that mounts asynchronously (e.g. streamed/Suspense content)', async () => {
+    // Simulates a page whose <h1> is not present on first paint (behind a
+    // Suspense boundary or streamed in) — it mounts after a deferred state
+    // update rather than being present synchronously.
+    function DeferredHeading() {
+      const [ready, setReady] = useState(false);
+      useEffect(() => {
+        const id = setTimeout(() => setReady(true), 0);
+        return () => clearTimeout(id);
+      }, []);
+      if (!ready) {
+        return <button>Loading placeholder</button>;
+      }
+      return <h1>Deferred Artifacts</h1>;
+    }
+
+    mockUsePathname.mockReturnValue('/artifacts');
+    render(
+      <AppShell user={USER}>
+        <DeferredHeading />
+      </AppShell>,
+    );
+
+    // Synchronously, no h1 exists yet — focus falls back to the first
+    // interactive element without throwing or hanging.
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+
+    const deferredH1 = await screen.findByRole('heading', {
+      level: 1,
+      name: /deferred artifacts/i,
+    });
+    await waitFor(() => expect(deferredH1).toHaveAttribute('tabindex', '-1'));
+    await waitFor(() => expect(deferredH1).toHaveFocus());
+  });
+
+  it('[P0] does not add delay when the h1 is already present (no regression)', async () => {
+    mockUsePathname.mockReturnValue('/project-map');
+    render(
+      <AppShell user={USER}>
+        <h1>Immediate Heading</h1>
+      </AppShell>,
+    );
+
+    // Focus lands synchronously, before any microtask/timer flush.
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1).toHaveAttribute('tabindex', '-1');
+    expect(h1).toHaveFocus();
   });
 });

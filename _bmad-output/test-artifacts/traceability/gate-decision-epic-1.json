@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1.0",
+  "evaluated_at": "2026-07-02T00:00:00.000Z",
+  "repo": "bmad-easy",
+  "target": { "type": "epic", "id": "epic-1", "label": "Authentication & Repository Connection" },
+  "collection_status": "COLLECTED",
+  "gate_basis": "priority_thresholds",
+  "gate_status": "FAIL",
+  "rationale": "P0 coverage is 70% (7/10 fully covered; required: 100%). No P0 criterion has zero coverage, but three fall short of FULL: 1.6-AC1 (401/403-to-failed timing unverified), 1.6-AC2 (tenant-isolation negative path untested), and 1.2-AC1 (repo-scope OAuth request asserted only by a test skipped without AUTH_GITHUB_ID). Overall coverage (77%) also falls below the 80% minimum independently.",
+  "p0_status": "NOT_MET",
+  "p1_status": "PARTIAL",
+  "overall_status": "NOT_MET",
+  "critical_open": 0,
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix-epic-1.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  }
+}
