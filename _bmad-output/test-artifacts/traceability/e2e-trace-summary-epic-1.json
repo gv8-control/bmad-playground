@@ -6,7 +6,7 @@
   "collection_status": "COLLECTED",
   "inventory_basis": "acceptance_criteria",
   "gate_basis": "priority_thresholds",
-  "source_sha": "",
+  "source_sha": "85b8d8e1b8d1c36957ffd261b9e21873ef66d47e",
   "target": { "type": "epic", "id": "epic-1", "label": "Authentication & Repository Connection" },
   "decision_mode": "deterministic",
   "evaluator": "Marius",
@@ -23,49 +23,107 @@
   },
   "coverage": {
     "inventory": {
-      "covered": 24,
+      "covered": 27,
       "total": 31,
-      "pct": 77
+      "pct": 87
     },
     "priority_breakdown": {
-      "P0": { "total": 10, "covered": 7, "pct": 70 },
+      "P0": { "total": 10, "covered": 10, "pct": 100 },
       "P1": { "total": 15, "covered": 13, "pct": 87 },
       "P2": { "total": 4, "covered": 3, "pct": 75 },
       "P3": { "total": 2, "covered": 1, "pct": 50 }
     },
     "by_level": {
-      "e2e": { "tests": 60, "criteria_covered": 20 },
-      "component": { "tests": 45, "criteria_covered": 17 },
-      "unit": { "tests": 95, "criteria_covered": 22 },
-      "api": { "tests": 30, "criteria_covered": 14 },
+      "e2e": { "tests": 62, "criteria_covered": 20 },
+      "api": { "tests": 14, "criteria_covered": 8 },
+      "component": { "tests": 61, "criteria_covered": 15 },
+      "unit": { "tests": 187, "criteria_covered": 25 },
       "other": { "tests": 0, "criteria_covered": 0 }
     }
   },
   "tests": {
     "files": 32,
-    "cases": 230,
+    "cases": 324,
     "skipped_cases": 3,
     "fixme_cases": 0,
     "pending_cases": 0
   },
+  "test_execution": {
+    "unit_integration": {
+      "total": 324,
+      "passed": 324,
+      "failed": 0,
+      "duration_seconds": 8.5,
+      "source": "fresh run 2026-07-02, yarn nx test (web/agent-be/shared-types/database-schemas)"
+    },
+    "e2e": {
+      "total": 62,
+      "passed": 59,
+      "skipped": 3,
+      "failed": 0,
+      "source": "last verified 2026-07-02 per NFR assessment",
+      "skip_reasons": [
+        "AUTH_GITHUB_ID not set (1 test — repo scope assertion, independently covered at unit level)",
+        "Real GitHub credentials required (1 test — token visibility, independently covered at unit/integration level)",
+        "Org with OAuth App restrictions required (1 test — org restriction error, independently covered at unit/component level)"
+      ]
+    },
+    "overall_pass_rate": 100
+  },
+  "nfr_evidence": {
+    "source": "_bmad-output/test-artifacts/nfr-assessment.md",
+    "security": {
+      "status": "PASS",
+      "security_issues": 0,
+      "nfr_s2_tenant_isolation": "PASS",
+      "nfr_s4_token_encryption": "PASS"
+    },
+    "performance": {
+      "status": "NOT_ASSESSED",
+      "reason": "NFR-P1-P5 latency targets not in Epic 1 scope"
+    },
+    "reliability": {
+      "status": "CONCERNS",
+      "nfr_r1_credential_health": "CONCERNS",
+      "open_findings": [
+        "FINDING-12: 403 over-firing — non-credential 403s mark valid tokens as failed (MEDIUM)",
+        "FINDING-14: Cache delays credential failure detection up to 120s (MEDIUM)"
+      ]
+    },
+    "maintainability": {
+      "status": "CONCERNS",
+      "open_findings": [
+        "FINDING-7/10/17: Bare console.error in multiple locations (LOW, carried pattern)"
+      ]
+    },
+    "critical_nfr_failures": 0,
+    "overall_nfr_status": "CONCERNS",
+    "waivers_applied": "W-1 through W-31 (pre-production MVP, infrastructure-level concerns)"
+  },
+  "flakiness": {
+    "burn_in_run": false,
+    "flaky_tests": 0,
+    "stability_score": null,
+    "note": "Burn-in not run in this session; 0 flaky tests reported across story progression (212 -> 233 -> 272 tests)"
+  },
   "risk_summary": {
     "critical_open": 0,
-    "high_open": 3,
-    "medium_open": 2,
+    "high_open": 0,
+    "medium_open": 4,
     "low_open": 2
   },
   "heuristics": {
     "endpoint_gaps": 0,
-    "auth_negative_path_status": "none",
+    "auth_negative_path_status": "present",
     "error_path_status": "partial",
     "ui_journey_status": "not_applicable",
-    "ui_state_status": "not_applicable"
+    "ui_state_status": "partial"
   },
   "blockers": [
     {
       "id": "playwright/e2e/auth/sign-in.spec.ts:clicking Sign in with GitHub navigates toward GitHub OAuth",
-      "severity": "high",
-      "reason": "Skipped unless AUTH_GITHUB_ID env var is set; this is the only test asserting the OAuth 'repo' scope request (1.2-AC1)",
+      "severity": "medium",
+      "reason": "Skipped unless AUTH_GITHUB_ID env var is set; assertion independently covered at unit level (auth.config.spec.ts:137-140)",
       "test_file": "playwright/e2e/auth/sign-in.spec.ts",
       "test_title": "clicking \"Sign in with GitHub\" navigates toward GitHub OAuth"
     },
@@ -86,34 +144,19 @@
   ],
   "recommendations": [
     {
-      "priority": "URGENT",
-      "action": "Add a negative-path test proving cross-tenant token resolution is denied",
-      "requirements": ["1.6-AC2"]
-    },
-    {
-      "priority": "URGENT",
-      "action": "Add a test proving the 401/403 credential-health flip completes before the operation returns (within one cycle)",
-      "requirements": ["1.6-AC1"]
-    },
-    {
-      "priority": "URGENT",
-      "action": "Add a unit-level assertion that the GitHub provider requests scope: 'repo', independent of the skipped E2E test",
-      "requirements": ["1.2-AC1"]
-    },
-    {
       "priority": "HIGH",
       "action": "Add an integration/E2E test for the full re-auth cycle (failed -> healthy) that also asserts the RepoConnection row is not deleted",
       "requirements": ["1.6-AC3"]
     },
     {
       "priority": "MEDIUM",
-      "action": "Fix the two weak-assertion AppShell.test.tsx cases already flagged in test-review-1-8.md (M-1, M-2)",
+      "action": "Fix the two weak-assertion AppShell.test.tsx cases (drawer open/close) already flagged in test-review-1-8.md (M-1, M-2)",
       "requirements": ["1.8-AC4"]
     },
     {
       "priority": "LOW",
-      "action": "Run /bmad-testarch-test-review on Story 1.6's test files given the two P0 gaps found here",
-      "requirements": ["1.6"]
+      "action": "Run /bmad-testarch-test-review on Story 1.6 and 1.8 test files for quality sweep",
+      "requirements": ["1.6", "1.8"]
     }
   ],
   "links": {
@@ -122,17 +165,17 @@
     "artifact_url": "",
     "journey_evidence_url": ""
   },
-  "gate_status": "FAIL",
+  "gate_status": "CONCERNS",
   "gate_criteria": {
     "p0_coverage_required": "100%",
-    "p0_coverage_actual": "70%",
-    "p0_status": "NOT_MET",
+    "p0_coverage_actual": "100%",
+    "p0_status": "MET",
     "p1_coverage_target": "90%",
     "p1_coverage_minimum": "80%",
     "p1_coverage_actual": "87%",
     "p1_status": "PARTIAL",
     "overall_coverage_minimum": "80%",
-    "overall_coverage_actual": "77%",
-    "overall_status": "NOT_MET"
+    "overall_coverage_actual": "87%",
+    "overall_status": "MET"
   }
 }

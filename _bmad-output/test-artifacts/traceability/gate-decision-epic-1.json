@@ -5,12 +5,23 @@
   "target": { "type": "epic", "id": "epic-1", "label": "Authentication & Repository Connection" },
   "collection_status": "COLLECTED",
   "gate_basis": "priority_thresholds",
-  "gate_status": "FAIL",
-  "rationale": "P0 coverage is 70% (7/10 fully covered; required: 100%). No P0 criterion has zero coverage, but three fall short of FULL: 1.6-AC1 (401/403-to-failed timing unverified), 1.6-AC2 (tenant-isolation negative path untested), and 1.2-AC1 (repo-scope OAuth request asserted only by a test skipped without AUTH_GITHUB_ID). Overall coverage (77%) also falls below the 80% minimum independently.",
-  "p0_status": "NOT_MET",
+  "gate_status": "CONCERNS",
+  "rationale": "All P0 criteria met with 100% coverage and 100% pass rate across 10 P0 acceptance criteria. No security issues (NFR-S2/S4 PASS). No critical NFR failures. Overall coverage 87% (exceeds 80% minimum). P1 coverage 87% (meets 80% minimum, below 90% target) — 2 P1 gaps: 1.6-AC3 (re-auth cycle only unit-tested in isolation) and 1.8-AC4 (two weak-assertion unit tests, E2E compensates). Both are non-critical with E2E/unit compensation. 3 skipped E2E tests are independently covered at unit/integration level. NFR-R1 (reliability) has CONCERNS (403 over-firing, cache delay) acceptable for pre-production MVP with waivers.",
+  "p0_status": "MET",
   "p1_status": "PARTIAL",
-  "overall_status": "NOT_MET",
+  "overall_status": "MET",
   "critical_open": 0,
+  "test_execution": {
+    "unit_integration": { "total": 324, "passed": 324, "failed": 0, "duration_seconds": 8.5 },
+    "e2e": { "total": 62, "passed": 59, "skipped": 3, "failed": 0 },
+    "overall_pass_rate": 100
+  },
+  "nfr_summary": {
+    "security": "PASS",
+    "security_issues": 0,
+    "reliability": "CONCERNS",
+    "critical_nfr_failures": 0
+  },
   "links": {
     "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix-epic-1.md",
     "trace_report_url": "",
