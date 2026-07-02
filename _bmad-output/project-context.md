@@ -13,7 +13,7 @@ sections_completed:
     'critical_rules',
   ]
 status: 'complete'
-rule_count: 85
+rule_count: 101
 optimized_for_llm: true
 ---
 
@@ -94,6 +94,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `middleware.ts` uses `NextAuth(authConfig).auth` — the matcher excludes `/sign-in`, `/api/auth`, `/api/internal/test`, and Next.js static assets.
 - `next.config.js`: `serverExternalPackages: ['pg', '@prisma/adapter-pg']` — required for Prisma driver adapter. Turbopack root set to monorepo root for hoisted `next`.
 - Test-only internal API routes live under `app/api/internal/test/*` and are guarded by `assertTestEnvNotInProduction()` at startup + per-request `NODE_ENV`/`TEST_ENV` checks.
+- **`assertTestEnvNotInProduction()` runs from `instrumentation.ts`** (`register()` hook) at server startup — a misconfigured production deploy with `TEST_ENV` set fails loudly at boot, not silently after exposing test endpoints.
+- **`null as never` after `redirect()`:** Server Components that call `redirect()` must `return null as never;` immediately after — `redirect()` throws internally but TypeScript doesn't know that, so the return type must be satisfied. Codebase-wide pattern (see `page.tsx`, `onboarding/page.tsx`).
+- **`useFormStatus()` for Server Action form buttons:** submit buttons in Server Action forms use `useFormStatus()` from `react-dom` (not local React state) to track pending state. The button must be a separate `'use client'` component (see `sign-in/submit-button.tsx`). Inline Server Actions can be defined directly in a form's `action` prop with an `async () => { 'use server'; ... }` function for simple cases that don't need export.
+- **Conditional app shell (onboarding-gated):** the `(dashboard)/layout.tsx` renders `<AppShell>` only when a `RepoConnection` exists. Users without a repo connection get bare `<>{children}</>`. The root `page.tsx` redirects to `/onboarding` (no connection) or `/project-map` (connection exists) — this is the onboarding gate. New dashboard pages inherit this conditional shell automatically.
+- **Route-focus management:** `AppShell` moves focus to `h1` on every route change (sets `tabindex="-1"` dynamically, `focus({ preventScroll: true })`). If no `h1` exists at effect time (e.g. behind a Suspense boundary), focus lands on the first interactive element and a `MutationObserver` keeps watching for a late-mounting `h1`. New pages must render an `<h1>` for this to work.
 
 #### NestJS (apps/agent-be)
 
@@ -111,7 +116,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Single shared schema** in `libs/database-schemas/src/prisma/schema.prisma`. Both apps generate their own client from this schema. Never create a second schema.
 - **Prisma client access:** `apps/web` uses `getPrisma()` from `src/lib/prisma.ts` (singleton on `globalThis`). `apps/agent-be` uses its own `PrismaService`. Both import `PrismaClient` from `@bmad-easy/database-schemas`.
 - **Migrations** run from `libs/database-schemas` against the shared Postgres instance.
-- **No caching layer** for MVP. No React Query/SWR. Direct Prisma reads.
+- **No caching layer for database reads** for MVP. No React Query/SWR. Direct Prisma reads.
+- **Bounded in-memory cache exception:** expensive external API calls (e.g. GitHub Contents API in `repository-validation.ts`) may use a module-level `Map` cache with these guardrails: FIFO eviction at a max-entries cap (500), TTL expiry (120s), only successful results cached, credential-health bypass (skip cache when `credentialHealth === 'failed'`), and explicit invalidation hooks (`invalidateValidationCache`, `clearValidationCache`). Never cache database reads — only external API results.
 
 #### shadcn/ui + Tailwind
 
@@ -119,6 +125,16 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `cn()` helper in `apps/web/src/lib/utils.ts` (clsx + tailwind-merge) — always use for conditional class merging.
 - Design tokens are custom dark-first colors defined in `tailwind.config.ts` (`bg`, `surface`, `surface-raised`, `border`, `text-1/2/3`, `accent`, `positive`, `caution`, `negative`). Use semantic token names, never raw hex values.
 - Font: Inter (sans), JetBrains Mono (mono).
+
+#### GitHub API Integration
+
+- **Always set `AbortSignal.timeout(10_000)`** on every `fetch()` call to the GitHub API. No unbounded waits.
+- **Always send `X-GitHub-Api-Version: 2022-11-28`** and `Accept: application/vnd.github+json` headers. Use the `githubHeaders()` helper in `repository-validation.ts` as the canonical pattern.
+- **Directory-listing pagination:** GitHub silently truncates large directories. Follow the `Link` header's `rel="next"` until exhausted or capped (`MAX_CONTENT_PAGES = 10`, `MAX_CONTENT_ENTRIES = 10_000`). Never assume a single response is complete.
+- **`RateLimitError` as a distinct error class:** 403 responses must be classified via `detectGithubRateLimit()` — primary (`X-RateLimit-Remaining: 0`) vs. secondary (body message contains "secondary rate limit" / "abuse detection"). Rate limits throw `RateLimitError` (with optional `waitHintSeconds` derived from `Retry-After` / `X-RateLimit-Reset`), NEVER `CredentialFailureError`. Use `rateLimitMessage()` to format user-facing messages with wait-time hints.
+- **Non-rate-limit 403 returns `null`:** a 403 that is not a rate limit means the token is valid but the path is inaccessible (org-restriction, permission denial). Return `null` (like a 404) — do NOT call `markCredentialFailed`.
+- **`inspectBmadSetup` security boundary:** functions that receive a plaintext OAuth token but perform no session check must NEVER carry `'use server'`. They are internal-only — only authenticated Server Actions may call them. Exposing them as network-callable endpoints would let anonymous callers relay arbitrary tokens through the server.
+- **Parallel fetch, sequential priority resolution:** when probing multiple sources for a value (e.g. BMAD version detection), use `Promise.allSettled()` for parallelism but process results in original priority order — never by response timing. A rejected higher-priority probe must throw, not be silently skipped. "No version found" may only be concluded from clean 404s/parse misses across all sources.
 
 ### Testing Rules
 
@@ -143,6 +159,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `beforeEach` / `afterEach`: `jest.clearAllMocks()` in beforeEach, `jest.restoreAllMocks()` in afterEach.
 - **GitHub API mocking:** mock `global.fetch` via `jest.spyOn(global, 'fetch').mockImplementation(...)`. Use the test-utils in `repository-validation.test-utils.ts` (`githubDirListing`, `githubFileContent`, `github404`, `github403PrimaryRateLimit`, etc.) for consistent GitHub response fixtures.
 - **SandboxServiceFake** (`apps/agent-be/test/helpers/sandbox-service.fake.ts`) is the canonical test double for all Conversation-path tests. Inject via `buildTestModule()` from `test-module-builder.ts` which wires the fake through the `SANDBOX_SERVICE` DI token.
+- **`buildTestModule()` is the canonical NestJS test module factory** (`apps/agent-be/test/helpers/test-module-builder.ts`). It augments NestJS's `TestingModuleBuilder` prototype with an `overrideProviders(array)` method (plural — NestJS only provides singular `overrideProvider`). Always use `buildTestModule(imports, overrides)` instead of manually calling `Test.createTestingModule()` — it pre-wires the `SandboxServiceFake` and supports array-form provider overrides.
 - **Prisma mocking:** mock `getPrisma()` to return an object with the needed model methods: `jest.mock('@/lib/prisma', () => ({ getPrisma: () => ({ repoConnection: { upsert: mockUpsert } }) }))`.
 
 #### Coverage Expectations
@@ -244,8 +261,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 #### Security Rules
 
-- **OAuth token encryption:** AES-256-GCM envelope encryption (per-user DEK + platform KEK). `userId` is bound as GCM AAD — prevents ciphertext-transplant attacks. DEK is zeroed in memory after use (`dek.fill(0)` in `finally` block).
+- **OAuth token encryption:** AES-256-GCM envelope encryption (per-user DEK + platform KEK). `userId` is bound as GCM AAD on both GCM layers (DEK-wrap and token-encryption) — prevents ciphertext-transplant attacks. DEK is zeroed in memory after use (`dek.fill(0)` in `finally` block). Nonce length is validated before use (`assertNonceLength`) — a corrupt nonce throws a descriptive application error, not an opaque OpenSSL error.
+- **`computeKekId(kek)` — deterministic KEK fingerprint:** first 16 hex chars of `sha256(kek)`, stored on `OAuthCredential.kekId`. Non-reversible: knowing the fingerprint does not help recover the KEK. Used by `rotate-kek.ts` to select rows by exact fingerprint match instead of trial-decryption. Every encryption operation writes `kekId`; every rotation classifies rows by it.
 - **GCM nonce uniqueness is critical** — always use `randomBytes(12)`. Nonce reuse under the same key is a catastrophic failure.
+- **KEK rotation script safety properties** (`scripts/rotate-kek.ts`): KEKs accepted from environment variables only (never CLI arguments — shell history / process listings). Output never contains key material, DEK bytes, or token fields. Three commands: `dry-run` (classify, no writes), `rotate` (re-wrap, fresh nonce), `verify` (classify against new KEK). Per-row optimistic update guard (`where: { id, encryptedDek, kekId }`). Idempotent re-run (already-rotated rows are `skipped`). Fail-closed on unmatched KEK. Announces target database (`describeDatabase()` — host:port/dbname only, never credentials) before any read/write so the operator can abort if it's the wrong database.
 - **Tenant isolation:** `resolveOAuthToken(userId)` is the SINGLE point where plaintext tokens are resolved. The `where: { userId }` clause IS the tenant authorization check. Every credential lookup must pass a `tenant_id` / `userId` check.
 - **Credential health propagation (NFR-R1):** 401 response → `markCredentialFailed(userId, capturedAt)` with optimistic-concurrency guard. 403 is NOT a credential failure — classify it (rate limit, org restriction, permission denial) and surface an appropriate error code. Silent failures are never acceptable.
 - **Boundary JWT:** separate from Auth.js JWE. Transported via `Authorization` header (REST) and query parameter (SSE — `EventSource` cannot set headers). Logs must be sanitized to strip the token.
@@ -259,7 +278,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Sandbox idle timeout:** a sandbox provisioned on page open that receives no first message within 60s must be torn down.
 - **HTTP/2 requirement:** the agent-be reverse proxy must be HTTP/2-capable. HTTP/1.1 caps concurrent SSE at 6 connections (browser limit), breaking the 10-concurrent-conversations requirement.
 - **SSE heartbeat:** emit heartbeat comments on a fixed interval so the browser detects dead connections even when sandbox-agent is stalled.
-- **No caching layer** — don't add Redis/memoization. Direct Prisma reads are the intended pattern for MVP.
+- **No caching layer for database reads** — don't add Redis/memoization for DB reads. Direct Prisma reads are the intended pattern for MVP. Bounded in-memory caches for expensive external API calls (GitHub) are acceptable with the guardrails documented in the Prisma/Database section above.
 
 #### Edge Cases to Handle
 
@@ -268,7 +287,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **GitHub 403 without rate-limit signal:** `INSUFFICIENT_PERMISSION` — token is valid, access denied. Do NOT mark credential as failed.
 - **Missing `permissions` field** in GitHub API response: treat as `INSUFFICIENT_PERMISSION` (GitHub may omit permissions for org-member access).
 - **Credential health flip timing:** `markCredentialFailed` must be awaited (not fire-and-forget) so the health status flips within one operation cycle. Tests use `setImmediate` to prove this.
-- **Optimistic concurrency in `markCredentialFailed`:** when `capturedAt` is provided, the write only applies if `updatedAt < capturedAt` — prevents a `failed` write from clobbering a concurrent re-authorization that bumped the status to `healthy`.
+- **Optimistic concurrency in `markCredentialFailed`:** capture a `capturedAt` timestamp BEFORE the external GitHub call, then pass it to `markCredentialFailed(userId, capturedAt)`. The write only applies if `updatedAt < capturedAt` (strict less-than — `lt`, not `lte`) — prevents a stale `failed` write from clobbering a concurrent re-authorization that bumped the status to `healthy` even in the same millisecond. This is the canonical pattern for any write that competes with a concurrent healthy-state writer.
 - **Sandbox initialization sequence (ordered):** provision → clone (or restore on resume) → inject per-user git config → run `git status --porcelain` → emit `WORKING_TREE_*` event → emit `SESSION_READY`. Git config injection must occur at every provision AND every resume.
 - **Failed `SandboxService.provision()`:** any partial Daytona allocation must be torn down — never leave orphaned sandboxes.
 
