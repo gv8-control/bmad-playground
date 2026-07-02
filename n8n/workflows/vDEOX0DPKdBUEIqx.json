@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-01T11:46:55.778Z",
+  "updatedAt": "2026-07-01T20:13:30.346Z",
   "createdAt": "2026-06-19T23:11:49.051Z",
   "id": "vDEOX0DPKdBUEIqx",
   "name": "Develop Story",
@@ -157,7 +157,8 @@
         16
       ],
       "name": "Validate story",
-      "id": "5d0e4c1a-51e5-430b-90aa-ac5dca1572da"
+      "id": "5d0e4c1a-51e5-430b-90aa-ac5dca1572da",
+      "disabled": true
     },
     {
       "parameters": {
@@ -244,7 +245,8 @@
         16
       ],
       "name": "Create story",
-      "id": "34553854-61ee-4da1-8ed0-d983cb83cd0e"
+      "id": "34553854-61ee-4da1-8ed0-d983cb83cd0e",
+      "disabled": true
     },
     {
       "parameters": {
@@ -331,7 +333,8 @@
         -112
       ],
       "name": "Prepare tests",
-      "id": "a6368727-663a-4381-b364-cf95d0ea518b"
+      "id": "a6368727-663a-4381-b364-cf95d0ea518b",
+      "disabled": true
     },
     {
       "parameters": {
@@ -418,7 +421,8 @@
         96
       ],
       "name": "Validate story again",
-      "id": "8bd72951-2851-4615-aa6f-8d982260c524"
+      "id": "8bd72951-2851-4615-aa6f-8d982260c524",
+      "disabled": true
     },
     {
       "parameters": {
@@ -505,7 +509,8 @@
         16
       ],
       "name": "Implement story",
-      "id": "6084749d-fc4d-43ee-a446-bbf292b49361"
+      "id": "6084749d-fc4d-43ee-a446-bbf292b49361",
+      "disabled": true
     },
     {
       "parameters": {
@@ -520,7 +525,8 @@
         16
       ],
       "id": "347b25b5-6708-45b5-8803-9609a34ef850",
-      "name": "Merge"
+      "name": "Merge",
+      "disabled": true
     },
     {
       "parameters": {
@@ -1006,6 +1012,109 @@
       ],
       "id": "4a3ed405-7b32-4594-9dd0-0601ffdb5c72",
       "name": "Notify pipeline started"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 3,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1968,
+        0
+      ],
+      "id": "b1e0a6a3-3f2a-4c8b-9e2f-6d6a2c1e9a04",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Configuration').item.json.Story }}",
+            "Initial prompt (without story ID)": "Review the story spec and the code implemented for it. Identify any new, repeatable patterns or conventions that emerged and aren't already captured in project-context.md. If none exist, do nothing. Otherwise, append them to project-context.md — keep entries lean, document only what's unobvious and repeatable.",
+            "Skill": "bmad-agent-tech-writer",
+            "Agent": "={{ $('Configuration').item.json['Plan Agent'] }}",
+            "Conversation label": "Update project context"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2176,
+        0
+      ],
+      "name": "Update project context",
+      "id": "c2f1b7d4-5a3e-4b91-8c0d-7e4f2a9b6c15"
     }
   ],
   "connections": {
@@ -1136,7 +1245,46 @@
     },
     "Review tests": {
       "main": [
-        []
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Review code": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review NFRs": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Update project context",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "E2E tests": {
