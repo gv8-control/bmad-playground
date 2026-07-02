@@ -20,6 +20,7 @@ jest.mock('@/lib/auth', () => ({ auth: (...args: unknown[]) => mockAuth(...args)
 
 const mockResolveOAuthToken = jest.fn();
 const mockMarkCredentialFailed = jest.fn();
+const mockGetCredentialHealth = jest.fn();
 
 class CredentialFailureError extends Error {
   constructor(public readonly statusCode: number) {
@@ -31,6 +32,7 @@ class CredentialFailureError extends Error {
 jest.mock('@/lib/credential-health', () => ({
   resolveOAuthToken: (...args: unknown[]) => mockResolveOAuthToken(...args),
   markCredentialFailed: (...args: unknown[]) => mockMarkCredentialFailed(...args),
+  getCredentialHealth: (...args: unknown[]) => mockGetCredentialHealth(...args),
   CredentialFailureError,
 }));
 
@@ -55,7 +57,8 @@ afterEach(() => {
 // ─── Subject under test ───────────────────────────────────────────────────────
 
 import { connectRepository } from './repo-connection.actions';
-import { BMAD_DOCUMENTATION_LINK } from '@bmad-easy/shared-types';
+import { getCredentialHealth } from '@/lib/credential-health';
+import { BMAD_DOCUMENTATION_LINK, type CredentialHealthStatus } from '@bmad-easy/shared-types';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -68,6 +71,12 @@ const githubOkWithPush = {
   status: 200,
   json: async () => ({ permissions: { push: true, pull: true, admin: false } }),
 };
+
+/** Builds a minimal Headers-like object for mocked fetch responses. */
+function mockHeaders(entries: Record<string, string> = {}): { get(name: string): string | null } {
+  const lower = new Map(Object.entries(entries).map(([k, v]) => [k.toLowerCase(), v]));
+  return { get: (name: string) => lower.get(name.toLowerCase()) ?? null };
+}
 
 // ─── Validation API fixtures (Story 1.4) ──────────────────────────────────────
 
@@ -186,7 +195,7 @@ describe('connectRepository — session and credential checks', () => {
     mockAuth.mockResolvedValue(SESSION);
     mockResolveOAuthToken.mockRejectedValue(new CredentialFailureError(401));
     await connectRepository(VALID_URL);
-    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
+    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId, expect.any(Date));
   });
 });
 
@@ -248,6 +257,69 @@ describe('connectRepository — GitHub API errors (AC-4)', () => {
     expect(result).toMatchObject({ errorCode: 'INSUFFICIENT_PERMISSION' });
   });
 
+  it('[P0] does NOT call markCredentialFailed for a 403 permission denial — token is valid but lacks repo access', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ message: 'Forbidden' }),
+      headers: mockHeaders(),
+    });
+    await connectRepository(VALID_URL);
+    expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
+  });
+
+  it('[P0] returns errorCode RATE_LIMITED (not a credential failure) on 403 with X-RateLimit-Remaining: 0 (primary rate limit)', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ message: 'API rate limit exceeded for user ID 123.' }),
+      headers: mockHeaders({ 'X-RateLimit-Remaining': '0' }),
+    });
+    const result = await connectRepository(VALID_URL);
+    expect(result).toMatchObject({ errorCode: 'RATE_LIMITED' });
+    expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
+  });
+
+  it('[P1] RATE_LIMITED error message mentions the rate limit', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ message: 'API rate limit exceeded for user ID 123.' }),
+      headers: mockHeaders({ 'X-RateLimit-Remaining': '0' }),
+    });
+    const result = await connectRepository(VALID_URL) as { error: string };
+    expect(result.error).toMatch(/rate limit/i);
+  });
+
+  it('[P0] returns errorCode RATE_LIMITED on 403 secondary rate limit (abuse detection) body, without a rate-limit header', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        message: 'You have exceeded a secondary rate limit. Please wait a few minutes before you try again.',
+      }),
+      headers: mockHeaders(),
+    });
+    const result = await connectRepository(VALID_URL);
+    expect(result).toMatchObject({ errorCode: 'RATE_LIMITED' });
+    expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
+  });
+
+  it('[P0] ORG_RESTRICTION still takes precedence over a generic 403 when org-restriction message is present (existing behavior preserved)', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        message:
+          'Although you appear to have the correct authorization credentials, the organization has enabled OAuth App access restrictions.',
+      }),
+      headers: mockHeaders(),
+    });
+    const result = await connectRepository(VALID_URL);
+    expect(result).toMatchObject({ errorCode: 'ORG_RESTRICTION' });
+    expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
+  });
+
   it('[P0] returns errorCode INSUFFICIENT_PERMISSION when permissions.push is false (AC-2, AC-4)', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -288,20 +360,20 @@ describe('connectRepository — GitHub API errors (AC-4)', () => {
   it('[P0] calls markCredentialFailed on 401 response (AC-1)', async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
     await connectRepository(VALID_URL);
-    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
+    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId, expect.any(Date));
   });
 
-  it('[P0] calls markCredentialFailed on 403 response (AC-1)', async () => {
+  it('[P0] does NOT call markCredentialFailed on 403 response — token is valid, access denied', async () => {
     mockFetch.mockResolvedValue({
       ok: false,
       status: 403,
       json: async () => ({ message: 'Forbidden' }),
     });
     await connectRepository(VALID_URL);
-    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
+    expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
   });
 
-  it('[P0] calls markCredentialFailed when inspectBmadSetup throws CredentialFailureError (AC-1)', async () => {
+  it('[P0] does NOT call markCredentialFailed when inspectBmadSetup encounters 403 — access denied per-path, not credential failure', async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === 'https://api.github.com/repos/my-org/my-repo') {
         return Promise.resolve(githubOkWithPush);
@@ -309,8 +381,9 @@ describe('connectRepository — GitHub API errors (AC-4)', () => {
       return Promise.resolve({ ok: false, status: 403, json: async () => ({ message: 'Forbidden' }) });
     });
     const result = await connectRepository(VALID_URL);
-    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
-    expect(result).toMatchObject({ errorCode: 'NO_CREDENTIAL' });
+    expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
+    // A 403 on contents API returns null → dirs appear missing → MISSING_DIRECTORY
+    expect(result).toMatchObject({ errorCode: 'MISSING_DIRECTORY' });
   });
 });
 
@@ -508,5 +581,67 @@ describe('connectRepository — BMAD validation integration (Story 1.4)', () => 
     setupValidationHappyPath();
     await connectRepository(VALID_URL);
     expect(mockUpsertRepoConnection).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── Credential health flip within one operation cycle (AC-1, NFR-R1) ────────
+// Closes the 1.6-AC1 P0 gap from the traceability report: existing tests only
+// assert markCredentialFailed was *called*, not that the health status actually
+// flipped to 'failed' before the action returned. This test wires
+// markCredentialFailed and getCredentialHealth through shared state so the
+// assertion reads the real post-action status — proving the flip completes
+// within one operation cycle (NFR-R1).
+
+describe('connectRepository — credential health flip within one operation cycle (AC-1, NFR-R1)', () => {
+  let healthState: CredentialHealthStatus;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuth.mockResolvedValue(SESSION);
+    mockResolveOAuthToken.mockResolvedValue(DECRYPTED_TOKEN);
+
+    healthState = 'healthy';
+    // setImmediate makes the flip genuinely async (macrotask, not microtask),
+    // so the test proves the action awaits markCredentialFailed before
+    // returning — a fire-and-forget would leave healthState 'healthy' when
+    // queried immediately after the action resolves.
+    mockMarkCredentialFailed.mockImplementation(async (userId: string) => {
+      expect(userId).toBe(SESSION.userId);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      healthState = 'failed';
+    });
+    // Must read healthState eagerly (no await before the read) for the
+    // macrotask timing to discriminate awaited vs fire-and-forget.
+    mockGetCredentialHealth.mockImplementation(async (userId: string) => {
+      expect(userId).toBe(SESSION.userId);
+      return healthState;
+    });
+  });
+
+  // Reset mock implementations so the setImmediate-based impl doesn't leak
+  // into other describe blocks if tests are appended after this one.
+  afterAll(() => {
+    mockMarkCredentialFailed.mockReset();
+    mockGetCredentialHealth.mockReset();
+  });
+
+  it('[P0] credential health is "failed" immediately after the GitHub API 401 action returns — flip completes within one operation cycle (AC-1, NFR-R1)', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
+
+    await connectRepository(VALID_URL);
+
+    // No artificial delay — query health immediately after the action resolves.
+    const health = await getCredentialHealth(SESSION.userId);
+    expect(health).toBe('failed');
+  });
+
+  it('[P0] credential health is "failed" immediately after resolveOAuthToken throws CredentialFailureError(401) — flip completes within one operation cycle (AC-1, NFR-R1)', async () => {
+    mockResolveOAuthToken.mockRejectedValue(new CredentialFailureError(401));
+    setupValidationHappyPath();
+
+    await connectRepository(VALID_URL);
+
+    const health = await getCredentialHealth(SESSION.userId);
+    expect(health).toBe('failed');
   });
 });
