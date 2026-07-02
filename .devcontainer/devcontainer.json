@@ -41,7 +41,10 @@
         "anthropic.claude-code",
         "fedaykindev.openchamber",
         "thejenos.ntfysh-vscode"
-      ]
+      ],
+      "settings": {
+        "ntfysh.topics": ["agent-outcome"]
+      }
     }
   }
 }
