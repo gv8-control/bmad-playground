@@ -131,11 +131,13 @@ monorepo, plus one external dynamic service (Daytona Cloud sandboxes).
 
 ### Deployed Services
 
-| Service | Location | Deployment |
-|---------|----------|------------|
-| `apps/web` | Next.js 15 BFF + frontend | Vercel |
-| `apps/agent-be` | NestJS agent orchestrator backend | Docker / Railway |
-| Daytona sandboxes | One per active Conversation | Daytona Cloud (external, dynamically scaled) |
+| Service | Location | Deployment | Domain |
+|---------|----------|------------|--------|
+| `apps/web` | Next.js 15 BFF + frontend | Vercel | Synchronous data operations (Server Actions) + UI |
+| `apps/agent-be` | NestJS agent orchestrator backend | Docker / Railway | Real-time + Sandbox orchestration (SSE, provisioning) |
+| Daytona sandboxes | One per active Conversation | Daytona Cloud (external, dynamically scaled) | Agent execution environment |
+
+**Sync/real-time boundary:** `apps/web` Server Actions handle all synchronous, request-scoped data operations — repository connection, BMAD validation, git identity resolution, credential health queries, Project Map reads, Artifact Browser reads. These run in the same process as the web request, read/write Postgres directly via the shared Prisma client, and need no intermediate service hop. `apps/agent-be` owns only the real-time and infrastructure orchestration domains that require a persistent server process: Sandbox provisioning/teardown, SSE event streaming, AG-UI event bridge + circuit breaker + heartbeat, tool-pill classification, credential-failure SSE propagation, and manual commit execution. This split eliminates unnecessary network hops for synchronous operations while keeping the persistent-process complexity contained to where it genuinely adds value.
 
 **Note on sandbox scaling:** Daytona Cloud manages sandbox container lifecycle and
 dynamic allocation — not a service we deploy or scale. The sandbox orchestration
@@ -299,7 +301,7 @@ Migrations run from this library against the shared Railway Postgres instance.
 2. **API documentation:** skipped for MVP — internal-only API, no third-party consumers.
 3. **Error response format:** a consistent JSON error envelope across `apps/agent-be`: `{ code, message, meta }`, with `meta` available for context-specific detail (e.g. field-level validation errors, the org-restriction cause on a 403).
 4. **Rate limiting:** `@nestjs/throttler`, simple global/per-route limits, no per-tenant tiering for MVP.
-5. **`apps/web` ↔ `apps/agent-be` communication:** no server-to-server path. The browser connects directly to `apps/agent-be` for the live REST+SSE interaction (start/resume a session, the AG-UI event stream); `apps/web` independently reads Conversation history, Project Map, and Artifact Browser data straight from Postgres via the shared Prisma client. `apps/agent-be` writes each turn/session-state update to Postgres as it processes it.
+5. **`apps/web` ↔ `apps/agent-be` communication:** no server-to-server path. The browser connects directly to `apps/agent-be` for the live REST+SSE interaction (start/resume a session, the AG-UI event stream, manual commit); `apps/web` independently reads and writes Conversation history, Project Map, and Artifact Browser data straight from Postgres via the shared Prisma client — using Server Actions for synchronous mutations (repository connection, credential health updates, git identity reads) and Server Components for reads. `apps/agent-be` writes turn/session-state updates to Postgres as it processes them, but all Epic 1 synchronous operations (repository validation, BMAD setup check, credential health marking) execute inside `apps/web` Server Actions with no `apps/agent-be` involvement. This split is deliberate: synchronous request-scoped operations gain nothing from an intermediate service hop and lose the natural request-scoped session context that Server Actions provide.
 
 ### Frontend Architecture
 
@@ -545,9 +547,17 @@ bmad-easy/
 │   │   │   │   ├── auth.ts                       # Auth.js v5 config
 │   │   │   │   ├── prisma.ts                     # Prisma client from libs/database-schemas
 │   │   │   │   ├── boundary-jwt.ts                # mints JWT for apps/agent-be crossing
+│   │   │   │   ├── credential-health.ts           # OAuth token resolution, failure marking (FR-4)
+│   │   │   │   ├── git-identity.ts                 # derive git author identity from OAuth profile (FR-3)
+│   │   │   │   ├── repository-validation.ts        # BMAD setup inspection (FR-2)
+│   │   │   │   ├── crypto.ts                      # AES-256-GCM envelope encryption (NFR-S4)
+│   │   │   │   ├── env-guard.ts
 │   │   │   │   └── utils.ts
-│   │   │   ├── actions/                          # Server Actions, Zod-validated
-│   │   │   │   └── repo-connection.actions.ts     # FR-1..FR-5
+│   │   │   ├── actions/                          # Server Actions, Zod-validated (sync data operations)
+│   │   │   │   ├── repo-connection.actions.ts     # FR-1 — connect repo, validate write access
+│   │   │   │   ├── repository-validation.actions.ts  # FR-2 — BMAD initialization validation
+│   │   │   │   ├── git-identity.actions.ts        # FR-3 — resolve git identity for commit attribution
+│   │   │   │   └── credential-health.actions.ts   # FR-4 — check status, re-authorize
 │   │   │   └── types/
 │   │   ├── public/
 │   │   ├── next.config.js
@@ -579,16 +589,11 @@ bmad-easy/
 │       │   ├── auth/
 │       │   │   ├── auth.module.ts
 │       │   │   └── boundary-jwt.strategy.ts
-│       │   ├── credentials/
+│       │   ├── credentials/                       # Token resolution for sandbox git ops (Epic 3)
 │       │   │   ├── credentials.module.ts
-│       │   │   ├── credentials.service.ts         # decrypts OAuth token for git operations
+│       │   │   ├── credentials.service.ts         # decrypts OAuth token for sandbox git operations
 │       │   │   └── encryption.service.ts          # AES-256-GCM, DEK/KEK envelope
-│       │   ├── repo-connection/                   # FR-1, FR-2, FR-3, FR-4, FR-5
-│       │   │   ├── repo-connection.module.ts
-│       │   │   ├── repo-connection.controller.ts
-│       │   │   ├── repo-connection.service.ts
-│       │   │   └── dto/
-│       │   │       └── connect-repository.dto.ts  # Zod schema via createZodDto
+│       │   │                                       # (Epic 1 crypto ops live in apps/web/src/lib/crypto.ts)
 │       │   ├── sandbox/                           # Daytona orchestration
 │       │   │   ├── sandbox.module.ts
 │       │   │   ├── sandbox.service.ts             # implements ISandboxService from libs/shared-types; mandatory --depth=1 shallow clone on provision
@@ -648,8 +653,8 @@ bmad-easy/
 ### Architectural Boundaries
 
 **API Boundaries:**
-- Browser ↔ `apps/agent-be`: REST (repo connection, conversation create/resume, manual commit) + SSE (AG-UI stream), boundary JWT via `Authorization` header (REST) / query param (SSE). This is the *only* path into `apps/agent-be`.
-- `apps/web` Server Actions: Zod-validated, scoped to `repo-connection.actions.ts` only — no other Server Action calls out.
+- `apps/web` Server Actions: Zod-validated, handle all synchronous data operations for the authenticated user — repository connection, BMAD validation, git identity resolution, credential health status queries and updates. These execute in the web request process and read/write Postgres directly via the shared Prisma client. No intermediate service hop, no JWT crossing.
+- Browser ↔ `apps/agent-be`: REST (conversation create/resume, manual commit) + SSE (AG-UI stream, credential failure events), boundary JWT via `Authorization` header (REST) / query param (SSE). This path exists only for the real-time and Sandbox-orchestration domains that `apps/agent-be` owns — never for synchronous data operations handled by `apps/web` Server Actions.
 - `apps/agent-be` → Daytona: pull-only via `@daytonaio/sdk`, scoped to `sandboxId`/Conversation; no inbound calls accepted from sandbox-agent.
 - Authenticated request context: `boundary-jwt.guard.ts` validates the JWT and resolves `userId`; `active-user.guard.ts` (runs after, request-scoped) fetches the live `User` row from Postgres, rejects with `403` if `!active`, and attaches the row to `request.user`. Controllers never query `User` themselves — they consume it via `@User() user: UserContext`. This is the single point where the live `user.active` check happens; no controller or service re-implements it. This check is general request authorization, not a fulfillment of NFR-S3 — NFR-S3's active-termination requirement is deferred to post-MVP (see Deferred Decisions).
 - Credential failure propagation (NFR-R1): `tool-pill-classifier.service.ts` inspects git-related tool call results from the sandbox-agent JSONL stream for 401/403 patterns; on detection it (a) calls `credentials.service.ts` to persist the failed health status, and (b) emits a synthetic `CREDENTIAL_FAILURE` event on the same SSE channel already carrying AG-UI events — no new transport. `apps/web`'s conversation UI (and the `(dashboard)/layout.tsx` repo-connection-status indicator, for the next page load) render the re-auth prompt from that status.
@@ -663,19 +668,19 @@ bmad-easy/
 - `apps/web` and `apps/agent-be` are independently deployable; the only coupling is the shared Postgres schema (`libs/database-schemas`) and the boundary-JWT trust relationship. No server-to-server REST contract exists between them.
 
 **Data Boundaries:**
-- Postgres is the single schema boundary (`libs/database-schemas`), written by `apps/agent-be` (conversations, turns, artifacts, credential health), read directly by `apps/web`.
+- Postgres is the single schema boundary (`libs/database-schemas`), written by both `apps/web` (via Server Actions for repository connection, credential health, git identity — Epic 1-domain writes) and `apps/agent-be` (conversations, turns, artifacts mirroring, cost tracking — Epic 3-domain writes), read directly by `apps/web` Server Components for Project Map, Artifact Browser, and Conversation history.
 - The Daytona sandbox filesystem/git state is the live source of truth during an active Conversation; `apps/agent-be/src/artifacts/artifacts.service.ts` is the sole boundary that mirrors it into Postgres, at commit-time.
 
 ### Requirements to Structure Mapping
 
 **Feature/FR-Category Mapping:**
 
-| FR Category | apps/web | apps/agent-be |
-|---|---|---|
-| Repository Connection & Onboarding (FR-1–5) | `app/(dashboard)/onboarding/`, `components/onboarding/`, `actions/repo-connection.actions.ts` | `repo-connection/`, `credentials/` |
-| Project Map (FR-6–8) | `app/(dashboard)/project-map/`, `components/project-map/` | `artifacts/` (writes), `sandbox/working-tree.service.ts` |
+| FR Category | apps/web (owns sync operations) | apps/agent-be (owns real-time / infrastructure) |
+|---|---|---|---|
+| Repository Connection & Onboarding (FR-1–5) | `app/(dashboard)/onboarding/`, `components/onboarding/`, `actions/repo-connection.actions.ts`, `actions/repository-validation.actions.ts`, `actions/git-identity.actions.ts`, `actions/credential-health.actions.ts`, `lib/credential-health.ts`, `lib/git-identity.ts`, `lib/repository-validation.ts`, `lib/crypto.ts` | `credentials/` (token resolution for sandbox git operations only) |
+| Project Map (FR-6–8) | `app/(dashboard)/project-map/`, `components/project-map/`, direct Prisma reads from Postgres | `artifacts/` (post-commit mirror into Postgres), `sandbox/working-tree.service.ts` |
 | Conversations (FR-9–15) | `app/(dashboard)/conversations/`, `components/conversation/` | `conversations/`, `sandbox/`, `streaming/`, `manual-commit/` |
-| Artifact Browser (FR-16–17) | `app/(dashboard)/artifacts/`, `components/artifact-browser/` | `artifacts/` |
+| Artifact Browser (FR-16–17) | `app/(dashboard)/artifacts/`, `components/artifact-browser/`, direct Prisma reads from Postgres | `artifacts/` (post-commit mirror into Postgres) |
 | Authentication & Access Control (FR-18–19) | `app/sign-in/`, `app/api/auth/`, `lib/auth.ts`, `middleware.ts` | `auth/`, `users/`, `common/guards/` |
 
 **Cross-Cutting Concerns:**
@@ -818,6 +823,7 @@ Two issues were raised and resolved collaboratively during this step: (1) the NF
 - Use implementation patterns consistently across all components.
 - Respect project structure and boundaries.
 - Refer to this document for all architectural questions.
+- **Sync/real-time boundary (see Deployed Services):** Synchronous data operations (repository connection, validation, credential health, git identity, Project Map reads, Artifact Browser reads) are `apps/web` Server Actions and lib/ code — do not move them to `apps/agent-be`. `apps/agent-be` owns the real-time and infrastructure orchestration domains (sandbox provisioning, SSE, AG-UI event bridge, tool-pill classification, credential-failure propagation, manual commit execution). Do not re-litigate this boundary; it is the result of four implementation cycles confirming Server Actions are the correct pattern for synchronous request-scoped operations.
 
 **First Implementation Priority:**
 Scaffold the Nx workspace via the Initialization Commands in Starter Template Evaluation (`npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=yarn`, then generate `apps/web`, `apps/agent-be`, `libs/shared-types`, `libs/database-schemas`), per Decision Impact Analysis's Implementation Sequence step 1.
