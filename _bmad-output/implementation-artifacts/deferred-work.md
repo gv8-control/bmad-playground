@@ -13,13 +13,10 @@
 
 - `libs/shared-types/src/sandbox.constants.ts` re-exports `SANDBOX_SERVICE` from `sandbox.interface.ts`, and both are re-exported via `index.ts` — redundant but functional since both traces resolve to the same declaration.
 - Nx generator stub files `libs/shared-types/src/lib/shared-types.ts` and `libs/database-schemas/src/lib/database-schemas.ts` are not part of the public API and serve no purpose beyond the auto-generated spec files. Remove when cleaning up generator residue.
-- `apps/web/src/app/page.tsx` is the Nx default welcome template rather than a placeholder redirect. Replace when the first real page is implemented.
-- Inter and JetBrains Mono fonts are declared in `tailwind.config.ts` theme but never loaded (no `<link>` in layout or `@import` in CSS). Add font loading when the first styled component is built.
 - `libs/database-schemas/src/index.ts` imports from `./generated/client` which does not exist on a clean checkout until `prisma generate` runs. The `dependsOn: ["generate"]` on `lint` and `typecheck` targets mitigates this for Nx-driven workflows, but a bare `tsc` or IDE cold-start will show import errors until generate is run.
 
 ## Deferred from: code review of 1-3-connect-a-repository-by-url (2026-06-19)
 
-- DEK not zeroed after use in `decryptToken` — the plaintext DEK remains on the heap until GC; standard practice is `dek.fill(0)` in a `finally` block.
 - Org-restriction detection via heuristic GitHub API message substring matching — fragile if GitHub changes error message wording. Revisit when a reliable GitHub header is documented.
 - `data.permissions` absent or degraded for organization repos accessed via team membership — results in misleading `INSUFFICIENT_PERMISSION` error; documented in Dev Notes #8. Mitigate in Story 1.6 (credential failure recovery).
 - `callbackUrl` in `auth.config.ts` set to `pathname` only — query string parameters stripped on auth redirect; no protected pages currently use query params.
@@ -28,8 +25,6 @@
 
 ## Deferred from: code review of 1-3-connect-a-repository-by-url (2026-06-20)
 
-- Nonce length not validated in `decryptToken` — `dekNonce`/`tokenNonce` decoded from Base64 without asserting exactly 12 bytes; a corrupt nonce throws an unhelpful native OpenSSL error rather than a descriptive application error.
-- `encryptedDek` minimum-size guard too weak — `< TAG_LENGTH` (16-byte) guard passes for exactly 16 bytes, yielding zero-byte ciphertext; a valid DEK ciphertext is at least 48 bytes. Currently caught by outer try/catch.
 - Parallel E2E workers share fixed `E2E_GITHUB_ID` — concurrent `withRepoConnection` fixtures mutate the same DB row; teardown from one test can delete another's fixture. Safe with sequential workers.
 - No unit test for `decryptToken` failure path in `connectRepository` — a KEK-rotated or tampered credential throws as `UNKNOWN`; no test verifies the catch behavior.
 - Middleware permanently exempts `/api/internal/test` from auth — `TEST_ENV` route guard is the sole protection layer; accidental `TEST_ENV=true` in a non-local environment exposes data-mutation endpoints without authentication.
@@ -47,15 +42,10 @@
 _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and Acceptance Auditor only._
 
 - `withRepoConnection` Playwright fixture only deletes the `RepoConnection` row on teardown — the seeded `User` and its `OAuthCredential` accumulate across test runs; upsert idempotency prevents correctness failures but orphaned credential rows persist in the database.
-- `credential_health` TEXT column has no DB-level CHECK constraint — valid values `"healthy"` / `"failed"` enforced only at the TypeScript layer; a typo is silently stored without a constraint violation.
 - `CREDENTIAL_ENCRYPTION_KEK` is validated lazily on first call rather than at process startup — spec says "startup guard"; Next.js lazy module loading means misconfiguration surfaces as a user-facing error on the first sign-in rather than a boot failure. Documented as intentional in Dev Notes #10.
 
 ## Deferred from: code review of 1-2-sign-in-with-github (2026-06-18)
 
-- No database migration infrastructure — no `prisma/migrations` directory or `migrate` script; schema must be applied manually via `prisma db push`.
-- `email` column has no uniqueness constraint or index on the `User` model — same email can appear on multiple rows without constraint.
-- `next-auth` beta pinned with `^` range — `^5.0.0-beta.31` allows automatic upgrades to future beta releases with potential breaking changes.
-- `active` and `lastActiveAt` fields in the `User` model are never updated by the application — fields exist in schema but have no writer until a future story implements them.
 - No unit/integration test coverage for AC-2 session persistence (8h maxAge) — requires E2E test coverage in a future story.
 - Non-GitHub provider path not handled — if a second OAuth provider is added, `token.userId` is never set for it and `session.userId` will be absent for those users.
 - Prisma singleton never resets on stale DB connection — known limitation of the global singleton pattern in Next.js; mitigate when connection resilience is required.
@@ -63,8 +53,6 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 ## Deferred from: adversarial review of fix-turbopack-build-root (2026-06-30)
 
-- `next` package is hoisted to workspace root in pnpm workspace — abnormal for pnpm's strict default; investigate `.npmrc`/`pnpm-workspace.yaml` hoisting settings for root cause. The `turbopack.root` config is an escape hatch, not a fix for the underlying workspace config smell.
-- `clearValidationCache` is an unauthenticated server action exported from a `'use server'` file — any client can invoke it to flush the global cache (DoS / cache-thrashing vector). Pre-existing; making it `async` in this change cemented its server-action status without addressing the exposure. [`apps/web/src/actions/repository-validation.actions.ts:265`]
 - `makeValidationError` has zero direct test coverage — the sole constructor for `ValidationError` had its spread order and parameter type changed in this fix, but no spec verifies the `documentationLink` invariant. [`apps/web/src/actions/repository-validation.actions.ts:138`]
 - `invalidateValidationCache` silently no-ops on URL mismatch — if `repoUrl` fails the GitHub regex, the function returns without deleting, throwing, or logging. Current caller passes pre-validated URLs, but future callers get silently stale cache. [`apps/web/src/actions/repository-validation.actions.ts:255`]
 - Cache-clearing in tests scoped to one `describe` block, not the whole spec file — `validationCache` is module-level, so any other suite calling `validateRepository` leaks cached results across tests. [`apps/web/src/actions/repository-validation.actions.spec.ts:493`]
@@ -116,7 +104,6 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 - Global `*:focus { outline: none }` strips focus indicators from elements without explicit ring [`apps/web/src/app/global.css:9-11`] — every element loses its native focus outline; only elements with individual `focus:ring-*` classes get a visible indicator. Latent today (all interactive elements in the shell carry ring classes), but the first native `<button>`/`<a>`/third-party widget added without a ring class will have no visible focus indicator, violating WCAG 2.4.7. Spec-prescribed pattern (Task 8.1).
 - Authenticated user without repo connection stranded on non-onboarding dashboard routes [`apps/web/src/app/(dashboard)/layout.tsx:21`] — layout renders bare `<>{children}</>` when no `RepoConnection` exists; only `/onboarding` redirects connected users away. A user without a repo connection who directly visits `/project-map`, `/artifacts`, `/settings`, or `/conversations/new` gets a chrome-less page with no navigation path to onboarding. Pre-existing behavior (bare render predates this story); redirect logic is out of scope for Story 1.8.
 - `repoConnection.findUnique` has no error boundary; DB failure 500s every dashboard route [`apps/web/src/app/(dashboard)/layout.tsx:17`] — `getPrisma().repoConnection.findUnique()` is awaited with no `try/catch` and no `error.tsx` exists in the route tree. A transient DB error or unset `DATABASE_URL` turns every dashboard page into an unhandled 500. Codebase-wide pattern (spec Known Issues says do not fix `auth()` try/catch; same applies here).
-- Route-focus effect doesn't recover when `<h1>` mounts after effect runs (async/streamed content) [`apps/web/src/components/shell/AppShell.tsx:19`] — the `useEffect` depends only on `[pathname]` and runs on pathname commit; if a page's `<h1>` is behind a Suspense boundary or streamed from the server, `main.querySelector('h1')` returns `null` at effect time and focus lands on the wrong element. Latent — all current placeholder pages render `<h1>` synchronously. Will surface when streamed content is introduced into the shell.
 
 ## Deferred from: code review of 1-4-validate-bmad-initialization-in-the-connected-repository (2026-07-02)
 
@@ -130,9 +117,7 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 ## Deferred from: code review of 1-9-document-and-validate-the-kek-rotation-runbook (2026-07-02)
 
-- No AAD context-binding on envelope encryption [`apps/web/src/lib/crypto.ts`] — neither the DEK wrap nor the token encryption calls `setAAD` with the user/credential identity, so a `{encryptedDek,dekNonce,encryptedToken,tokenNonce}` tuple copied into another user's row decrypts cleanly as that user (ciphertext transplant, exploitable by anyone with DB write access). Real hardening, but binding AAD changes the encrypt/decrypt scheme and would break decryption of all existing Story 1.3 credentials without a migration. Address alongside the post-MVP KMS work.
-- No `kekId` / key-version column [`libs/database-schemas` schema + `scripts/rotate-kek.ts`] — the rotation script identifies which KEK wraps a row by trial-decryption, which degrades to guesswork after rollbacks/re-rotations/env drift. A `kekId` written at encrypt time would make rotation/verify/idempotency exact. Story 1.9 explicitly excluded key-versioning as out of scope; natural to add with the KMS migration.
-- `scripts/rotate-kek.ts` operational polish [`scripts/rotate-kek.ts`] — (a) `findMany` loads the whole `oauth_credentials` table into memory with no cursor batching (fine at MVP scale, revisit for large tables); (b) DEK plaintext Buffers are not `fill(0)`-zeroed after use (Node zeroing is best-effort only); (c) `retry needed` and `failed` share exit code 1, so automation can't distinguish "loop again" from "stop and investigate". All low severity.
+- `scripts/rotate-kek.ts` operational polish [`scripts/rotate-kek.ts`] — (a) `findMany` loads the whole `oauth_credentials` table into memory with no cursor batching (fine at MVP scale, revisit for large tables); (c) `retry needed` and `failed` share exit code 1, so automation can't distinguish "loop again" from "stop and investigate". All low severity.
 
 ## Deferred from: adversarial review of 1-6-ac1-credential-flip-within-one-cycle (2026-07-02)
 
