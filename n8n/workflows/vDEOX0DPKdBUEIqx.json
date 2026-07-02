@@ -970,6 +970,42 @@
       ],
       "id": "f749e896-0344-42e1-ade4-7388cdd7e1a5",
       "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "agent-outcome"
+            },
+            {
+              "name": "title",
+              "value": "=Develop Story ({{ $json.Story }}) - Started"
+            },
+            {
+              "name": "message",
+              "value": "BMAD pipeline has started"
+            },
+            {
+              "name": "click",
+              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        208,
+        -140
+      ],
+      "id": "4a3ed405-7b32-4594-9dd0-0601ffdb5c72",
+      "name": "Notify pipeline started"
     }
   ],
   "connections": {
@@ -998,6 +1034,11 @@
     "Configuration": {
       "main": [
         [
+          {
+            "node": "Notify pipeline started",
+            "type": "main",
+            "index": 0
+          },
           {
             "node": "Create story",
             "type": "main",
@@ -1146,9 +1187,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "e77ee7b7-55fa-4795-ba37-e32aba924a8f",
-  "activeVersionId": "e77ee7b7-55fa-4795-ba37-e32aba924a8f",
-  "versionCounter": 519,
+  "versionId": "2ecde7b2-2e05-4d2b-88d9-79376f1437a0",
+  "activeVersionId": "2ecde7b2-2e05-4d2b-88d9-79376f1437a0",
+  "versionCounter": 521,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

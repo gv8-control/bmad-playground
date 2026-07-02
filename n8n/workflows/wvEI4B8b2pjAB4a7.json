@@ -318,6 +318,78 @@
       ],
       "id": "56f32eda-9a4c-443c-b676-9064407e820d",
       "name": "Notify"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "agent-outcome"
+            },
+            {
+              "name": "title",
+              "value": "={{ $('Variables').item.json.conversationTitle }} - Started"
+            },
+            {
+              "name": "message",
+              "value": "BMAD skill run has started"
+            },
+            {
+              "name": "click",
+              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        -100
+      ],
+      "id": "730b6aa2-ff71-4355-970e-dd78f4359ba6",
+      "name": "Notify start"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "agent-outcome"
+            },
+            {
+              "name": "title",
+              "value": "={{ $('Variables').item.json.conversationTitle }} - Finished"
+            },
+            {
+              "name": "message",
+              "value": "BMAD skill run has completed"
+            },
+            {
+              "name": "click",
+              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1232,
+        -140
+      ],
+      "id": "8abaf6fa-5c8f-443b-a64f-2dba9d821612",
+      "name": "Notify finish"
     }
   ],
   "connections": {
@@ -380,6 +452,11 @@
       "main": [
         [
           {
+            "node": "Notify start",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Agent run (initial)",
             "type": "main",
             "index": 0
@@ -401,6 +478,11 @@
     "Routing": {
       "main": [
         [
+          {
+            "node": "Notify finish",
+            "type": "main",
+            "index": 0
+          },
           {
             "node": "Output",
             "type": "main",
@@ -466,9 +548,9 @@
       }
     ]
   },
-  "versionId": "c29395c1-6160-4321-b4f8-da0a2aa1b6ff",
-  "activeVersionId": "c29395c1-6160-4321-b4f8-da0a2aa1b6ff",
-  "versionCounter": 155,
+  "versionId": "d05f1bf0-5e29-47b7-b9b3-6e62902a3fdb",
+  "activeVersionId": "d05f1bf0-5e29-47b7-b9b3-6e62902a3fdb",
+  "versionCounter": 156,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
