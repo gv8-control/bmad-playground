@@ -24,8 +24,6 @@ completedAt: '2026-06-16'
 
 # Architecture Decision Document
 
-_This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
-
 ## Project Context Analysis
 
 ### Requirements Overview
@@ -56,7 +54,7 @@ Architecturally significant FRs:
 | NFR-S2 | Per-user credential isolation | Every credential lookup must pass tenant authorization check |
 | NFR-S3 | Active sandbox termination on deactivation | DELETE API call required; passive rejection insufficient — **deferred to post-MVP**, no in-app deactivation flow exists to trigger it |
 | NFR-S4 | OAuth token storage | AES-256-GCM encrypted at rest; never returned to client |
-| NFR-R1 | Credential health propagation | Health status must update within one git operation cycle of a 401/403; silent failures not acceptable |
+| NFR-R1 | Credential health propagation | Health status must update within one git operation cycle of a 401; 403s are classified (rate limit, org restriction, permission denial) and do not mark the credential as failed; silent failures not acceptable |
 | NFR-O1 | Per-user LLM spend monitoring | SDK cost reporting wired from day one; budget alerting at launch |
 
 **Scale & Complexity:**
@@ -73,7 +71,7 @@ Architecturally significant FRs:
 - **Single NestJS container.** No horizontal scaling; no distributed session registry. Sandbox state is in-process or delegated to Daytona API.
 - **Model hardcoded:** `claude-sonnet-4-6`. Extended thinking disabled (PRD §8). No user-selectable model.
 - **Daytona Cloud** is a critical dependency (A-7). Migration contained to `SandboxService` layer; Daytona OSS is the documented fallback.
-- **Repository size boundary (Q-1 resolution — updated 2026-06-17):** NFR-P2 (10s chat ready) applies to repositories ≤ 200MB, provisioned via **mandatory shallow clone** (`git clone --depth=1`). Shallow clone bounds clone time to working-tree size rather than git history depth, making 200MB a consistent and testable threshold. All Conversation provisions must use `--depth=1`; full-history clone is not supported in MVP. Empirical validation is required as the **first action in Implementation Sequence step 7**: provision a Daytona sandbox in the production region, shallow-clone test repositories at 50 MB / 100 MB / 150 MB / 200 MB / 250 MB, and measure total elapsed time from clone-start through `git status --porcelain` completion (the SESSION_READY precondition). Accept 200 MB if the full provision + shallow-clone + git-config-injection + working-tree-status sequence completes in ≤ 8 s (reserving 2 s margin for cold-start and network jitter). If 200 MB consistently exceeds 8 s, revise the boundary to 100 MB and update the PRD accordingly. Sparse checkout for oversized repositories remains post-MVP.
+- **Repository size boundary:** NFR-P2 (10s chat ready) applies to repositories ≤ 200MB, provisioned via **mandatory shallow clone** (`git clone --depth=1`). All Conversation provisions must use `--depth=1`; full-history clone is not supported in MVP. Empirical validation is the first action in Implementation Sequence step 7: provision a Daytona sandbox in the production region, shallow-clone test repositories at 50/100/150/200/250 MB, and measure total elapsed time through `git status --porcelain` completion. Accept 200 MB if the full sequence completes in ≤ 8 s; if not, revise to 100 MB and update the PRD. Sparse checkout remains post-MVP.
 - **OAuth App restrictions:** GitHub organizations can block OAuth App access. During repository validation (FR-1) the platform must test write access with a dry-run git operation and surface the org-restriction cause explicitly in the 403 error path — not a generic "couldn't connect" message. No in-app workaround exists; org-owner approval of the bmad-easy OAuth App is required. GitHub App (post-MVP) sidesteps this.
 - **UX/PRD reconciliation required:** EXPERIENCE.md onboarding Flow 1 references a PAT input field (pre-DL-7). The correct onboarding model per PRD DL-7: sign-in with GitHub OAuth obtains the `repo`-scoped token; onboarding only requires a Repository URL input field. The architecture specifies the DL-7 model; EXPERIENCE.md requires a corresponding update.
 - **HTTP/2 deployment invariant:** The NestJS agent backend must be fronted by an HTTP/2-capable reverse proxy at the load balancer level. HTTP/1.1 anywhere in the browser→NestJS path caps concurrent SSE connections at 6, breaking NFR-R4. This is a deployment configuration requirement verified in the launch checklist, not a code requirement.
@@ -81,46 +79,21 @@ Architecturally significant FRs:
 - **Sandbox initialization sequence (ordered):** provision → clone (or restore on resume) → inject per-user git config → run `git status --porcelain` → emit `WORKING_TREE_*` event → emit `SESSION_READY`. Git config injection must occur at every provision **and** every resume, not only at initial provision.
 - **sandbox-agent version policy:** Pin to an exact binary version in the Dockerfile (no floating tags). Before any upgrade: diff the JSONL→AG-UI event mapping in the release changelog; run the new version against a recorded BMAD session replay and validate the expected AG-UI event sequence matches. Upgrade only when a specific bug fix or capability drives it. Monitor upstream for abandonment signals.
 - **AG-UI package version policy:** Pin `@assistant-ui/react-ag-ui`, `@ag-ui/client`, and `@ag-ui/core` to exact versions in `package.json` (no `^` or `~`). Before any upgrade: check changelog for `IAgentHarness` interface changes and `EventType` enum changes; validate against a recorded session replay in isolation. Upgrade only when needed. Same discipline as sandbox-agent.
+- **Client-side session-start timeout:** If `SESSION_READY` never arrives (e.g., Daytona 503 on provision), the "Starting session…" state must have a client-side timeout (distinct from the server-side idle timeout) with a retry affordance.
+- **Per-user sandbox provision queue:** A per-user concurrency cap of 2–3 simultaneous provisions prevents burst pressure on GitHub's OAuth rate limit (5,000 req/hour) when multiple Conversation tabs are opened quickly.
+- **Auth.js v5 beta contingency:** `next-auth@^5.0.0-beta.31` is a beta dependency; monitor the Auth.js changelog before any Next.js upgrade, as a future security patch could force an incompatible bump.
 
 ### Cross-Cutting Concerns Identified
 
 1. **Multi-tenant credential isolation** — affects every git operation, every Sandbox initialization, every credential lookup. Every code path must carry a `tenant_id` check before resolving an OAuth token.
-2. **Sandbox lifecycle management** — provision, clone, run, pause, resume, destroy must be handled transparently per Conversation. Lifecycle state affects UI (status indicators), session recovery (FR-13). Active termination on deactivation (NFR-S3) is deferred to post-MVP (see Deferred Decisions) — no in-app deactivation flow exists in MVP scope to trigger it. The AG-UI SSE channel carries lifecycle events (`SESSION_STARTED`, `SESSION_READY`, `WORKING_TREE_DIRTY`, `WORKING_TREE_CLEAN`) as well as agent tokens — single connection for both. Working tree state is checked via `git status --porcelain` after Bash and file-write tool calls only; initial state is emitted as part of the session ready sequence. One sandbox : one conversation is an enforced invariant.
-3. **Real-time SSE streaming** — affects the entire agent-to-browser event path: back-pressure (NFR-R3), 10 concurrent connections (NFR-R4), HTTP/2 requirement, AG-UI event classification (Tool Pills, Semantic Pills). sandbox-agent must be wrapped in a circuit-breaker: if it fails to emit events within a timeout, the backend emits a synthetic error event on the SSE channel. The SSE channel must emit heartbeat comments on a fixed interval so the browser detects dead connections even when sandbox-agent is stalled. **NFR-R3 back-pressure threshold (resolved 2026-06-17):** Each SSE connection maintains a per-connection bounded in-process event queue capped at **200 events**. If the queue reaches 200 events and has not drained within **30 seconds** (client is consuming too slowly), the backend emits a synthetic `STREAM_ERROR` event with payload `{ code: 'STREAM_BACK_PRESSURE' }` on the same SSE channel and closes the connection with a reconnect-eligible `200 + data: [DONE]` termination sequence. Silent event drops are never acceptable: any event that cannot be enqueued must trigger the `STREAM_ERROR` path, not be discarded. This gives QA a concrete pass/fail criterion: (a) no events silently dropped before the error event, and (b) the `STREAM_ERROR` event arrives within 30 s of queue saturation.
+2. **Sandbox lifecycle management** — provision, clone, run, pause, resume, destroy must be handled transparently per Conversation. Lifecycle state affects UI (status indicators), session recovery (FR-13). Active termination on deactivation (NFR-S3) is deferred to post-MVP (see Deferred Decisions). The AG-UI SSE channel carries lifecycle events (`SESSION_STARTED`, `SESSION_READY`, `WORKING_TREE_DIRTY`, `WORKING_TREE_CLEAN`) as well as agent tokens — single connection for both. Working tree state is checked via `git status --porcelain` after Bash and file-write tool calls only; initial state is emitted as part of the session ready sequence. One sandbox : one conversation is an enforced invariant. On failed `SandboxService.provision()`, any partial Daytona allocation must be torn down.
+3. **Real-time SSE streaming** — affects the entire agent-to-browser event path: back-pressure (NFR-R3), 10 concurrent connections (NFR-R4), HTTP/2 requirement, AG-UI event classification (Tool Pills, Semantic Pills). sandbox-agent must be wrapped in a circuit-breaker: if it fails to emit events within a timeout, the backend emits a synthetic error event on the SSE channel. If sandbox-agent crashes, the backend must terminate the agent process via the Daytona process management API before emitting the error event. The SSE channel must emit heartbeat comments on a fixed interval so the browser detects dead connections even when sandbox-agent is stalled. **NFR-R3 back-pressure threshold:** Each SSE connection maintains a per-connection bounded in-process event queue capped at **200 events**. If the queue reaches 200 events and has not drained within **30 seconds**, the backend emits a synthetic `STREAM_ERROR` event with payload `{ code: 'STREAM_BACK_PRESSURE' }` and closes the connection with a reconnect-eligible `200 + data: [DONE]` termination sequence. Silent event drops are never acceptable: any event that cannot be enqueued must trigger the `STREAM_ERROR` path.
 4. **OAuth token lifecycle** — encryption at storage, health monitoring, re-auth flow, credential failure propagation to UI — affects NestJS service layer, Next.js BFF, and frontend state.
 5. **Git transport and commit attribution** — every Conversation requires sandbox-level git config injection (user identity from OAuth profile) before any agent turn. Manual commit (FR-15) is a platform-level operation executed via Daytona process execution API, not an agent action. Queued behind agent turn idle state in-process.
-6. **LLM cost observability** — per-user spend tracking via SDK cost reporting must be wired into the NestJS agent backend from day one (NFR-O1). Budget alerting at launch is non-negotiable. **B-04 PM guidance (2026-06-17):** The alert threshold value (Q-2) depends on the PM finalizing the Daytona compute cost estimate and the unit economics floor. Based on the cost research (`technical-bmad-session-token-consumption-and-cost-claude-sonnet-4-6-research-2026-06-14.md`), a typical bmad-easy session costs approximately $0.40–$1.80 in Claude API spend (extended thinking is disabled per PRD §8, so the lower end applies: $0.40–$1.10/session). PM should set the per-user monthly alert threshold at a value that signals when a user's Claude spend is approaching the revenue margin floor for their seat price. A starting recommendation: alert at **$20/user/month** in Claude API spend (this leaves margin above the ~$10–15/user/month spend for 10–25 sessions, at $25–30/seat pricing). PM must confirm or revise this number before the cost-observability epic test design begins; it is the only remaining open item in B-04.
-7. **Session persistence and recovery** — Conversations are always resumable (FR-13). Recovery must be transparent: sandbox re-initialization is hidden from the user behind a "Reconnecting…" indicator; chat history must be available immediately from platform storage, independent of sandbox state.
-8. **Sandbox isolation risk (post-MVP hardening item):** Daytona Cloud Docker-level isolation is an accepted risk for MVP, premised on authenticated, non-adversarial users (A-2). No runtime abuse detection mechanism exists in MVP. **This must not be forgotten after launch.** The documented escalation trigger is: if adversarial use is detected, upgrade to Firecracker microVM isolation (Fly.io Sprites or Daytona OSS with VM backend). The architecture contains this migration within the `SandboxService` layer. Post-MVP hardening review should evaluate whether an abuse signal (e.g., anomalous tool call patterns, excessive resource usage per sandbox) can be added.
-
-### Architectural Risk Findings (Elicitation Pass)
-
-Surfaced through pre-mortem, cascading failure, and second-order analysis of the draft. These are constraints that Step 4's architectural decisions must satisfy — not yet designed, only identified.
-
-**High severity:**
-
-- **Runaway agent on sandbox-agent crash:** If sandbox-agent (the JSONL→AG-UI bridge) crashes, the Claude Code agent process inside the sandbox keeps running — making tool calls and potentially committing to the Repository — with no SSE listener observing it. The backend must terminate the agent process via the Daytona process management API when sandbox-agent dies, before emitting the error event to the user.
-- **Missing frontend session-start timeout:** If `SESSION_READY` never arrives (e.g., Daytona 503 on provision), the "Starting session…" state has no client-side timeout and can spin indefinitely. A timeout distinct from the server-side idle timeout (ADR-A) is required, with a retry affordance.
-- **Credential failure must propagate immediately to the active session:** A 403 on git push mid-Conversation currently only updates credential health on the next page load's git operation (per FR-4's letter, not its intent). The re-auth prompt must fire on the active Conversation's SSE channel the moment the failure is detected, not wait for the next navigation event. **Resolved in Step 6** (NFR-R1): `tool-pill-classifier.service.ts` detects the failure and emits a `CREDENTIAL_FAILURE` event on the existing SSE channel.
-
-**Medium severity:**
-
-- **Graceful degradation when Daytona is unavailable:** Project Map and Artifact Browser are pure git reads with no sandbox dependency. The architecture should keep them functional during a Daytona outage; only new Conversation provisioning should be blocked.
-- **Conversation history persistence boundary:** It must be explicit which session state lives only in NestJS memory (lost on restart) versus persisted to PostgreSQL per turn. Conversation history should be written to the DB on every turn, not held in memory, so a container restart does not lose it.
-- **Graceful shutdown for deploys:** The single-container constraint (PRD §8) means every deploy drops all active SSE connections simultaneously. NestJS shutdown hooks must drain SSE connections (notify clients, allow reconnect) rather than hard-killing them.
-- **Per-user sandbox provision queue:** Opening multiple Conversation tabs quickly triggers simultaneous repo clones against the same GitHub repository. With the FR-11 ceiling of 10 concurrent Conversations, a burst could pressure GitHub's OAuth rate limit (5,000 req/hour). A per-user concurrency cap (2–3 simultaneous provisions) is recommended.
-- **Main-branch silent overwrite is a product risk, not only a technical one:** Last-write-wins on concurrent commits to the same Artifact path (accepted in PRD §6.2) creates a second-order incentive for teams to self-limit to one active BMAD user at a time — quietly undermining the "full team participation" value proposition. A post-commit `git fetch --dry-run` divergence check (surface a warning, not a block) is worth considering even pre-MVP.
-- **Sandbox provision failure cleanup:** On a failed `SandboxService.provision()` call, any partial Daytona allocation must be torn down — otherwise zombie sandboxes accrue Daytona billing with no active Conversation.
-
-**Low severity:**
-
-- **Conversation history retention:** No retention or archival policy is defined; storage grows unbounded at an estimated 1–3MB per full BMAD session. The schema should include `last_active_at` from the start to enable future archival, independent of when archival is actually implemented.
-- **Auth.js v5 beta contingency:** `next-auth@^5.0.0-beta.31` is a beta dependency; a future Next.js security patch could force an incompatible bump. No contingency is documented — monitor the Auth.js changelog before any Next.js upgrade.
-- **GitHub org OAuth restriction self-service path:** The 403 error path (already improved to name the org-restriction cause) should also include a direct link to GitHub's OAuth App org-approval flow and, ideally, a way to notify the org admin from within the app — this is a sales-blocking friction point for enterprise accounts otherwise.
-
-**Resolved — out of scope for MVP:**
-
-- **Mid-session work loss on client disconnect (laptop close, network drop):** Raised during the party-mode architecture review. If a user closes their laptop mid-Conversation, in-progress agent work that has not been committed is not preserved. This is explicitly out of scope for MVP: NFR-R2 already states that uncommitted working tree state is not guaranteed to survive a Sandbox restart, and FR-15 (manual save) is the existing user-facing mitigation. No automatic persistence or resume-on-reconnect mechanism for in-flight agent/tool-call state is planned for MVP.
+6. **LLM cost observability** — per-user spend tracking via SDK cost reporting must be wired into the NestJS agent backend from day one (NFR-O1). Budget alerting at launch is non-negotiable. Alert threshold: **$20/user/month** in Claude API spend (typical session costs ~$0.40–$1.10 with extended thinking disabled). PM must confirm or revise before cost-observability epic test design begins.
+7. **Session persistence and recovery** — Conversations are always resumable (FR-13). Recovery must be transparent: sandbox re-initialization is hidden from the user behind a "Reconnecting…" indicator; chat history must be available immediately from platform storage, independent of sandbox state. Conversation history is written to Postgres on every turn, not held in memory, so a container restart does not lose it.
+8. **Sandbox isolation risk (post-MVP hardening item):** Daytona Cloud Docker-level isolation is an accepted risk for MVP, premised on authenticated, non-adversarial users (A-2). No runtime abuse detection mechanism exists in MVP. The documented escalation trigger is: if adversarial use is detected, upgrade to Firecracker microVM isolation (Fly.io Sprites or Daytona OSS with VM backend). The architecture contains this migration within the `SandboxService` layer. Post-MVP hardening review should evaluate whether an abuse signal (e.g., anomalous tool call patterns, excessive resource usage per sandbox) can be added.
+9. **Graceful degradation during Daytona outage** — Project Map and Artifact Browser are pure git reads with no sandbox dependency; they must remain functional during a Daytona outage. Only new Conversation provisioning is blocked.
 
 ## Starter Template Evaluation
 
@@ -137,20 +110,9 @@ monorepo, plus one external dynamic service (Daytona Cloud sandboxes).
 | `apps/agent-be` | NestJS agent orchestrator backend | Docker / Railway | Real-time + Sandbox orchestration (SSE, provisioning) |
 | Daytona sandboxes | One per active Conversation | Daytona Cloud (external, dynamically scaled) | Agent execution environment |
 
-**Sync/real-time boundary:** `apps/web` Server Actions handle all synchronous, request-scoped data operations — repository connection, BMAD validation, git identity resolution, credential health queries, Project Map reads, Artifact Browser reads. These run in the same process as the web request, read/write Postgres directly via the shared Prisma client, and need no intermediate service hop. `apps/agent-be` owns only the real-time and infrastructure orchestration domains that require a persistent server process: Sandbox provisioning/teardown, SSE event streaming, AG-UI event bridge + circuit breaker + heartbeat, tool-pill classification, credential-failure SSE propagation, and manual commit execution. This split eliminates unnecessary network hops for synchronous operations while keeping the persistent-process complexity contained to where it genuinely adds value.
+**Sync/real-time boundary:** `apps/web` Server Actions own synchronous data operations (repository connection, BMAD validation, git identity, credential health, Project Map, Artifact Browser); `apps/agent-be` owns real-time and infrastructure orchestration (sandbox provisioning, SSE, AG-UI event bridge, tool-pill classification, manual commit). See API & Communication Patterns for the full contract.
 
-**Note on sandbox scaling:** Daytona Cloud manages sandbox container lifecycle and
-dynamic allocation — not a service we deploy or scale. The sandbox orchestration
-abstraction within `apps/agent-be` contains the Daytona API integration. Post-MVP
-extraction path: sandbox orchestration → own deployable NestJS service when independent
-scaling is required. Migration is bounded to that abstraction boundary.
-
-**JSONL normalisation decision:** sandbox-agent (rivet-dev) remains the chosen approach
-for normalising Claude Code JSONL output into AG-UI events (per research ADR-001). The
-in-process parsing alternative was raised during elicitation but not adopted. The
-sandbox-agent reliability risk (A-8) stands as documented — pinned exact version,
-upgrade protocol requiring changelog review and session-replay validation, plus the
-circuit-breaker and SSE heartbeat mitigations already captured in Cross-Cutting Concerns.
+**JSONL normalisation:** sandbox-agent (rivet-dev) normalises Claude Code JSONL output into AG-UI events. The sandbox-agent reliability risk (A-8) is mitigated by pinned exact version, changelog-review upgrade protocol, circuit-breaker, and SSE heartbeat (see Cross-Cutting Concerns).
 
 ### Monorepo Structure
 
@@ -252,14 +214,14 @@ Migrations run from this library against the shared Railway Postgres instance.
 
 **Important Decisions (Shape Architecture):**
 
-- Live `user.active` DB check on every privileged `apps/agent-be` request — a JWT alone doesn't reflect live account state. This rejects the *next* request from a deactivated user, but it is a general request-authorization check, not a fulfillment of NFR-S3: it does not terminate an already-open SSE stream or running sandbox. NFR-S3 itself (active termination) is deferred to post-MVP — see Deferred Decisions.
+- Live `user.active` DB check on every privileged `apps/agent-be` request — a JWT alone doesn't reflect live account state; this is general request authorization, not NFR-S3 (deferred, see Deferred Decisions).
 - KEK rotation runbook documented; GCM nonce-uniqueness enforced.
 - Daytona API key stored as a plain Railway environment secret, no rotation mechanism for MVP.
 - Consistent JSON error envelope across `apps/agent-be`: `{ code, message, meta }`.
 - `@nestjs/throttler` for simple rate limiting on `apps/agent-be`.
 - No global client-state library in `apps/web`; Server Components/Server Actions read Postgres directly, local React state for ephemeral UI only.
 - Draft message persistence via browser `localStorage`, keyed by `conversationId`, no server round-trip.
-- No automatic/scoped client-side revalidation anywhere (Conversation pane, Project Map, Artifact Browser, SSE reconnect) — the user manually reloads the browser page to pick up fresh server-rendered state. This single mechanism also resolves SSE-reconnect-mid-session recovery (falls back to the existing cold-load path) and avoids any live-stream-vs-persisted-render duplication risk, since a full reload tears down the entire client tree before the Server Component re-fetches.
+- No automatic client-side revalidation anywhere — manual browser reload picks up fresh server-rendered state; also covers SSE-reconnect recovery (falls back to FR-13 cold-load path).
 - shadcn/ui (Radix + Tailwind) as the frontend component library.
 - CI (GitHub Actions): lint + all available test suites (unit/integration/e2e) gate the pipeline; deploy itself is a manual trigger, not automatic on merge.
 
@@ -273,21 +235,23 @@ Migrations run from this library against the shared Railway Postgres instance.
 - Staging environment — production only for MVP.
 - Log consolidation onto a single platform — platform-native logging (Railway/Vercel) for MVP.
 - Horizontal scaling of `apps/agent-be` — out of scope until the single-container ceiling is actually reached.
-- **NFR-S3 (active termination of an already-running sandbox/SSE session on deactivation) — deferred to post-MVP, not implemented:** MVP has no in-app deactivation flow (FR-19 enrolls all users with no expiry/billing enforcement), so there is no automatic enforcement mechanism that fires at all — `active-user.guard.ts` catches a deactivated user's *next* request, but nothing proactively terminates an already-open SSE stream or running sandbox. If deactivation happens today, it is an operator-performed DB flag flip, the same manual-ops pattern already accepted for sandbox orphan cleanup — the operator is expected to also terminate the Daytona sandbox out-of-band as part of that procedure. NFR-S3 becomes a non-deferrable, day-one requirement of whatever future story introduces an actual deactivate-user flow (e.g. a periodic re-check sweep over open SSE connections, or direct termination triggered by the deactivation action itself).
+- Sandbox orchestration extraction: sandbox orchestration → own deployable NestJS service when independent scaling is required; migration bounded to the `SandboxService` abstraction boundary.
+- **NFR-S3 (active termination of running sandbox/SSE on deactivation) — deferred to post-MVP:** no in-app deactivation flow exists in MVP scope; `active-user.guard.ts` catches the next request but nothing proactively terminates an open SSE stream or running sandbox. Operator-performed DB flag flip + out-of-band sandbox termination covers MVP. Becomes a day-one requirement of any future deactivate-user flow.
 
 ### Data Architecture
 
 - **Database:** PostgreSQL, Railway-hosted (single instance for MVP).
-- **Schema ownership:** a single shared Prisma schema/client library, `libs/database-schemas`, consumed independently by `apps/web` and `apps/agent-be` (full structural detail already recorded in Starter Template Evaluation → Monorepo Structure). This was the direct resolution to the schema-drift risk identified during Category 1 elicitation: maintaining two independently-edited Prisma schemas against one database was rejected as the root risk, not patched around.
+- **Schema ownership:** a single shared Prisma schema/client library, `libs/database-schemas`, consumed independently by `apps/web` and `apps/agent-be` (full structural detail in Starter Template Evaluation → Monorepo Structure).
 - **Connection limits:** Railway's documented concurrent-connection ceiling is accepted as sufficient for MVP scale; if usage approaches the limit, the resolution is a commercial conversation with Railway, not an architectural change.
 - **Library/version reliability:** Prisma is trusted as a foundational dependency; no defensive abstraction layer was added against ORM-level failure modes. Version upgrades follow the same pinned-version, deliberate-upgrade discipline already established for sandbox-agent and the AG-UI packages (see Technical Constraints) rather than floating versions.
 - **Validation/migrations:** Migrations run from `libs/database-schemas` against the shared Railway Postgres instance (already recorded in Starter Template Evaluation).
 - **Caching:** no caching layer for MVP — consistent with the "no client-side revalidation, no server-side data library" posture adopted in Frontend Architecture.
+- **Retention:** no retention or archival policy for MVP; storage grows unbounded at ~1–3MB per full BMAD session. The schema must include `last_active_at` from the start to enable future archival.
 
 ### Authentication & Security
 
 1. **`apps/web` ↔ `apps/agent-be` identity crossing:** a separate, purpose-built boundary JWT, decoupled from Auth.js's internal JWE. Long-lived, re-minted per page load, no refresh cycle. Transport: `Authorization` header for REST, query parameter for SSE (`EventSource` cannot set headers). Requirement: logs must be sanitized to strip the token before being shipped anywhere.
-2. **Live account-state check (general; NFR-S3 deferred separately):** a JWT alone doesn't reflect live account state, so `apps/agent-be` performs a live `user.active` check against Postgres on every privileged request, catching the next request from a deactivated user. NFR-S3's actual requirement — active termination of an already-open SSE stream or running sandbox — is deferred to post-MVP, not partially satisfied by this check (see Deferred Decisions).
+2. **Live account-state check:** a JWT alone doesn't reflect live account state, so `apps/agent-be` performs a live `user.active` check against Postgres on every privileged request, catching the next request from a deactivated user. This is general request authorization; NFR-S3 (active termination) is deferred to post-MVP (see Deferred Decisions).
 3. **OAuth token at rest:** per-user DEK encrypts the GitHub OAuth token; a platform KEK wraps each DEK (envelope encryption), AES-256-GCM (NFR-S4). KEK stored as a Railway env var for MVP, migrating to a third-party KMS post-MVP. KEK rotation runbook documented; GCM nonce-uniqueness enforced.
 4. **`apps/agent-be` ↔ Daytona/sandbox-agent transport:** no additional credential is needed beyond the Daytona API key `apps/agent-be` already holds. `apps/agent-be` is the sole initiating/active party — Daytona's proxy and control-plane authenticate and broker every interaction (process exec, log streaming) before it reaches a sandbox; sandbox-agent never opens an outbound connection back to `apps/agent-be`. The only implementation requirement is call correctness: every session/log-streaming call must be scoped to the sandboxId tied to the correct Conversation.
 5. **Daytona API key:** stored as a plain Railway environment secret, no rotation mechanism for MVP.
@@ -654,10 +618,11 @@ bmad-easy/
 
 **API Boundaries:**
 - `apps/web` Server Actions: Zod-validated, handle all synchronous data operations for the authenticated user — repository connection, BMAD validation, git identity resolution, credential health status queries and updates. These execute in the web request process and read/write Postgres directly via the shared Prisma client. No intermediate service hop, no JWT crossing.
-- Browser ↔ `apps/agent-be`: REST (conversation create/resume, manual commit) + SSE (AG-UI stream, credential failure events), boundary JWT via `Authorization` header (REST) / query param (SSE). This path exists only for the real-time and Sandbox-orchestration domains that `apps/agent-be` owns — never for synchronous data operations handled by `apps/web` Server Actions.
+- Browser ↔ `apps/agent-be`: REST (conversation create/resume, manual commit) + SSE (AG-UI stream, credential-failure and access-denied events), boundary JWT via `Authorization` header (REST) / query param (SSE). This path exists only for the real-time and Sandbox-orchestration domains that `apps/agent-be` owns — never for synchronous data operations handled by `apps/web` Server Actions.
 - `apps/agent-be` → Daytona: pull-only via `@daytonaio/sdk`, scoped to `sandboxId`/Conversation; no inbound calls accepted from sandbox-agent.
-- Authenticated request context: `boundary-jwt.guard.ts` validates the JWT and resolves `userId`; `active-user.guard.ts` (runs after, request-scoped) fetches the live `User` row from Postgres, rejects with `403` if `!active`, and attaches the row to `request.user`. Controllers never query `User` themselves — they consume it via `@User() user: UserContext`. This is the single point where the live `user.active` check happens; no controller or service re-implements it. This check is general request authorization, not a fulfillment of NFR-S3 — NFR-S3's active-termination requirement is deferred to post-MVP (see Deferred Decisions).
-- Credential failure propagation (NFR-R1): `tool-pill-classifier.service.ts` inspects git-related tool call results from the sandbox-agent JSONL stream for 401/403 patterns; on detection it (a) calls `credentials.service.ts` to persist the failed health status, and (b) emits a synthetic `CREDENTIAL_FAILURE` event on the same SSE channel already carrying AG-UI events — no new transport. `apps/web`'s conversation UI (and the `(dashboard)/layout.tsx` repo-connection-status indicator, for the next page load) render the re-auth prompt from that status.
+- Authenticated request context: `boundary-jwt.guard.ts` validates the JWT and resolves `userId`; `active-user.guard.ts` (runs after, request-scoped) fetches the live `User` row from Postgres, rejects with `403` if `!active`, and attaches the row to `request.user`. Controllers never query `User` themselves — they consume it via `@User() user: UserContext`. This is the single point where the live `user.active` check happens; no controller or service re-implements it. NFR-S3 (active termination) is deferred to post-MVP (see Deferred Decisions).
+- Credential failure propagation (NFR-R1) — 401 path: `tool-pill-classifier.service.ts` inspects git-related tool call results from the sandbox-agent JSONL stream for 401 patterns; on detection it (a) calls `credentials.service.ts` to persist the failed health status, and (b) emits a synthetic `CREDENTIAL_FAILURE` event on the same SSE channel already carrying AG-UI events — no new transport. This happens immediately, not only on the user's next page load (NFR-R1). The Conversation UI renders the failing operation as an error-state Tool Pill and shows the Credential Error Banner with an inline re-auth prompt (no navigation away); the `(dashboard)/layout.tsx` repo-connection-status indicator reflects `failed` on the next page load.
+- Access-denied propagation (NFR-R1, FINDING-12) — 403 path: a 403 mid-conversation is not a credential failure — the token is valid but access is denied, so the classifier does NOT call `markCredentialFailed` and does NOT persist failed credential health (per FINDING-12); consequently the Credential Error Banner — gated on `credentialHealth === 'failed'` — never fires for a 403. Instead `tool-pill-classifier.service.ts` disambiguates the 403 into one of three codes — reusing the Epic 1 / Story 1.6 vocabulary so the synchronous onboarding path (`connectRepository`) and the real-time mid-conversation path share one classification language — and emits a synthetic `ACCESS_DENIED` event with payload `{ code: 'RATE_LIMITED' | 'ORG_RESTRICTION' | 'INSUFFICIENT_PERMISSION', toolCallId: string, retryAfter?: number }` (TypeScript type in `libs/shared-types/src/ag-ui.types.ts`). A single event type with a `code` discriminator follows the `STREAM_ERROR { code }` precedent; three separate event types were rejected to avoid proliferating event types for one semantic family. This satisfies Story 3.7's 403 acceptance criterion (epics.md). Classification signals reuse Epic 1's `detectGithubRateLimit` + org-restriction disambiguation, applied to the git tool call result: `RATE_LIMITED` — GitHub primary (`X-RateLimit-Remaining: 0`) or secondary ("secondary rate limit" / "abuse detection") rate limit, transient and retryable (`retryAfter` carries the wait hint in seconds when GitHub supplies one); `ORG_RESTRICTION` — the org has not authorized the OAuth App (resource not accessible by integration / org policy), not fixable by re-auth, requires org-admin approval; `INSUFFICIENT_PERMISSION` — the token's user lacks access to the specific resource (repo-level permission denial, including the degraded `data.permissions` case documented in deferred-work), not fixable by re-auth. Conversation UI surfacing: the failing git operation renders as an error-state Tool Pill (same as the 401 path), plus a classification-specific inline notice in the message stream near the failing pill — NOT the Credential Error Banner and NOT a re-auth prompt, because re-authentication resolves none of the three 403 causes. The frontend derives the notice copy from `code` (rate limit → wait and retry; org restriction → ask an org admin to approve the OAuth App; insufficient permission → the account lacks access to this resource); the raw GitHub error text remains available in the Tool Pill's expanded output. The agent turn is not halted — the tool call's error result is returned to the agent, which adapts; `ACCESS_DENIED` is informational to the UI. The detailed visual treatment of the inline notice belongs to the UX spec (DESIGN.md / EXPERIENCE.md), which currently defines only the "Credential failed (mid-Conversation)" Conversation surface-state row and needs a corresponding "Access denied (mid-Conversation)" row for the 403 path.
 
 **Component Boundaries:**
 - `apps/web/src/components/conversation/*`: client components — own the live SSE connection, Tool/Semantic Pills, working tree indicator, manual commit, draft persistence.
@@ -703,13 +668,6 @@ bmad-easy/
 **Data Flow:**
 User message (browser) → `conversations.controller.ts` → sandbox process exec (Claude Code agent) → sandbox-agent JSONL → `agui-event-bridge.service.ts` → SSE → browser. In parallel, `apps/agent-be` persists turn/session updates and, on detected commits, `artifacts.service.ts` syncs Artifact metadata + content into Postgres — which `apps/web`'s Server Components read on the next page load or manual reload.
 
-### File Organization Patterns
-
-- Tests co-located with source (`*.spec.ts`/`*.test.tsx`), no `__tests__/` tree.
-- `apps/web` components organized by feature, flat (`components/conversation/`, not `components/chat/messages/`).
-- Shared utilities app-local (`apps/web/src/lib`, `apps/agent-be/src/common`); no new `libs/` package without genuine cross-service need.
-- PascalCase component files, kebab-case everything else, camelCase functions/variables.
-
 ### Development Workflow Integration
 
 **Development Server Structure:** `nx serve web` and `nx serve agent-be` run independently; both connect to the shared Railway Postgres instance (or a local Postgres for offline dev — developer's choice, not enforced).
@@ -717,113 +675,3 @@ User message (browser) → `conversations.controller.ts` → sandbox process exe
 **Build Process Structure:** `nx build <app>` per app. `libs/database-schemas` generates the Prisma client as a build step consumed by both. `apps/agent-be`'s Dockerfile pins the sandbox-agent binary version and Node version per the existing upgrade-discipline decision.
 
 **Deployment Structure:** Vercel builds `apps/web` from the Nx monorepo (root directory `apps/web`); Railway builds `apps/agent-be`'s Dockerfile. Both deploys are manually triggered, gated by the GitHub Actions lint/test workflow.
-
-## Architecture Validation Results
-
-### Coherence Validation ✅
-
-**Decision Compatibility:** All technology choices are mutually compatible — Next.js 15/Auth.js v5 beta/Tailwind/shadcn/assistant-ui on the frontend; NestJS/Zod+nestjs-zod/Prisma/Daytona SDK/Claude Agent SDK on the backend; one shared Prisma schema eliminating drift. Every pre-1.0 package (`@assistant-ui/react-ag-ui`, `@ag-ui/client`, `@ag-ui/core`, `@anthropic-ai/claude-agent-sdk`, `@daytonaio/sdk`) follows the same pinned-exact-version, deliberate-upgrade discipline. No contradictory decisions remain — the one found during this validation pass (NFR numbering drift against the PRD, and the "closes the gap" overstatement for NFR-S3) has been corrected directly in the sections above.
-
-**Pattern Consistency:** Step 5's naming/structure/format/communication/process patterns are reflected exactly in Step 6's tree — camelCase JSON fields, PascalCase components, kebab-case services, co-located tests, flat-by-feature `apps/web` components, Zod/`nestjs-zod` at every `apps/agent-be` controller boundary, `{ code, message, meta }` error envelope, raw success bodies.
-
-**Structure Alignment:** The Step 6 structure enforces every locked boundary: `apps/web` never calls `apps/agent-be` server-to-server (browser-direct REST+SSE only); `apps/agent-be` is the sole Daytona-credential holder; the boundary-JWT + `active-user.guard.ts` + `@User()` decorator chain is the single authenticated-context path, with no controller re-implementing it.
-
-### Requirements Coverage Validation ✅
-
-**Functional Requirements Coverage:** All 19 FRs across the 5 PRD feature areas map to a specific directory in both services (see Step 6's Feature/FR-Category Mapping table). No FR is unaddressed.
-
-**Non-Functional Requirements Coverage:**
-- Performance (NFR-P1–P5): addressed — no-buffering SSE, page-open provisioning, Postgres-cached Project Map/Artifact reads, platform-level manual commit.
-- Reliability (NFR-R1–R4): NFR-R1 (credential health propagation) now has a structural home (`tool-pill-classifier.service.ts` → `CREDENTIAL_FAILURE` SSE event), added during this validation pass. NFR-R2–R4 already covered (session recovery via FR-13 cold-load, back-pressure, HTTP/2 + circuit breaker/heartbeat).
-- Security (NFR-S1–S4): NFR-S1/S2 covered (Daytona-only credential exposure, tenant-scoped credential lookups via `credentials.service.ts`). NFR-S3 (active termination on deactivation) is **explicitly deferred to post-MVP** — no automatic enforcement mechanism fires at all in MVP scope, since no in-app deactivation flow exists to trigger one (see Deferred Decisions). NFR-S4 (OAuth token storage) fully covered (envelope encryption).
-- Observability (NFR-O1): covered (`cost-tracking.service.ts`, wired from day one).
-
-### Implementation Readiness Validation ✅
-
-**Decision Completeness:** All critical/important/deferred decisions are documented with versions where applicable, and every deferred item carries its rationale (manual ops handling, post-MVP migration triggers).
-
-**Structure Completeness:** Complete, specific directory trees for both apps and both libs — no generic placeholders. Every module maps to a named FR category or cross-cutting concern.
-
-**Pattern Completeness:** All 11 originally identified conflict points are resolved with concrete examples and anti-patterns; the two gaps surfaced in this validation pass (NFR-R1 structural home, NFR numbering) are now resolved/corrected directly in the document.
-
-### Gap Analysis Results
-
-**Critical Gaps — Resolved during this validation pass:**
-- NFR numbering drift between this document's Requirements Overview table and the PRD's actual `NFR-S1`–`S4` numbering — corrected.
-- NFR-R1 (credential health propagation) had no structural home — assigned to `tool-pill-classifier.service.ts` + `CREDENTIAL_FAILURE` SSE event.
-- NFR-S3 (active termination on deactivation): the document overstated that the live `user.active` guard "closes" this gap. Corrected: NFR-S3 is explicitly deferred to post-MVP and not implemented — there is no automatic enforcement mechanism, since no in-app deactivation flow exists in MVP scope to trigger one. It becomes a non-deferrable, day-one requirement of whatever future story introduces an actual deactivate-user flow.
-
-**Important Gaps — Addressed by existing structure (clarified, not requiring new files):**
-- FR-11 (10 concurrent Conversations/user): enforced in `conversations.service.ts` before provisioning a new sandbox.
-- Sandbox idle timeout (60s default, Technical Constraints): owned by `sandbox.service.ts`.
-- Per-user sandbox provision queue (GitHub OAuth rate-limit burst protection, Medium severity risk finding): owned by `sandbox.service.ts`, 2–3 concurrent provision cap.
-- Sandbox provision failure cleanup (Medium severity risk finding): owned by `sandbox.service.ts`'s `provision()` error path.
-
-**Nice-to-Have Gaps (not addressed, explicitly deferred):**
-- GitHub org OAuth-restriction self-service link/admin notification — no UI affordance assigned; Low severity, deferred.
-- Conversation history retention/archival policy — `last_active_at` schema field intent recorded, no archival mechanism; explicitly out of scope until needed.
-
-### Validation Issues Addressed
-
-Two issues were raised and resolved collaboratively during this step: (1) the NFR-S3 active-termination gap — resolved by deferring NFR-S3 to post-MVP outright (no automatic enforcement mechanism in MVP scope, since no in-app deactivation flow exists to trigger one), rather than claiming partial coverage; the manual-ops pattern already applied to sandbox orphan cleanup covers the operator-driven path until then; (2) the NFR-R1 structural home — resolved by extending the existing SSE channel rather than introducing new transport. Both resolutions are now reflected in the relevant sections above rather than left as open findings.
-
-### Architecture Completeness Checklist
-
-**Requirements Analysis**
-
-- [x] Project context thoroughly analyzed
-- [x] Scale and complexity assessed
-- [x] Technical constraints identified
-- [x] Cross-cutting concerns mapped
-
-**Architectural Decisions**
-
-- [x] Critical decisions documented with versions
-- [x] Technology stack fully specified
-- [x] Integration patterns defined
-- [x] Performance considerations addressed
-
-**Implementation Patterns**
-
-- [x] Naming conventions established
-- [x] Structure patterns defined
-- [x] Communication patterns specified
-- [x] Process patterns documented
-
-**Project Structure**
-
-- [x] Complete directory structure defined
-- [x] Component boundaries established
-- [x] Integration points mapped
-- [x] Requirements to structure mapping complete
-
-### Architecture Readiness Assessment
-
-**Overall Status:** READY WITH MINOR GAPS
-
-**Confidence Level:** High — all Critical Gaps found during validation were resolved within this step; the remaining open items are explicitly deferred to post-MVP (NFR-S3 active termination on deactivation) or explicitly deferred Nice-to-Have items, not unknowns.
-
-**Key Strengths:**
-- Every architectural decision traces to a specific NFR, FR, or risk finding — no speculative decisions.
-- Single shared Prisma schema and single validation library (Zod) eliminate two classes of drift structurally rather than by convention.
-- The manual-reload refresh model collapses two previously separate problems (SSE-reconnect recovery, live/persisted-render duplication) into one mechanism.
-- Deferred decisions are consistently justified by actual MVP scope constraints (no admin UI, no staging budget, single-container ceiling), not omission.
-
-**Areas for Future Enhancement:**
-- NFR-S3 (active termination on deactivation) — deferred to post-MVP; becomes a day-one requirement of any future deactivate-user flow.
-- Daytona sandbox orphan cleanup automation.
-- Postgres role separation (least-privilege).
-- Cross-tab staleness affordance for Project Map/Artifact Browser.
-
-### Implementation Handoff
-
-**AI Agent Guidelines:**
-
-- Follow all architectural decisions exactly as documented.
-- Use implementation patterns consistently across all components.
-- Respect project structure and boundaries.
-- Refer to this document for all architectural questions.
-- **Sync/real-time boundary (see Deployed Services):** Synchronous data operations (repository connection, validation, credential health, git identity, Project Map reads, Artifact Browser reads) are `apps/web` Server Actions and lib/ code — do not move them to `apps/agent-be`. `apps/agent-be` owns the real-time and infrastructure orchestration domains (sandbox provisioning, SSE, AG-UI event bridge, tool-pill classification, credential-failure propagation, manual commit execution). Do not re-litigate this boundary; it is the result of four implementation cycles confirming Server Actions are the correct pattern for synchronous request-scoped operations.
-
-**First Implementation Priority:**
-Scaffold the Nx workspace via the Initialization Commands in Starter Template Evaluation (`npx create-nx-workspace@latest bmad-easy --preset=empty --packageManager=yarn`, then generate `apps/web`, `apps/agent-be`, `libs/shared-types`, `libs/database-schemas`), per Decision Impact Analysis's Implementation Sequence step 1.

@@ -1,8 +1,8 @@
 ---
 title: "DESIGN: bmad-easy"
-status: draft
+status: final
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-07-02
 
 colors:
   # Backgrounds — elevation via lightness, no shadows
@@ -262,7 +262,7 @@ Two typefaces only.
 
 **Spacing unit:** 4px. All internal spacing is a multiple of 4. Tailwind's default scale applies (4, 8, 12, 16, 20, 24, 32, 40, 48, 64).
 
-**Density:** Chat interfaces use generous line height (`1.5rem` at `base` size). Navigation items use `sm` text with `20px` line height to keep the list scannable at a glance. Cards (Project Map artifact entries) have `12px 16px` internal padding.
+**Density:** Chat interfaces use generous line height (`1.5rem` at `base` size). Navigation items use `sm` text with `20px` line height to keep the list scannable at a glance. Artifact Cards (Project Map) have `12px 16px` internal padding.
 
 **Content breathing room:** The chat content column has `32px` horizontal padding at 1280px+ viewports; `20px` at narrower breakpoints. This is not reduced to maximize visible tokens — readability and message chunking are more important than information density.
 
@@ -355,7 +355,7 @@ Displayed in the chat input area, left-aligned, below the textarea.
 
 ### Slash Command Picker
 
-`{components.slash-command-picker}` — floating dropdown anchored above the chat input, appearing when the user types `/`. Overlays content; does not push the input downward. Scrollable list (`max-height: 320px`) with a visible scrollbar if items overflow. Each item: skill name in `sm` weight medium, left-padded at `12px`. Hovered/focused item: `{colors.surface-raised}` background highlight. Dismiss outline: `{colors.border}` border on `{rounded.lg}` radius.
+`{components.slash-command-picker}` — floating dropdown anchored above the chat input, appearing when the user types `/`. Overlays content; does not push the input downward. Scrollable list (`max-height: 320px`) with a visible scrollbar if items overflow. Each item: skill name in `sm` weight medium, left-padded at `12px`. Hovered/focused item: `{colors.surface-raised}` background highlight. Container outline: `{colors.border}` border on `{rounded.lg}` radius.
 
 ### Scroll-to-Bottom Button
 
@@ -371,7 +371,11 @@ Displayed in the chat input area, left-aligned, below the textarea.
 
 ### Credential Error Banner
 
-`{components.credential-error-banner}` — full-width horizontal banner at the top of the content area (below the page header) on Project Map and Artifact Browser. Non-dismissible. Background `{colors.negative-bg}`, bottom border `{colors.negative}`. Contains plain-language copy and a link styled in `{colors.negative}` to trigger the re-auth flow (inline modal, not a page navigation).
+`{components.credential-error-banner}` — full-width horizontal banner at the top of the content area (below the page header) on Project Map, Artifact Browser, and Conversation. Non-dismissible. Background `{colors.negative-bg}`, bottom border `{colors.negative}`. Contains plain-language copy and a link styled in `{colors.negative}` to trigger the re-auth flow (inline modal, not a page navigation). Gated on `credentialHealth === 'failed'` — a 403 mid-conversation does NOT trigger this banner (per FINDING-12); see Access Notice.
+
+### Access Notice
+
+`{components.access-notice}` — inline notice rendered in the message stream directly below the error-state Tool Pill for a failing git operation that returned a 403. Distinct from the Credential Error Banner: it is scoped to the single failing tool call (not full-width, not pinned to the content area top), dismissible, and never offers a re-auth action — re-authentication resolves none of the three 403 causes. Background `{colors.warning-bg}` (or `{colors.negative-bg}` for `INSUFFICIENT_PERMISSION`), left border `{colors.warning}` / `{colors.negative}`. Copy is derived from the `ACCESS_DENIED` event's `code` field (`RATE_LIMITED` / `ORG_RESTRICTION` / `INSUFFICIENT_PERMISSION`); the raw GitHub error text remains available in the Tool Pill's expanded output. Does not disable the input or halt the agent turn. (Component added 2026-07-02 alongside the architecture.md `ACCESS_DENIED` event contract.)
 
 ### Avatar Circle
 
@@ -385,7 +389,7 @@ Displayed in the chat input area, left-aligned, below the textarea.
 - Use `{colors.accent}` for all primary interactive elements — buttons, focus rings, active states, links.
 - Communicate elevation through surface lightness only.
 - Keep the content area uncluttered: one active surface at a time.
-- Let agent message text have generous line height; streaming walls of text are unpleasant to read.
+- Let agent message text have generous line height; long unbroken blocks of streamed text are hard to read.
 - Use semantic colors strictly: positive = committed, caution = unsaved, negative = error. Never use them decoratively.
 
 **Don't:**

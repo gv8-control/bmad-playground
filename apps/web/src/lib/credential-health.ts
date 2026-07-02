@@ -34,11 +34,19 @@ export async function resolveOAuthToken(userId: string): Promise<string> {
  * Mark a user's repository connection credential health as `failed`.
  * Called when a git/GitHub API operation returns 401/403 (NFR-R1).
  * No-op if no RepoConnection exists (first sign-in before connection).
+ *
+ * @param capturedAt Optional optimistic-concurrency guard — a timestamp captured
+ * before the GitHub call that triggered this failure (e.g. right before
+ * `resolveOAuthToken`). When provided, the write only applies if the row's
+ * `updatedAt` is strictly before this time, so a `failed` write can never
+ * clobber a concurrent re-authorization (which bumps `updatedAt` to `healthy`)
+ * that happened after the request started. When omitted, the update is
+ * unconditional (fallback for callers with no natural timestamp to pass).
  */
-export async function markCredentialFailed(userId: string): Promise<void> {
+export async function markCredentialFailed(userId: string, capturedAt?: Date): Promise<void> {
   try {
     await getPrisma().repoConnection.updateMany({
-      where: { userId },
+      where: capturedAt ? { userId, updatedAt: { lt: capturedAt } } : { userId },
       data: { credentialHealth: 'failed' },
     });
   } catch (err) {

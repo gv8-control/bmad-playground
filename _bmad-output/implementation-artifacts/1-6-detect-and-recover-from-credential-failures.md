@@ -14,11 +14,13 @@ so that I can keep working without redoing the entire connection setup.
 
 ## Acceptance Criteria
 
-### AC-1: 401/403 detection updates credential health to `failed` within one operation cycle
+### AC-1: 401 detection updates credential health to `failed` within one operation cycle
 
-**Given** a git operation against a connected repository returns HTTP 401 or 403
+**Given** a git operation against a connected repository returns HTTP 401
 **When** the platform processes that response
 **Then** the credential health status is updated to `failed` within one operation cycle, with no silent failure (NFR-R1)
+
+**Note:** A 403 is not a credential failure. It is classified into rate limit (`RATE_LIMITED`), org OAuth App restriction (`ORG_RESTRICTION`), or permission denial (`INSUFFICIENT_PERMISSION` / `MISSING_DIRECTORY`) without calling `markCredentialFailed`. See FINDING-12 in deferred-work.md.
 
 ### AC-2: Tenant authorization check before token resolution
 
@@ -46,7 +48,7 @@ so that I can keep working without redoing the entire connection setup.
   - [x] 1.2 Verify no existing code references the old status values (`valid`, `expired`, `revoked`, `unknown`) — if any are found, update them
 
 - [x] Task 2: Create credential health service — `apps/web/src/lib/credential-health.ts` (AC: 1, 2)
-  - [x] 2.1 Create `CredentialFailureError` class (extends `Error`) — thrown when a git/GitHub API operation returns 401/403, carrying the HTTP status for caller inspection
+  - [x] 2.1 Create `CredentialFailureError` class (extends `Error`) — thrown when a git/GitHub API operation returns 401, carrying the HTTP status for caller inspection
   - [x] 2.2 Implement `resolveOAuthToken(userId: string): Promise<string>` — the single tenant-scoped credential resolution point (AC-2). Looks up `OAuthCredential` by `userId` (this `where: { userId }` clause IS the tenant authorization check — tokens are only ever resolved for the requesting user). Throws `CredentialFailureError` if no credential is found. Calls `decryptToken` and returns the plaintext token.
   - [x] 2.3 Implement `markCredentialFailed(userId: string): Promise<void>` — updates `RepoConnection.credentialHealth` to `'failed'` via `updateMany` (no-op if no RepoConnection exists yet — first sign-in before connection)
   - [x] 2.4 Implement `markCredentialHealthy(userId: string): Promise<void>` — updates `RepoConnection.credentialHealth` to `'healthy'` via `updateMany`
@@ -64,11 +66,11 @@ so that I can keep working without redoing the entire connection setup.
   - [x] 3.9 Test `getCredentialHealth` returns `'healthy'` or `'failed'` for existing RepoConnection
   - [x] 3.10 Test `getCredentialHealth` returns `null` when no RepoConnection exists
 
-- [x] Task 4: Wire 401/403 detection into existing GitHub API operations (AC: 1)
-  - [x] 4.1 In `repository-validation.actions.ts`: modify `fetchGithubContents` to throw `CredentialFailureError` on HTTP 401 or 403 (currently throws a generic `Error` on any non-OK response). 404 remains `null`. Other non-OK statuses remain generic `Error`.
+- [x] Task 4: Wire 401 detection into existing GitHub API operations (AC: 1)
+  - [x] 4.1 In `repository-validation.actions.ts`: modify `fetchGithubContents` to throw `CredentialFailureError` on HTTP 401 only (currently throws a generic `Error` on any non-OK response). 403 is classified via `detectGithubRateLimit` — rate-limit 403s throw `RateLimitError`, genuine 403s return `null` (path inaccessible). 404 remains `null`. Other non-OK statuses remain generic `Error`.
   - [x] 4.2 In `repo-connection.actions.ts`: refactor `connectRepository` to use `resolveOAuthToken(session.userId)` instead of inline `oAuthCredential.findUnique` + `decryptToken` (AC-2). Replace the inline credential lookup block (lines 51-59) with a call to `resolveOAuthToken`.
   - [x] 4.3 In `repo-connection.actions.ts`: add `markCredentialFailed(session.userId)` call in the 401 error path (line 79-84) — call it before returning the error result, within the same operation cycle (NFR-R1)
-  - [x] 4.4 In `repo-connection.actions.ts`: add `markCredentialFailed(session.userId)` call in the 403 error path (line 93-112) — same pattern
+  - [x] 4.4 In `repo-connection.actions.ts`: the 403 error path classifies into `RATE_LIMITED`, `ORG_RESTRICTION`, or `INSUFFICIENT_PERMISSION` and does NOT call `markCredentialFailed` — the token is valid but access is denied (resolved per FINDING-12)
   - [x] 4.5 In `repo-connection.actions.ts`: add a catch for `CredentialFailureError` from `inspectBmadSetup` (line 131-138) — call `markCredentialFailed(session.userId)` and return a `NO_CREDENTIAL` error
   - [x] 4.6 In `repository-validation.actions.ts`: refactor `validateRepository` to use `resolveOAuthToken(session.userId)` instead of inline credential lookup + `decryptToken` (lines 286-294) (AC-2)
   - [x] 4.7 In `repository-validation.actions.ts`: add a catch for `CredentialFailureError` from `inspectBmadSetup` (around line 312) — call `markCredentialFailed(session.userId)` and return a `NO_CREDENTIAL` error result
@@ -98,16 +100,16 @@ so that I can keep working without redoing the entire connection setup.
 ### Architecture Context
 
 - This story delivers **credential failure detection, health status management, and the re-auth flow** in `apps/web`. The architecture places credential logic in `apps/agent-be/src/credentials/credentials.service.ts` (architecture line 584: "decrypts OAuth token for git operations"), but `apps/agent-be` is still a scaffold (only `main.ts`, `app/`, `sandbox/`, `assets/`). Stories 1.2–1.5 established the pattern of implementing onboarding-adjacent logic in `apps/web` (Server Actions in `apps/web/src/actions/`, utilities in `apps/web/src/lib/`). This story follows that pattern.
-- **Real-time SSE propagation** (mid-conversation 401/403 detection via `tool-pill-classifier.service.ts` emitting `CREDENTIAL_FAILURE` events) is **Epic 3, Story 3.7** — explicitly out of scope here. This story wires detection into the existing GitHub API calls in `apps/web` (`connectRepository`, `validateRepository`).
+- **Real-time SSE propagation** (mid-conversation 401 detection via `tool-pill-classifier.service.ts` emitting `CREDENTIAL_FAILURE` events) is **Epic 3, Story 3.7** — explicitly out of scope here. This story wires detection into the existing GitHub API calls in `apps/web` (`connectRepository`, `validateRepository`).
 - The `CredentialHealthStatus` type in `libs/shared-types/src/credential-health.types.ts` was created during Story 1.1 scaffolding with placeholder values (`'valid' | 'expired' | 'revoked' | 'unknown'`) that **do not match** the actual codebase. The Prisma schema default is `"healthy"` (line 46 of `schema.prisma`), and `repo-connection.actions.ts` uses `'healthy'` throughout. The epics and PRD use `'healthy'` and `'failed'`. Task 1 fixes this mismatch.
 - The deferred-work log (line 50) confirms: "valid values `"healthy"` / `"failed"` enforced only at the TypeScript layer" — no DB CHECK constraint exists. This story does not add one (out of scope; tracked in deferred-work.md).
-- The deferred-work log (line 24) flags: "data.permissions absent or degraded for organization repos accessed via team membership — results in misleading INSUFFICIENT_PERMISSION error; Mitigate in Story 1.6." This story's `markCredentialFailed` wiring into the 403 path partially mitigates this — a 403 from a degraded permission scenario now marks the credential as failed, surfacing the re-auth flow rather than silently returning a misleading error.
+- The deferred-work log (line 24) flags: "data.permissions absent or degraded for organization repos accessed via team membership — results in misleading INSUFFICIENT_PERMISSION error." This story does NOT mark the credential as failed on 403 — a 403 from a degraded permission scenario surfaces `INSUFFICIENT_PERMISSION` without triggering a re-auth loop (resolved per FINDING-12).
 
 ### Where the Logic Lives
 
 The architecture's `apps/agent-be/src/credentials/credentials.service.ts` is the eventual home for OAuth token decryption and credential health management. When `apps/agent-be` is built (Epic 3), the `resolveOAuthToken` and `markCredentialFailed`/`markCredentialHealthy` functions should be moved or duplicated there. The functions are intentionally kept simple (pure DB + crypto operations) so they can be moved without coupling.
 
-For now, `apps/web` is the sole writer of `RepoConnection.credentialHealth` (via `connectRepository` and this story's new functions). Epic 3's `tool-pill-classifier.service.ts` will also write `failed` status when it detects 401/403 mid-conversation.
+For now, `apps/web` is the sole writer of `RepoConnection.credentialHealth` (via `connectRepository` and this story's new functions). Epic 3's `tool-pill-classifier.service.ts` will also write `failed` status when it detects 401 mid-conversation.
 
 ### Critical: Do Not Reinvent
 
@@ -126,7 +128,7 @@ import { getPrisma } from './prisma';
 import { decryptToken } from './crypto';
 import type { CredentialHealthStatus } from '@bmad-easy/shared-types';
 
-/** Thrown when a git/GitHub API operation returns HTTP 401 or 403. */
+/** Thrown when a git/GitHub API operation returns HTTP 401. */
 export class CredentialFailureError extends Error {
   constructor(public readonly statusCode: number) {
     super(`Credential failure: GitHub API returned ${statusCode}`);
@@ -156,7 +158,7 @@ export async function resolveOAuthToken(userId: string): Promise<string> {
 
 /**
  * Mark a user's repository connection credential health as `failed`.
- * Called when a git/GitHub API operation returns 401/403 (NFR-R1).
+ * Called when a git/GitHub API operation returns 401 (NFR-R1).
  * No-op if no RepoConnection exists (first sign-in before connection).
  */
 export async function markCredentialFailed(userId: string): Promise<void> {
@@ -197,7 +199,7 @@ export async function getCredentialHealth(
 
 - **`resolveOAuthToken` throws `CredentialFailureError(401)` when no credential exists**: This treats a missing credential as a credential failure, which is semantically correct — the user has no valid token. Callers catch `CredentialFailureError` and call `markCredentialFailed`, which is a no-op if no RepoConnection exists.
 - **`updateMany` instead of `update`**: `update` throws P2025 if no record matches. `updateMany` silently updates 0 rows. This is the correct behavior — `markCredentialFailed`/`markCredentialHealthy` should not throw if the user hasn't connected a repository yet.
-- **`CredentialFailureError` carries `statusCode`**: Allows callers to distinguish 401 (token expired/revoked) from 403 (permission denied, org restriction) if needed for error messaging. Both trigger `markCredentialFailed`.
+- **`CredentialFailureError` carries `statusCode`**: Allows callers to distinguish 401 (token expired/revoked) from 403 (permission denied, org restriction) if needed for error messaging. Only 401 triggers `markCredentialFailed`; 403 is classified and does not mark the credential as failed (per FINDING-12).
 - **No `try/catch` in `resolveOAuthToken` for `decryptToken`**: If decryption fails (tampered credential, KEK rotation mismatch), the error propagates to the caller's `resolveOAuthToken` catch block, which returns `NO_CREDENTIAL`. A tampered or unreadable credential is unusable, so prompting re-auth is the correct user action.
 
 ### apps/web/src/actions/credential-health.actions.ts
@@ -287,15 +289,24 @@ if (!response.ok) {
 
 New:
 ```typescript
-if (response.status === 401 || response.status === 403) {
-  throw new CredentialFailureError(response.status);
+if (response.status === 401) {
+  throw new CredentialFailureError(401);
+}
+if (response.status === 403) {
+  const body = await response.json().catch(() => undefined);
+  const rateLimit = detectGithubRateLimit(response, body);
+  if (rateLimit) throw rateLimit;
+  // Not a credential failure — token is valid but lacks access to this
+  // resource. Return null so the caller handles it as an inaccessible path
+  // without marking the credential as failed (FINDING-12).
+  return null;
 }
 if (!response.ok) {
   throw new Error(`GitHub API error ${response.status} for path: ${path}`);
 }
 ```
 
-Add import: `import { CredentialFailureError } from '@/lib/credential-health';`
+Add imports: `import { CredentialFailureError } from '@/lib/credential-health';` and `import { detectGithubRateLimit, RateLimitError } from '@/lib/repository-validation';`
 
 ### connectRepository refactoring (repo-connection.actions.ts)
 
@@ -327,7 +338,7 @@ try {
 
 And remove the later `const accessToken = decryptToken(credential);` (line 62).
 
-Add `markCredentialFailed` calls in the 401 and 403 error paths:
+Add `markCredentialFailed` call in the 401 error path only (403 does NOT call it — per FINDING-12):
 ```typescript
 // After detecting 401 (line 79):
 if (response.status === 401) {
@@ -338,10 +349,15 @@ if (response.status === 401) {
   };
 }
 
-// After detecting 403 (line 93):
+// After detecting 403 (line 93) — classify, do NOT mark credential failed:
 if (response.status === 403) {
-  await markCredentialFailed(session.userId);
+  const body = await response.json().catch(() => ({}));
+  const rateLimit = detectGithubRateLimit(response, body);
+  if (rateLimit) {
+    return { error: rateLimitMessage(rateLimit), errorCode: 'RATE_LIMITED' };
+  }
   // ... existing org-restriction / insufficient-permission logic
+  // (returns ORG_RESTRICTION or INSUFFICIENT_PERMISSION — no markCredentialFailed)
 }
 ```
 
@@ -411,7 +427,7 @@ Remove import: `import { decryptToken } from '@/lib/crypto';` (no longer used di
 **From Story 1.3 (Connect a Repository by URL):**
 - `connectRepository` handles 401 (token expired), 404 (repo not found), 403 (insufficient permission / org restriction) explicitly
 - The 401 path returns `NO_CREDENTIAL` error code — this story adds `markCredentialFailed` before that return
-- The 403 path distinguishes org-restriction from insufficient-permission — both should trigger `markCredentialFailed`
+- The 403 path distinguishes rate-limit, org-restriction from insufficient-permission — none trigger `markCredentialFailed` (per FINDING-12)
 - `decryptToken` throws on tampered/invalid credentials — currently caught as `UNKNOWN` error
 - The `oAuthCredential.findUnique` + `decryptToken` pattern is used in both `connectRepository` and `validateRepository` — this story extracts it into `resolveOAuthToken`
 
@@ -455,7 +471,7 @@ Remove import: `import { decryptToken } from '@/lib/crypto';` (no longer used di
 - **Unit tests** (`credential-health.test.ts`): cover all functions — `resolveOAuthToken` (valid, missing credential, decrypt failure, tenant isolation), `markCredentialFailed` (updates, no-op on missing), `markCredentialHealthy` (updates, no-op on missing), `getCredentialHealth` (returns status, returns null)
 - **Integration tests** (`credential-health.actions.spec.ts`): cover Server Actions — `reauthorizeGitHub` (calls signIn with correct params), `getCredentialHealthStatus` (authenticated, unauthenticated, no RepoConnection, DB error)
 - **Updated tests** (`auth.credential.spec.ts`): verify jwt callback resets credentialHealth to 'healthy' after storing new token
-- **Updated tests** (`repo-connection.actions.spec.ts`): verify `markCredentialFailed` is called on 401/403, verify `resolveOAuthToken` is used instead of inline lookup
+- **Updated tests** (`repo-connection.actions.spec.ts`): verify `markCredentialFailed` is called on 401 and NOT called on 403, verify `resolveOAuthToken` is used instead of inline lookup
 - **Updated tests** (`repository-validation.actions.spec.ts`): verify `markCredentialFailed` is called when `inspectBmadSetup` throws `CredentialFailureError`
 - No E2E tests needed — this story has no UI surface (AC-4)
 
@@ -471,9 +487,9 @@ apps/web/src/
   actions/
     credential-health.actions.ts                   ← NEW (reauthorizeGitHub, getCredentialHealthStatus Server Actions)
     credential-health.actions.spec.ts              ← NEW (integration tests)
-    repo-connection.actions.ts                     ← UPDATE (use resolveOAuthToken, add markCredentialFailed on 401/403)
-    repo-connection.actions.spec.ts                ← UPDATE (mock resolveOAuthToken/markCredentialFailed, add 401/403 mark tests)
-    repository-validation.actions.ts               ← UPDATE (use resolveOAuthToken, throw CredentialFailureError on 401/403, catch and markCredentialFailed)
+    repo-connection.actions.ts                     ← UPDATE (use resolveOAuthToken, add markCredentialFailed on 401 only)
+    repo-connection.actions.spec.ts                ← UPDATE (mock resolveOAuthToken/markCredentialFailed, add 401 mark tests, 403 no-mark tests)
+    repository-validation.actions.ts               ← UPDATE (use resolveOAuthToken, throw CredentialFailureError on 401 only, classify 403, catch and markCredentialFailed)
     repository-validation.actions.spec.ts          ← UPDATE (mock resolveOAuthToken/markCredentialFailed, add CredentialFailureError catch test)
 
 libs/shared-types/src/
@@ -497,7 +513,7 @@ No changes to:
 
 - **Consumed by Epic 2, Story 2.2** (View the Project Map): The `getCredentialHealthStatus` Server Action is called by the Project Map to decide whether to show the Credential Error Banner (UX-DR10). The `reauthorizeGitHub` Server Action is called by the re-auth modal's "Re-authorize" button.
 - **Consumed by Epic 2, Story 2.4** (Browse and Read All Committed Artifacts): Same `getCredentialHealthStatus` for the Artifact Browser's Credential Error Banner.
-- **Consumed by Epic 3, Story 3.7** (Receive Real-Time Credential Failure Alerts): The `markCredentialFailed` function is called by `tool-pill-classifier.service.ts` when it detects 401/403 in the sandbox-agent JSONL stream. The `CredentialFailureError` pattern established here is the precedent for that flow.
+- **Consumed by Epic 3, Story 3.7** (Receive Real-Time Credential Failure Alerts): The `markCredentialFailed` function is called by `tool-pill-classifier.service.ts` when it detects 401 in the sandbox-agent JSONL stream. The `CredentialFailureError` pattern established here is the precedent for that flow. A 403 mid-conversation is classified, not treated as a credential failure (per FINDING-12).
 - **Not consumed by**: `apps/agent-be` — still a scaffold. When built, `resolveOAuthToken` and `markCredentialFailed`/`markCredentialHealthy` should be moved or duplicated to `apps/agent-be/src/credentials/credentials.service.ts` (they are simple DB + crypto operations with no `apps/web`-specific dependencies beyond `getPrisma()` and `decryptToken`, which are shared-library patterns).
 
 ## Architecture Compliance
@@ -601,9 +617,9 @@ export interface CredentialHealthEvent {
 1. `libs/shared-types/src/credential-health.types.ts` — fix `CredentialHealthStatus` values
 2. `apps/web/src/lib/auth.ts` — jwt callback: add `repoConnection.updateMany` to reset health
 3. `apps/web/src/lib/auth.credential.spec.ts` — mock `repoConnection.updateMany`, add health-reset test
-4. `apps/web/src/actions/repo-connection.actions.ts` — use `resolveOAuthToken`, add `markCredentialFailed` on 401/403
-5. `apps/web/src/actions/repo-connection.actions.spec.ts` — update mocks, add 401/403 mark tests
-6. `apps/web/src/actions/repository-validation.actions.ts` — use `resolveOAuthToken`, throw `CredentialFailureError` on 401/403, catch and `markCredentialFailed`
+4. `apps/web/src/actions/repo-connection.actions.ts` — use `resolveOAuthToken`, add `markCredentialFailed` on 401 only
+5. `apps/web/src/actions/repo-connection.actions.spec.ts` — update mocks, add 401 mark tests and 403 no-mark tests
+6. `apps/web/src/actions/repository-validation.actions.ts` — use `resolveOAuthToken`, throw `CredentialFailureError` on 401 only, classify 403, catch and `markCredentialFailed`
 7. `apps/web/src/actions/repository-validation.actions.spec.ts` — update mocks, add `CredentialFailureError` catch test
 
 ## Testing Requirements
@@ -636,16 +652,16 @@ export interface CredentialHealthEvent {
 ### Updated Tests (repo-connection.actions.spec.ts)
 - [ ] `connectRepository` calls `resolveOAuthToken` instead of inline credential lookup (AC-2)
 - [ ] `connectRepository` calls `markCredentialFailed` on 401 response (AC-1)
-- [ ] `connectRepository` calls `markCredentialFailed` on 403 response (AC-1)
+- [ ] `connectRepository` does NOT call `markCredentialFailed` on 403 response — token is valid, access denied (AC-1, FINDING-12)
 - [ ] `connectRepository` calls `markCredentialFailed` when `inspectBmadSetup` throws `CredentialFailureError` (AC-1)
 
 ### Updated Tests (repository-validation.actions.spec.ts)
 - [ ] `validateRepository` calls `resolveOAuthToken` instead of inline credential lookup (AC-2)
 - [ ] `validateRepository` calls `markCredentialFailed` when `inspectBmadSetup` throws `CredentialFailureError` (AC-1)
 - [ ] `fetchGithubContents` throws `CredentialFailureError` on 401 response
-- [ ] `fetchGithubContents` throws `CredentialFailureError` on 403 response
+- [ ] `fetchGithubContents` throws `RateLimitError` on rate-limit 403, returns `null` on genuine 403 (does NOT throw `CredentialFailureError`)
 - [ ] Existing test "returns errorCode UNKNOWN when decryptToken throws" updated to expect `NO_CREDENTIAL` (resolution failure now caught by `resolveOAuthToken` catch)
-- [ ] Existing test "returns errorCode UNKNOWN when inspectBmadSetup throws (GitHub API 403)" updated to expect `NO_CREDENTIAL` (403 now throws `CredentialFailureError`)
+- [ ] Existing test "returns errorCode UNKNOWN when inspectBmadSetup throws (GitHub API 403)" updated to expect `MISSING_DIRECTORY` (genuine 403 returns `null`, not `CredentialFailureError`)
 
 ## Previous Story Intelligence
 
@@ -702,7 +718,7 @@ export interface CredentialHealthEvent {
 - **Epics Source**: `_bmad-output/planning-artifacts/epics.md` lines 354-377 — Story 1.6 ACs
 - **PRD FR-4**: `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md` lines 160-169 — Credential Health Monitoring
 - **PRD NFR-S2**: `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md` line 441 — Credential isolation (tenant-scoped lookups)
-- **PRD NFR-R1**: `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md` — Credential health update within one operation cycle of 401/403
+- **PRD NFR-R1**: `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md` — Credential health update within one operation cycle of 401
 - **Architecture**: `_bmad-output/planning-artifacts/architecture.md` — credentials service location (line 584), credential failure propagation (line 655), multi-tenant credential isolation (line 87, 682), OAuth token lifecycle (line 90)
 - **Shared Types**: `libs/shared-types/src/credential-health.types.ts` — `CredentialHealthStatus` type (needs fixing)
 - **Prisma Schema**: `libs/database-schemas/src/prisma/schema.prisma` — `RepoConnection` model (lines 42-53), `credentialHealth` field (line 46)
@@ -763,7 +779,7 @@ No debug issues encountered. All tasks implemented in a single pass without fail
 ### Review Findings
 
 - [x] [Review][Patch] Bare `catch {}` in `resolveOAuthToken` callers conflates failure modes and skips `markCredentialFailed` [`apps/web/src/actions/repo-connection.actions.ts:56-63`, `apps/web/src/actions/repository-validation.actions.ts:294-301`] — The bare `catch {}` around `resolveOAuthToken` swallows all error types (missing credential, DB error, KEK mismatch) into `NO_CREDENTIAL` without calling `markCredentialFailed`. A `RepoConnection` whose `OAuthCredential` was deleted stays stuck at `credentialHealth: 'healthy'`. The spec's design decision says "Callers catch `CredentialFailureError` and call `markCredentialFailed`" but the task code sample shows bare `catch {}`. Contradictory guidance requires human decision on whether to distinguish error types and mark failed.
-- [x] [Review][Defer] 403 blanket-treated as credential failure — org restrictions and permission denials mark credential as `failed` [`apps/web/src/actions/repository-validation.actions.ts:67-68`, `apps/web/src/actions/repo-connection.actions.ts:96-97`] — deferred, let's handle this after MVP — `fetchGithubContents` throws `CredentialFailureError` for ALL 403s, and `connectRepository` calls `markCredentialFailed` BEFORE the org-restriction check. A 403 from org OAuth App restrictions or repo-level permission denials incorrectly marks a valid token as `failed`, causing a re-auth loop (re-auth gets fresh token, but next operation 403s again). The spec prescribes this behavior in task code samples, but the design may need refinement.
+- [x] [Review][Resolved] 403 blanket-treated as credential failure — org restrictions and permission denials mark credential as `failed` [`apps/web/src/actions/repository-validation.actions.ts:67-68`, `apps/web/src/actions/repo-connection.actions.ts:96-97`] — **RESOLVED per FINDING-12**: `fetchGithubContents` now throws `RateLimitError` on rate-limit 403s and returns `null` on genuine 403s (never `CredentialFailureError`). `connectRepository` classifies 403s into `RATE_LIMITED` / `ORG_RESTRICTION` / `INSUFFICIENT_PERMISSION` without calling `markCredentialFailed`. The spec's original task code samples prescribed the buggy behavior; this story's tasks and test checklist have been updated to reflect the resolution.
 - [x] [Review][Patch] `markCredentialFailed` throwing in error paths shadows primary error and leaves health stale [`apps/web/src/actions/repo-connection.actions.ts:82,97,140`, `apps/web/src/actions/repository-validation.actions.ts:323`] — `markCredentialFailed` is awaited without try/catch in error-handling paths. If the DB is unreachable, the rejection propagates to the outer catch, returning `UNKNOWN` instead of `NO_CREDENTIAL`, and `credentialHealth` is not persisted as `failed`. The spec's Dev Notes state "a failed credential mark should never prevent the error from being returned to the user" — the implementation contradicts this.
 - [x] [Review][Patch] `repoConnection.updateMany` in jwt callback has no error containment — aborts sign-in on DB error [`apps/web/src/lib/auth.ts:68-71`] — The `updateMany` on the OAuth sign-in critical path is not wrapped in try/catch. A transient DB error rejects and propagates out of the jwt callback, aborting sign-in even though the credential was already stored. The spec's Dev Notes incorrectly dismiss the need for `.catch()` by conflating zero-match safety with DB error safety.
 - [x] [Review][Defer] `cacheGet` returns stale success after credential expiry [`apps/web/src/actions/repository-validation.actions.ts:314-315`] — deferred, pre-existing

@@ -1,6 +1,7 @@
 import { CredentialFailureError } from './credential-health';
 import {
   BMAD_DOCUMENTATION_LINK,
+  RATE_LIMITED_MESSAGE,
   type ValidateRepositoryResult,
   type ValidationError,
   type ValidationResult,
@@ -32,6 +33,75 @@ interface GithubFileContent {
   encoding: string;
 }
 
+/** Hard caps for directory-listing pagination — protects against pathological repos. */
+const MAX_CONTENT_PAGES = 10;
+const MAX_CONTENT_ENTRIES = 10_000;
+
+/**
+ * Thrown when a 403 is a GitHub rate limit (primary or secondary), not a
+ * credential failure. Callers must NOT call markCredentialFailed for this.
+ */
+export class RateLimitError extends Error {
+  constructor(public readonly waitHintSeconds?: number) {
+    super('GitHub API rate limit reached');
+    this.name = 'RateLimitError';
+  }
+}
+
+/**
+ * Detects whether a 403 response is a GitHub rate limit rather than a
+ * genuine credential/permission failure.
+ *
+ * - Primary rate limit: `X-RateLimit-Remaining: 0` response header.
+ * - Secondary rate limit / abuse detection: response body message mentions
+ *   "secondary rate limit" or "abuse detection".
+ *
+ * When rate-limited, also derives an optional wait-time hint (seconds) from
+ * `Retry-After` or `X-RateLimit-Reset`, if present — omitted otherwise.
+ */
+export function detectGithubRateLimit(
+  response: Response,
+  body: { message?: string } | undefined,
+): RateLimitError | null {
+  const remaining = response.headers?.get('X-RateLimit-Remaining');
+  const isPrimaryRateLimit = remaining === '0';
+
+  const message = (body?.message ?? '').toLowerCase();
+  const isSecondaryRateLimit =
+    message.includes('secondary rate limit') || message.includes('abuse detection');
+
+  if (!isPrimaryRateLimit && !isSecondaryRateLimit) {
+    return null;
+  }
+
+  const retryAfter = response.headers?.get('Retry-After');
+  if (retryAfter && /^\d+$/.test(retryAfter)) {
+    return new RateLimitError(parseInt(retryAfter, 10));
+  }
+
+  const resetAt = response.headers?.get('X-RateLimit-Reset');
+  if (resetAt && /^\d+$/.test(resetAt)) {
+    const waitSeconds = parseInt(resetAt, 10) - Math.floor(Date.now() / 1000);
+    if (waitSeconds > 0) {
+      return new RateLimitError(waitSeconds);
+    }
+  }
+
+  return new RateLimitError();
+}
+
+/**
+ * Builds the user-facing message for a RateLimitError, appending a wait-time
+ * hint only when one was cleanly derivable from GitHub's response headers.
+ */
+export function rateLimitMessage(err: RateLimitError): string {
+  if (!err.waitHintSeconds || err.waitHintSeconds <= 0) {
+    return RATE_LIMITED_MESSAGE;
+  }
+  const minutes = Math.ceil(err.waitHintSeconds / 60);
+  return `${RATE_LIMITED_MESSAGE} (about ${minutes} minute${minutes === 1 ? '' : 's'})`;
+}
+
 function githubHeaders(accessToken: string): HeadersInit {
   return {
     Authorization: `Bearer ${accessToken}`,
@@ -45,6 +115,16 @@ function githubApiUrl(owner: string, repo: string, path: string): string {
   return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents${cleanPath}`;
 }
 
+/** Extracts the `rel="next"` URL from a standard GitHub `Link` response header, if present. */
+function parseNextLink(linkHeader: string | null | undefined): string | null {
+  if (!linkHeader) return null;
+  for (const part of linkHeader.split(',')) {
+    const match = part.match(/<([^>]+)>\s*;\s*rel="next"/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
 async function fetchGithubContents(
   accessToken: string,
   owner: string,
@@ -56,8 +136,19 @@ async function fetchGithubContents(
     headers: githubHeaders(accessToken),
   });
 
-  if (response.status === 401 || response.status === 403) {
-    throw new CredentialFailureError(response.status);
+  if (response.status === 401) {
+    throw new CredentialFailureError(401);
+  }
+
+  if (response.status === 403) {
+    const body = await response.json().catch(() => undefined);
+    const rateLimit = detectGithubRateLimit(response, body);
+    if (rateLimit) throw rateLimit;
+    // Not a credential failure — the token is valid but lacks access to this
+    // resource (org-restriction, permission-denied, etc.). Return null so the
+    // caller handles it as an inaccessible path without marking the credential
+    // as failed.
+    return null;
   }
 
   if (response.status === 404) return null;
@@ -66,7 +157,46 @@ async function fetchGithubContents(
     throw new Error(`GitHub API error ${response.status} for path: ${path}`);
   }
 
-  return (await response.json()) as GithubContentEntry[] | GithubFileContent;
+  const data = (await response.json()) as GithubContentEntry[] | GithubFileContent;
+
+  if (!Array.isArray(data)) {
+    return data;
+  }
+
+  // Directory listing — GitHub silently truncates large directories without
+  // pagination. Follow the Link header's rel="next" until exhausted or capped.
+  let entries = data;
+  let nextUrl = parseNextLink(response.headers?.get('Link'));
+  let pageCount = 1;
+
+  while (nextUrl && pageCount < MAX_CONTENT_PAGES && entries.length < MAX_CONTENT_ENTRIES) {
+    const nextResponse = await fetch(nextUrl, {
+      signal: AbortSignal.timeout(10_000),
+      headers: githubHeaders(accessToken),
+    });
+
+    if (nextResponse.status === 401) {
+      throw new CredentialFailureError(401);
+    }
+
+    if (nextResponse.status === 403) {
+      const nextBody = await nextResponse.json().catch(() => undefined);
+      const rateLimit = detectGithubRateLimit(nextResponse, nextBody);
+      if (rateLimit) throw rateLimit;
+      return null;
+    }
+
+    if (!nextResponse.ok) {
+      throw new Error(`GitHub API error ${nextResponse.status} for path: ${path}`);
+    }
+
+    const nextEntries = (await nextResponse.json()) as GithubContentEntry[];
+    entries = entries.concat(nextEntries);
+    pageCount += 1;
+    nextUrl = parseNextLink(nextResponse.headers?.get('Link'));
+  }
+
+  return entries;
 }
 
 function decodeFileContent(file: GithubFileContent): string {

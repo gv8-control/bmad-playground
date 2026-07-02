@@ -5,6 +5,9 @@ export type ValidationErrorCode =
   | 'NO_SKILLS_FOUND'
   | 'UNSUPPORTED_VERSION';
 
+/** Distinct GitHub rate-limit signal (primary or secondary), never a credential failure. */
+export const RATE_LIMITED_MESSAGE = 'GitHub rate limit reached. Try again in a few minutes.';
+
 export interface ValidationResult {
   valid: true;
   repositoryUrl: string;

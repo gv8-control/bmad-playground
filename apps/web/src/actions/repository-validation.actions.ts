@@ -5,11 +5,14 @@ import {
   CredentialFailureError,
   resolveOAuthToken,
   markCredentialFailed,
+  getCredentialHealth,
 } from '@/lib/credential-health';
 import {
   inspectBmadSetup,
   getCachedValidation,
   cacheValidation,
+  RateLimitError,
+  rateLimitMessage,
 } from '@/lib/repository-validation';
 import { z } from 'zod';
 import type { ValidationError, ValidationResult } from '@bmad-easy/shared-types';
@@ -23,7 +26,7 @@ const repoUrlSchema = z
   );
 
 type ActionError = {
-  errorCode: 'INVALID_URL' | 'NO_CREDENTIAL' | 'UNKNOWN';
+  errorCode: 'INVALID_URL' | 'NO_CREDENTIAL' | 'RATE_LIMITED' | 'UNKNOWN';
   error: string;
 };
 
@@ -55,12 +58,13 @@ export async function validateRepository(
     return { error: 'Not authenticated', errorCode: 'UNKNOWN' };
   }
 
+  const capturedAt = new Date();
   let accessToken: string;
   try {
     accessToken = await resolveOAuthToken(session.userId);
   } catch (err) {
     if (err instanceof CredentialFailureError) {
-      await markCredentialFailed(session.userId).catch((markErr) =>
+      await markCredentialFailed(session.userId, capturedAt).catch((markErr) =>
         console.error('[validateRepository] markCredentialFailed failed:', markErr),
       );
       return {
@@ -89,7 +93,10 @@ export async function validateRepository(
     }
 
     const cached = getCachedValidation(session.userId, owner, repo);
-    if (cached) return cached;
+    if (cached) {
+      const health = await getCredentialHealth(session.userId);
+      if (health !== 'failed') return cached;
+    }
 
     try {
       const result = await inspectBmadSetup(accessToken, owner, repo);
@@ -98,8 +105,11 @@ export async function validateRepository(
       }
       return result;
     } catch (err) {
+      if (err instanceof RateLimitError) {
+        return { error: rateLimitMessage(err), errorCode: 'RATE_LIMITED' };
+      }
       if (err instanceof CredentialFailureError) {
-        await markCredentialFailed(session.userId);
+        await markCredentialFailed(session.userId, capturedAt);
         return {
           error: 'Your GitHub access token has expired or been revoked. Please sign out and sign in again.',
           errorCode: 'NO_CREDENTIAL',

@@ -7,7 +7,13 @@ import {
   markCredentialFailed,
   CredentialFailureError,
 } from '@/lib/credential-health';
-import { inspectBmadSetup, invalidateValidationCache } from '@/lib/repository-validation';
+import {
+  inspectBmadSetup,
+  invalidateValidationCache,
+  detectGithubRateLimit,
+  rateLimitMessage,
+  RateLimitError,
+} from '@/lib/repository-validation';
 import { z } from 'zod';
 
 const connectRepoSchema = z.object({
@@ -29,6 +35,7 @@ type ConnectResult =
         | 'NOT_FOUND'
         | 'INSUFFICIENT_PERMISSION'
         | 'ORG_RESTRICTION'
+        | 'RATE_LIMITED'
         | 'NO_CREDENTIAL'
         | 'UNKNOWN'
         | 'MISSING_DIRECTORY'
@@ -59,12 +66,13 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     return { error: 'Not authenticated', errorCode: 'UNKNOWN' };
   }
 
+  const capturedAt = new Date();
   let accessToken: string;
   try {
     accessToken = await resolveOAuthToken(session.userId);
   } catch (err) {
     if (err instanceof CredentialFailureError) {
-      await markCredentialFailed(session.userId).catch((markErr) =>
+      await markCredentialFailed(session.userId, capturedAt).catch((markErr) =>
         console.error('[connectRepository] markCredentialFailed failed:', markErr),
       );
       return {
@@ -96,7 +104,7 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     });
 
     if (response.status === 401) {
-      await markCredentialFailed(session.userId);
+      await markCredentialFailed(session.userId, capturedAt);
       return {
         error: 'Your GitHub access token has expired or been revoked. Please sign out and sign in again.',
         errorCode: 'NO_CREDENTIAL',
@@ -111,8 +119,12 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     }
 
     if (response.status === 403) {
-      await markCredentialFailed(session.userId);
       const body = await response.json().catch(() => ({}));
+      const rateLimit = detectGithubRateLimit(response, body);
+      if (rateLimit) {
+        return { error: rateLimitMessage(rateLimit), errorCode: 'RATE_LIMITED' };
+      }
+
       const message: string = body?.message ?? '';
       const isOrgRestriction =
         message.toLowerCase().includes('organization') &&
@@ -153,8 +165,11 @@ export async function connectRepository(repoUrl: string): Promise<ConnectResult>
     try {
       validation = await inspectBmadSetup(accessToken, owner, repo);
     } catch (err) {
+      if (err instanceof RateLimitError) {
+        return { error: rateLimitMessage(err), errorCode: 'RATE_LIMITED' };
+      }
       if (err instanceof CredentialFailureError) {
-        await markCredentialFailed(session.userId);
+        await markCredentialFailed(session.userId, capturedAt);
         return {
           error: 'Your GitHub access token has expired or been revoked. Please sign out and sign in again.',
           errorCode: 'NO_CREDENTIAL',

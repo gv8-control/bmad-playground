@@ -23,7 +23,7 @@ FR2: BMAD Initialization Validation — Platform validates the connected Reposit
 
 FR3: Commit Attribution per User — Commits produced through Conversations are attributed to the individual user's GitHub OAuth identity (name/email, injected into Sandbox git config at session init), not a shared platform credential.
 
-FR4: Credential Health Monitoring — Platform monitors stored Repository credentials; any git operation returning 401/403 updates credential health to `failed` within one operation cycle; Project Map shows a re-auth notification with a re-authorize flow.
+FR4: Credential Health Monitoring — Platform monitors stored Repository credentials; any git operation returning 401 updates credential health to `failed` within one operation cycle; 403 responses are classified (rate limit, org restriction, permission denial) without marking the credential as failed; Project Map shows a re-auth notification with a re-authorize flow.
 
 FR5: Repository State on Page Load — Platform reads current `_bmad-output/` state on page load and manual refresh; no real-time push detection in MVP.
 
@@ -81,7 +81,7 @@ NFR-P5: Manual commit completes within 5 seconds of the save operation executing
 
 **Reliability**
 
-NFR-R1: Credential health status must update within one git operation cycle of a 401/403 response; silent credential failures are not acceptable.
+NFR-R1: Credential health status must update within one git operation cycle of a 401 response; silent credential failures are not acceptable. A 403 is classified, not treated as a credential failure.
 
 NFR-R2: Committed Artifacts are always recoverable from the Repository, independent of Sandbox state; uncommitted working tree state is not guaranteed to survive a Sandbox restart.
 
@@ -119,7 +119,7 @@ NFR-O1: Platform must track per-user LLM spend via the Agent SDK's cost reportin
 - Circuit-breaker: if `sandbox-agent` fails to emit events within a timeout, or crashes, the backend must terminate the Claude Code agent process via the Daytona process management API before emitting an error event to the user (prevents a runaway, unobserved agent from continuing to act/commit).
 - SSE channel must emit heartbeat comments on a fixed interval so the browser can detect dead connections even when `sandbox-agent` is stalled.
 - Frontend session-start timeout (distinct from the server-side idle timeout) for the case where `SESSION_READY` never arrives, with a retry affordance — prevents the "Starting session…" state from spinning indefinitely.
-- Credential failure must propagate immediately to the active session: `tool-pill-classifier.service.ts` detects 401/403 patterns in git-related tool call results and emits a `CREDENTIAL_FAILURE` event on the existing SSE channel (not just on next page load).
+- Credential failure must propagate immediately to the active session: `tool-pill-classifier.service.ts` detects 401 patterns in git-related tool call results and emits a `CREDENTIAL_FAILURE` event on the existing SSE channel (not just on next page load). A 403 mid-conversation is classified (rate limit, org restriction, permission denial) and does not emit `CREDENTIAL_FAILURE` or mark the credential as failed (per FINDING-12).
 - Project Map and Artifact Browser must remain functional during a Daytona outage (pure Postgres/git reads with no sandbox dependency); only new Conversation provisioning should be blocked.
 - Conversation/turn state must be written to Postgres on every turn, not held only in NestJS memory, so a container restart does not lose history.
 - Per-user sandbox provision concurrency cap (2–3 simultaneous provisions) to avoid bursting GitHub's OAuth rate limit when a user opens multiple Conversation tabs quickly.
@@ -788,14 +788,24 @@ So that I can re-authorize and avoid losing more in-progress work than necessary
 
 **Acceptance Criteria:**
 
-**Given** an active Conversation's git-related tool call result contains a 401/403 pattern
+**Given** an active Conversation's git-related tool call result contains a 401 pattern
 **When** it is detected by `tool-pill-classifier.service.ts`
 **Then** it persists the failed credential health status (Story 1.6) and emits a `CREDENTIAL_FAILURE` event on the same SSE channel already carrying AG-UI events — no new transport
 **And** this happens immediately, not only on the user's next page load (NFR-R1)
 
+**Given** an active Conversation's git-related tool call result contains a 403 pattern
+**When** it is detected by `tool-pill-classifier.service.ts`
+**Then** it classifies the 403 into `RATE_LIMITED`, `ORG_RESTRICTION`, or `INSUFFICIENT_PERMISSION` (reusing the Epic 1 / Story 1.6 vocabulary) and emits an `ACCESS_DENIED` event with that `code` on the same SSE channel — it does NOT emit `CREDENTIAL_FAILURE`, does NOT call `markCredentialFailed`, and does NOT persist failed credential health (per FINDING-12; event contract defined in architecture.md)
+
 **Given** a `CREDENTIAL_FAILURE` event is received in an active Conversation
 **When** the frontend processes it
 **Then** the user sees a re-auth prompt without needing to navigate away from the Conversation
+
+**Given** an `ACCESS_DENIED` event is received in an active Conversation
+**When** the frontend processes it
+**Then** the failing git operation renders as an error-state Tool Pill with an Access Notice inline in the message stream below it, whose copy is derived from the event's `code` (`RATE_LIMITED` / `ORG_RESTRICTION` / `INSUFFICIENT_PERMISSION`)
+**And** the Credential Error Banner does NOT appear and no re-auth prompt is shown (re-authentication resolves none of the three 403 causes, per FINDING-12)
+**And** the input is not disabled and the agent turn is not halted (the tool call's error result is returned to the agent, which adapts)
 
 **Given** a Daytona outage affecting Sandbox provisioning
 **When** a user visits the Project Map or Artifact Browser

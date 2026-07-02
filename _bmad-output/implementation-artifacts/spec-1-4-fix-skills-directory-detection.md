@@ -39,7 +39,7 @@ baseline_commit: 'fd624b4379b6a43d763321a65cd9a1932724ca4a'
 | Flat file skill (back-compat) | `.claude/skills/foo.md` (file) | counted as 1 skill (unchanged existing behavior) | N/A |
 | Mixed layout | 1 flat `.md` file + 1 valid skill dir + 1 dir without `SKILL.md` | `skillsCount: 2` | N/A |
 | All dirs, none valid | `.claude/skills/` has only dirs, none contain `SKILL.md` | `NO_SKILLS_FOUND`, "No BMAD Skills were found..." message (dir exists) | existing NO_SKILLS_FOUND path, unchanged |
-| GitHub error on a probe | One `SKILL.md` probe returns 401/403/500 | propagates like any other GitHub error already does in `inspectBmadSetup` | existing `CredentialFailureError` / generic catch in `validateRepository`, unchanged |
+| GitHub error on a probe | One `SKILL.md` probe returns 401/403/500 | propagates like any other GitHub error already does in `inspectBmadSetup` | 401 → `CredentialFailureError` / 403 → `null` or `RateLimitError` / 500 → generic catch in `validateRepository`, unchanged |
 
 </frozen-after-approval>
 

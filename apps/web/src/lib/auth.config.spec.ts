@@ -17,7 +17,12 @@ import type { NextRequest } from 'next/server';
 
 jest.mock('next-auth/providers/github', () => ({
   __esModule: true,
-  default: jest.fn(() => ({ id: 'github', name: 'GitHub', type: 'oauth' })),
+  default: jest.fn((config?: { authorization?: { params?: { scope?: string } } }) => ({
+    id: 'github',
+    name: 'GitHub',
+    type: 'oauth',
+    authorization: config?.authorization,
+  })),
 }));
 
 const mockNextResponseJson = jest.fn(
@@ -127,5 +132,10 @@ describe('authConfig provider configuration', () => {
 
   it('[P1] sign-in page is configured as /sign-in', () => {
     expect(authConfig.pages?.signIn).toBe('/sign-in');
+  });
+
+  it('[P0] GitHub provider requests repo scope in authorization params', () => {
+    const scope = authConfig.providers[0].authorization?.params?.scope;
+    expect(scope).toMatch(/\brepo\b/);
   });
 });

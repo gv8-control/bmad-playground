@@ -166,7 +166,7 @@ Platform monitors stored Repository credentials and surfaces a re-auth prompt wh
 
 **Consequences (testable):**
 
-- Any git operation returning HTTP 401 or 403 updates the stored credential health status to `failed` within one operation cycle.
+- Any git operation returning HTTP 401 updates the stored credential health status to `failed` within one operation cycle. A 403 is classified (rate limit, org restriction, or permission denial) and does not mark the credential as failed — the token is valid but access is denied.
 - The Project Map displays a re-auth notification when credential health status is `failed`.
 - The notification provides a flow to re-authorize GitHub OAuth without disconnecting the Repository.
 - Background operations that fail due to credential failure do not silently drop errors; the credential health status is updated before the next user-visible page load.
@@ -413,7 +413,7 @@ All platform access requires an authenticated account. In MVP, all users are aut
 - Artifact Browser: read-only rendered Markdown view of committed Artifacts
 - Commit attribution per user (git author/committer identity injected per session)
 - Working tree state indicator and manual save in the chat input area (FR-14, FR-15)
-- Credential health monitoring with re-auth prompt on 401/403
+- Credential health monitoring with re-auth prompt on 401
 - SaaS deployment; per-seat subscription (billing enforcement post-MVP; all MVP users auto-enrolled with no expiry)
 - Single Runner (Claude Code); LLM model hardcoded
 
@@ -457,7 +457,7 @@ Verified with a single manual test run under normal conditions, not statistical 
 
 ### Reliability
 
-- **NFR-R1 (Credential health):** Credential health status must update within one git operation cycle of a 401/403 response. Silent credential failures are not acceptable.
+- **NFR-R1 (Credential health):** Credential health status must update within one git operation cycle of a 401 response. Silent credential failures are not acceptable. A 403 is not a credential failure — it is classified into rate limit, org restriction, or permission denial without marking the credential as failed.
 - **NFR-R2 (Session recovery from git):** Committed Artifacts are always recoverable from the Repository, independent of Sandbox state. In-progress working tree state that has not been committed is not guaranteed to survive a Sandbox restart; the manual save (FR-15) exists for users who want to capture it.
 - **NFR-R3 (SSE back-pressure):** The streaming transport must not silently drop events when the client is slow to consume; it must apply back-pressure and pause token emission until the client is ready.
 - **NFR-R4 (SSE connection capacity):** The streaming transport must support 10 concurrent agent SSE connections per browser session without connection starvation, matching the per-user Conversation limit defined in FR-11. Transport configuration that imposes a lower browser-level connection limit is not acceptable.

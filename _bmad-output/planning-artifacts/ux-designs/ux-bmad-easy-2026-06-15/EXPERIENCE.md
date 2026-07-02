@@ -1,12 +1,13 @@
 ---
 title: "EXPERIENCE: bmad-easy"
-status: draft
+status: final
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-07-02
 sources:
   - _bmad-output/navigation.md
   - _bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md
   - _bmad-output/planning-artifacts/briefs/brief-bmad-easy-2026-06-12/brief.md
+  - _bmad-output/planning-artifacts/architecture.md
 ---
 
 # EXPERIENCE: bmad-easy
@@ -22,6 +23,8 @@ sources:
 **Rendering stack:** Markdown rendered in agent messages using a streaming-compatible Markdown library. All user-visible text outside agent messages is platform UI copy, not Markdown.
 
 **DESIGN.md reference:** Visual identity (color tokens, typography, radii, component specifications) is fully defined in DESIGN.md. This document specifies behavior, information architecture, states, and interactions only. DESIGN.md tokens are referenced as `{colors.*}`, `{typography.*}`, etc.
+
+**Mockups:** Key-screen HTML mockups for all seven surfaces live in [mockups/](mockups/), linked from each surface's State Patterns section. Mockups show one representative state per surface; the full state inventory lives in the tables here. On any conflict, DESIGN.md and EXPERIENCE.md win over the mockups.
 
 ---
 
@@ -60,7 +63,7 @@ Always visible in the app shell. Contents, top to bottom:
 
 1. Product wordmark
 2. **New Conversation** button — primary action; always accessible
-3. Conversation list — last 5 conversations, each labeled with its 2–5 word semantic title. Labeled with `text-2`; active conversation highlighted. Below the 5th entry, no additional history is shown (no "show more" in MVP).
+3. Conversation list — last 5 conversations, each labeled with its 2–5 word semantic title. Rendered in `text-2`; active conversation highlighted. Below the 5th entry, no additional history is shown (no "show more" in MVP).
 4. Horizontal separator
 5. **Project Map** link
 6. **Artifact Browser** link
@@ -70,14 +73,16 @@ Active state: the current surface's nav item has `{colors.surface-raised}` backg
 
 No nested items. No expand/collapse. No icon-only collapsed state (collapsed nav is a tablet-only behavior, implemented as an off-canvas drawer triggered by a hamburger button in the app header).
 
-### Artifact Browser States
+The avatar circle (Settings entry) is a plain navigation link: a single click navigates to `/settings`. No dropdown, menu, or hover popover in MVP.
+
+### Artifact Browser Layout States
 
 The Artifact Browser is a single route with two distinct layout states:
 
-- **No artifact selected:** full-width flat list of all artifacts from `_bmad-output/`, sorted by last-modified date descending. The list occupies the full content area.
+- **No artifact selected:** full-width flat list of all artifacts from `_bmad-output/`, sorted by last-modified date descending (most recently committed at top). The list occupies the full content area.
 - **Artifact selected:** list narrows to 280px; the rendered artifact occupies the remaining content area. Entering this state via a Project Map click or Semantic Pill "View" link pre-selects the artifact and applies the detail layout immediately.
 
-Artifact ordering in the list: last-modified date descending (most recently committed at top). Confirmed by Marius 2026-06-15; no section separation between completed and in-progress artifacts.
+No section separation between completed and in-progress artifacts (flat list and ordering confirmed by Marius, 2026-06-15).
 
 ---
 
@@ -180,9 +185,20 @@ Flat list, no grouping. Each entry:
 
 Clicking an entry: applies the two-column layout (list at 280px, artifact content in remaining area). The selected entry gets `{colors.surface-raised}` background and a left accent border in `{colors.accent}`.
 
+### Artifact Card (Project Map)
+
+Artifact Cards (Project Map) and Artifact List entries (Artifact Browser) are two distinct components: cards carry the DESIGN.md `{components.artifact-card}` visual spec and appear only on the Project Map; the Browser's flat list rows are entries, specified under Artifact List above. Card contents (type label, title, status badge) are defined in DESIGN.md.
+
+Behavior:
+
+- The whole card is a single click target — not just the title. Pointer cursor across the full card surface; hover treatment per DESIGN.md.
+- Clicking a completed artifact opens the Artifact Browser with that artifact pre-selected (FR-8).
+- Clicking an in-progress artifact opens the same read-only Artifact Browser view. Once concurrent Conversations exist (Epic 3), clicking an in-progress artifact that has an already-open Conversation brings that Conversation into focus instead; until then, click behavior is identical for every in-progress artifact.
+- The status badge is display-only — it is not an independent click target.
+
 ### Credential Error Banner
 
-When credential health status is `failed`, a banner appears at the top of the Project Map and Artifact Browser content areas (not the side nav). It is non-dismissible until credentials are replaced.
+When credential health status is `failed`, a banner appears at the top of the Project Map, Artifact Browser, and Conversation content areas (not the side nav). On the Conversation surface it is triggered in real time by a failed git operation (see Conversation Surface States). It is non-dismissible until credentials are replaced.
 
 Content: "Your repository connection needs attention. [Update access token]" — the bracketed text is a link that opens the re-auth flow inline (same page, modal dialog, not a separate page navigation).
 
@@ -191,6 +207,8 @@ Content: "Your repository connection needs attention. [Update access token]" —
 ## State Patterns
 
 ### Sign In (Pre-App Shell)
+
+Mockup: [mockups/key-signin.html](mockups/key-signin.html)
 
 GitHub is the sole identity provider. There is no separate sign-up screen — a first-time user completes the same GitHub OAuth flow as a returning user; account creation is transparent. `/sign-in` is the only unauthenticated surface.
 
@@ -201,6 +219,8 @@ GitHub is the sole identity provider. There is no separate sign-up screen — a 
 
 ### New Conversation
 
+Mockup: [mockups/key-new-conversation.html](mockups/key-new-conversation.html)
+
 Entry point: "New Conversation" button in side nav, or at `/conversations/new`.
 
 - No stable URL until the user sends their first message.
@@ -209,6 +229,13 @@ Entry point: "New Conversation" button in side nav, or at `/conversations/new`.
 - If sandbox provisioning is still in progress when the user sends their first message: input is disabled momentarily and the chat area shows "Starting session…" with a spinner until ready, then the message sends automatically.
 - On first message send: the page transitions to `/conversations/:id`, the conversation appears in the side nav with its semantic title, and the "New Conversation" page no longer exists for this session.
 - Draft persistence: unsent draft in the textarea is persisted to `localStorage` keyed by `new-conversation`. On page refresh, the draft is restored. The draft is cleared immediately on successful send.
+
+**Blocked entry states.** Two conditions block opening a new Conversation. Both display a blocking message in the chat area in place of the introductory prompt; the chat input is not shown. The side nav's New Conversation button stays enabled — the block is communicated on the page, not by disabling navigation. (Inline placement and copy confirmed by Marius, 2026-07-02.)
+
+| State | Trigger | Display |
+|---|---|---|
+| Conversation limit reached | User already has 10 active Conversations — the per-user maximum (FR-11's "session limit reached" message, phrased in platform vocabulary) | "You've reached the limit of 10 active conversations. Return to one of your existing conversations, or try again later." No upgrade action — this limit applies to every plan. |
+| Seat limit exceeded | User's team has exceeded its Seat allocation (FR-9) | "Your team has used all of its seats. Upgrade your plan to start new conversations." with an upgrade prompt. The upgrade action's destination is post-MVP billing; in MVP all users have full access (FR-19), so this state is specified but not reachable until billing ships. |
 
 ### Conversation Loading (Returning)
 
@@ -220,12 +247,16 @@ When a user opens an existing Conversation from the side nav or a direct URL:
 
 ### Conversation Surface States
 
+Mockup: [mockups/key-conversation.html](mockups/key-conversation.html)
+
 | State | Display |
 |---|---|
 | Cold-load (history loading) | Chat history area shows a skeleton loader; input disabled until history is ready |
 | Error (history load failure) | Content area shows "Couldn't load this conversation. Try refreshing the page." with a Refresh button |
 | Reconnecting (sandbox re-init) | Full history visible; input disabled with "Reconnecting…" label in the input area |
 | Active / idle | Full history; input enabled; working tree indicator visible |
+| Credential failed (mid-Conversation) | The failing git operation renders as an error-state Tool Pill in the stream; simultaneously, the Credential Error Banner appears above the message panel — same component and inline re-auth flow as Project Map and Artifact Browser — in real time, without requiring navigation or a page reload. The banner clears once credentials are updated. (Banner reuse confirmed by Marius, 2026-07-02.) |
+| Access denied (mid-Conversation) | A 403 is not a credential failure (per FINDING-12) — the Credential Error Banner does NOT appear and no re-auth prompt is shown, because re-authentication resolves none of the three 403 causes. Instead the failing git operation renders as an error-state Tool Pill (same as the credential-failed state), with an Access Notice inline in the message stream directly below the failing pill. The notice copy is derived from the `ACCESS_DENIED` event's `code`: `RATE_LIMITED` → "GitHub is rate-limiting this request. Wait a moment and try again." (with a retry hint when `retryAfter` is present); `ORG_RESTRICTION` → "Your organization hasn't approved this app. Ask an org admin to grant access."; `INSUFFICIENT_PERMISSION` → "Your account doesn't have access to this resource." The raw GitHub error text remains available in the Tool Pill's expanded output. The notice is dismissible (unlike the Credential Error Banner) and does not block the input — the agent turn continues; the tool call's error result is returned to the agent, which adapts. (Event contract defined in architecture.md; parallels the credential-failed row added 2026-07-02.) |
 
 ### Agent Processing States
 
@@ -240,6 +271,8 @@ The Stop button terminates the in-flight response and any tool execution, but do
 
 ### Project Map States
 
+Mockup: [mockups/key-project-map.html](mockups/key-project-map.html)
+
 | State | Display |
 |---|---|
 | Loading | Skeleton cards in the artifact list area |
@@ -249,6 +282,8 @@ The Stop button terminates the in-flight response and any tool execution, but do
 | Refreshing | Refresh indicator (spinner replacing the manual refresh icon) |
 
 ### Artifact Browser States
+
+Mockup: [mockups/key-artifact-browser.html](mockups/key-artifact-browser.html)
 
 | State | Display |
 |---|---|
@@ -260,20 +295,23 @@ The Stop button terminates the in-flight response and any tool execution, but do
 
 ### Settings
 
-Static "coming soon" page. No loading, empty, or error states required — content is platform copy only.
+Mockup: [mockups/key-settings.html](mockups/key-settings.html)
+
+Static "coming soon" page. No loading, empty, or error states required — content is platform copy only. The page may list planned features as teaser items; these are non-interactive in MVP.
 
 ### Onboarding Flow States
 
+Mockup: [mockups/key-onboarding.html](mockups/key-onboarding.html)
+
 Single-page flow at `/onboarding`. Steps:
 
-1. **Repository URL** — text input, validated on blur for URL format only.
-2. **Access token** — password input (masked). Platform shows a contextual link: "How to generate an access token" → GitHub documentation. Opens in a new tab.
-3. **Validating…** — both inputs become read-only, a spinner appears, no redirect until validation completes.
-4. **Validation failure** — inline error below the relevant field (URL field or token field depending on failure type). Error text uses plain language per the Voice and Tone section.
-5. **BMAD not found** — blocking message: "This repository hasn't been set up for BMAD yet. Ask a developer to initialise BMAD, then try again. [Learn more]" — links to BMAD documentation.
-6. **Success** — redirect to Project Map.
+1. **Repository URL** — single text input, validated on blur for URL format only. No access-token field: the GitHub OAuth permission granted at sign-in is what the platform checks against, so the user is not asked for anything else here.
+2. **Validating…** — the input becomes read-only, a spinner appears, no redirect until validation completes.
+3. **Validation failure** — inline error below the URL field, naming the specific cause in plain language: insufficient permission, an inaccessible repository, or a GitHub org OAuth App restriction (named explicitly — never folded into a generic "couldn't connect" message).
+4. **BMAD not found** — blocking message: "This repository hasn't been set up for BMAD yet. Ask a developer to initialise BMAD, then try again. [Learn more]" — links to BMAD documentation.
+5. **Success** — redirect to Project Map.
 
-The "Back" action at step 3+ returns to step 1 with inputs preserved (except the token, which is cleared for security reasons).
+The "Back" action at step 2+ returns to step 1 with the URL preserved.
 
 ---
 
@@ -375,13 +413,14 @@ Named-protagonist journeys derived from PRD §2.3. Protagonist and context are p
 **Protagonist:** Sarah — PM at a 40-person SaaS company. The developer shared bmad-easy with her after growing tired of being the BMAD intermediary. She has just signed in with GitHub for the first time and is on the onboarding screen.
 
 1. Sarah opens bmad-easy. She has no connected repository. She lands at `/onboarding`.
-2. The onboarding surface shows two fields: "Repository URL" and "Access token." There is a contextual link: "How to generate an access token" — she clicks it and generates a fine-grained GitHub PAT with `contents:write` scope. She returns to the tab.
-3. She pastes the repository URL and the token into the respective fields and clicks "Connect."
-4. The fields go read-only and "Validating…" appears. After a moment, the platform confirms BMAD is initialised and the token has write access.
-5. *(Climax)* She is redirected to the Project Map. The artifact list loads: a brainstorming session the developer ran two weeks ago, a draft brief that was never finished. Sarah sees the team's BMAD work at a glance, without opening GitHub.
-6. The New Conversation button and the sidebar are visible. Sarah is oriented: she knows what has been done, and her next action is obvious.
+2. The onboarding surface shows a single field: "Repository URL." She pastes her team's repository URL and clicks "Connect" — she isn't asked for a token; the GitHub permission she already granted at sign-in is what the platform uses.
+3. The field goes read-only and "Validating…" appears. After a moment, the platform confirms BMAD is initialised and her OAuth-granted access has write permission to the repository.
+4. *(Climax)* She is redirected to the Project Map. The artifact list loads: a brainstorming session the developer ran two weeks ago, a draft brief that was never finished. Sarah sees the team's BMAD work at a glance, without opening GitHub.
+5. The New Conversation button and the sidebar are visible. Sarah is oriented: she knows what has been done, and her next action is obvious.
 
-**Edge path — BMAD not found:** If the repository exists but `_bmad/` is absent, the platform blocks at step 4 with a non-dismissible message: "This repository hasn't been set up for BMAD yet. Ask a developer to initialise BMAD, then try again." with a link to BMAD documentation. Sarah cannot proceed until a developer resolves this.
+**Edge path — BMAD not found:** If the repository exists but `_bmad/` is absent, the platform blocks at step 3 with a non-dismissible message: "This repository hasn't been set up for BMAD yet. Ask a developer to initialise BMAD, then try again." with a link to BMAD documentation. Sarah cannot proceed until a developer resolves this.
+
+**Edge path — org OAuth App restriction:** If Sarah's GitHub organization has restricted OAuth App access, the write-access check at step 3 fails with an inline error naming the restriction explicitly — not a generic "couldn't connect" message — and tells her an org owner must approve the bmad-easy OAuth App before she can proceed.
 
 ---
 
@@ -391,12 +430,12 @@ Named-protagonist journeys derived from PRD §2.3. Protagonist and context are p
 
 1. Sarah clicks "New Conversation" in the side nav. She lands on `/conversations/new`. The chat area shows the prompt "Press `/` to browse available skills, or type a message to start." Behind the scenes, the sandbox is provisioning.
 2. She types `/bmad` and the slash command picker opens, filtered to skills beginning with "bmad". She selects `/bmad-prd`.
-3. The command appears in the input. She sends it. The page transitions to `/conversations/:id`. "Starting session…" flickers briefly (the sandbox was already provisioning; it is ready within seconds).
+3. The command appears in the input. She sends it. The page transitions to `/conversations/:id`. "Starting session…" appears briefly (the sandbox was already provisioning; it is ready within seconds).
 4. The agent takes on the BMAD PM persona defined by the `bmad-prd` skill and begins the PRD discovery process. Sarah reads the questions and responds, conversing across multiple turns over about 20 minutes.
 5. Throughout the session, Tool Pills appear inline in the stream as the agent reads files from the repository, references the brainstorming artifact, and writes draft content.
 6. The agent completes the PRD and commits it. A Semantic Pill appears inline in the stream: "Progress saved · PRD draft · **View**."
 7. *(Climax)* Sarah clicks "View." The Artifact Browser opens in the same tab, the PRD pre-selected, rendered as clean Markdown. She reads through it. Her name appears as the commit author in git history — the same identity that will appear when her developer teammates pull the branch.
-8. She navigates back to the Conversation via the breadcrumb "← Project Map" → then finds her conversation in the side nav.
+8. She navigates back via the "← Project Map" breadcrumb, then reopens her conversation from the side nav.
 
 **Edge path — working tree dirty at close:** If Sarah closes the tab before the agent commits, the working tree indicator (Unsaved changes) would have been visible. Any work the agent produced but did not commit is not guaranteed to survive a sandbox restart — this is disclosed to users via help text accessible from the indicator.
 

@@ -332,25 +332,7 @@
           value="https://github.com/acme-corp/product-repo"
         />
         <div class="field-error" id="url-error">Enter a valid GitHub repository URL.</div>
-      </div>
-
-      <!-- Access token field -->
-      <div class="field-group">
-        <label class="field-label" for="access-token">
-          Access token
-        </label>
-        <input
-          class="field-input"
-          id="access-token"
-          type="password"
-          placeholder="github_pat_…"
-          value="github_pat_11A••••••••••••••••••••"
-        />
-        <div class="field-hint">
-          Needs <code style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;background:#1E1E26;padding:1px 5px;border-radius:4px;">contents:write</code> scope. &nbsp;
-          <a href="#">How to generate an access token ↗</a>
-        </div>
-        <div class="field-error" id="token-error">Access token is invalid or has insufficient permissions.</div>
+        <div class="field-error" id="permission-error">Couldn't get write access to this repository. Check that your GitHub organization allows the bmad-easy app, or that you have write permission.</div>
       </div>
 
       <!-- Connect button -->
@@ -366,11 +348,6 @@
       <div class="field-group">
         <label class="field-label">Repository URL</label>
         <input class="field-input readonly" type="url" value="https://github.com/acme-corp/product-repo" readonly />
-      </div>
-
-      <div class="field-group">
-        <label class="field-label">Access token</label>
-        <input class="field-input readonly" type="password" value="github_pat_11A••••••••••••••••••••" readonly />
       </div>
 
       <button class="connect-button loading">
@@ -405,7 +382,7 @@
   </div>
   <div class="annotation">
     <div class="annotation-dot dot-caution"></div>
-    Token field cleared on back navigation (security)
+    No token entry — write access is checked via the GitHub OAuth grant from sign-in
   </div>
   <div class="annotation">
     <div class="annotation-dot dot-negative"></div>

@@ -20,6 +20,7 @@ jest.mock('@/lib/auth', () => ({ auth: (...args: unknown[]) => mockAuth(...args)
 
 const mockResolveOAuthToken = jest.fn();
 const mockMarkCredentialFailed = jest.fn();
+const mockGetCredentialHealth = jest.fn();
 
 class CredentialFailureError extends Error {
   constructor(public readonly statusCode: number) {
@@ -31,6 +32,7 @@ class CredentialFailureError extends Error {
 jest.mock('@/lib/credential-health', () => ({
   resolveOAuthToken: (...args: unknown[]) => mockResolveOAuthToken(...args),
   markCredentialFailed: (...args: unknown[]) => mockMarkCredentialFailed(...args),
+  getCredentialHealth: (...args: unknown[]) => mockGetCredentialHealth(...args),
   CredentialFailureError,
 }));
 
@@ -51,8 +53,10 @@ import {
   ROOT_WITH_ALL_DIRS, SKILLS_WITH_MD, SKILLS_WITH_SUBDIRS, MANIFEST_V6_8,
   CONFIG_YAML_V6_8, PACKAGE_JSON_V6,
   githubDirListing, githubFileContent, github404, github403, github500,
-  setupFetchWithOverrides,
+  github403PrimaryRateLimit, github403SecondaryRateLimit, githubDirListingPage,
+  setupFetchWithOverrides, API_BASE,
 } from './repository-validation.test-utils';
+import { RateLimitError } from '@/lib/repository-validation';
 
 // ─── inspectBmadSetup — Success paths (AC-1, AC-2) ────────────────────────────
 
@@ -112,6 +116,64 @@ describe('inspectBmadSetup — successful validation (AC-1)', () => {
 
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
     expect(result).toMatchObject({ valid: true, skillsCount: 1 });
+  });
+});
+
+// ─── inspectBmadSetup — directory-listing pagination (Fix 2) ─────────────────
+
+describe('inspectBmadSetup — GitHub contents pagination beyond a single page', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetch = jest.fn();
+    jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('[P0] follows Link rel="next" across multiple pages and collects all skill entries', async () => {
+    const skillsPage1Url = `${API_BASE}/.claude/skills?page=2`;
+    const skillsPage2Url = `${API_BASE}/.claude/skills?page=3`;
+
+    // Page 1: 1 skill + Link → page 2. Page 2: 1 skill + Link → page 3. Page 3: 1 skill, no Link (last page).
+    const page1 = [{ name: 'skill-a.md', type: 'file' }];
+    const page2 = [{ name: 'skill-b.md', type: 'file' }];
+    const page3 = [{ name: 'skill-c.md', type: 'file' }];
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === `${API_BASE}/` || url === API_BASE) {
+        return Promise.resolve(githubDirListing(ROOT_WITH_ALL_DIRS));
+      }
+      if (url === `${API_BASE}/.claude/skills`) {
+        return Promise.resolve(githubDirListingPage(page1, skillsPage1Url));
+      }
+      if (url === skillsPage1Url) {
+        return Promise.resolve(githubDirListingPage(page2, skillsPage2Url));
+      }
+      if (url === skillsPage2Url) {
+        return Promise.resolve(githubDirListingPage(page3));
+      }
+      if (url === `${API_BASE}/_bmad/_config/manifest.yaml`) {
+        return Promise.resolve(githubFileContent(MANIFEST_V6_8));
+      }
+      return Promise.resolve(github404());
+    });
+
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    // All 3 pages' entries must be counted — a truncated single-page read would only see 1.
+    expect(result).toMatchObject({ valid: true, skillsCount: 3 });
+  });
+
+  it('[P1] does not follow pagination when the Link header has no rel="next" (single-page, existing behavior preserved)', async () => {
+    setupFetchWithOverrides(mockFetch, {
+      '.claude/skills': githubDirListingPage(SKILLS_WITH_MD.filter((e) => e.name.endsWith('.md'))),
+    });
+
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ valid: true });
+    const skillsCalls = mockFetch.mock.calls.filter((c) => (c[0] as string).includes('.claude/skills'));
+    expect(skillsCalls).toHaveLength(1);
   });
 });
 
@@ -462,9 +524,10 @@ describe('inspectBmadSetup — GitHub API errors', () => {
     jest.restoreAllMocks();
   });
 
-  it('[P1] throws on GitHub 403 (rate limit)', async () => {
+  it('[P1] returns MISSING_DIRECTORY on a genuine GitHub 403 — token is valid but lacks access', async () => {
     mockFetch.mockResolvedValue(github403());
-    await expect(inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO)).rejects.toThrow();
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ code: 'MISSING_DIRECTORY' });
   });
 
   it('[P1] throws on GitHub 500', async () => {
@@ -475,6 +538,36 @@ describe('inspectBmadSetup — GitHub API errors', () => {
   it('[P1] throws on network failure', async () => {
     mockFetch.mockRejectedValue(new Error('ECONNREFUSED'));
     await expect(inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO)).rejects.toThrow();
+  });
+});
+
+// ─── inspectBmadSetup — 403 rate-limit vs credential-failure (Fix 1) ─────────
+
+describe('inspectBmadSetup — 403 rate-limit vs credential-failure conflation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetch = jest.fn();
+    jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('[P0] throws RateLimitError (not CredentialFailureError) on 403 with X-RateLimit-Remaining: 0 (primary rate limit)', async () => {
+    mockFetch.mockResolvedValue(github403PrimaryRateLimit());
+    await expect(inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO)).rejects.toThrow(RateLimitError);
+  });
+
+  it('[P0] throws RateLimitError on 403 with a secondary-rate-limit / abuse-detection body message', async () => {
+    mockFetch.mockResolvedValue(github403SecondaryRateLimit());
+    await expect(inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO)).rejects.toThrow(RateLimitError);
+  });
+
+  it('[P0] does NOT throw for a genuine 403 permission denial — returns structured error instead', async () => {
+    mockFetch.mockResolvedValue(github403());
+    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
+    expect(result).toMatchObject({ code: 'MISSING_DIRECTORY' });
   });
 });
 
@@ -589,6 +682,7 @@ describe('validateRepository — Server Action', () => {
     mockAuth.mockResolvedValue(SESSION);
     mockResolveOAuthToken.mockResolvedValue(DECRYPTED_TOKEN);
     mockMarkCredentialFailed.mockResolvedValue(undefined);
+    mockGetCredentialHealth.mockResolvedValue('healthy');
     setupFetchWithOverrides(mockFetch, {});
   });
 
@@ -665,19 +759,33 @@ describe('validateRepository — Server Action', () => {
   it('[P0] calls markCredentialFailed when resolveOAuthToken throws CredentialFailureError (AC-1)', async () => {
     mockResolveOAuthToken.mockRejectedValue(new CredentialFailureError(401));
     await validateRepository(REPO_URL);
-    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
+    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId, expect.any(Date));
   });
 
-  it('[P1] returns errorCode NO_CREDENTIAL when inspectBmadSetup throws CredentialFailureError (GitHub API 403)', async () => {
+  it('[P1] returns MISSING_DIRECTORY (not NO_CREDENTIAL) when GitHub returns 403 — token is valid, paths inaccessible', async () => {
     mockFetch.mockResolvedValue(github403());
     const result = await validateRepository(REPO_URL);
-    expect(result).toMatchObject({ errorCode: 'NO_CREDENTIAL' });
+    expect(result).toMatchObject({ code: 'MISSING_DIRECTORY' });
   });
 
-  it('[P0] calls markCredentialFailed when inspectBmadSetup throws CredentialFailureError (AC-1)', async () => {
+  it('[P0] does NOT call markCredentialFailed when inspectBmadSetup encounters a 403', async () => {
     mockFetch.mockResolvedValue(github403());
     await validateRepository(REPO_URL);
-    expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId);
+    expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
+  });
+
+  it('[P0] returns errorCode RATE_LIMITED (not NO_CREDENTIAL) when GitHub 403 is a primary rate limit, and does NOT call markCredentialFailed', async () => {
+    mockFetch.mockResolvedValue(github403PrimaryRateLimit());
+    const result = await validateRepository(REPO_URL);
+    expect(result).toMatchObject({ errorCode: 'RATE_LIMITED' });
+    expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
+  });
+
+  it('[P0] returns errorCode RATE_LIMITED when GitHub 403 is a secondary rate limit, and does NOT call markCredentialFailed', async () => {
+    mockFetch.mockResolvedValue(github403SecondaryRateLimit());
+    const result = await validateRepository(REPO_URL);
+    expect(result).toMatchObject({ errorCode: 'RATE_LIMITED' });
+    expect(mockMarkCredentialFailed).not.toHaveBeenCalled();
   });
 
   it('[P1] returns errorCode UNKNOWN when inspectBmadSetup throws (GitHub API 500)', async () => {
@@ -728,5 +836,47 @@ describe('validateRepository — Server Action', () => {
     setupFetchWithOverrides(mockFetch, {});
     const result2 = await validateRepository(REPO_URL);
     expect(result2).toMatchObject({ valid: true });
+  });
+
+  // ─── Cache + credential health interaction (FINDING-14) ─────────────────
+
+  it('[P1] bypasses cache and re-fetches when credential health is "failed" (FINDING-14)', async () => {
+    // First call succeeds and populates the cache
+    const result1 = await validateRepository(REPO_URL);
+    expect(result1).toMatchObject({ valid: true });
+
+    const fetchCallsAfterFirst = mockFetch.mock.calls.length;
+
+    // Credential is now marked failed
+    mockGetCredentialHealth.mockResolvedValue('failed');
+
+    // Second call should NOT use the cached result despite same URL
+    const result2 = await validateRepository(REPO_URL);
+    // validateRepository would get {valid: true} from inspectBmadSetup again,
+    // then cache it — that's fine, the key point is it re-fetched
+    expect(mockFetch.mock.calls.length).toBeGreaterThan(fetchCallsAfterFirst);
+  });
+
+  it('[P1] health="healthy" with cache hit returns cached result without re-fetch', async () => {
+    const result1 = await validateRepository(REPO_URL);
+    expect(result1).toMatchObject({ valid: true });
+
+    const fetchCallsAfterFirst = mockFetch.mock.calls.length;
+
+    // Credential health is still healthy — should use cache
+    mockGetCredentialHealth.mockResolvedValue('healthy');
+    const result2 = await validateRepository(REPO_URL);
+    expect(mockFetch.mock.calls.length).toBe(fetchCallsAfterFirst);
+  });
+
+  it('[P1] health=null (no RepoConnection) with cache hit returns cached result', async () => {
+    const result1 = await validateRepository(REPO_URL);
+    expect(result1).toMatchObject({ valid: true });
+
+    const fetchCallsAfterFirst = mockFetch.mock.calls.length;
+
+    mockGetCredentialHealth.mockResolvedValue(null);
+    const result2 = await validateRepository(REPO_URL);
+    expect(mockFetch.mock.calls.length).toBe(fetchCallsAfterFirst);
   });
 });

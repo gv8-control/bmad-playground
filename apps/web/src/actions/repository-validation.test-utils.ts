@@ -39,11 +39,21 @@ export const CONFIG_YAML_V6_8 = `# Core Module Configuration\n# Version: 6.8.0\n
 
 export const PACKAGE_JSON_V6 = JSON.stringify({ name: 'bmad', version: '6.1.0' });
 
-export function githubDirListing(entries: Array<{ name: string; type: string }>) {
+/** Builds a minimal Headers-like object for mocked fetch responses. */
+export function mockHeaders(entries: Record<string, string> = {}): { get(name: string): string | null } {
+  const lower = new Map(Object.entries(entries).map(([k, v]) => [k.toLowerCase(), v]));
+  return { get: (name: string) => lower.get(name.toLowerCase()) ?? null };
+}
+
+export function githubDirListing(
+  entries: Array<{ name: string; type: string }>,
+  headers: Record<string, string> = {},
+) {
   return {
     ok: true,
     status: 200,
     json: async () => entries,
+    headers: mockHeaders(headers),
   };
 }
 
@@ -56,6 +66,7 @@ export function githubFileContent(content: string) {
       encoding: 'base64',
       content: Buffer.from(content).toString('base64'),
     }),
+    headers: mockHeaders(),
   };
 }
 
@@ -64,14 +75,39 @@ export function github404() {
     ok: false,
     status: 404,
     json: async () => ({ message: 'Not Found' }),
+    headers: mockHeaders(),
   };
 }
 
+/** Genuine 403 (no rate-limit signal) — historically mislabeled "rate limit" by its body message alone. */
 export function github403() {
   return {
     ok: false,
     status: 403,
     json: async () => ({ message: 'API rate limit exceeded' }),
+    headers: mockHeaders(),
+  };
+}
+
+/** 403 carrying GitHub's primary rate-limit signal (X-RateLimit-Remaining: 0). */
+export function github403PrimaryRateLimit() {
+  return {
+    ok: false,
+    status: 403,
+    json: async () => ({ message: 'API rate limit exceeded for user ID 123.' }),
+    headers: mockHeaders({ 'X-RateLimit-Remaining': '0' }),
+  };
+}
+
+/** 403 carrying GitHub's secondary rate-limit / abuse-detection body message. */
+export function github403SecondaryRateLimit() {
+  return {
+    ok: false,
+    status: 403,
+    json: async () => ({
+      message: 'You have exceeded a secondary rate limit. Please wait a few minutes before you try again.',
+    }),
+    headers: mockHeaders(),
   };
 }
 
@@ -80,6 +116,24 @@ export function github500() {
     ok: false,
     status: 500,
     json: async () => ({ message: 'Internal Server Error' }),
+    headers: mockHeaders(),
+  };
+}
+
+/**
+ * Builds a paginated directory-listing response with a `Link` header pointing
+ * to `nextUrl` via rel="next" (standard GitHub REST pagination). Omit `nextUrl`
+ * for the final page.
+ */
+export function githubDirListingPage(
+  entries: Array<{ name: string; type: string }>,
+  nextUrl?: string,
+) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => entries,
+    headers: mockHeaders(nextUrl ? { Link: `<${nextUrl}>; rel="next"` } : {}),
   };
 }
 

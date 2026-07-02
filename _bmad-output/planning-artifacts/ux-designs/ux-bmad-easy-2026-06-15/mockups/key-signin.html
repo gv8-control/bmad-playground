@@ -160,17 +160,6 @@
     color: #56556A;
   }
 
-  .auth-switch {
-    text-align: center;
-    font-size: 0.875rem;
-    color: #8D8CA0;
-  }
-  .auth-switch a {
-    color: #7B6EE8;
-    text-decoration: none;
-  }
-  .auth-switch a:hover { color: #9083F2; text-decoration: underline; }
-
   /* Error state (variant) */
   .auth-error {
     background: rgba(240,107,107,0.08);
@@ -216,28 +205,6 @@
   }
   .dot-accent { background: #7B6EE8; }
   .dot-neutral { background: #2B2B38; border: 1px solid #56556A; }
-
-  /* Tab row */
-  .tab-row {
-    display: flex;
-    justify-content: center;
-    gap: 0;
-    border-bottom: 1px solid #2B2B38;
-    width: 100%;
-    max-width: 400px;
-  }
-  .tab {
-    padding: 8px 24px;
-    font-size: 0.875rem;
-    color: #8D8CA0;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-  }
-  .tab.active {
-    color: #EDECF5;
-    border-bottom-color: #7B6EE8;
-  }
 </style>
 </head>
 <body>
@@ -266,12 +233,6 @@
       <div class="wordmark-tagline">BMAD methodology for your whole team,<br>no terminal required.</div>
     </div>
 
-    <!-- Sign In / Sign Up tabs -->
-    <div class="tab-row">
-      <div class="tab active">Sign in</div>
-      <div class="tab">Sign up</div>
-    </div>
-
     <!-- Auth card -->
     <div class="auth-block">
       <div class="auth-heading">Continue with GitHub</div>
@@ -290,9 +251,6 @@
         Sign-in failed. Try again or <a href="#" style="color:#F06B6B">contact support</a>.
       </div>
 
-      <div class="auth-switch">
-        Don't have an account? <a href="#">Sign up free</a>
-      </div>
     </div>
 
     <div class="auth-footer">
@@ -314,7 +272,7 @@
   </div>
   <div class="annotation">
     <div class="annotation-dot dot-neutral"></div>
-    Sign up tab switches to registration variant (same GitHub OAuth CTA)
+    No separate sign-up — first-time users complete the same OAuth flow; account creation is transparent
   </div>
   <div class="annotation">
     <div class="annotation-dot" style="background:#F06B6B;"></div>

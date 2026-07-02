@@ -52,6 +52,17 @@ const ENCRYPTED_CREDENTIAL = {
 };
 const DECRYPTED_TOKEN = 'gho_real_token';
 
+// Distinct second user + credential for cross-tenant negative-path tests (AC-2).
+const USER_B_ID = 'usr_other456';
+const USER_B_CREDENTIAL = {
+  userId: USER_B_ID,
+  encryptedDek: 'enc_dek_b',
+  dekNonce: 'dek_nonce_b',
+  encryptedToken: 'enc_token_b',
+  tokenNonce: 'token_nonce_b',
+};
+const USER_B_TOKEN = 'gho_user_b_token';
+
 // ─── resolveOAuthToken (AC-2) ─────────────────────────────────────────────────
 
 describe('resolveOAuthToken (AC-2 — tenant-scoped credential resolution)', () => {
@@ -98,11 +109,29 @@ describe('resolveOAuthToken (AC-2 — tenant-scoped credential resolution)', () 
     });
   });
 
-  it('[P1] does not query for any other userId', async () => {
-    await resolveOAuthToken(USER_ID);
-    const callArg = mockFindUniqueCredential.mock.calls[0]?.[0];
-    expect(callArg).toEqual({ where: { userId: USER_ID } });
-    expect(JSON.stringify(callArg)).not.toContain('usr_other');
+  it('[P0] denies cross-tenant resolution — never returns another user\'s token (AC-2 negative path)', async () => {
+    // Seed: userB owns a credential; userA owns none. The mock mirrors Prisma's
+    // findUnique scoping — a row is returned only when the where-clause userId
+    // matches userB; querying for userA yields null.
+    mockFindUniqueCredential.mockImplementation((args: { where: { userId: string } }) =>
+      args.where.userId === USER_B_ID ? Promise.resolve(USER_B_CREDENTIAL) : Promise.resolve(null),
+    );
+    mockDecryptToken.mockReturnValue(USER_B_TOKEN);
+
+    // Positive control: userB resolves their own token. Proves userB's credential
+    // is reachable in the seeded store — so the negative path below is a genuine
+    // cross-tenant denial, not an empty-store artifact.
+    await expect(resolveOAuthToken(USER_B_ID)).resolves.toBe(USER_B_TOKEN);
+
+    // Negative path: userA attempts resolution. The tenant-scoped query cannot
+    // reach userB's row, so the lookup returns not-found and the service throws
+    // — userB's token is never decrypted under userA's context.
+    await expect(resolveOAuthToken(USER_ID)).rejects.toThrow(CredentialFailureError);
+    expect(mockDecryptToken).toHaveBeenCalledTimes(1);
+    expect(mockDecryptToken).toHaveBeenCalledWith(USER_B_CREDENTIAL, USER_B_ID);
+    // Load-bearing: catches a `where: {}` scoping regression (would return
+    // userB's row for userA). Not redundant with the prior positive-path test.
+    expect(mockFindUniqueCredential).toHaveBeenCalledWith({ where: { userId: USER_ID } });
   });
 });
 
@@ -114,7 +143,7 @@ describe('markCredentialFailed (AC-1 — 401/403 detection)', () => {
     mockUpdateManyRepoConnection.mockResolvedValue({ count: 1 });
   });
 
-  it('[P0] updates credentialHealth to "failed" (AC-1)', async () => {
+  it('[P0] updates credentialHealth to "failed" using an unconditional where-clause when no capturedAt is given (AC-1)', async () => {
     await markCredentialFailed(USER_ID);
     expect(mockUpdateManyRepoConnection).toHaveBeenCalledWith({
       where: { userId: USER_ID },
@@ -130,6 +159,32 @@ describe('markCredentialFailed (AC-1 — 401/403 detection)', () => {
   it('[P1] does not throw when updateMany rejects (best-effort)', async () => {
     mockUpdateManyRepoConnection.mockRejectedValue(new Error('DB connection lost'));
     await expect(markCredentialFailed(USER_ID)).resolves.toBeUndefined();
+  });
+
+  // ─── Race condition guard (optimistic concurrency via updatedAt) ───────────
+
+  it('[P0] guards the update with updatedAt < capturedAt when capturedAt is provided', async () => {
+    const capturedAt = new Date('2026-07-02T10:00:00.000Z');
+    await markCredentialFailed(USER_ID, capturedAt);
+    expect(mockUpdateManyRepoConnection).toHaveBeenCalledWith({
+      where: { userId: USER_ID, updatedAt: { lt: capturedAt } },
+      data: { credentialHealth: 'failed' },
+    });
+  });
+
+  it('[P0] race: a stale "failed" write (capturedAt before a concurrent re-auth) is a silent no-op', async () => {
+    // Simulates: request A reads the token, GitHub call fails; concurrently,
+    // request B (re-auth) writes `healthy` and bumps updatedAt. Request A's
+    // failed write now targets a row whose updatedAt is newer than capturedAt,
+    // so the conditional updateMany matches zero rows.
+    const capturedAt = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago — stale
+    mockUpdateManyRepoConnection.mockResolvedValue({ count: 0 });
+
+    await expect(markCredentialFailed(USER_ID, capturedAt)).resolves.toBeUndefined();
+    expect(mockUpdateManyRepoConnection).toHaveBeenCalledWith({
+      where: { userId: USER_ID, updatedAt: { lt: capturedAt } },
+      data: { credentialHealth: 'failed' },
+    });
   });
 });
 

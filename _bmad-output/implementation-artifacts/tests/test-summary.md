@@ -193,7 +193,7 @@ All four acceptance criteria are already covered by passing unit and integration
 
 | AC | Description | Test Level | Test File(s) |
 |---|---|---|---|
-| AC-1 | 401/403 detection updates credential health to `failed` within one operation cycle | Unit + Integration | `credential-health.test.ts` (2 tests: markCredentialFailed updates, no-op on missing); `repo-connection.actions.spec.ts` (3 tests: markCredentialFailed on 401, on 403, on CredentialFailureError catch); `repository-validation.actions.spec.ts` (1 test: markCredentialFailed on CredentialFailureError catch) |
+| AC-1 | 401 detection updates credential health to `failed` within one operation cycle; 403 is classified and does not mark failed | Unit + Integration | `credential-health.test.ts` (2 tests: markCredentialFailed updates, no-op on missing); `repo-connection.actions.spec.ts` (markCredentialFailed on 401, NOT on 403, on CredentialFailureError catch); `repository-validation.actions.spec.ts` (markCredentialFailed on CredentialFailureError catch, 403 returns MISSING_DIRECTORY) |
 | AC-2 | Tenant authorization check before token resolution | Unit | `credential-health.test.ts` (6 tests: resolveOAuthToken valid, missing credential, decrypt failure, tenant isolation by userId, no cross-user query, statusCode 401) |
 | AC-3 | Re-auth flow restores credential health to `healthy` | Unit + Integration | `credential-health.test.ts` (2 tests: markCredentialHealthy updates, no-op on missing); `credential-health.actions.spec.ts` (3 tests: reauthorizeGitHub calls signIn, passes callbackUrl, undefined redirectTo); `auth.credential.spec.ts` (2 tests: jwt callback resets health, no-reset when access_token absent) |
 | AC-4 | UI display deferred to Epic 2 | N/A | No testable surface in this story — UI delivered in Epic 2, Story 2.2 |
@@ -203,7 +203,7 @@ All four acceptance criteria are already covered by passing unit and integration
 - [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists
 - [x] E2E tests generated (if UI exists) — N/A: no UI surface exists (AC-4 defers to Epic 2)
 - [x] Tests cover happy path — covered by existing unit tests (resolveOAuthToken valid, markCredentialHealthy, getCredentialHealthStatus authenticated)
-- [x] Tests cover 1-2 critical error cases — covered by existing integration tests (unauthenticated, missing credential, decrypt failure, DB error, 401/403 detection)
+- [x] Tests cover 1-2 critical error cases — covered by existing integration tests (unauthenticated, missing credential, decrypt failure, DB error, 401 detection, 403 classification)
 - [x] Test summary created — this document
 - [x] All existing tests run successfully — 207 tests pass (verified via `yarn nx test web`)
 
