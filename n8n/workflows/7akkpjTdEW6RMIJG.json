@@ -1,0 +1,803 @@
+{
+  "updatedAt": "2026-07-02T23:36:09.097Z",
+  "createdAt": "2026-07-02T23:24:43.130Z",
+  "id": "7akkpjTdEW6RMIJG",
+  "name": "Develop Epic",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -500,
+        -140
+      ],
+      "id": "5ccb6d86-9c83-4494-8174-3ead9f866e16",
+      "name": "When clicking Execute workflow"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "develop-epic",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        0
+      ],
+      "id": "8a1552c8-65cb-4e9e-91a8-971eebda6077",
+      "name": "Develop epic webhook",
+      "webhookId": "71aa15a3-5f44-4daa-8b9d-2bddcabf13de"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "Epic"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -500,
+        140
+      ],
+      "id": "5da25a3e-d5c1-4102-bdbd-1b6b3058bb81",
+      "name": "Start"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "dc3a046d-17d1-4179-9da2-2c0f8c6cc09a",
+              "name": "Epic",
+              "value": "={{ $json.body?.epic ?? $json.Epic ?? '2' }}",
+              "type": "string"
+            },
+            {
+              "id": "3c76937c-a3cb-4e53-97f0-47c41aa65995",
+              "name": "Ntfy topic",
+              "value": "agent-outcome",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -280,
+        0
+      ],
+      "id": "40030a89-94f6-431a-bb98-59e010126c6d",
+      "name": "Configuration"
+    },
+    {
+      "parameters": {
+        "command": "=node scripts/pipeline/next-story.mjs \"{{ $('Configuration').first().json.Epic }}\""
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        0
+      ],
+      "id": "274e4ea9-3f10-45ed-a548-2d2f2e272611",
+      "name": "Next story"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: JSON.parse($input.first().json.stdout) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        0
+      ],
+      "id": "984bf6db-a8bd-401d-afda-3ec6389797fa",
+      "name": "Parse decision"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "101b5578-6e55-4773-878a-85dd01f85e90",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "run",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Run"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7f31b854-d285-4ba3-837b-ccadcf3b1208",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "epic-complete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Epic complete"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "849f085d-7674-4708-9c8c-a2495df5c399",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "halt",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Halt"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unknown"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        320,
+        0
+      ],
+      "id": "24918406-a4aa-413c-b051-0e9f0816b511",
+      "name": "Route"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "={{ $('Configuration').first().json['Ntfy topic'] }}"
+            },
+            {
+              "name": "title",
+              "value": "=Story {{ $json.story }} — pipeline started (attempt {{ $json.attempt }})"
+            },
+            {
+              "name": "message",
+              "value": "=Run {{ $json.runId }}: executing playbook for {{ $json.storyKey }}"
+            },
+            {
+              "name": "click",
+              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        -160
+      ],
+      "id": "ae51afb8-9770-4a67-9913-e7d58e7ac13a",
+      "name": "Notify story start"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "GGiJ7KGUez94SaOc",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/GGiJ7KGUez94SaOc",
+          "cachedResultName": "Develop Story (Playbook)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Parse decision').first().json.story }}",
+            "RunId": "={{ $('Parse decision').first().json.runId }}",
+            "Attempt": "={{ String($('Parse decision').first().json.attempt) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "RunId",
+              "displayName": "RunId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Attempt",
+              "displayName": "Attempt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        780,
+        -160
+      ],
+      "id": "d585d81a-8a17-4a8d-ab59-90eac53c7326",
+      "name": "Run story playbook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "02d77549-0420-46cd-8f94-370a5b589ec1",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1000,
+        -160
+      ],
+      "id": "c8bb2747-2f7d-4bac-923d-4e8cf58bd6dd",
+      "name": "Story succeeded?"
+    },
+    {
+      "parameters": {
+        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"Reflect ({{ $('Parse decision').first().json.story }})\" \\\n  --format json \\\n  --agent planner \\\n  \"$(node scripts/pipeline/reflect-prompt.mjs \"{{ $('Parse decision').first().json.story }}\" \"{{ $('Parse decision').first().json.runId }}\")\" < /dev/null | tail -n 5"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        -240
+      ],
+      "id": "ae5f948e-fa1a-43f1-ba6f-631082ed7acf",
+      "name": "Reflect"
+    },
+    {
+      "parameters": {
+        "command": "=node scripts/pipeline/apply-amendments.mjs \"{{ $('Parse decision').first().json.runId }}\""
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1420,
+        -240
+      ],
+      "id": "32d9aa2c-2585-4dc0-a467-5d0f13aa11cf",
+      "name": "Apply amendments"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Parse decision').first().json;\nlet summary = {};\ntry { summary = JSON.parse($input.first().json.stdout); } catch (e) { summary = {}; }\nconst applied = summary.applied ?? [], rejected = summary.rejected ?? [], retired = summary.retired ?? [];\nconst parts = [`Run ${d.runId} finished.`];\nparts.push(`Learning: ${applied.length} amendment(s) applied, ${rejected.length} rejected, ${retired.length} step(s) retired, ${summary.observations ?? 0} observation(s) recorded.`);\nif (applied.length) parts.push(`Applied: ${applied.join('; ')}.`);\nif (retired.length) parts.push(`Retired: ${retired.join('; ')}.`);\nreturn [{ json: { title: `Story ${d.story} complete`, message: parts.join(' ') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        -240
+      ],
+      "id": "2cd7525b-6a27-48b3-8ef0-ea0ca590791d",
+      "name": "Prep story summary"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "={{ $('Configuration').first().json['Ntfy topic'] }}"
+            },
+            {
+              "name": "title",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.message }}"
+            },
+            {
+              "name": "click",
+              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1820,
+        -240
+      ],
+      "id": "5bae1c3f-1504-4185-a84d-bf3929597516",
+      "name": "Notify story done"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Parse decision').first().json;\nconst r = $input.first().json;\nreturn [{ json: { title: `Story ${d.story} attempt ${d.attempt} FAILED`, message: `Run ${d.runId}: ${r.failMessage ?? 'story pipeline reported failure'} — the loop will retry until the attempt guard halts.` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        -60
+      ],
+      "id": "e42cbc2b-d69c-4b1c-959a-99c8f9a55f3f",
+      "name": "Prep failure note"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "={{ $('Configuration').first().json['Ntfy topic'] }}"
+            },
+            {
+              "name": "title",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.message }}"
+            },
+            {
+              "name": "click",
+              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        -60
+      ],
+      "id": "eb707d44-60dd-4f51-87a3-fa2bae9fe92a",
+      "name": "Notify story failed"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "={{ $('Configuration').first().json['Ntfy topic'] }}"
+            },
+            {
+              "name": "title",
+              "value": "=Epic {{ $('Configuration').first().json.Epic }} complete"
+            },
+            {
+              "name": "message",
+              "value": "=All stories in epic {{ $('Configuration').first().json.Epic }} are done. The loop has ended. Review _bmad-output/pipeline/ledger.jsonl for accumulated learning and consider a retrospective."
+            },
+            {
+              "name": "click",
+              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        60
+      ],
+      "id": "21dafe0a-16a3-4c3b-aff6-e5aa1d835554",
+      "name": "Notify epic complete"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "={{ $('Configuration').first().json['Ntfy topic'] }}"
+            },
+            {
+              "name": "title",
+              "value": "=Pipeline HALTED"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.reason ?? ('Unexpected loop decision: ' + JSON.stringify($json)) }}"
+            },
+            {
+              "name": "click",
+              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        220
+      ],
+      "id": "056b293c-6d34-42a7-850a-efec74a7b67a",
+      "name": "Notify halt"
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $('Parse decision').first().json.reason ?? 'Pipeline halted' }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        760,
+        220
+      ],
+      "id": "f47a5249-f985-4912-af33-df91bcc24c41",
+      "name": "Halt"
+    }
+  ],
+  "connections": {
+    "When clicking Execute workflow": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Develop epic webhook": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuration": {
+      "main": [
+        [
+          {
+            "node": "Next story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next story": {
+      "main": [
+        [
+          {
+            "node": "Parse decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse decision": {
+      "main": [
+        [
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route": {
+      "main": [
+        [
+          {
+            "node": "Notify story start",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify epic complete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify halt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify halt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify story start": {
+      "main": [
+        [
+          {
+            "node": "Run story playbook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run story playbook": {
+      "main": [
+        [
+          {
+            "node": "Story succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Story succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Reflect",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep failure note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reflect": {
+      "main": [
+        [
+          {
+            "node": "Apply amendments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply amendments": {
+      "main": [
+        [
+          {
+            "node": "Prep story summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep story summary": {
+      "main": [
+        [
+          {
+            "node": "Notify story done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify story done": {
+      "main": [
+        [
+          {
+            "node": "Next story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep failure note": {
+      "main": [
+        [
+          {
+            "node": "Notify story failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify story failed": {
+      "main": [
+        [
+          {
+            "node": "Next story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify halt": {
+      "main": [
+        [
+          {
+            "node": "Halt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "errorWorkflow": "bmadErrNotify001"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "9a15c13e-c36f-42c7-8eb4-48c16b97d933",
+  "activeVersionId": "9a15c13e-c36f-42c7-8eb4-48c16b97d933",
+  "versionCounter": 2,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-02T23:24:43.130Z",
+      "createdAt": "2026-07-02T23:24:43.130Z",
+      "role": "workflow:owner",
+      "workflowId": "7akkpjTdEW6RMIJG",
+      "projectId": "AYEhcVrohjJ82DQg",
+      "project": {
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

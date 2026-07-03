@@ -1,0 +1,120 @@
+{
+  "$comment": "Story playbook — the per-story sequence of BMAD actions executed by the 'Develop Epic' n8n loop. This file is the source of truth; the n8n workflow only interprets it. Steps with origin 'learned' are managed by scripts/pipeline/apply-amendments.mjs under the policy below; steps with origin 'core' are only edited by humans.",
+  "version": 1,
+  "config": {
+    "runner": "opencode",
+    "ntfyTopic": "agent-outcome",
+    "allowedAgents": [
+      "planner",
+      "coder"
+    ]
+  },
+  "policy": {
+    "maxAttemptsPerStory": 2,
+    "addStepRecurrenceThreshold": 2,
+    "retireCleanStreak": 3,
+    "maxLearnedSteps": 4,
+    "responseExcerptChars": 2000
+  },
+  "steps": [
+    {
+      "id": "create-story",
+      "label": "Create story",
+      "skill": "bmad-create-story",
+      "agent": "planner",
+      "prompt": "run Creation mode. _Minor_ issues must be resolved autonomously without asking me for confirmation. Only stop for major decisions.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "validate-story",
+      "label": "Validate story (1st pass)",
+      "skill": "bmad-create-story",
+      "agent": "planner",
+      "prompt": "validate story. Resolve _minor_ issues autonomously without asking me for confirmation.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "prepare-tests",
+      "label": "Prepare tests",
+      "skill": "bmad-testarch-atdd",
+      "agent": "coder",
+      "prompt": "prepare tests",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "validate-story-2",
+      "label": "Validate story (2nd pass)",
+      "skill": "bmad-create-story",
+      "agent": "planner",
+      "prompt": "validate story. Resolve _minor_ issues autonomously without asking me for confirmation.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "implement-story",
+      "label": "Implement story",
+      "skill": "bmad-dev-story",
+      "agent": "coder",
+      "prompt": "develop story autonomously. Only ask me if major issues arise.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "unit-tests",
+      "label": "Unit tests",
+      "skill": "bmad-testarch-automate",
+      "agent": "coder",
+      "prompt": "Autonomously evaluate (Validate) if the Story is sufficiently covered. If needed, expand coverage (Create/Resume).",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "e2e-tests",
+      "label": "E2E tests",
+      "skill": "bmad-qa-generate-e2e-tests",
+      "agent": "planner",
+      "prompt": "",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "review-code",
+      "label": "Code review",
+      "skill": "bmad-code-review",
+      "agent": "planner",
+      "prompt": "Review story implementation",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "review-tests",
+      "label": "Test review",
+      "skill": "bmad-testarch-test-review",
+      "agent": "planner",
+      "prompt": "Review tests",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "review-nfrs",
+      "label": "NFR review",
+      "skill": "bmad-testarch-nfr",
+      "agent": "planner",
+      "prompt": "Run audit",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "update-project-context",
+      "label": "Update project context",
+      "skill": "bmad-agent-tech-writer",
+      "agent": "planner",
+      "prompt": "Review the story artifacts and the code implemented for it. Identify any new, repeatable patterns or conventions that emerged and aren't already captured in project-context.md. If none exist, do nothing. Otherwise, append them to project-context.md — keep entries lean, document only what's unobvious and repeatable. This is routine work, its outcome size depends on the uniqueness of the story.",
+      "enabled": true,
+      "origin": "core"
+    }
+  ]
+}

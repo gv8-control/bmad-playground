@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null | tail -n 10"
+        "command": "=out=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null)\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null | tail -n 10"
+        "command": "=out=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null)\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -619,9 +619,9 @@
       }
     ]
   },
-  "versionId": "2eb21396-fab9-40c7-93c4-02d0bff59110",
-  "activeVersionId": "2eb21396-fab9-40c7-93c4-02d0bff59110",
-  "versionCounter": 163,
+  "versionId": "bb9dccb0-663d-45b3-a467-ef2d09a91fb6",
+  "activeVersionId": "bb9dccb0-663d-45b3-a467-ef2d09a91fb6",
+  "versionCounter": 164,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

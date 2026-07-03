@@ -1,0 +1,651 @@
+{
+  "updatedAt": "2026-07-02T23:36:06.068Z",
+  "createdAt": "2026-07-02T23:24:43.066Z",
+  "id": "GGiJ7KGUez94SaOc",
+  "name": "Develop Story (Playbook)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "Story"
+            },
+            {
+              "name": "RunId"
+            },
+            {
+              "name": "Attempt"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        0
+      ],
+      "id": "ea84f186-485e-403c-8031-030ac64aa834",
+      "name": "Start"
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst payload = { type: 'story_start', story: s.Story, runId: s.RunId, attempt: Number(s.Attempt ?? 1) };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { Story: s.Story, RunId: s.RunId, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        0
+      ],
+      "id": "845c30de-c32d-40d5-be67-9e4b33ab13c6",
+      "name": "Prep run"
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.journalCmd }}"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1ee59d13-08ba-4cca-89a0-fb421e8ea33d",
+      "name": "Journal story start"
+    },
+    {
+      "parameters": {
+        "command": "=node scripts/pipeline/get-steps.mjs \"{{ $('Prep run').first().json.Story }}\""
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        200,
+        0
+      ],
+      "id": "1806f26f-1228-45c5-b9c6-215aafb28814",
+      "name": "Get steps"
+    },
+    {
+      "parameters": {
+        "jsCode": "const run = $('Prep run').first().json;\nconst steps = JSON.parse($input.first().json.stdout);\nreturn steps.map(s => ({ json: { ...s, RunId: run.RunId } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ],
+      "id": "2a0e5bb3-79c5-41b6-8a3f-0ab8bf63920c",
+      "name": "Parse steps"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        620,
+        0
+      ],
+      "id": "2788c411-eab6-4f8a-9a08-2487f3e379b2",
+      "name": "Step loop"
+    },
+    {
+      "parameters": {
+        "jsCode": "const step = $input.first().json;\nconst startedAt = Date.now();\nconst payload = { type: 'step_start', story: step.story, runId: step.RunId, step: step.id, index: step.index, total: step.total };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { ...step, startedAt, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        96
+      ],
+      "id": "de454bac-8d9d-4751-9ab5-4a32145d74ea",
+      "name": "Prep step"
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.journalCmd }}"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        96
+      ],
+      "id": "c22b8932-3182-47af-be22-135c671b8632",
+      "name": "Journal step start"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "C8qzMFk2e00sLHJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/C8qzMFk2e00sLHJg",
+          "cachedResultName": "BMAD Session (OpenCode)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story": "={{ $('Prep step').first().json.story }}",
+            "Skill": "={{ $('Prep step').first().json.skill }}",
+            "Initial prompt (without story ID)": "={{ $('Prep step').first().json.prompt }}",
+            "Conversation label": "={{ $('Prep step').first().json.label }}",
+            "Agent": "={{ $('Prep step').first().json.agent }}"
+          },
+          "matchingColumns": [
+            "Story"
+          ],
+          "schema": [
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Skill",
+              "displayName": "Skill",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Initial prompt (without story ID)",
+              "displayName": "Initial prompt (without story ID)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Conversation label",
+              "displayName": "Conversation label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Agent",
+              "displayName": "Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1260,
+        96
+      ],
+      "id": "86d41433-34fc-4487-af70-41fed2ffb555",
+      "name": "Run BMAD Session",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst step = $('Prep step').first().json;\nconst failed = item.error !== undefined;\nconst payload = { type: 'step_end', story: step.story, runId: step.RunId, step: step.id, index: step.index, status: failed ? 'failed' : 'success', durationMs: Date.now() - step.startedAt };\nlet error;\nif (failed) {\n  error = String(item.error?.message ?? item.error).slice(0, 500);\n  payload.error = error;\n} else {\n  payload.responseExcerpt = String(item.finalResponse ?? '').slice(0, 2000);\n}\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { failed, stepId: step.id, stepLabel: step.label, story: step.story, RunId: step.RunId, error, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        96
+      ],
+      "id": "aba944ff-17b1-41e1-abde-5e116f369647",
+      "name": "Assess step result"
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.journalCmd }}"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        96
+      ],
+      "id": "0fae5584-9f4c-4691-97b6-3b594f8cc7a1",
+      "name": "Journal step end"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3e9ce2cf-68b3-494a-8c8b-7b29c629e607",
+              "leftValue": "={{ $('Assess step result').first().json.failed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1880,
+        96
+      ],
+      "id": "a525a4a9-1bfb-4f2c-a37f-8f93885484ac",
+      "name": "Step failed?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const a = $('Assess step result').first().json;\nconst failMessage = `Step ${a.stepId} (${a.stepLabel}) failed for story ${a.story}: ${a.error}`;\nconst payload = { type: 'story_end', story: a.story, runId: a.RunId, status: 'failed', failedStep: a.stepId, error: a.error };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { Story: a.story, RunId: a.RunId, status: 'failed', failedStep: a.stepId, failMessage, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        240
+      ],
+      "id": "1944eadd-bddc-43e0-a392-c9532d9da0dd",
+      "name": "Story failed"
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.journalCmd }}"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2280,
+        240
+      ],
+      "id": "51004c22-36d8-4ea8-8ba5-78f4f6387405",
+      "name": "Journal story failed"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6f51af1e-7ed6-4c1f-a320-54777f4353bd",
+              "name": "Story",
+              "value": "={{ $('Story failed').first().json.Story }}",
+              "type": "string"
+            },
+            {
+              "id": "740fc350-a2bb-491d-a4e4-abcab69d5b8b",
+              "name": "RunId",
+              "value": "={{ $('Story failed').first().json.RunId }}",
+              "type": "string"
+            },
+            {
+              "id": "5fb5d778-02be-4540-b305-eca7c0426fa0",
+              "name": "status",
+              "value": "failed",
+              "type": "string"
+            },
+            {
+              "id": "b582648d-9c7d-4651-87f6-76ddb2d0def5",
+              "name": "failedStep",
+              "value": "={{ $('Story failed').first().json.failedStep }}",
+              "type": "string"
+            },
+            {
+              "id": "a2ecfbea-107b-4e34-8f7d-7bd39dc8c224",
+              "name": "failMessage",
+              "value": "={{ $('Story failed').first().json.failMessage }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2480,
+        240
+      ],
+      "id": "b0012497-6e33-49a5-9f7f-95f88d87efd7",
+      "name": "Output failed"
+    },
+    {
+      "parameters": {
+        "jsCode": "const run = $('Prep run').first().json;\nconst payload = { type: 'story_end', story: run.Story, runId: run.RunId, status: 'success' };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { Story: run.Story, RunId: run.RunId, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        -160
+      ],
+      "id": "67298405-6343-44de-b68e-0b61f0a7503d",
+      "name": "Story done"
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.journalCmd }}"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        -160
+      ],
+      "id": "d24a3a17-29a2-4772-b62d-97ccfb411355",
+      "name": "Journal story end"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "06831556-b23d-4cd3-a749-90f6ed4a1840",
+              "name": "Story",
+              "value": "={{ $('Prep run').first().json.Story }}",
+              "type": "string"
+            },
+            {
+              "id": "e2d9ec1c-0235-4a6b-90b8-c6ed231a24c5",
+              "name": "RunId",
+              "value": "={{ $('Prep run').first().json.RunId }}",
+              "type": "string"
+            },
+            {
+              "id": "44b0c870-64cb-48c1-8115-c70760942252",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1240,
+        -160
+      ],
+      "id": "1c25c120-9531-437a-be53-3d2d963aeaec",
+      "name": "Output"
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Prep run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep run": {
+      "main": [
+        [
+          {
+            "node": "Journal story start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journal story start": {
+      "main": [
+        [
+          {
+            "node": "Get steps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get steps": {
+      "main": [
+        [
+          {
+            "node": "Parse steps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse steps": {
+      "main": [
+        [
+          {
+            "node": "Step loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step loop": {
+      "main": [
+        [
+          {
+            "node": "Story done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep step": {
+      "main": [
+        [
+          {
+            "node": "Journal step start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journal step start": {
+      "main": [
+        [
+          {
+            "node": "Run BMAD Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run BMAD Session": {
+      "main": [
+        [
+          {
+            "node": "Assess step result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Assess step result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assess step result": {
+      "main": [
+        [
+          {
+            "node": "Journal step end",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journal step end": {
+      "main": [
+        [
+          {
+            "node": "Step failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step failed?": {
+      "main": [
+        [
+          {
+            "node": "Story failed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Story failed": {
+      "main": [
+        [
+          {
+            "node": "Journal story failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journal story failed": {
+      "main": [
+        [
+          {
+            "node": "Output failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Story done": {
+      "main": [
+        [
+          {
+            "node": "Journal story end",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journal story end": {
+      "main": [
+        [
+          {
+            "node": "Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "errorWorkflow": "bmadErrNotify001"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "3f9a785b-2e46-42b8-bbde-90aef9fa4c55",
+  "activeVersionId": "3f9a785b-2e46-42b8-bbde-90aef9fa4c55",
+  "versionCounter": 2,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-02T23:24:43.066Z",
+      "createdAt": "2026-07-02T23:24:43.066Z",
+      "role": "workflow:owner",
+      "workflowId": "GGiJ7KGUez94SaOc",
+      "projectId": "AYEhcVrohjJ82DQg",
+      "project": {
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}
