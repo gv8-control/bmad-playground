@@ -25,20 +25,21 @@ Develop Epic (n8n loop)                        repo artifacts
 
 | Piece | Where | Role |
 | ----- | ----- | ---- |
-| Playbook | `_bmad-output/pipeline/playbook.json` | Ordered BMAD steps per story (skill, agent, prompt), plus policy thresholds. Source of truth for the process. |
+| Playbook | `_bmad-output/pipeline/playbook.json` | Ordered BMAD steps per story (skill, agent, prompt, stage), plus policy thresholds. Source of truth for the process. |
 | Develop Epic | n8n workflow `7akkpjTdEW6RMIJG` | The loop: pick next story → run playbook → reflect → learn → notify → repeat. Ends when the epic is complete. |
 | Develop Story (Playbook) | n8n workflow `GGiJ7KGUez94SaOc` | Interprets the playbook one step at a time; journals every step; calls the unchanged gen-1 `BMAD Session (OpenCode)` runner. |
 | Journal | `_bmad-output/pipeline/journal.jsonl` | Append-only event stream: `story_start`, `step_start`, `step_end` (with duration + response excerpt), `story_end`. |
 | Ledger | `_bmad-output/pipeline/ledger.jsonl` | Learning memory: observations (with fingerprints), applied/rejected amendments, retirements. |
+| Runner errors | `_bmad-output/pipeline/runner-errors.jsonl` | Machinery failures captured by the `BMAD Session (OpenCode)` wrapper: exit code, stderr tail, whether output was salvaged. |
 | Scripts | `scripts/pipeline/*.mjs` | Deterministic logic: story selection, step resolution, journaling, trend aggregation, amendment gating. Dependency-free Node. |
 
-Gen-1 workflows (`Develop Story`, `Develop Story (Webhook)`, `BMAD Session (OpenCode)`, `BMAD Outcome`, error handler) are untouched; gen-2 reuses `BMAD Session (OpenCode)` as its step runner, so outcome classification, the human question form, and the ntfy resume flow all carry over.
+Gen-1 workflows (`Develop Story`, `Develop Story (Webhook)`, `BMAD Session (OpenCode)`, `BMAD Outcome`, error handler) are functionally unchanged; gen-2 reuses `BMAD Session (OpenCode)` as its step runner, so outcome classification, the human question form, and the ntfy resume flow all carry over. The only authorized touch is the `Agent run` command wrapper in `BMAD Session (OpenCode)`: it bounds runs with a timeout (salvaging non-empty output), and on any non-zero opencode exit appends a line to `runner-errors.jsonl` with the exit code and a stderr tail — so provider errors (e.g. context-length overflows) survive into evidence reflection can read.
 
 ## The loop, in order
 
 1. **Next story** — `next-story.mjs <epic>` reads `sprint-status.yaml`, returns the first story in the epic not `done`. If none remain: epic complete, loop ends. If the story already used `maxAttemptsPerStory` runs without reaching `done`: halt for human review.
-2. **Story run** — `get-steps.mjs` resolves enabled playbook steps; each runs through `BMAD Session (OpenCode)` sequentially (honest sequencing — the gen-1 "parallel" fan-outs ran serially in practice anyway, per the execution-215 analysis). Every step is journaled with duration and outcome. A failed step is retried once at the node level; if it fails again, the story run returns `status: "failed"` as ordinary data (not an n8n error), the loop notifies, and the story gets one more full attempt before the halt guard trips.
-3. **Reflect** — an opencode run (`planner` agent, prompt built by `reflect-prompt.mjs`) reads the journal, trends, and ledger, then writes a proposal file. It is told explicitly: most findings are noise; record observations, don't eagerly propose fixes.
+2. **Story run** — `get-steps.mjs` resolves enabled playbook steps; each runs through `BMAD Session (OpenCode)` sequentially (honest sequencing — the gen-1 "parallel" fan-outs ran serially in practice anyway; n8n executes branches of one execution one node at a time). The gen-1 grouping is preserved as the playbook's `stage` field: adjacent steps sharing a stage are order-independent and could run concurrently if that is ever built — today the field is pure metadata. `apply-amendments.mjs` respects it by never inserting a learned step inside a stage group (it shifts to the group edge) and by giving each learned step its own stage, so learned steps are always sequential until a human says otherwise. Every step is journaled with duration and outcome. A failed step is retried once at the node level; if it fails again, the story run returns `status: "failed"` as ordinary data (not an n8n error), the loop notifies, and the story gets one more full attempt before the halt guard trips.
+3. **Reflect** — an opencode run (`planner` agent, prompt built by `reflect-prompt.mjs`) reads the journal, trends, ledger, and runner errors, then writes a proposal file. It is told explicitly: most findings are noise; record observations, don't eagerly propose fixes.
 4. **Learn** — `apply-amendments.mjs` is the deterministic gatekeeper. The LLM proposes; the script decides (rules below). Everything — applied, rejected, observed — lands in the ledger.
 5. **Notify** — ntfy message per story with a learning summary (amendments applied/rejected/retired, observation count). Then back to step 1.
 
@@ -49,10 +50,17 @@ Encoded in `playbook.json` → `policy`, enforced by `apply-amendments.mjs`:
 - **Observations are cheap, changes are expensive.** Any finding is recorded in the ledger under a stable fingerprint. Nothing changes on first sight.
 - **A guard step is added only when a fingerprint recurs across ≥ 2 distinct runs** (`addStepRecurrenceThreshold`). One-off mistakes are not guarded against.
 - **Learned steps that stop earning their keep are removed.** The reflection reports whether each learned step caught anything (`guardReports`); after 3 consecutive clean runs (`retireCleanStreak`) the step is auto-retired (kept in the file, `enabled: false`, with reason).
-- **Core steps are machine-immutable.** Only humans edit `origin: "core"` steps. The machine may only add, update, or retire `origin: "learned"` steps.
+- **Core steps can be tuned but not removed.** The machine may update the prompt of any step, `core` or `learned`. Retiring a step (disabling it) stays human-only for `origin: "core"` — only `origin: "learned"` steps can be retired, whether by proposal or by the automatic clean-streak rule above.
+- **Machinery failures are diagnosed, never self-mended.** Runner and infrastructure errors (opencode timeouts, context-length or provider API errors, n8n plumbing) are recorded as observations with an `infra-` fingerprint prefix, sourced from `runner-errors.jsonl`. `apply-amendments.mjs` rejects any amendment citing `infra-*` evidence — a playbook step cannot fix the machinery. Recurring infra fingerprints in the ledger are a work queue for humans, mirroring the `decision-policy-candidate-*` pattern.
 - **Bloat cap.** At most `maxLearnedSteps` (4) learned steps can be active; further additions are rejected.
 
-Trend data (retro action item 6) comes from `node scripts/pipeline/journal.mjs trends`: per-step run counts, failure counts, avg/max durations, story attempt counts, and recurring-finding fingerprints ranked by distinct-run count.
+Trend data comes from `node scripts/pipeline/journal.mjs trends`: per-step run counts, failure counts, avg/max durations, story attempt counts, and recurring-finding fingerprints ranked by distinct-run count.
+
+## Decision policy (autonomy boundary)
+
+`_bmad-output/decision-policy.md` defines which decisions agents make on their own and which must reach a human. The interactive playbook steps (create, validate, implement, code review) point at it: when a decision arises, the agent applies the first covering rule, records the decision and rule ID in the story file, and continues — it HALTs (question form + ntfy) only for decisions no rule covers. The escalation chain is unchanged; the policy is a filter in front of it, so notifications shift from "make this call for me" to "review the recorded calls in the artifact."
+
+The machine never widens its own authority: reflection may record recurring decision classes as `decision-policy-candidate-*` observations in the ledger, but only a human turns a candidate into a rule.
 
 ## Running it
 
@@ -78,7 +86,7 @@ node scripts/pipeline/journal.mjs story 2.1     # one story's event history
 
 All pushes go to the ntfy topic set in the `Configuration` node of `Develop Epic` (currently `agent-outcome`, same as gen-1). Per story: started, complete (with learning summary) or failed. Per epic: complete. On halt: high-visibility `Pipeline HALTED` with the reason. Mid-step questions still notify through the unchanged `BMAD Session (OpenCode)` resume-form flow.
 
-> Retro action item 2 (authenticated ntfy topic) still applies — the topic is public. When the authenticated topic exists, update it in `Develop Epic` → `Configuration` and in the gen-1 workflows.
+> The ntfy topic is public and unauthenticated; anyone who guesses it can read notifications (including resume URLs). When an authenticated topic exists, update it in `Develop Epic` → `Configuration` and in the gen-1 workflows.
 
 ## Implementation notes (learned the hard way)
 
@@ -91,6 +99,6 @@ Two n8n behaviors shaped the failure design; keep them in mind when editing the 
 
 Deliberately out of scope for now, but prepared for:
 
-- The loop takes any epic number; chaining epics is one more outer loop (or a `Notify epic complete` → next-epic call) once epic-level gates (retro, architecture review) have an autonomy boundary defined (retro action item 1).
+- The loop takes any epic number; chaining epics is one more outer loop (or a `Notify epic complete` → next-epic call) once epic-level gates (retrospective, architecture review) have an autonomy boundary defined in the decision policy.
 - The playbook could grow per-epic overlays (e.g. extra NFR steps for security-heavy epics) — the schema's `version` field exists for that migration.
-- Known inherited limitation: the human-question form inside `BMAD Session (OpenCode)` has no timeout (execution-215 critical finding). Bounding it belongs to a gen-1 workflow change, decided separately.
+- Known inherited limitation: the human-question form inside `BMAD Session (OpenCode)` has no timeout, so an unanswered question stalls the loop indefinitely. Bounding it belongs to a gen-1 workflow change, decided separately.

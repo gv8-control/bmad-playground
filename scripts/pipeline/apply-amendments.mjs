@@ -74,7 +74,8 @@ for (const report of guardReports) {
   }
 }
 
-// 3. Amendments: validated against policy; core steps are machine-immutable.
+// 3. Amendments: validated against policy; core steps can be tuned (update_step)
+//    but never retired by the machine.
 const amendments = Array.isArray(proposal.amendments) ? proposal.amendments : [];
 const learnedCount = () => playbook.steps.filter((s) => s.origin === 'learned' && s.enabled).length;
 
@@ -89,7 +90,11 @@ for (const a of amendments) {
     if (!config.allowedAgents.includes(s.agent)) reasons.push(`agent must be one of ${config.allowedAgents.join(', ')}`);
     if (!s.label || typeof s.prompt !== 'string') reasons.push('label and prompt are required');
     if (learnedCount() >= policy.maxLearnedSteps) reasons.push(`learned step cap reached (${policy.maxLearnedSteps})`);
-    const recurring = fingerprints.filter((f) => recurrence(f) >= policy.addStepRecurrenceThreshold);
+    // infra-* fingerprints record machinery failures (runner, provider, n8n);
+    // a playbook step cannot fix those, so they never justify an amendment.
+    const infraFps = fingerprints.filter((f) => f.startsWith('infra-'));
+    if (infraFps.length > 0) reasons.push(`infra-* fingerprints are not amendment evidence (machinery fixes are human-only): ${infraFps.join(', ')}`);
+    const recurring = fingerprints.filter((f) => !f.startsWith('infra-') && recurrence(f) >= policy.addStepRecurrenceThreshold);
     if (recurring.length === 0)
       reasons.push(
         `no evidence fingerprint recurs across >= ${policy.addStepRecurrenceThreshold} distinct runs (signal threshold not met)`
@@ -106,6 +111,9 @@ for (const a of amendments) {
     const newStep = {
       id: s.id,
       label: s.label,
+      // Own stage: a learned step is never order-independent with its
+      // neighbours until a human says so.
+      stage: s.id,
       skill: s.skill,
       agent: s.agent,
       prompt: s.prompt,
@@ -116,14 +124,26 @@ for (const a of amendments) {
       evidenceFingerprints: recurring,
       cleanStreak: 0,
     };
-    playbook.steps.splice(a.position?.before ? anchorIdx : anchorIdx + 1, 0, newStep);
+    // Never insert inside a stage group — adjacent same-stage steps are
+    // order-independent, and a step between them would impose an order.
+    // Shift to the group edge that keeps the requested before/after true.
+    let insertIdx = a.position?.before ? anchorIdx : anchorIdx + 1;
+    const stageAt = (i) => playbook.steps[i]?.stage;
+    if (a.position?.before) {
+      while (insertIdx > 0 && stageAt(insertIdx - 1) !== undefined && stageAt(insertIdx - 1) === stageAt(insertIdx)) insertIdx--;
+    } else {
+      while (insertIdx < playbook.steps.length && stageAt(insertIdx) !== undefined && stageAt(insertIdx) === stageAt(insertIdx - 1)) insertIdx++;
+    }
+    playbook.steps.splice(insertIdx, 0, newStep);
     applied.push(`add_step ${s.id}`);
     appendJsonl(PATHS.ledger, { ts: nowIso(), runId, story, type: 'applied', amendment: 'add_step', stepId: s.id, rationale: a.rationale ?? '' });
   } else if (a.type === 'retire_step' || a.type === 'update_step') {
     const step = playbook.steps.find((x) => x.id === a.stepId);
     const reasons = [];
     if (!step) reasons.push(`step "${a.stepId}" not found`);
-    else if (step.origin !== 'learned') reasons.push('core steps are immutable to the machine');
+    // Core steps can have their prompt tuned by the machine, but retirement
+    // (removing a step from the run) stays human-only regardless of origin.
+    else if (a.type === 'retire_step' && step.origin !== 'learned') reasons.push('core steps cannot be retired by the machine');
     if (a.type === 'update_step' && typeof a.prompt !== 'string') reasons.push('update_step requires a prompt');
 
     if (reasons.length > 0) {
@@ -139,9 +159,10 @@ for (const a of amendments) {
     } else {
       step.prompt = a.prompt;
       step.updatedAt = nowIso();
+      step.updatedByRun = runId;
     }
     applied.push(`${a.type} ${a.stepId}`);
-    appendJsonl(PATHS.ledger, { ts: nowIso(), runId, story, type: 'applied', amendment: a.type, stepId: a.stepId, rationale: a.rationale ?? '' });
+    appendJsonl(PATHS.ledger, { ts: nowIso(), runId, story, type: 'applied', amendment: a.type, stepId: a.stepId, stepOrigin: step.origin, rationale: a.rationale ?? '' });
   } else {
     rejected.push(`unknown amendment type "${a.type}"`);
     appendJsonl(PATHS.ledger, { ts: nowIso(), runId, story, type: 'rejected', amendment: a, reasons: ['unknown type'] });
