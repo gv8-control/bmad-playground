@@ -72,10 +72,12 @@ development_status:
   3-2-invoke-bmad-skills-via-slash-command: backlog
   3-3-converse-with-the-streaming-agent: backlog
   3-4-see-tool-calls-and-recognized-actions-inline: backlog
-  3-5-resume-and-run-concurrent-conversations: backlog
+  3-5-resume-an-existing-conversation: backlog
   3-6-track-and-manually-save-working-tree-state: backlog
   3-7-receive-real-time-credential-failure-alerts-mid-conversation: backlog
   3-8-track-per-user-llm-spend: backlog
   3-9-terminate-idle-sandboxes-mid-conversation: backlog
   3-10-verify-commits-carry-the-users-own-identity: backlog
+  3-11-run-concurrent-conversations: backlog
+  3-12-drain-conversations-gracefully-on-deploy: backlog
   epic-3-retrospective: optional

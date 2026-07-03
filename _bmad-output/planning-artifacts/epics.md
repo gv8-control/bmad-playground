@@ -468,6 +468,10 @@ So that the Project Map and Artifact Browser can read Artifact state quickly wit
 **When** the Repository changes outside of a page load or manual refresh
 **Then** the mirrored state does not update until the next page load or manual refresh (FR5)
 
+**Given** no `Artifact` table exists yet
+**When** this story is implemented
+**Then** the Prisma schema (`libs/database-schemas`) is extended with an `Artifact` model (type, title, status, lastModifiedAt, content, repoConnectionId) and a migration is generated and committed before the mirroring logic is built against it
+
 ### Story 2.2: View the Project Map
 
 As an authenticated user with a connected repository,
@@ -612,6 +616,10 @@ So that the chat is ready almost immediately instead of waiting on a cold start.
 **When** simultaneous provisioning is requested
 **Then** a per-user concurrency cap of 2 simultaneous provisions prevents bursting GitHub's OAuth rate limit; a 3rd simultaneous request queues until a slot frees
 
+**Given** no `Conversation` or `Turn` tables exist yet
+**When** this story is implemented
+**Then** the Prisma schema (`libs/database-schemas`) is extended with `Conversation` (owning user, stable URL id, semantic title, `last_active_at`) and `Turn` (conversation id, role, content, timestamp) models, and a migration is generated and committed — this is the schema dependency Story 3.5 (resume) and Story 3.12 (turn persistence on every turn) read and write against
+
 ### Story 3.2: Invoke BMAD Skills via Slash Command
 
 As a user in a Conversation,
@@ -704,22 +712,13 @@ So that I understand what the Agent is doing without needing to read raw tool ou
 **Then** it terminates the Claude Code agent process via the Daytona process management API before emitting an error event, preventing an unobserved agent from continuing to act or commit
 **And** the SSE channel emits heartbeat comments on a fixed interval so a stalled connection is detectable even if no events are flowing
 
-### Story 3.5: Resume and Run Concurrent Conversations
+### Story 3.5: Resume an Existing Conversation
 
-As a user juggling multiple BMAD workflows,
-I want to have several Conversations active at once and pick up any of them later,
-So that I'm not blocked working through one Skill at a time or losing context when I navigate away.
+As a user returning to work I started earlier,
+I want to reopen any of my Conversations and pick up exactly where I left off,
+So that navigating away never costs me context.
 
 **Acceptance Criteria:**
-
-**Given** a user has fewer than 10 active Conversations
-**When** they open a new one
-**Then** it runs with an independent Sandbox and chat history at its own stable URL (FR11)
-**And** the SSE transport supports 10 concurrent connections per browser session without connection starvation, requiring an HTTP/2-capable reverse proxy in front of `apps/agent-be` (NFR-R4)
-
-**Given** a user already has 10 active Conversations
-**When** they attempt to open another
-**Then** they see a "session limit reached" message rather than a silent failure (FR11)
 
 **Given** a user navigates to an existing Conversation
 **When** the page loads
@@ -729,12 +728,6 @@ So that I'm not blocked working through one Skill at a time or losing context wh
 **When** this happens
 **Then** the user sees a "Reconnecting…" status with full history visible and input disabled, re-enabling once ready
 **And** the git identity from Story 1.5 is re-injected into git config at this resume, not only at initial provision
-
-**Given** `apps/agent-be` is deployed or restarted
-**When** the process receives `SIGTERM`
-**Then** shutdown hooks notify all clients with active SSE connections that the connection is draining, before the process exits
-**And** notified clients can reconnect and resume their Conversation without losing chat history, rather than the connection being hard-killed with no notice
-**And** turn/session state is persisted to Postgres on every turn, so a restart does not lose Conversation history
 
 **Given** an in-progress Artifact on the Project Map has a Conversation already open in another browser tab
 **When** the user clicks that Artifact
@@ -870,3 +863,34 @@ So that my contribution is visibly mine, not attributed to a generic platform bo
 **Given** the noreply-email fallback case from Story 1.5
 **When** that user's commit is inspected
 **Then** the commit author email is the `{github_username}@users.noreply.github.com` fallback, and GitHub still attributes the commit to that user's profile
+
+### Story 3.11: Run Concurrent Conversations
+
+As a user juggling multiple BMAD workflows,
+I want to have several Conversations active at once,
+So that I'm not blocked working through one Skill at a time.
+
+**Acceptance Criteria:**
+
+**Given** a user has fewer than 10 active Conversations
+**When** they open a new one
+**Then** it runs with an independent Sandbox and chat history at its own stable URL (FR11)
+**And** the SSE transport supports 10 concurrent connections per browser session without connection starvation, requiring an HTTP/2-capable reverse proxy in front of `apps/agent-be` (NFR-R4)
+
+**Given** a user already has 10 active Conversations
+**When** they attempt to open another
+**Then** they see a "session limit reached" message rather than a silent failure (FR11)
+
+### Story 3.12: Drain Conversations Gracefully on Deploy
+
+As a user with an active Conversation when the platform deploys a new version,
+I want my connection to end cleanly and let me reconnect without losing history,
+So that routine deploys never look like a crash or lose my work.
+
+**Acceptance Criteria:**
+
+**Given** `apps/agent-be` is deployed or restarted
+**When** the process receives `SIGTERM`
+**Then** shutdown hooks notify all clients with active SSE connections that the connection is draining, before the process exits
+**And** notified clients can reconnect and resume their Conversation without losing chat history, rather than the connection being hard-killed with no notice
+**And** turn/session state is persisted to Postgres on every turn — via the `Turn` model migrated in Story 3.1 — so a restart does not lose Conversation history

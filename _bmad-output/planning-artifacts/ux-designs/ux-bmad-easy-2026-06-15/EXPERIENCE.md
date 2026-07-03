@@ -4,7 +4,6 @@ status: final
 created: 2026-06-15
 updated: 2026-07-02
 sources:
-  - _bmad-output/navigation.md
   - _bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md
   - _bmad-output/planning-artifacts/briefs/brief-bmad-easy-2026-06-12/brief.md
   - _bmad-output/planning-artifacts/architecture.md

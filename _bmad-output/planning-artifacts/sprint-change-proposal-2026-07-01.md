@@ -1,9 +1,12 @@
 ---
 title: "Sprint Change Proposal: Switch Package Manager from pnpm to Yarn"
-status: approved
+status: completed
 created: 2026-07-01
 approved: 2026-07-01
+completed: 2026-07-02
 ---
+
+**Completion note (2026-07-02):** All items in §4's implementation-file checklist and the §5 success criteria are verified done: `package.json` dev script and `packageManager` field, `.gitignore` (no pnpm/yarn.lock lines), `.github/workflows/test.yml` (fully Corepack/Yarn), `scripts/*.sh`, `docs/ci.md`, `playwright/README.md`, `.vscode/launch.json`, `apps/agent-be/project.json`, `.devcontainer/create.sh`, and `.yarnrc.yml` all confirmed on Yarn with no remaining pnpm references. No `pnpm-lock.yaml` or `.pnpm-store/` present. Story 1.1 shows `done` in sprint-status.yaml.
 
 # Sprint Change Proposal: Switch Package Manager from pnpm to Yarn
 
