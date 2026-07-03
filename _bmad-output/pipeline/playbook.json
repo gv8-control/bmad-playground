@@ -93,7 +93,7 @@
       "stage": "review",
       "skill": "bmad-code-review",
       "agent": "planner",
-      "prompt": "Review story implementation. For findings that need a decision, apply _bmad-output/decision-policy.md: decide, record the decision and the rule applied in the story file's review findings, and continue. HALT only for decisions the policy does not cover.",
+      "prompt": "Review the implementation of the story below. Use the story file in {implementation_artifacts} matching this story's key (pattern `<epic>-<story>-*.md`) as the explicit spec file (Tier 1) so the review target and diff baseline (its frontmatter `baseline_commit`) resolve without asking; if no `baseline_commit` is present, review all uncommitted changes instead of asking which target. If the diff exceeds the chunking threshold, take the first chunk automatically and note remaining groups for a follow-up run — do not wait for confirmation. Skip the pre-review checkpoint confirmation and proceed straight to the review. For decision-needed findings, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue — if the resolution is to defer, write your own one-line reason instead of asking. HALT only for decisions the policy does not cover. Once findings are triaged, choose 'apply every patch' (fix all patch findings now, no per-finding confirmation), then end the workflow rather than offering the next-steps menu.",
       "enabled": true,
       "origin": "core"
     },

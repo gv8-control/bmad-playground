@@ -31,23 +31,30 @@ if (command === 'append') {
   const perStep = {};
   for (const e of events) {
     if (e.type !== 'step_end') continue;
-    const s = (perStep[e.step] ??= { runs: 0, failures: 0, totalMs: 0, maxMs: 0 });
+    const s = (perStep[e.step] ??= { runs: 0, failures: 0, totalMs: 0, maxMs: 0, halts: 0 });
     s.runs += 1;
     if (e.status !== 'success') s.failures += 1;
     if (typeof e.durationMs === 'number') {
       s.totalMs += e.durationMs;
       s.maxMs = Math.max(s.maxMs, e.durationMs);
     }
+    if (typeof e.halts === 'number') s.halts += e.halts;
   }
   const steps = Object.fromEntries(
     Object.entries(perStep).map(([id, s]) => [
       id,
-      { runs: s.runs, failures: s.failures, avgMs: s.runs ? Math.round(s.totalMs / s.runs) : 0, maxMs: s.maxMs },
+      { runs: s.runs, failures: s.failures, avgMs: s.runs ? Math.round(s.totalMs / s.runs) : 0, maxMs: s.maxMs, halts: s.halts },
     ])
   );
   const attempts = {};
   for (const e of events) {
     if (e.type === 'story_start') attempts[e.story] = (attempts[e.story] ?? 0) + 1;
+  }
+  const haltsPerStory = {};
+  for (const e of events) {
+    if (e.type === 'step_end' && typeof e.halts === 'number' && e.halts > 0) {
+      haltsPerStory[e.story] = (haltsPerStory[e.story] ?? 0) + e.halts;
+    }
   }
   const recurrences = {};
   for (const entry of readJsonl(PATHS.ledger)) {
@@ -58,7 +65,7 @@ if (command === 'append') {
   const findings = Object.entries(recurrences)
     .map(([fingerprint, runs]) => ({ fingerprint, distinctRuns: runs.size }))
     .sort((a, b) => b.distinctRuns - a.distinctRuns);
-  output({ steps, storyAttempts: attempts, recurringFindings: findings });
+  output({ steps, storyAttempts: attempts, haltsPerStory, recurringFindings: findings });
 } else {
   fail('Usage: journal.mjs <append|story|trends> ...');
 }

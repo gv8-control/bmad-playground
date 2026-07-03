@@ -165,6 +165,12 @@
               "name": "finalResponse",
               "value": "={{ $('Parse OpenCode Response').last().json.response }}",
               "type": "string"
+            },
+            {
+              "id": "f7a1c2d3-e4b5-6789-abcd-ef0123456789",
+              "name": "questionCount",
+              "value": "={{ Math.max(0, $('Parse OpenCode Response').all().length - 1) }}",
+              "type": "number"
             }
           ]
         },
