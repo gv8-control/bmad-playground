@@ -1,0 +1,23 @@
+{
+  "story": "2.2",
+  "runId": "2.2-a1-20260703T060857",
+  "observations": [
+    {
+      "fingerprint": "atdd-step-misses-specified-tests",
+      "summary": "The prepare-tests step did not create 2 P0 tests explicitly specified in the story spec and ATDD checklist, requiring the unit-tests step to fill the gaps.",
+      "evidence": "Journal step_end for unit-tests: 'GAP 1 (P0, AC-4): Missing test renders CredentialErrorBanner when credential health is already failed — specified in both the story Task 5.10 and ATDD checklist but absent from page.test.tsx' and 'GAP 2 (P0, AC-5): Zero active coverage for the loading skeleton — no unit test existed for loading.tsx'."
+    },
+    {
+      "fingerprint": "implement-step-skips-nfr-hardening",
+      "summary": "The implement-story step produced code requiring 6 NFR fixes from the review-nfrs step, including missing select projection, take limit, Promise.all parallelization, composite database index, error.tsx boundary, and security headers.",
+      "evidence": "Journal step_end for review-nfrs: lists 7 changes applied — 'Added select projection (excludes content), take: 100 limit, and Promise.all', 'Added @@index([repoConnectionId, lastModifiedAt]) to Artifact model', 'New route-level error boundary', 'Added security headers: X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy'."
+    },
+    {
+      "fingerprint": "atdd-step-misses-mock-restore-convention",
+      "summary": "The prepare-tests step created 4 Jest test files without jest.restoreAllMocks() in afterEach across all of them, a convention violation caught by review-tests as finding M-1.",
+      "evidence": "Journal step_end for review-tests: 'M-1 | Medium | Missing jest.restoreAllMocks() in afterEach across all 4 Jest files (convention violation)'."
+    }
+  ],
+  "amendments": [],
+  "guardReports": []
+}

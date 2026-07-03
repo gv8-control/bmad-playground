@@ -63,9 +63,11 @@
       "stage": "implement",
       "skill": "bmad-dev-story",
       "agent": "coder",
-      "prompt": "develop story autonomously. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "prompt": "develop story autonomously, completing every task listed in the story spec before finishing. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-03T15:32:49.310Z",
+      "updatedByRun": "2.3-a1-20260703T092056"
     },
     {
       "id": "unit-tests",
@@ -113,9 +115,11 @@
       "stage": "review",
       "skill": "bmad-testarch-nfr",
       "agent": "planner",
-      "prompt": "Run audit",
+      "prompt": "Run NFR audit for the story. Identify and apply NFR-specific patches only (performance, security, reliability, scalability — e.g., select projection, take limits, timing tests, security headers). Do not implement features, refactor unrelated code, create database migrations, or fix test quality issues — those belong in dev or test-review steps. Document deferred findings in the story's review section.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-03T19:31:19.848Z",
+      "updatedByRun": "2.4-a1-20260703T153249"
     },
     {
       "id": "update-project-context",
