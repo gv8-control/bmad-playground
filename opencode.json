@@ -2,25 +2,37 @@
   "$schema": "https://opencode.ai/config.json",
   "permission": {
     "external_directory": {
-      "/tmp/*": "allow",
       "/tmp/**": "allow"
+    }
+  },
+  "provider": {
+    "neuralwatt": {
+      "models": {
+        "glm-5.2": {
+          "limit": {
+            "context": 1048560,
+            "output": 1048560
+          }
+        }
+      }
     }
   },
   "agent": {
     "planner": {
       "model": "neuralwatt/glm-5.2",
-      "temperature": 0.6
+      "temperature": 0.6,
+      "reasoningEffort": "max"
     },
     "coder": {
       "model": "neuralwatt/glm-5.2",
-      "temperature": 0.25
+      "temperature": 0.25,
+      "reasoningEffort": "max"
     },
     "test": {
       "model": "opencode/big-pickle"
     }
   },
   "tools": {
-    "skill": true,
-    "mcp": true
+    "skill": true
   }
 }
