@@ -63,7 +63,7 @@
       "stage": "implement",
       "skill": "bmad-dev-story",
       "agent": "coder",
-      "prompt": "develop story autonomously, completing every task listed in the story spec before finishing. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "prompt": "develop story autonomously, completing every task listed in the story spec before finishing. As each task makes a skipped test pass, remove its test.skip()/it.skip() or another equivalent marker — a skipped test provides zero signal. The story is not complete while skipped tests remain for tasks that are done. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
       "enabled": true,
       "origin": "core",
       "updatedAt": "2026-07-03T15:32:49.310Z",
@@ -75,9 +75,11 @@
       "stage": "test-generation",
       "skill": "bmad-testarch-automate",
       "agent": "coder",
-      "prompt": "Autonomously evaluate (Validate) if the Story is sufficiently covered. If needed, expand coverage (Create/Resume).",
+      "prompt": "Autonomously evaluate (Validate) if the Story is sufficiently covered. If needed, expand coverage (Create/Resume). Treat any skipped test (test.skip, it.skip, describe.skip, xtest, test.fixme, it.todo, or framework equivalent) as a coverage failure — a skipped test provides zero coverage. For each skipped test: un-skip and run it. If it passes, keep it un-skipped. If it fails, either fix the implementation so it passes or remove the test entirely, recording the reason in the story file. The only acceptable resolved state is zero skipped tests. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-04T11:00:00.000Z",
+      "updatedByRun": "manual-20260704T110000"
     },
     {
       "id": "e2e-tests",
@@ -105,7 +107,7 @@
       "stage": "review",
       "skill": "bmad-testarch-test-review",
       "agent": "planner",
-      "prompt": "Review tests",
+      "prompt": "Review tests. Treat any skipped test related to the story (test.skip, it.skip or another equivalent) as a test-quality failure — flag it for un-skipping or removal with a recorded reason.",
       "enabled": true,
       "origin": "core"
     },
