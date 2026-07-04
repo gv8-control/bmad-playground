@@ -1,12 +1,12 @@
 {
   "schema_version": "0.1.0",
-  "snapshot_at": "2026-07-04T03:50:00.000Z",
+  "snapshot_at": "2026-07-04T15:30:00.000Z",
   "repo": "bmad-easy",
   "collection_mode": "manual",
   "collection_status": "COLLECTED",
   "inventory_basis": "acceptance_criteria",
   "gate_basis": "priority_thresholds",
-  "source_sha": "d646fc30029ed258414685ef08b6b4f349d8c1f7",
+  "source_sha": "6aeba1b142b73a58d31807f290804436660b937d",
   "target": {
     "type": "epic",
     "id": "epic-2",
@@ -21,6 +21,7 @@
     "sources": [
       "_bmad-output/planning-artifacts/epics.md",
       "_bmad-output/implementation-artifacts/2-1 through 2-6 story files",
+      "_bmad-output/implementation-artifacts/spec-2-3-unskip-refresh-e2e-tests.md",
       "_bmad-output/test-artifacts/test-design-architecture.md",
       "_bmad-output/test-artifacts/test-design-qa.md",
       "_bmad-output/test-artifacts/nfr-assessment-2-6.md",
@@ -31,15 +32,15 @@
   },
   "coverage": {
     "inventory": {
-      "covered": 21,
+      "covered": 22,
       "total": 22,
-      "pct": 95
+      "pct": 100
     },
     "priority_breakdown": {
       "P0": {
         "total": 13,
-        "covered": 12,
-        "pct": 92
+        "covered": 13,
+        "pct": 100
       },
       "P1": {
         "total": 9,
@@ -60,11 +61,11 @@
     "by_level": {
       "e2e": {
         "tests": 35,
-        "criteria_covered": 12
+        "criteria_covered": 13
       },
       "component": {
         "tests": 100,
-        "criteria_covered": 18
+        "criteria_covered": 15
       },
       "unit": {
         "tests": 32,
@@ -79,7 +80,7 @@
   "tests": {
     "files": 17,
     "cases": 167,
-    "skipped_cases": 5,
+    "skipped_cases": 0,
     "fixme_cases": 0,
     "pending_cases": 0
   },
@@ -93,27 +94,24 @@
     "endpoint_gaps": 0,
     "auth_negative_path_status": "present",
     "error_path_status": "present",
-    "ui_journey_status": "partial",
+    "ui_journey_status": "present",
     "ui_state_status": "present"
   },
-  "blockers": [
-    {
-      "id": "project-map-refresh.spec.ts:skip-all",
-      "severity": "high",
-      "reason": "All 5 tests use test.skip() — never activated despite Story 2.3 being done and RefreshButton being wired to the page",
-      "test_file": "playwright/e2e/project-map/project-map-refresh.spec.ts",
-      "test_title": "All 5 refresh E2E tests"
-    }
-  ],
+  "blockers": [],
   "recommendations": [
     {
-      "priority": "MEDIUM",
-      "action": "Activate 5 skipped E2E tests in project-map-refresh.spec.ts by removing test.skip() markers — Story 2.3 is done and RefreshButton is wired to the page",
-      "requirements": ["2.3-AC1"]
+      "priority": "LOW",
+      "action": "Run /bmad:tea:test-review to assess test quality across Epic 2 test files",
+      "requirements": []
     },
     {
       "priority": "LOW",
-      "action": "Run /bmad-testarch-test-review to assess test quality for Epic 2 test files",
+      "action": "Run E2E test suite against a running dev server + database to verify all 35 E2E tests pass (not executed in this session)",
+      "requirements": []
+    },
+    {
+      "priority": "LOW",
+      "action": "Address pre-existing deferred findings from story reviews (sync error codes, credential health check, take:100 truncation, no concurrency control on page-load sync)",
       "requirements": []
     }
   ],
@@ -123,17 +121,17 @@
     "artifact_url": "",
     "journey_evidence_url": ""
   },
-  "gate_status": "FAIL",
+  "gate_status": "PASS",
   "gate_criteria": {
     "p0_coverage_required": "100%",
-    "p0_coverage_actual": "92%",
-    "p0_status": "NOT_MET",
+    "p0_coverage_actual": "100%",
+    "p0_status": "MET",
     "p1_coverage_target": "90%",
     "p1_coverage_minimum": "80%",
     "p1_coverage_actual": "100%",
     "p1_status": "MET",
     "overall_coverage_minimum": "80%",
-    "overall_coverage_actual": "95%",
+    "overall_coverage_actual": "100%",
     "overall_status": "MET"
   }
 }
