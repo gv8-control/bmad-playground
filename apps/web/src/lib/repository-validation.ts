@@ -23,19 +23,19 @@ const NON_SKILL_MD_FILES = new Set([
   'license.md',
 ]);
 
-interface GithubContentEntry {
+export interface GithubContentEntry {
   name: string;
   type: string;
 }
 
-interface GithubFileContent {
+export interface GithubFileContent {
   content: string;
   encoding: string;
 }
 
 /** Hard caps for directory-listing pagination — protects against pathological repos. */
-const MAX_CONTENT_PAGES = 10;
-const MAX_CONTENT_ENTRIES = 10_000;
+export const MAX_CONTENT_PAGES = 10;
+export const MAX_CONTENT_ENTRIES = 10_000;
 
 /**
  * Thrown when a 403 is a GitHub rate limit (primary or secondary), not a
@@ -102,7 +102,7 @@ export function rateLimitMessage(err: RateLimitError): string {
   return `${RATE_LIMITED_MESSAGE} (about ${minutes} minute${minutes === 1 ? '' : 's'})`;
 }
 
-function githubHeaders(accessToken: string): HeadersInit {
+export function githubHeaders(accessToken: string): HeadersInit {
   return {
     Authorization: `Bearer ${accessToken}`,
     Accept: 'application/vnd.github+json',
@@ -125,7 +125,7 @@ function parseNextLink(linkHeader: string | null | undefined): string | null {
   return null;
 }
 
-async function fetchGithubContents(
+export async function fetchGithubContents(
   accessToken: string,
   owner: string,
   repo: string,
@@ -199,7 +199,7 @@ async function fetchGithubContents(
   return entries;
 }
 
-function decodeFileContent(file: GithubFileContent): string {
+export function decodeFileContent(file: GithubFileContent): string {
   if (file.encoding === 'base64') {
     return Buffer.from(file.content, 'base64').toString('utf8');
   }

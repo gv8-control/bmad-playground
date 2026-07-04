@@ -1,7 +1,7 @@
 ---
 project_name: 'bmad-easy'
 user_name: 'Marius'
-date: '2026-07-02'
+date: '2026-07-04'
 sections_completed:
   [
     'technology_stack',
@@ -13,7 +13,7 @@ sections_completed:
     'critical_rules',
   ]
 status: 'complete'
-rule_count: 101
+rule_count: 117
 optimized_for_llm: true
 ---
 
@@ -74,6 +74,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 #### Async/Error Handling
 
 - Server Actions return typed result unions (`{ success: true } | { error: string; errorCode: string }`), never throw to the client. Catch all errors and return the error shape.
+- **Discriminated-union narrowing with `in` operator:** the result-union discriminant (`success`) exists on one branch only, so `result.success` won't narrow — use `'success' in result` instead. Applies to every Server Action result consumer (see `project-map/page.tsx`).
 - `apps/agent-be`: a global NestJS exception filter maps every thrown error (including Zod validation failures) to the `{ code, message, meta }` JSON envelope. Controllers throw; the filter catches.
 - `apps/web` Server Actions: validation failures surface as field/form errors, NOT the agent-be error envelope — different layer, different consumer.
 - GitHub API calls: always set `AbortSignal.timeout(10_000)` and handle 401/403/404 explicitly with per-cause error codes (see `repo-connection.actions.ts` for the canonical pattern).
@@ -97,8 +98,19 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **`assertTestEnvNotInProduction()` runs from `instrumentation.ts`** (`register()` hook) at server startup — a misconfigured production deploy with `TEST_ENV` set fails loudly at boot, not silently after exposing test endpoints.
 - **`null as never` after `redirect()`:** Server Components that call `redirect()` must `return null as never;` immediately after — `redirect()` throws internally but TypeScript doesn't know that, so the return type must be satisfied. Codebase-wide pattern (see `page.tsx`, `onboarding/page.tsx`).
 - **`useFormStatus()` for Server Action form buttons:** submit buttons in Server Action forms use `useFormStatus()` from `react-dom` (not local React state) to track pending state. The button must be a separate `'use client'` component (see `sign-in/submit-button.tsx`). Inline Server Actions can be defined directly in a form's `action` prop with an `async () => { 'use server'; ... }` function for simple cases that don't need export.
+- **`useTransition()` for non-form Server Action calls:** when a Client Component invokes a Server Action outside a `<form>` (no `useFormStatus` available), use `useTransition()` for pending state and disable the trigger while `isPending`. Note: `useTransition` swallows thrown errors from the Server Action — wrap the call in try/catch and surface a user-facing message in state (see `CredentialErrorBanner.tsx` for the canonical pattern).
+- **`try/finally` for guaranteed side effects after a `useTransition` Server Action:** when a side effect must run regardless of whether the action throws (e.g. `router.refresh()` to re-render a Server Component with fresh Postgres data after a sync), use `try { await action() } finally { sideEffect() }` — `useTransition` swallows thrown errors so `catch` never runs, only `finally` guarantees the side effect. Appropriate when the UX defines no error state for the action (the Server Component's own data read surfaces failures via `error.tsx`). See `RefreshButton.tsx` (Story 2.3).
 - **Conditional app shell (onboarding-gated):** the `(dashboard)/layout.tsx` is an auth-only guard that renders bare `<>{children}</>` for authenticated users. Repo-connection-required pages (`/project-map`, `/artifacts`, `/conversations`, `/settings`) live under a nested `(dashboard)/(app)/` route group whose `layout.tsx` guards on `RepoConnection`: no connection → redirect to `/onboarding`, connection exists → render `<AppShell>`. `/onboarding` stays under `(dashboard)/` directly (outside the `(app)/` guard) so it renders without a redirect loop. New repo-connection-required pages go under `(app)/`; new non-guarded pages go directly under `(dashboard)/`.
 - **Route-focus management:** `AppShell` moves focus to `h1` on every route change (sets `tabindex="-1"` dynamically, `focus({ preventScroll: true })`). If no `h1` exists at effect time (e.g. behind a Suspense boundary), focus lands on the first interactive element and a `MutationObserver` keeps watching for a late-mounting `h1`. New pages must render an `<h1>` for this to work.
+- **`loading.tsx` / `error.tsx` convention files:** every route with server-side data fetching gets a co-located `loading.tsx` (Next.js renders it automatically while the Server Component executes) and `error.tsx` (Client Component error boundary with `reset()`). Skeletons must match real content dimensions (e.g. `h-14 animate-pulse` cards) and must NOT render runtime-state-dependent elements (credential banner, refresh button) — those belong to the page, not the loading state.
+- **`error.tsx` must render `<h1>` and cannot import Server Components:** the error boundary replaces page content, so it renders its own `<h1>` as a plain string (`Breadcrumb` is a Server Component — cannot be imported into the Client Component `error.tsx`). Without the h1, `AppShell` route-focus management has no target. Follow the canonical structure in `project-map/error.tsx` (full page shell, centered message, Refresh button with `ring-offset-surface`).
+- **Sync-on-first-visit-when-empty for artifact-reading pages:** pages reading the mirrored `Artifact` table sync from GitHub when Postgres is empty (`if (artifacts.length === 0 && !credentialFailed) { await syncArtifactsAction(); ... }`), so data is available regardless of entry point. Skip when credential is already failed. Established in `project-map/page.tsx` (Story 2.2), repeated in `artifacts/page.tsx` (Story 2.4).
+- **`Intl.DateTimeFormat` with `timeZone: 'UTC'` for database-sourced dates:** Postgres stores dates as UTC; without `timeZone: 'UTC'`, non-UTC servers shift the display by a day. Always pass it in Server Components (see `ArtifactListEntry.tsx` — caught as a review fix in Story 2.4).
+- **`searchParams` is a `Promise` in Next.js 16:** page components reading query params type `searchParams: Promise<{ key?: string }>` and `await` it (Next.js 16 breaking change from 14/15 where it was synchronous). In tests, pass `Promise.resolve(searchParams ?? {})` (see `sign-in/page.test.tsx`, `artifacts/page.test.tsx` — Story 2.5).
+- **`typeof` guard on `searchParams` values:** Next.js types query params as `string | string[] | undefined` — `?id=a&id=b` yields `string[]`, which crashes Prisma's `where` with a 500. Always guard: `typeof idParam === 'string' ? idParam : null` (caught as a review fix in Story 2.5).
+- **`router.refresh()` for pure Server Component re-render:** when a Client Component only needs to re-render the Server Component (re-read Postgres) without a mutation, call `router.refresh()` directly — no `useTransition` needed (no async Server Action to track). Distinguished from `useTransition` + Server Action (Story 2.3's `RefreshButton`) for mutation-then-refresh. See `ArtifactLoadError.tsx` (Story 2.5).
+- **Markdown rendering in Server Components:** use `react-markdown`'s synchronous `Markdown` component (default export, hook-free — works in Server Components; only `MarkdownHooks` uses hooks) + `remark-gfm`. Style via the `components` prop — each override is a function component that destructures `node` (prefix `_`) and spreads remaining props. Do NOT install `@tailwindcss/typography`. For `code` elements, destructure `className` and merge with `cn()` so react-markdown's `language-*` classes survive alongside styling — without this, fenced code blocks lose their `language-*` className (caught as a review fix in Story 2.5). See `ArtifactViewer.tsx`; Epic 3 agent messages will reuse this pattern.
+- **Clickable display component pattern:** make the display component itself a `<Link>` (root element `<div>` → `<Link>`), receiving a pre-constructed `href: string` prop (not an `id`) so the page owns URL construction and the component stays routing-agnostic. Established in `ArtifactListEntry` (Story 2.5), repeated in `ArtifactCard` (Story 2.6). Supersedes the `architecture.md` `ArtifactAccessLink` wrapper suggestion — a separate wrapper component adds indirection for no benefit.
 
 #### NestJS (apps/agent-be)
 
@@ -118,6 +130,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Migrations** run from `libs/database-schemas` against the shared Postgres instance.
 - **No caching layer for database reads** for MVP. No React Query/SWR. Direct Prisma reads.
 - **Bounded in-memory cache exception:** expensive external API calls (e.g. GitHub Contents API) may use a module-level `Map` cache with these guardrails: FIFO eviction at a max-entries cap (500), TTL expiry (120s), only successful results cached, and explicit invalidation hooks. Never cache database reads — only external API results.
+- **Transaction-wrapped multi-write syncs:** when a sync/mirror operation performs multiple dependent writes (e.g. an upsert loop followed by a stale-cleanup `deleteMany`), wrap them in `getPrisma().$transaction()` so a mid-sync failure rolls back the entire batch — no partial state. Established in `apps/web/src/lib/artifacts.ts` (`syncArtifacts`).
+- **Full-sync stale cleanup:** for mirror operations that reconcile an external source into Postgres (upsert-all + delete-missing), run the `deleteMany({ where: { path: { notIn } } })` only after a fully successful scan — partial data is better than missing data. Build the `notIn` set from the source listing (what should exist), not from successfully-fetched records, so a transient fetch failure on one file doesn't delete its row.
+- **`findFirst` for tenant-scoped lookup by non-unique compound fields:** `findUnique({ where: { id, repoConnectionId } })` is a type error when no `@@unique` covers the compound — use `findFirst({ where: { id, repoConnectionId } })`. The `repoConnectionId` filter IS the tenant authorization check; never use `findUnique({ where: { id } })` without it. `findFirst` returns `null` when not found (satisfies "not found" UI states). See `artifacts/page.tsx` (Story 2.5).
 
 #### shadcn/ui + Tailwind
 
@@ -125,6 +140,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `cn()` helper in `apps/web/src/lib/utils.ts` (clsx + tailwind-merge) — always use for conditional class merging.
 - Design tokens are custom dark-first colors defined in `tailwind.config.ts` (`bg`, `surface`, `surface-raised`, `border`, `text-1/2/3`, `accent`, `positive`, `caution`, `negative`). Use semantic token names, never raw hex values.
 - Font: Inter (sans), JetBrains Mono (mono).
+- **Standard focus ring classes:** `focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface` — the canonical visible-focus styling for every focusable interactive element (UX-DR16). Used across `ArtifactListEntry`, `ArtifactCard`, `RefreshButton`, sign-in submit button. Apply verbatim to new focusable elements.
 
 #### GitHub API Integration
 
@@ -161,12 +177,17 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **SandboxServiceFake** (`apps/agent-be/test/helpers/sandbox-service.fake.ts`) is the canonical test double for all Conversation-path tests. Inject via `buildTestModule()` from `test-module-builder.ts` which wires the fake through the `SANDBOX_SERVICE` DI token.
 - **`buildTestModule()` is the canonical NestJS test module factory** (`apps/agent-be/test/helpers/test-module-builder.ts`). It augments NestJS's `TestingModuleBuilder` prototype with an `overrideProviders(array)` method (plural — NestJS only provides singular `overrideProvider`). Always use `buildTestModule(imports, overrides)` instead of manually calling `Test.createTestingModule()` — it pre-wires the `SandboxServiceFake` and supports array-form provider overrides.
 - **Prisma mocking:** mock `getPrisma()` to return an object with the needed model methods: `jest.mock('@/lib/prisma', () => ({ getPrisma: () => ({ repoConnection: { upsert: mockUpsert } }) }))`.
+- **Server Component page tests:** call the async component function directly (`const element = await ProjectMapPage()`), then `renderToStaticMarkup(element)` from `react-dom/server`, and assert on the HTML string. Mock child components as render stubs returning identifiable strings (e.g. `ArtifactCard:${type}:${title}:${status}`) to isolate the page test from child logic. Use `@jest-environment node` (see `project-map/page.test.tsx` for the canonical pattern).
+- **Suppress `console.error` when testing `useTransition` throw-cases:** when a test mocks a Server Action to reject and the component calls it inside `useTransition`, React logs the swallowed rejection to `console.error` and the unhandled rejection can leak across tests (order-dependent failures). Wrap the test with `jest.spyOn(console, 'error').mockImplementation(() => undefined)` (restore in the same test) to keep output clean and tests hermetic. See `RefreshButton.test.tsx` (Story 2.3).
+- **ESM default-export mocks:** when mocking a module that exports its main binding as a default export (e.g. `react-markdown` v10), the mock must use `{ __esModule: true, default: ... }` — a named-export mock (`{ Markdown: ... }`) won't match `import Markdown from 'react-markdown'`. Validation catch in Story 2.5.
+- **`role="listitem"` on `<Link>`/`<a>` overrides implicit `link` role in tests:** query with `screen.getByRole('listitem')`, NOT `getByRole('link')` — the explicit role wins over the `<a>`'s implicit one, so `getByRole('link')` fails at runtime. Then assert `item.tagName === 'A'` and `item` has the `href` attribute. Applies to `ArtifactListEntry` and `ArtifactCard` (both put `role="listitem"` on a `<Link>`).
 
 #### Coverage Expectations
 
 - No hard coverage percentage threshold, but P0 tests must cover all acceptance criteria from the story spec.
 - ATDD pattern: tests are written first (red phase), often skipped with `test.skip()` until implementation lands. Remove skips one describe-block at a time per task.
 - Credential health flip tests must prove the status actually changed within one operation cycle (not just that `markCredentialFailed` was called) — use `setImmediate` to make the flip genuinely async and assert the post-action state.
+- **`loading.tsx` skeletons are tested:** render the loading component, assert the `<h1>` (route-focus management), assert skeleton structure/count, and assert no runtime-state-dependent elements render. See `project-map/loading.test.tsx` and `artifacts/loading.test.tsx` (Story 2.4 — added after the ATDD checklist incorrectly accepted the loading skeleton as untested).
 
 #### Playwright (E2E)
 
@@ -287,6 +308,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **GitHub 403 without rate-limit signal:** `INSUFFICIENT_PERMISSION` — token is valid, access denied. Do NOT mark credential as failed.
 - **Missing `permissions` field** in GitHub API response: treat as `INSUFFICIENT_PERMISSION` (GitHub may omit permissions for org-member access).
 - **Credential health flip timing:** `markCredentialFailed` must be awaited (not fire-and-forget) so the health status flips within one operation cycle. Tests use `setImmediate` to prove this.
+- **`markCredentialFailed` in error paths:** when called inside a `catch` block, guard with `.catch()` so a marking failure doesn't turn a handled error into an unhandled throw (and the Server Action still returns its clean error union). Await directly in normal try-block flow. Consistent across `repo-connection.actions.ts`, `repository-validation.actions.ts`, `artifacts.actions.ts`.
 - **Optimistic concurrency in `markCredentialFailed`:** capture a `capturedAt` timestamp BEFORE the external GitHub call, then pass it to `markCredentialFailed(userId, capturedAt)`. The write only applies if `updatedAt < capturedAt` (strict less-than — `lt`, not `lte`) — prevents a stale `failed` write from clobbering a concurrent re-authorization that bumped the status to `healthy` even in the same millisecond. This is the canonical pattern for any write that competes with a concurrent healthy-state writer.
 - **Sandbox initialization sequence (ordered):** provision → clone (or restore on resume) → inject per-user git config → run `git status --porcelain` → emit `WORKING_TREE_*` event → emit `SESSION_READY`. Git config injection must occur at every provision AND every resume.
 - **Failed `SandboxService.provision()`:** any partial Daytona allocation must be torn down — never leave orphaned sandboxes.
@@ -309,4 +331,4 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Review quarterly for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-07-02
+Last Updated: 2026-07-04

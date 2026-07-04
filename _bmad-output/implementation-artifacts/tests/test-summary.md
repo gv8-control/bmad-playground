@@ -1,6 +1,6 @@
 # Test Automation Summary
 
-**Last updated:** 2026-07-01
+**Last updated:** 2026-07-03
 
 ---
 
@@ -398,3 +398,583 @@ yarn playwright test playwright/e2e/shell/app-shell.spec.ts --project=chromium
 - When Story 2.2 (Project Map) replaces the placeholder page, extend the three-zone scroll test with long content to verify the content pane scrolls independently while the header and side nav stay fixed
 - When Story 3.2 populates the conversation list, replace the "empty conversation list" test with coverage for the last-5-conversations rendering and active conversation highlighting
 - Run the full E2E suite to confirm no cross-spec isolation regressions between the shell tests and the onboarding/auth suites (which share the same synthetic E2E user)
+
+---
+
+## Story 2.1: Mirror Repository Artifacts into Postgres
+
+**Reviewed:** 2026-07-03
+**Story status:** in-progress
+**Decision:** No E2E or API tests generated
+
+### Rationale
+
+Story 2.1 has no testable surface for E2E or API automation:
+
+| Check | Result |
+|---|---|
+| UI components calling `syncArtifactsAction` / `syncArtifacts` | None — grep of `apps/web/src/**/*.tsx` returned zero matches |
+| HTTP API endpoint | None — `syncArtifactsAction` is a Next.js Server Action, not a REST endpoint. The story dev notes state: "This Server Action is the manual-refresh entry point (Story 2.3 will call it from the refresh button). The page-load entry point (Story 2.2) will call `syncArtifacts` directly from a Server Component" |
+| Page-load trigger | Not wired — Story 2.2 delivers the page-load trigger |
+| Manual-refresh button | Not wired — Story 2.3 wires the refresh button to `syncArtifactsAction` |
+| Story scope | "No changes to: Any UI component (Stories 2.2-2.6)" |
+| Playwright E2E directories | `auth`, `conversation`, `onboarding`, `project-map`, `shell` — no artifacts-mirroring surface |
+| TEA validation report | `automate-validation-report-2-1.md` confirms: "Playwright configured but not applicable to this story (no UI surface)" |
+
+The `syncArtifacts` lib function and `syncArtifactsAction` Server Action are consumed by **Story 2.2** (page-load trigger from a Server Component) and **Story 2.3** (manual-refresh button). E2E coverage for the artifact sync flow naturally belongs in those stories, where the UI surface is delivered.
+
+### Existing Coverage (Complete)
+
+All seven acceptance criteria are already covered by passing unit tests:
+
+| Level | File | Tests | ACs Covered |
+|---|---|---|---|
+| Unit | `apps/web/src/lib/artifacts.spec.ts` | 24 | AC-1, AC-3, AC-4, AC-5, AC-6, AC-7 |
+| Integration | `apps/web/src/actions/artifacts.actions.spec.ts` | 11 | AC-1, AC-6, AC-7 |
+
+**Total: 35 tests, all passing. Full suite: 359 tests pass.**
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Test Level | Test File(s) |
+|---|---|---|---|
+| AC-1 | Page-load / manual-refresh mirroring scans `_bmad-output/` and upserts artifact metadata + content | Unit + Integration | `artifacts.spec.ts` (happy path: 3 files with frontmatter/heading/path-derived titles, verifies upsert shape + return value); `artifacts.actions.spec.ts` (Server Action delegation with correct args, `.git`/trailing-slash stripping) |
+| AC-2 | Commit-time mirroring mechanism (wired in Epic 3) | N/A | No code to test this story — Epic 3 wires the commit-time trigger. The Prisma model + upsert signature support it without schema changes |
+| AC-3 | No real-time push detection | N/A | Negative design constraint — inherent in the design (no webhook listener). No test needed |
+| AC-4 | Prisma schema extension with migration | Unit | `artifacts.spec.ts` (empty `_bmad-output/`: 0 upserts + stale cleanup; missing `_bmad-output/` 404: 0 upserts, no throw, stale cleanup) |
+| AC-5 | Stale artifact cleanup | Unit | `artifacts.spec.ts` (verifies `deleteMany` called with `{ where: { repoConnectionId, path: { notIn: [scannedPaths] } } }` after successful scan) |
+| AC-6 | Credential failure handling (401) | Unit + Integration | `artifacts.spec.ts` (401 from root + 401 from file content both throw `CredentialFailureError`); `artifacts.actions.spec.ts` (Server Action catches `CredentialFailureError`, calls `markCredentialFailed`, returns `NO_CREDENTIAL`) |
+| AC-7 | Rate-limit and 403 handling | Unit + Integration | `artifacts.spec.ts` (primary rate limit 403 throws `RateLimitError`; non-rate-limit 403 skips subdirectory, scans remaining); `artifacts.actions.spec.ts` (Server Action returns `RATE_LIMITED`) |
+
+### Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (`syncArtifactsAction` is a Server Action, not a REST endpoint)
+- [x] E2E tests generated (if UI exists) — N/A: no UI surface exists (Stories 2.2-2.6 deliver the UI)
+- [x] Tests cover happy path — covered by existing unit tests (3-file happy path with title extraction strategies)
+- [x] Tests cover 1-2 critical error cases — covered by existing unit/integration tests (401 credential failure, 403 rate limit, 403 non-rate-limit, missing `_bmad-output/`, missing repo connection, missing session, invalid repo URL)
+- [x] Test summary created — this document
+- [x] All existing tests run successfully — 359 tests pass (verified via `yarn nx test web`)
+
+### Next Steps
+
+- No action required for Story 2.1
+- When Story 2.2 (View the Project Map) is implemented, add E2E coverage for:
+  - Page-load artifact sync trigger (Server Component calls `syncArtifacts` on render)
+  - Project Map rendering artifact data from Postgres
+  - Credential Error Banner display when sync returns `NO_CREDENTIAL`
+  - Rate-limit notice when sync returns `RATE_LIMITED`
+- When Story 2.3 (Manual Refresh) is implemented, add E2E coverage for:
+  - Refresh button triggers `syncArtifactsAction`
+  - Loading state during sync
+  - Success/error toast after sync completes
+
+---
+
+## Story 2.2: View the Project Map
+
+**Generated:** 2026-07-03
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### E2E Tests (Playwright)
+
+- [x] [playwright/e2e/project-map/project-map.spec.ts](../../../playwright/e2e/project-map/project-map.spec.ts) — Project Map user journey: artifact cards, in-progress distinction, empty state, credential banner, load time (5 tests)
+
+The story shipped with 3 E2E tests that were all `test.skip()` placeholders (ATDD red phase). This pass replaced them with 5 real, passing tests covering all 5 ACs. The previously skipped tests required an artifact-seeding mechanism that didn't exist — this pass created it (internal test API route + `withArtifacts` fixture).
+
+#### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| Project Map loads within 2 seconds | AC-5 | P0 | NFR-P3: page load (heading visible) completes in under 2s with seeded artifacts (no GitHub sync triggered) |
+| Authenticated user sees artifact cards on /project-map | AC-1 | P0 | FR6: 3 artifact cards render with type labels (PRD, Architecture, Epics) and titles |
+| In-progress and completed artifacts show text labels — not color alone | AC-2 | P0 | UX-DR16: both "In progress" and "Completed" text badges are visible (state signaled by text, not color alone) |
+| Credential error banner appears when credential is missing | AC-4 | P0 | UX-DR10: banner text "Your repository connection needs attention." and "Update access token" link render when sync returns NO_CREDENTIAL |
+| Empty state prompt is visible when no artifacts are available | AC-3 | P1 | UX-DR19: "Start your first conversation to create an artifact." prompt renders when no artifacts exist |
+
+### Unit Tests (Jest)
+
+- [x] [apps/web/src/app/api/internal/test/artifacts/route.test.ts](../../../apps/web/src/app/api/internal/test/artifacts/route.test.ts) — internal test API route for artifact seeding (8 tests)
+
+#### Test Inventory
+
+| Test | Priority | Description |
+|---|---|---|
+| POST creates artifacts and returns 200 with ids | P0 | Route seeds Artifact rows via `$transaction` and returns created ids |
+| POST calls $transaction with create operations | P0 | Each artifact in the request body maps to a `prisma.artifact.create` call |
+| POST defaults status to "completed" when omitted | P1 | Missing status field defaults to "completed" |
+| POST passes through explicit status and lastModifiedAt | P1 | Explicit `in-progress` status, `lastModifiedAt`, and `content` are passed through correctly |
+| POST returns 404 in production | P0 | Route is non-functional when NODE_ENV=production |
+| DELETE deletes artifacts by repoConnectionId | P0 | Route deletes all artifacts for a connection and returns `{ ok: true }` |
+| DELETE calls deleteMany with correct where clause | P0 | `deleteMany` called with `{ where: { repoConnectionId } }` |
+| DELETE returns 404 in production | P0 | Route is non-functional when NODE_ENV=production |
+
+---
+
+## Test Infrastructure Created
+
+### Internal Test API Route: `/api/internal/test/artifacts`
+
+- **POST** — seeds Artifact rows for a RepoConnection (used by `withArtifacts` fixture)
+- **DELETE** — removes all Artifact rows for a RepoConnection (fixture teardown)
+- Follows the exact pattern of existing test routes (`seed-user`, `repo-connections`): `TEST_ENV` guard, Prisma direct access, JSON responses
+- Unit tested with 8 tests (5 POST + 3 DELETE)
+
+### Playwright Fixture: `withArtifacts`
+
+- Added to `playwright/support/custom-fixtures.ts`
+- Depends on `withRepoConnection` (which was updated to expose `{ connectionId }`)
+- Seeds 3 artifacts (PRD/completed, Architecture/in-progress, Epics/completed) via the internal test API
+- Cleans up artifacts in `finally` block (also cascade-deleted when RepoConnection is deleted)
+- Enables E2E tests to verify artifact rendering without triggering a real GitHub sync
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| E2E | `project-map.spec.ts` | 5 | 5 | 0 | **ALL PASSING** |
+| Unit | `artifacts/route.test.ts` | 8 | 8 | 0 | **ALL PASSING** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | E2E Test(s) | Unit/Component Tests |
+|---|---|---|---|
+| AC-1 | Artifact list with cards (FR6, UX-DR11) | Authenticated user sees artifact cards on /project-map | `ArtifactCard.test.tsx` (5), `page.test.tsx` (PAGE-01) |
+| AC-2 | In-progress visual distinction (UX-DR11, UX-DR16) | In-progress and completed artifacts show text labels — not color alone | `ArtifactCard.test.tsx` (CARD-02, CARD-05) |
+| AC-3 | Empty state (UX-DR19) | Empty state prompt is visible when no artifacts are available | `page.test.tsx` (PAGE-02, PAGE-03) |
+| AC-4 | Credential error banner (UX-DR10) | Credential error banner appears when credential is missing | `CredentialErrorBanner.test.tsx` (6), `page.test.tsx` (PAGE-04, PAGE-05, PAGE-06) |
+| AC-5 | Loading skeleton and performance (NFR-P3) | Project Map loads within 2 seconds | `loading.test.tsx` (4) |
+
+---
+
+## Test Execution
+
+```bash
+yarn test:e2e --grep "Story 2.2" --workers=1
+```
+
+```
+  6 passed (14.8s)   [5 project-map tests + 1 auth setup]
+```
+
+```bash
+yarn nx test web --testPathPattern="api/internal/test/artifacts"
+```
+
+```
+  8 passed
+```
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — 8 unit tests for the internal test API route (`/api/internal/test/artifacts`)
+- [x] E2E tests generated (if UI exists) — 5 tests in `project-map.spec.ts` covering all 5 ACs
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from project's merged-fixtures; Jest for unit tests
+- [x] Tests cover happy path — artifact cards visible (AC-1), page loads within 2s (AC-5)
+- [x] Tests cover 1-2 critical error cases — credential error banner (AC-4), empty state (AC-3)
+- [x] All generated tests run successfully — 5/5 E2E pass, 8/8 unit tests pass
+- [x] Tests use proper locators (semantic, accessible) — `getByRole('heading')`, `getByRole('listitem')`, `getByText`, `getByRole('link')`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
+- [x] No hardcoded waits or sleeps — all assertions use Playwright auto-waiting
+- [x] Tests are independent (no order dependency) — `test.describe.configure({ mode: 'serial' })` manages shared user state; each test seeds/cleans its own data via fixtures
+- [x] Test summary created — this document
+- [x] Tests saved to appropriate directories — `playwright/e2e/project-map/`, `apps/web/src/app/api/internal/test/artifacts/`
+
+### Next Steps
+
+- ~~When Story 2.3 (Manual Refresh) is implemented, add E2E coverage for the refresh button triggering `syncArtifactsAction` and the loading spinner~~ — **Done (ATDD red-phase, see Story 2.3 section below)**
+- ~~When Story 2.6 (Card Click Navigation) is implemented, add E2E coverage for clicking an artifact card navigating to the Artifact Browser~~ ✅ Done (see Story 2.6 section — `navigate-to-artifact.spec.ts`)
+- Consider adding a real GitHub credential E2E test path (with `TEST_GITHUB_USERNAME`/`TEST_GITHUB_PASSWORD`) to test the pure empty state (sync succeeds with no `_bmad-output/` content) — currently the empty state E2E test runs via the NO_CREDENTIAL sync failure path
+
+---
+
+## Story 2.3: Manually Refresh the Project Map
+
+**Generated:** 2026-07-03
+**Story status:** in-progress
+
+---
+
+## Generated Tests
+
+### E2E Tests (Playwright)
+
+- [ ] [playwright/e2e/project-map/project-map-refresh.spec.ts](../../../playwright/e2e/project-map/project-map-refresh.spec.ts) — manual refresh user journey: button visibility, spinner during sync, mirroring mechanism trigger, page re-render, button re-enable (5 tests, all skipped — ATDD red phase)
+
+The RefreshButton component exists (Task 1 done, 7 component tests passing) but is not yet wired to the Project Map page header (Task 2 not started). These E2E tests are written in ATDD red-phase (`test.skip()`) following the project convention: *"tests are written first (red phase), often skipped with `test.skip()` until implementation lands. Remove skips one-by-one per task."* Once Task 2.1 adds `<RefreshButton />` to `page.tsx`, remove the `.skip` markers.
+
+#### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| refresh button is visible on the Project Map page | AC-1 | P0 | Button with aria-label="Refresh Project Map" renders in the page header (depends on Task 2.1) |
+| clicking refresh shows spinner and disables button during sync | AC-1 | P0 | Server Action POST mocked with delayed response; spinner (animate-spin) visible and button disabled during sync |
+| clicking refresh calls syncArtifactsAction — the mirroring mechanism | AC-1 | P0 | FR7: POST with Next-Action header intercepted, verifying the Story 2.1 mirroring mechanism is triggered |
+| page re-renders with fresh data after refresh completes | AC-1 | P0 | After sync, router.refresh() re-renders the Server Component; artifacts still visible from Postgres |
+| refresh button re-enables after sync completes | AC-1 | P1 | isPending flips to false; button re-enables after sync resolves |
+
+### Existing Component Tests (No Changes)
+
+- [x] [apps/web/src/components/project-map/RefreshButton.test.tsx](../../../apps/web/src/components/project-map/RefreshButton.test.tsx) — 7 tests covering AC-1 at the component level (4 P0, 3 P1), all passing
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| E2E | `project-map-refresh.spec.ts` | 5 | 0 | 5 | **RED PHASE (all skipped)** |
+| Component | `RefreshButton.test.tsx` | 7 | 7 | 0 | **ALL PASSING** (existing) |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | E2E Test(s) | Component Tests |
+|---|---|---|---|
+| AC-1 | Manual refresh re-reads via mirroring mechanism with spinner (FR7) | All 5 tests (skipped — pending Task 2) | `RefreshButton.test.tsx` (7 tests: aria-label, sync call, spinner, router.refresh, error/throw paths, re-enable) |
+| AC-2 | Refresh does not interrupt active Conversations | N/A — architectural invariant (no test needed, per story dev notes) | N/A |
+
+---
+
+## Test Execution
+
+```bash
+yarn playwright test playwright/e2e/project-map/project-map-refresh.spec.ts --reporter=list
+```
+
+```
+  5 skipped
+  1 passed (10.5s)   [1 auth setup]
+```
+
+---
+
+## E2E Test Approach: Server Action Mocking
+
+All E2E tests mock the `syncArtifactsAction` Server Action response using `page.route()` to intercept POST requests to `/project-map` bearing the `Next-Action` header. The mock returns a React Flight (RSC) wire-format payload matching the Next.js 16 format (same pattern as `bmad-validation.spec.ts`):
+
+```
+0:{"a":"$@1","f":"","b":"development","q":"","i":false}
+1:D{"time":0.5}
+1:{"success":true,"artifactsUpserted":2,"artifactsDeleted":0}
+```
+
+The `withArtifacts` fixture seeds Artifact rows in Postgres so the page renders with data without triggering a real GitHub sync. The mocked Server Action response simulates a successful sync without modifying Postgres — `router.refresh()` then re-renders the page from the existing seeded data.
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (`syncArtifactsAction` is a Server Action, not a REST endpoint)
+- [x] E2E tests generated (if UI exists) — 5 tests in `project-map-refresh.spec.ts` (ATDD red-phase, skipped pending Task 2)
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from project's merged-fixtures
+- [x] Tests cover happy path — refresh button visible, clicking triggers sync, page re-renders with data
+- [x] Tests cover 1-2 critical error cases — spinner/disabled state during sync, button re-enable after completion
+- [x] All generated tests run successfully — 5/5 properly skipped (ATDD red phase), 1 auth setup passed
+- [x] Tests use proper locators (semantic, accessible) — `getByRole('button', { name: /refresh project map/i })`, `toHaveClass(/animate-spin/)`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
+- [x] No hardcoded waits or sleeps — only the delayed Server Action mock uses `setTimeout` to keep `isPending` true for assertion
+- [x] Tests are independent (no order dependency) — `test.describe.configure({ mode: 'serial' })` manages shared user state; each test seeds/cleans its own data via `withArtifacts` fixture
+- [x] Test summary created — this document
+- [x] Tests saved to appropriate directories — `playwright/e2e/project-map/`
+
+### Next Steps
+
+- When Task 2.1 (add `<RefreshButton />` to `page.tsx` header) is implemented, remove the `.skip` markers from all 5 tests and verify they pass
+- When Task 2.2 (add `RefreshButton` mock stub + "renders RefreshButton in header" test to `page.test.tsx`) is implemented, the page-level integration test will complement these E2E tests
+- Consider adding a test for the `NO_CREDENTIAL` error path: mock sync returning `{ error: '...', errorCode: 'NO_CREDENTIAL' }`, verify the CredentialErrorBanner appears after refresh
+
+---
+
+## Story 2.4: Browse and Read All Committed Artifacts
+
+**Generated:** 2026-07-03
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### E2E Tests (Playwright)
+
+- [x] [playwright/e2e/artifact-browser/artifact-browser.spec.ts](../../../playwright/e2e/artifact-browser/artifact-browser.spec.ts) — Artifact Browser user journey: flat list, sort order, flat (ungrouped) layout, entry metadata, accessible list, credential banner, empty state (9 tests)
+
+The story shipped with 25 unit/component tests (9 `ArtifactListEntry` + 13 `page` + 3 `loading`). This pass added 9 E2E tests covering the user-facing ACs end-to-end. No API tests were generated — Story 2.4 has no HTTP API endpoint (the Artifact Browser is a pure `apps/web` Server Component page reading Postgres via Prisma; `syncArtifactsAction` is a Server Action, not a REST endpoint).
+
+#### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| Authenticated user sees the Artifact Browser heading and breadcrumb | AC-1 | P0 | h1 "Artifact Browser" and "← Project Map" breadcrumb render on /artifacts |
+| Artifact list entries are visible on /artifacts | AC-1 | P0 | FR16: 3 list items render with seeded titles (PRD, Architecture, Epics) |
+| List is sorted by last-modified date descending | AC-1 | P0 | FR16/UX-DR12: entries appear in lastModifiedAt desc order (Architecture Jul 2 → PRD Jul 1 → Epics Jun 28) |
+| List is flat — completed and in-progress artifacts are mixed, not grouped | AC-1 | P0 | UX-DR12: in-progress Architecture sits above completed PRD, proving no status sectioning |
+| Each entry shows type label, title, status badge, and formatted date | AC-1 | P0 | UX-DR16: type labels (Architecture, PRD), text status badges, and Intl-formatted dates (Jul 2, Jul 1, Jun 28) render |
+| List container exposes role="list" with an accessible label | AC-1 | P0 | UX-DR16: `role="list"` with `aria-label="Artifact list"` holds the 3 list items |
+| Credential error banner appears when credential is missing | AC-3 | P0 | UX-DR10: "Your repository connection needs attention." text and "Update access token" link render when sync returns NO_CREDENTIAL |
+| Empty state prompt is visible when no artifacts are available | AC-1 | P1 | UX-DR19: "Start your first conversation to create an artifact." renders when no artifacts exist |
+| Skeleton loader while loading (AC-2) | AC-2 | — | Covered at unit level by `loading.test.tsx` (3 tests). Not E2E-tested — see note below |
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| E2E | `artifact-browser.spec.ts` | 9 | 9 | 0 | **ALL PASSING** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | E2E Test(s) | Unit/Component Tests |
+|---|---|---|---|
+| AC-1 | Full-width flat list sorted by last-modified descending | heading + breadcrumb; list entries visible; sorted descending; flat (ungrouped); entry metadata; accessible list container; empty state | `ArtifactListEntry.test.tsx` (9), `page.test.tsx` (13) |
+| AC-2 | Skeleton loader while loading | (unit-level only — see note) | `loading.test.tsx` (3) |
+| AC-3 | Credential Error Banner when credential failed | credential error banner appears when credential is missing | `page.test.tsx` (PAGE credential banner tests) |
+
+### AC-2 Note: Why no E2E test for the loading skeleton
+
+App Router streams `loading.tsx` as part of the HTML response while the Server Component executes. An E2E assertion would require blocking the document response to observe the skeleton before content resolves — but blocking the response prevents `page.goto()` from resolving (it waits for the `load` event), producing a flaky test. The `project-map` suite follows the same convention (no E2E test for `loading.tsx`); the skeleton is covered by the co-located unit test `loading.test.tsx` (3 tests, added during Story 2.4 automate validation).
+
+---
+
+## Test Execution
+
+```bash
+npx playwright test playwright/e2e/artifact-browser/ --reporter=list
+```
+
+```
+  9 passed (16.0s)
+```
+
+Typecheck: `npx tsc --noEmit -p apps/web/tsconfig.json` — clean.
+
+---
+
+## E2E Test Approach
+
+- **Fixtures:** tests use the existing `withArtifacts` and `withRepoConnection` fixtures from `playwright/support/custom-fixtures.ts`. `withArtifacts` seeds 3 Artifact rows (PRD/completed Jul 1, Architecture/in-progress Jul 2, Epics/completed Jun 28) so the list renders without triggering a real GitHub sync. `withRepoConnection` (no OAuthCredential row) drives the AC-3 credential-banner path: `syncArtifactsAction` returns `NO_CREDENTIAL` → `credentialFailed` flips true → banner renders.
+- **Selectors:** `getByRole` and `getByText` only (no CSS classes or XPath), per the selector-resilience hierarchy. The breadcrumb link is scoped to its exact accessible name `← Project Map` because the side nav also links to `/project-map`.
+- **Serial mode:** `test.describe.configure({ mode: 'serial' })` manages the shared synthetic E2E user's `RepoConnection` state sequentially.
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (Artifact Browser is a pure Server Component page; `syncArtifactsAction` is a Server Action, not a REST endpoint)
+- [x] E2E tests generated (if UI exists) — 9 tests in `artifact-browser.spec.ts` covering AC-1 and AC-3; AC-2 covered at unit level
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from the project's merged-fixtures
+- [x] Tests cover happy path — list renders with seeded artifacts, sorted descending, flat layout, entry metadata visible
+- [x] Tests cover 1-2 critical error cases — credential error banner (AC-3), empty state
+- [x] All generated tests run successfully — 9/9 pass
+- [x] Tests use proper locators (semantic, accessible) — `getByRole('heading')`, `getByRole('listitem')`, `getByRole('list', { name })`, `getByText`, `getByRole('link')`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
+- [x] No hardcoded waits or sleeps — all assertions use Playwright auto-waiting
+- [x] Tests are independent (no order dependency) — `test.describe.configure({ mode: 'serial' })`; each test seeds/cleans its own data via fixtures
+- [x] Test summary created — this document
+- [x] Tests saved to appropriate directories — `playwright/e2e/artifact-browser/`
+
+### Next Steps
+
+- ~~When Story 2.5 (Click-to-Select + Markdown Rendering) is implemented, add E2E coverage for: clicking a list entry narrows the list to 280px and renders the artifact's Markdown content in the detail pane; keyboard navigation between entries~~ — **Done (see Story 2.5 section below)**
+- ~~When Story 2.6 (Card Click Navigation from Project Map) is implemented, add E2E coverage for: clicking an Artifact Card on /project-map navigates to /artifacts with that artifact pre-selected~~ ✅ Done (see Story 2.6 section — `navigate-to-artifact.spec.ts`)
+
+---
+
+## Story 2.5: View a Single Artifact's Rendered Content
+
+**Generated:** 2026-07-03
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### E2E Tests (Playwright)
+
+- [x] [playwright/e2e/artifact-browser/artifact-viewer.spec.ts](../../../playwright/e2e/artifact-browser/artifact-viewer.spec.ts) — Two-column Artifact Browser with rendered Markdown content: click-to-select, Markdown rendering (headings, lists, tables, code blocks, bold, italic), read-only view, frontmatter stripping, load error state, Refresh button, browser back navigation, breadcrumb (10 tests)
+
+The story shipped with 53 unit/component tests (8 `ArtifactViewer` + 4 `ArtifactLoadError` + 16 `ArtifactListEntry` + 22 `page` + 3 `loading`). This pass added 10 E2E tests covering the user-facing ACs end-to-end. No API tests were generated — Story 2.5 has no HTTP API endpoint (the Artifact Browser is a pure `apps/web` Server Component page reading Postgres via Prisma).
+
+#### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| Clicking an artifact entry shows the two-column layout with list and content pane | AC-1 | P0 | FR16/UX-DR12: navigating to /artifacts?id={id} renders the two-column layout — list pane (role="list") + content pane (role="main", aria-label="Artifact content") |
+| Selected entry is marked with aria-current="true" | AC-1 | P0 | UX-DR16: the selected list entry has aria-current="true" attribute |
+| Content pane renders Markdown headings, lists, tables, code blocks, bold, and italic | AC-1 | P0 | FR16: rendered Markdown includes h1 heading, list items, table with columnheaders/cells, code elements, strong (bold) text, and em (italic) text |
+| Content pane is read-only — no editing controls present | AC-1 | P0 | AC-1 "read-only": no buttons or textboxes in the content pane |
+| Selected artifact loads within 2 seconds | AC-1 | P0 | NFR-P4: steady-state page load (after warm-up) completes in under 2 seconds |
+| YAML frontmatter is stripped from rendered content | AC-1 | P1 | AC-1 content rendering: frontmatter fields (title, status) do not appear in the rendered content pane |
+| Artifact load error state shows message and Refresh button when artifact not found | AC-2 | P0 | AC-2: navigating to /artifacts?id=nonexistent renders "Couldn't load this artifact. Try refreshing the page." with a Refresh button |
+| Clicking Refresh re-renders the page without error | AC-2 | P0 | AC-2: Refresh button triggers router.refresh() — page re-renders, error state persists (artifact still not found) |
+| Browser back button returns to full-width list from two-column view | AC-3 | P0 | FR17: clicking a list entry → two-column layout → browser back → full-width list (no content pane) |
+| Breadcrumb link returns to Project Map | AC-3 | P0 | FR17: "← Project Map" breadcrumb navigates to /project-map |
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| E2E | `artifact-viewer.spec.ts` | 10 | 10 | 0 | **ALL PASSING** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | E2E Test(s) | Unit/Component Tests |
+|---|---|---|---|
+| AC-1 | Two-column layout when an Artifact is selected (FR16, UX-DR12) | two-column layout; aria-current; Markdown rendering; read-only; 2s load; frontmatter stripped | `ArtifactViewer.test.tsx` (8), `ArtifactListEntry.test.tsx` (16), `page.test.tsx` (22) |
+| AC-2 | Artifact load error state | error state message + Refresh button; Refresh re-renders | `ArtifactLoadError.test.tsx` (4), `page.test.tsx` (1) |
+| AC-3 | Back navigation returns to entry point (FR17) | browser back to full-width list; breadcrumb to Project Map | `page.test.tsx` (4) |
+
+---
+
+## Test Execution
+
+```bash
+npx playwright test playwright/e2e/artifact-browser/artifact-viewer.spec.ts --reporter=list --workers=1
+```
+
+```
+  11 passed (16.4s)
+```
+
+Combined with Story 2.4 tests:
+
+```bash
+npx playwright test playwright/e2e/artifact-browser/ --reporter=list --workers=1
+```
+
+```
+  20 passed (29.5s)
+```
+
+Typecheck: `npx tsc --noEmit -p apps/web/tsconfig.json` — clean.
+Lint: `yarn nx lint web` — 0 errors, 7 pre-existing warnings.
+
+---
+
+## E2E Test Approach
+
+- **Fixtures:** tests use the `withArtifacts` fixture from `playwright/support/custom-fixtures.ts`. The fixture was extended to (a) enrich the PRD artifact's content with full Markdown (headings, lists, tables, code blocks, bold, italic, YAML frontmatter) so AC-1's rendering requirements can be verified end-to-end, and (b) return the seeded artifacts with their generated IDs so tests can navigate to `/artifacts?id={id}` directly. This is a non-breaking change — existing Story 2.4 tests destructure `withArtifacts` but don't use the return value.
+- **Selectors:** `getByRole` and `getByText` only (no CSS classes or XPath), per the selector-resilience hierarchy. The content pane is scoped via `getByRole('main', { name: 'Artifact content' })` so list-pane elements (role="listitem") don't interfere with content-pane assertions.
+- **Serial mode:** `test.describe.configure({ mode: 'serial' })` ensures tests run sequentially within the file. The synthetic E2E user (fixed `githubId`) has a single `RepoConnection` (unique on `userId`), so parallel tests within the same file would conflict on the `withArtifacts` fixture's `[repoConnectionId, path]` unique constraint. This matches the established pattern from `project-map.spec.ts`.
+- **NFR-P4 (2-second load):** the test warms up the route first (dev-mode compilation), then measures the second navigation. This matches the pattern from the Story 2.4 NFR-P4 test.
+
+---
+
+## Design Smells Discovered
+
+### Pre-existing: Cross-file parallelism causes fixture conflicts
+
+The `fullyParallel: true` Playwright config runs test files in parallel. All E2E tests share a single synthetic user (`E2E_GITHUB_ID = 'e2e-test-default-99999'`) with a single `RepoConnection` (unique on `userId`). When two test files using `withArtifacts` run in parallel, they race on the `[repoConnectionId, path]` unique constraint, causing 500 errors from the artifacts seed endpoint.
+
+**Impact:** Running `npx playwright test playwright/e2e/artifact-browser/` (both files) without `--workers=1` causes intermittent failures. The `mode: 'serial'` within each file prevents intra-file conflicts but not cross-file conflicts.
+
+**Recommended fix (separate issue):** Either (a) give each test file its own synthetic user (parameterized `E2E_GITHUB_ID`), or (b) configure the Playwright config with `fullyParallel: false` to serialize all test files, or (c) accept `--workers=1` as the standard E2E run mode (the CI config already uses 4 shards, which effectively serializes within each shard).
+
+**Also fixed:** `artifact-browser.spec.ts` (Story 2.4) was missing `test.describe.configure({ mode: 'serial' })` — added it alongside the new test file. Without it, the Story 2.4 tests also fail under parallel execution.
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (Artifact Browser is a pure Server Component page)
+- [x] E2E tests generated (if UI exists) — 10 tests in `artifact-viewer.spec.ts` covering AC-1, AC-2, and AC-3
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from the project's merged-fixtures
+- [x] Tests cover happy path — two-column layout, Markdown rendering, selected entry, breadcrumb navigation
+- [x] Tests cover 1-2 critical error cases — artifact load error state (AC-2), Refresh button re-render
+- [x] All generated tests run successfully — 10/10 pass (with `--workers=1`)
+- [x] Tests use proper locators (semantic, accessible) — `getByRole('heading')`, `getByRole('main', { name })`, `getByRole('list', { name })`, `getByRole('listitem')`, `getByRole('table')`, `getByRole('button', { name })`, `getByRole('link', { name })`, `getByText`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
+- [x] No hardcoded waits or sleeps — all assertions use Playwright auto-waiting
+- [x] Tests are independent (no order dependency) — `test.describe.configure({ mode: 'serial' })`; each test seeds/cleans its own data via fixtures
+- [x] Test summary created — this document
+- [x] Tests saved to appropriate directories — `playwright/e2e/artifact-browser/`
+
+### Next Steps
+
+- ~~When Story 2.6 (Card Click Navigation from Project Map) is implemented, add E2E coverage for: clicking an Artifact Card on /project-map navigates to /artifacts with that artifact pre-selected~~ ✅ Done — see Story 2.6 section below (3 tests in `navigate-to-artifact.spec.ts`)
+- Consider addressing the cross-file parallelism design smell (see Design Smells section above)
+
+---
+
+## Story 2.6: Navigate from the Project Map to an Artifact
+
+**Generated:** 2026-07-03
+**Story status:** review
+
+### Generated Tests
+
+#### E2E Tests (Playwright)
+
+- [x] [playwright/e2e/project-map/navigate-to-artifact.spec.ts](../../../playwright/e2e/project-map/navigate-to-artifact.spec.ts) — Cross-page navigation from Project Map card click to Artifact Browser (3 tests)
+
+##### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| clicking a completed artifact card opens the Artifact Browser with that artifact pre-selected | AC-1 | P0 | Clicking the PRD card navigates to `/artifacts?id=...`, renders the two-column layout, marks the entry `aria-current="true"`, and shows the artifact's content |
+| clicking an in-progress artifact card opens the read-only Artifact Browser | AC-2 | P0 | Clicking the in-progress Architecture card navigates to `/artifacts?id=...`, renders the content pane, and confirms no editing controls are present |
+| keyboard activation (Enter) on a card navigates to the Artifact Browser | UX-DR16 | P1 | Focusing a card and pressing Enter triggers client-side navigation (proves the `<Link>`/`<a>` is keyboard-focusable and activatable) |
+
+#### API Tests
+
+- N/A — Story 2.6 is frontend-only (no backend changes, no new endpoints). `ArtifactCard` became a `<Link>`; navigation is a pure `apps/web` client-side routing concern.
+
+### Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| E2E | `navigate-to-artifact.spec.ts` | 3 | 3 | 0 | **ALL PASSING** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | E2E Test(s) | Unit/Component Tests |
+|---|---|---|---|
+| AC-1 | Completed artifact click opens Artifact Browser pre-selected | clicking a completed artifact card... | `ArtifactCard.test.tsx` (link/href, aria-label, focus ring, hover, role), `page.test.tsx` (href passing) |
+| AC-2 | In-progress artifact click opens read-only Artifact Browser | clicking an in-progress artifact card... | `page.test.tsx` (in-progress href), Story 2.5 read-only coverage |
+
+### Run Results
+
+```bash
+node_modules/.bin/dotenv -e .env -- npx playwright test playwright/e2e/project-map/navigate-to-artifact.spec.ts --project=chromium
+```
+
+```
+  4 passed (7.8s)   [1 setup + 3 Story 2.6 tests]
+```
+
+Typecheck: `npx tsc --noEmit -p tsconfig.json` — clean.
+Lint: `npx eslint playwright/e2e/project-map/navigate-to-artifact.spec.ts` — 0 errors, 0 warnings.
+
+### E2E Test Approach
+
+- **Gap filled:** The Story 2.6 ATDD checklist originally opted out of E2E tests (reasoning: "component-level change, E2E would just test Next.js routing"). However, the cross-page user journey — clicking a card on `/project-map` and landing on `/artifacts` with the correct artifact pre-selected — was not covered by any existing E2E test. Story 2.4/2.5 tests navigate directly via URL or click within the Artifact Browser list; none originate from the Project Map. These tests verify the integration between the two pages: the `href` constructed by the Project Map page is consumed by the Artifact Browser page and pre-selects the clicked artifact.
+- **Fixtures:** `withArtifacts` (from `playwright/support/custom-fixtures.ts`) seeds 3 artifacts (PRD completed, Architecture in-progress, Epics completed) and returns their generated IDs. Tests find a specific card by filtering `getByRole('listitem')` by the card's title text.
+- **Selectors:** `getByRole` only (no CSS classes or XPath). `ArtifactCard` renders as `<Link>`/`<a>` with `role="listitem"` (which overrides the implicit `link` role), so tests query via `getByRole('listitem').filter({ hasText })` — the same approach used in `project-map.spec.ts`. The content pane is scoped via `getByRole('main', { name: 'Artifact content' })`.
+- **Serial mode:** `test.describe.configure({ mode: 'serial' })` — matches the established pattern (single synthetic user, single `RepoConnection`, `[repoConnectionId, path]` unique constraint).
+- **Pre-selection assertion (AC-1):** the clicked artifact's list entry is asserted to have `aria-current="true"`, and its Markdown content heading renders in the content pane — together proving the correct artifact was navigated to and pre-selected.
+- **Read-only assertion (AC-2):** the content pane is asserted to contain zero buttons and zero textboxes — proving the in-progress artifact opens in the read-only Artifact Browser (Conversation-tab-focus deferred to Epic 3 per the AC).
+- **No hardcoded waits** — all assertions use Playwright auto-waiting.
+
+### Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: frontend-only story, no HTTP API endpoints
+- [x] E2E tests generated (if UI exists) — 3 tests in `navigate-to-artifact.spec.ts` covering AC-1, AC-2, and keyboard accessibility
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from the project's merged-fixtures
+- [x] Tests cover happy path — completed card navigation (AC-1), in-progress card navigation (AC-2)
+- [x] Tests cover 1-2 critical error cases — keyboard activation (accessibility edge case); read-only verification (AC-2 invariant)
+- [x] All generated tests run successfully — 3/3 pass (plus 1 setup)
+- [x] Tests use proper locators (semantic, accessible) — `getByRole('heading')`, `getByRole('main', { name })`, `getByRole('list', { name })`, `getByRole('listitem')`, `getByRole('button')`, `getByRole('textbox')`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
+- [x] No hardcoded waits or sleeps — all assertions use Playwright auto-waiting
+- [x] Tests are independent (no order dependency) — each test seeds/cleans its own data via the `withArtifacts` fixture
+- [x] Test summary created — this section appended to the cumulative summary
+- [x] Tests saved to appropriate directories — `playwright/e2e/project-map/`

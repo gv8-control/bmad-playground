@@ -496,7 +496,7 @@ bmad-easy/
 │   │   │   │   │   └── RepositoryUrlForm.test.tsx
 │   │   │   │   ├── project-map/
 │   │   │   │   │   ├── ProjectMapTree.tsx
-│   │   │   │   │   └── RefreshButton.tsx        # FR-7 — triggers full browser reload
+│   │   │   │   │   └── RefreshButton.tsx        # FR-7 — in-page sync via syncArtifactsAction() + router.refresh(); spinner during sync (amended Story 2.3 per DP-2; supersedes "full browser reload")
 │   │   │   │   ├── conversation/
 │   │   │   │   │   ├── ConversationPane.tsx      # assistant-ui + direct browser→agent-be AG-UI SSE
 │   │   │   │   │   ├── ToolPill.tsx              # FR-12
