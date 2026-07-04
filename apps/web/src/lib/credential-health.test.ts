@@ -26,12 +26,17 @@ jest.mock('./prisma', () => ({
 }));
 
 const mockDecryptToken = jest.fn();
-jest.mock('./crypto', () => ({
-  decryptToken: (...args: unknown[]) => mockDecryptToken(...args),
-}));
+jest.mock('./crypto', () => {
+  const actual = jest.requireActual('./crypto');
+  return {
+    ...actual,
+    decryptToken: (...args: unknown[]) => mockDecryptToken(...args),
+  };
+});
 
 // ─── Subject under test ───────────────────────────────────────────────────────
 
+import { KekConfigurationError } from './crypto';
 import {
   resolveOAuthToken,
   markCredentialFailed,
@@ -95,11 +100,49 @@ describe('resolveOAuthToken (AC-2 — tenant-scoped credential resolution)', () 
     }
   });
 
-  it('[P0] throws when decryptToken fails (tampered credential, KEK rotation mismatch)', async () => {
+  it('[P0] throws CredentialFailureError(401) when decryptToken fails (tampered credential, KEK mismatch, legacy pre-AAD row)', async () => {
+    const decryptError = new Error('Unsupported state or unable to authenticate data');
     mockDecryptToken.mockImplementation(() => {
-      throw new Error('Decryption failed: invalid auth tag');
+      throw decryptError;
     });
-    await expect(resolveOAuthToken(USER_ID)).rejects.toThrow('Decryption failed');
+    try {
+      await resolveOAuthToken(USER_ID);
+      fail('Should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(CredentialFailureError);
+      expect((err as CredentialFailureError).statusCode).toBe(401);
+      expect((err as CredentialFailureError & { cause?: unknown }).cause).toBe(decryptError);
+    }
+  });
+
+  it('[P1] logs the original decryptToken error with the userId for triage', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const decryptError = new Error('Unsupported state or unable to authenticate data');
+    mockDecryptToken.mockImplementation(() => {
+      throw decryptError;
+    });
+    await expect(resolveOAuthToken(USER_ID)).rejects.toThrow(CredentialFailureError);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(USER_ID),
+      decryptError,
+    );
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('[P0] re-throws KekConfigurationError as-is — a bad env var is an ops problem, not a per-user credential problem', async () => {
+    const kekError = new KekConfigurationError(
+      'CREDENTIAL_ENCRYPTION_KEK must be a 64-character hex string',
+    );
+    mockDecryptToken.mockImplementation(() => {
+      throw kekError;
+    });
+    await expect(resolveOAuthToken(USER_ID)).rejects.toBe(kekError);
+  });
+
+  it('[P1] a database error from findUnique propagates as-is — not reclassified as CredentialFailureError', async () => {
+    const dbError = new Error('Connection terminated unexpectedly');
+    mockFindUniqueCredential.mockRejectedValue(dbError);
+    await expect(resolveOAuthToken(USER_ID)).rejects.toBe(dbError);
   });
 
   it('[P0] queries only by the provided userId — never another user (AC-2 tenant isolation)', async () => {

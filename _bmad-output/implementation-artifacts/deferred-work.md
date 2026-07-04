@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of credential-health.ts decrypt-failure classification fix (2026-07-04)
+
+- `markCredentialHealthy` has zero call sites anywhere in `apps/web/src` outside of tests — no production code path clears `RepoConnection.credentialHealth` back to `'healthy'` after a failure. Not caused by this change, but this change adds a new trigger (decrypt failure) into the same `'failed'` state with no automatic recovery. [`apps/web/src/lib/credential-health.ts:69`]
+- `CredentialFailureError`'s constructor hardcodes `Credential failure: GitHub API returned ${statusCode}` — inaccurate whenever thrown for a non-GitHub-API cause (missing credential row, or now, a local decrypt failure). Pre-existing (the missing-row case already misused this message); low severity since the message is only used for internal logging/`instanceof` control flow, never shown to users. [`apps/web/src/lib/credential-health.ts:6`]
+
 ## Deferred from: code review of 1-1-scaffold-the-platform-monorepo-and-ci-pipeline (2026-06-18)
 
 - `.claude/settings.json` — leading `*` wildcard in `Bash(python3 *_bmad/scripts/*)` removes the path anchor present in the original rule; any path ending in `_bmad/scripts/` is now accepted, widening attack surface beyond the intended `_bmad/` directory.
@@ -26,7 +31,7 @@
 ## Deferred from: code review of 1-3-connect-a-repository-by-url (2026-06-20)
 
 - Parallel E2E workers share fixed `E2E_GITHUB_ID` — concurrent `withRepoConnection` fixtures mutate the same DB row; teardown from one test can delete another's fixture. Safe with sequential workers.
-- No unit test for `decryptToken` failure path in `connectRepository` — a KEK-rotated or tampered credential throws as `UNKNOWN`; no test verifies the catch behavior.
+- ~~No unit test for `decryptToken` failure path in `connectRepository` — a KEK-rotated or tampered credential throws as `UNKNOWN`; no test verifies the catch behavior.~~ Resolved 2026-07-04: `resolveOAuthToken` now reclassifies decrypt failures as `CredentialFailureError` (→ `NO_CREDENTIAL` in all three callers, not just `connectRepository`), with direct test coverage in `credential-health.test.ts`.
 - Middleware permanently exempts `/api/internal/test` from auth — `TEST_ENV` route guard is the sole protection layer; accidental `TEST_ENV=true` in a non-local environment exposes data-mutation endpoints without authentication.
 
 ## Deferred from: code review of 1-3-connect-a-repository-by-url (Review 4 — 2026-06-20)

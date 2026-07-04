@@ -5,9 +5,13 @@ const NONCE_LENGTH = 12;
 const TAG_LENGTH = 16;
 const DEK_LENGTH = 32;
 
+/** Thrown when the KEK environment configuration itself is missing or malformed — an
+ * operational/deployment problem, never a property of any individual user's credential. */
+export class KekConfigurationError extends Error {}
+
 export function parseKekHex(value: string, label: string): Buffer {
   if (!value || !/^[0-9a-f]{64}$/i.test(value)) {
-    throw new Error(
+    throw new KekConfigurationError(
       `${label} must be a 64-character hex string (32 bytes). Generate with: openssl rand -hex 32`,
     );
   }
