@@ -27,9 +27,6 @@
       "model": "neuralwatt/glm-5.2",
       "temperature": 0.25,
       "reasoningEffort": "max"
-    },
-    "test": {
-      "model": "opencode/big-pickle"
     }
   },
   "tools": {
