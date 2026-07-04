@@ -7,6 +7,9 @@ const config: Config = {
   transform: {
     '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: './tsconfig.spec.json' }],
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!jose)',
+  ],
   testEnvironment: 'node',
   // Integration tests hit a real database — run serially to avoid state conflicts.
   maxWorkers: 1,

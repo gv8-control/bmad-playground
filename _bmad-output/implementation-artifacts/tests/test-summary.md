@@ -1,6 +1,6 @@
 # Test Automation Summary
 
-**Last updated:** 2026-07-03
+**Last updated:** 2026-07-04 (Story 2.3 E2E tests activated)
 
 ---
 
@@ -597,8 +597,8 @@ yarn nx test web --testPathPattern="api/internal/test/artifacts"
 
 ## Story 2.3: Manually Refresh the Project Map
 
-**Generated:** 2026-07-03
-**Story status:** in-progress
+**Generated:** 2026-07-03 (activated 2026-07-04)
+**Story status:** done
 
 ---
 
@@ -606,15 +606,15 @@ yarn nx test web --testPathPattern="api/internal/test/artifacts"
 
 ### E2E Tests (Playwright)
 
-- [ ] [playwright/e2e/project-map/project-map-refresh.spec.ts](../../../playwright/e2e/project-map/project-map-refresh.spec.ts) — manual refresh user journey: button visibility, spinner during sync, mirroring mechanism trigger, page re-render, button re-enable (5 tests, all skipped — ATDD red phase)
+- [x] [playwright/e2e/project-map/project-map-refresh.spec.ts](../../../playwright/e2e/project-map/project-map-refresh.spec.ts) — manual refresh user journey: button visibility, spinner during sync, mirroring mechanism trigger, page re-render, button re-enable (5 tests, all active)
 
-The RefreshButton component exists (Task 1 done, 7 component tests passing) but is not yet wired to the Project Map page header (Task 2 not started). These E2E tests are written in ATDD red-phase (`test.skip()`) following the project convention: *"tests are written first (red phase), often skipped with `test.skip()` until implementation lands. Remove skips one-by-one per task."* Once Task 2.1 adds `<RefreshButton />` to `page.tsx`, remove the `.skip` markers.
+The RefreshButton component was built (Task 1, 7 component tests) and wired to the Project Map page header (Task 2). These E2E tests were written in ATDD red-phase (`test.skip()`) and have now been activated by removing the `.skip` markers — the implementation is complete and all 5 tests pass. The header comment was updated from "RED PHASE" to "GREEN PHASE".
 
 #### Test Inventory
 
 | Test | AC | Priority | Description |
 |---|---|---|---|
-| refresh button is visible on the Project Map page | AC-1 | P0 | Button with aria-label="Refresh Project Map" renders in the page header (depends on Task 2.1) |
+| refresh button is visible on the Project Map page | AC-1 | P0 | Button with aria-label="Refresh Project Map" renders in the page header |
 | clicking refresh shows spinner and disables button during sync | AC-1 | P0 | Server Action POST mocked with delayed response; spinner (animate-spin) visible and button disabled during sync |
 | clicking refresh calls syncArtifactsAction — the mirroring mechanism | AC-1 | P0 | FR7: POST with Next-Action header intercepted, verifying the Story 2.1 mirroring mechanism is triggered |
 | page re-renders with fresh data after refresh completes | AC-1 | P0 | After sync, router.refresh() re-renders the Server Component; artifacts still visible from Postgres |
@@ -630,14 +630,14 @@ The RefreshButton component exists (Task 1 done, 7 component tests passing) but 
 
 | Level | File | Tests | Active | Skipped | Status |
 |---|---|---|---|---|---|
-| E2E | `project-map-refresh.spec.ts` | 5 | 0 | 5 | **RED PHASE (all skipped)** |
+| E2E | `project-map-refresh.spec.ts` | 5 | 5 | 0 | **ALL PASSING** |
 | Component | `RefreshButton.test.tsx` | 7 | 7 | 0 | **ALL PASSING** (existing) |
 
 ### Acceptance Criteria Coverage
 
 | AC | Description | E2E Test(s) | Component Tests |
 |---|---|---|---|
-| AC-1 | Manual refresh re-reads via mirroring mechanism with spinner (FR7) | All 5 tests (skipped — pending Task 2) | `RefreshButton.test.tsx` (7 tests: aria-label, sync call, spinner, router.refresh, error/throw paths, re-enable) |
+| AC-1 | Manual refresh re-reads via mirroring mechanism with spinner (FR7) | All 5 tests (active) | `RefreshButton.test.tsx` (7 tests: aria-label, sync call, spinner, router.refresh, error/throw paths, re-enable) |
 | AC-2 | Refresh does not interrupt active Conversations | N/A — architectural invariant (no test needed, per story dev notes) | N/A |
 
 ---
@@ -645,12 +645,11 @@ The RefreshButton component exists (Task 1 done, 7 component tests passing) but 
 ## Test Execution
 
 ```bash
-yarn playwright test playwright/e2e/project-map/project-map-refresh.spec.ts --reporter=list
+yarn test:e2e --project=chromium playwright/e2e/project-map/project-map-refresh.spec.ts
 ```
 
 ```
-  5 skipped
-  1 passed (10.5s)   [1 auth setup]
+  6 passed (14.2s)   [5 refresh tests + 1 auth setup]
 ```
 
 ---
@@ -672,11 +671,11 @@ The `withArtifacts` fixture seeds Artifact rows in Postgres so the page renders 
 ## Checklist Validation
 
 - [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (`syncArtifactsAction` is a Server Action, not a REST endpoint)
-- [x] E2E tests generated (if UI exists) — 5 tests in `project-map-refresh.spec.ts` (ATDD red-phase, skipped pending Task 2)
+- [x] E2E tests generated (if UI exists) — 5 tests in `project-map-refresh.spec.ts` (all active and passing)
 - [x] Tests use standard test framework APIs — Playwright `test`/`expect` from project's merged-fixtures
 - [x] Tests cover happy path — refresh button visible, clicking triggers sync, page re-renders with data
 - [x] Tests cover 1-2 critical error cases — spinner/disabled state during sync, button re-enable after completion
-- [x] All generated tests run successfully — 5/5 properly skipped (ATDD red phase), 1 auth setup passed
+- [x] All generated tests run successfully — 5/5 pass (verified)
 - [x] Tests use proper locators (semantic, accessible) — `getByRole('button', { name: /refresh project map/i })`, `toHaveClass(/animate-spin/)`
 - [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
 - [x] No hardcoded waits or sleeps — only the delayed Server Action mock uses `setTimeout` to keep `isPending` true for assertion
@@ -686,8 +685,7 @@ The `withArtifacts` fixture seeds Artifact rows in Postgres so the page renders 
 
 ### Next Steps
 
-- When Task 2.1 (add `<RefreshButton />` to `page.tsx` header) is implemented, remove the `.skip` markers from all 5 tests and verify they pass
-- When Task 2.2 (add `RefreshButton` mock stub + "renders RefreshButton in header" test to `page.test.tsx`) is implemented, the page-level integration test will complement these E2E tests
+- ~~When Task 2.1 (add `<RefreshButton />` to `page.tsx` header) is implemented, remove the `.skip` markers from all 5 tests and verify they pass~~ — **Done (2026-07-04)**
 - Consider adding a test for the `NO_CREDENTIAL` error path: mock sync returning `{ error: '...', errorCode: 'NO_CREDENTIAL' }`, verify the CredentialErrorBanner appears after refresh
 
 ---
@@ -978,3 +976,308 @@ Lint: `npx eslint playwright/e2e/project-map/navigate-to-artifact.spec.ts` — 0
 - [x] Tests are independent (no order dependency) — each test seeds/cleans its own data via the `withArtifacts` fixture
 - [x] Test summary created — this section appended to the cumulative summary
 - [x] Tests saved to appropriate directories — `playwright/e2e/project-map/`
+
+---
+
+## Story 3.1: Provision a Sandbox When Opening a Conversation
+
+**Generated:** 2026-07-04
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### E2E Tests (Playwright)
+
+- [x] [playwright/e2e/conversation/sandbox-lifecycle.spec.ts](../../../playwright/e2e/conversation/sandbox-lifecycle.spec.ts) — New Conversation page session-start lifecycle: page-open provisioning, boundary JWT REST call, SSE EventSource wiring, queued first message, SESSION_ERROR/SESSION_TIMEOUT handling, retry (7 tests)
+
+The story shipped with 31 unit/component/integration tests (3 boundary-JWT + 4 encryption + 8 conversations.service + 4 streaming.controller + 8 ConversationPane + 4 integration). The existing `sandbox-lifecycle.spec.ts` had 5 E2E tests that all skipped without `TEST_GITHUB_REPO_URL` and referenced UI that does not exist in Story 3.1's implementation (`/dashboard` route, `repository-url-input`, `new-conversation-button`, tool pills, manual commit — those are Stories 3.2–3.4 scope). This pass replaced the file with 7 tests that match the actual `ConversationPane` implementation and run without a real GitHub repo or Daytona provisioning.
+
+#### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| New Conversation page renders heading, intro prompt, and active input during provisioning | AC-1 | P0 | Page renders `<h1>New Conversation</h1>`, the "browse available skills" intro prompt, and the message input is enabled (NOT disabled) during provisioning — chat interface visible immediately on page open |
+| browser POSTs to /api/conversations with Bearer boundary JWT on mount | AC-1 | P0 | On mount, `ConversationPane` calls `POST {apiUrl}/api/conversations` with `Authorization: Bearer <jwt>` header — triggers background provisioning |
+| opens EventSource to the conversations events URL with token query param | AC-1 | P0 | On mount, `ConversationPane` opens an `EventSource` to `{apiUrl}/api/conversations/{id}/events?token=<jwt>` — SSE lifecycle channel |
+| message submitted during provisioning shows spinner, then clears after SESSION_READY | AC-2 | P0 | Submitting while provisioning shows "Starting session…" spinner (input active, spinner only on submit); `SESSION_READY` event clears the spinner and re-enables input |
+| SESSION_ERROR event displays the error message to the user | AC-5 | P0 | `SESSION_ERROR` SSE event with `{ message }` displays the error message text to the user |
+| SESSION_TIMEOUT event shows "taking longer" message and Retry button | AC-5 | P0 | `SESSION_TIMEOUT` SSE event shows "Starting your session is taking longer than expected." and a Retry button — not an indefinitely spinning state |
+| clicking Retry re-attempts session start | AC-5 | P1 | Clicking Retry calls `POST /api/conversations` again (second session attempt) with the Bearer JWT |
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| E2E | `sandbox-lifecycle.spec.ts` | 7 | 7 | 0 | **ALL PASSING** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | E2E Test(s) | Unit/Integration Tests |
+|---|---|---|---|
+| AC-1 | Sandbox provisioned on page open as background operation (FR9) | page renders + active input; POST /api/conversations with JWT; EventSource URL with token | `boundary-jwt.test.ts` (3), `encryption.service.spec.ts` (4), `conversations.service.spec.ts` (8), `streaming.controller.spec.ts` (4), `ConversationPane.test.tsx` (8), `sandbox-lifecycle.integration.spec.ts` (4) |
+| AC-2 | First message before sandbox ready is queued | spinner on submit-during-provisioning, clears after SESSION_READY | `ConversationPane.test.tsx` (P0 spinner, P1 queued message) |
+| AC-3 | Pre-first-message idle timeout (60s) | (backend concern — `SESSION_TIMEOUT` event tested at E2E level for UI; 60s timer tested in integration) | `conversations.service.spec.ts` (idle timeout fires, cleared on first message), `sandbox-lifecycle.integration.spec.ts` (tears down after 60s) |
+| AC-4 | Provision failure cleanup | (backend concern — no UI surface; tested in integration) | `conversations.service.spec.ts` (destroy on failure, no zombie), `sandbox-lifecycle.integration.spec.ts` (cleans up partial allocation) |
+| AC-5 | Client-side session-start timeout with retry | SESSION_ERROR displays error; SESSION_TIMEOUT shows retry; Retry re-attempts | `ConversationPane.test.tsx` (P0 client-side 30s timeout retry, P1 SESSION_ERROR) |
+| AC-6 | Per-user provision concurrency cap | (backend concern — no UI surface) | `conversations.service.spec.ts` (P1 blocks 3rd simultaneous provision) |
+| AC-7 | Prisma schema — Conversation and Turn models | (verified by build + migration) | `conversations.service.spec.ts` (implicit — mocks `prisma.conversation.create`) |
+
+---
+
+## Test Execution
+
+```bash
+yarn test:e2e:conversation --reporter=list
+```
+
+```
+  8 passed (9.0s)   [1 auth setup + 7 Story 3.1 tests]
+```
+
+Lint: `npx eslint playwright/e2e/conversation/sandbox-lifecycle.spec.ts` — 0 errors, 7 warnings (all `withRepoConnection` unused-fixture-parameter — matches the established pattern from `project-map.spec.ts`).
+
+---
+
+## E2E Test Approach: Browser-Side Mocking of agent-be
+
+The browser calls `agent-be` directly (REST `POST /api/conversations` + SSE `EventSource`). Both `fetch` and `EventSource` are mocked from the page via `page.addInitScript()` so the tests exercise the real `ConversationPane` state machine without a live Daytona provision or a real GitHub repo. `agent-be` still starts (via the Playwright `webServer` block) so the page's boundary-JWT mint path runs against the real `AUTH_SECRET`, but no browser request reaches it.
+
+### Mock Strategy
+
+- **`EventSource` mock:** a `MockEventSource` class replaces `window.EventSource` before any page script runs. It captures the URL passed to the constructor, stores event listeners by type, and exposes a `__emit(type, data)` method that the test calls via `page.evaluate()` to dispatch `SESSION_READY`, `SESSION_ERROR`, and `SESSION_TIMEOUT` events. This mirrors the `MockEventSource` pattern already used in `ConversationPane.test.tsx` (unit).
+- **`fetch` mock:** wraps `window.fetch` to intercept `POST /api/conversations` and return `{ id: 'conv-e2e-1' }` (201), while passing all other fetches (Next.js RSC, etc.) through to the real network. Captures request URL, method, and headers (normalized to lowercase keys) so tests can assert the `Authorization: Bearer` header.
+- **`withRepoConnection` fixture:** required because `/conversations/new` lives under the `(dashboard)/(app)/` route group whose `layout.tsx` redirects to `/onboarding` when no `RepoConnection` exists for the user.
+
+### Why Not Run Against Real agent-be?
+
+`agent-be:serve` runs the production `SandboxService` (real Daytona SDK). A real provision would require a valid GitHub OAuth token, a real Daytona API key, and a real repo to clone — none of which are available in the E2E environment without `TEST_GITHUB_REPO_URL`. The browser-side mock isolates the frontend state machine (the Story 3.1 UI surface) from the backend provisioning pipeline (already covered by 4 integration tests + 8 service unit tests). When real-infrastructure E2E is needed (NFR-P2 10s chat-ready, streaming tokens, tool pills, manual commit), Stories 3.3–3.4 should add tests gated on `TEST_GITHUB_REPO_URL`.
+
+---
+
+## Design Smells Discovered
+
+### 1. Pre-existing bug: `agent-be` PrismaService missing driver adapter (fixed)
+
+`apps/agent-be/src/prisma/prisma.service.ts` extended `PrismaClient` without passing the `@prisma/adapter-pg` driver adapter. The Prisma schema (`libs/database-schemas/src/prisma/schema.prisma`) declares `datasource db { provider = "postgresql" }` with no `url = env(...)` — it relies on the driver adapter for the connection string (the same pattern `apps/web/src/lib/prisma.ts` uses correctly). Without the adapter, `agent-be:serve` crashed on startup with `PrismaClientInitializationError: PrismaClient needs to be constructed with a non-empty, valid PrismaClientOptions`.
+
+**Impact:** `agent-be:serve` could not start, blocking all E2E tests (the Playwright `webServer` readiness check timed out). Unit/integration tests did not catch this because `buildTestModule()` overrides the `PrismaService` provider with a mock — the real `PrismaService` was never instantiated outside the production server.
+
+**Fix applied:** `PrismaService` constructor now calls `super({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) })`, mirroring `apps/web/src/lib/prisma.ts`. This is a 1-constructor fix.
+
+### 2. Pre-existing: `ConversationPage` page object references non-existent UI
+
+`playwright/support/page-objects/conversation-page.ts` locates `session-status`, `chat-input`, `send-button`, `manual-commit-button`, `working-tree-indicator`, `message-stream`, and `tool-pill` test IDs. None of these exist in Story 3.1's `ConversationPane` (which uses `aria-label="Message input"`, a "Send" button, and "Starting session…" text — no test IDs). The page object was written speculatively for Stories 3.2–3.4 and does not match any implemented UI.
+
+**Impact:** The old `sandbox-lifecycle.spec.ts` used this page object and referenced a `/dashboard` route, `repository-url-input`, and `start-conversation-button` — none of which exist. All 5 tests were skipped (required `TEST_GITHUB_REPO_URL`) and would have failed even if unskipped.
+
+**Recommended fix (separate issue):** Rewrite `ConversationPage` when Story 3.2/3.3 delivers the full chat UI (streaming messages, tool pills, manual commit). The Story 3.1 E2E tests use direct semantic locators (`getByRole`, `getByText`) instead, following the `project-map.spec.ts` pattern.
+
+### 3. Pre-existing: `agent-be` `/health` endpoint blocked by global guards
+
+`GET /health` returns 401 "Missing boundary JWT" because `BoundaryJwtGuard` and `ActiveUserGuard` are registered as global `APP_GUARD`s that run on all routes. The `setGlobalPrefix('api', { exclude: [{ path: 'health', method: RequestMethod.GET }] })` only excludes the route from the `/api` prefix, not from the guards.
+
+**Impact:** The Playwright `webServer` readiness check (`url: 'http://localhost:3001/health'`) still passes (any HTTP response counts as "server up"), so this doesn't block tests. But it means `/health` is not a true unauthenticated health check — it's a guarded endpoint that returns 401. A load balancer or Kubernetes liveness probe expecting 200 would fail.
+
+**Recommended fix (separate issue):** Either (a) use `@Public()` decorator + `Reflector`-based guard exclusion for `/health`, or (b) move `/health` to a separate controller that the global guards don't cover.
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: agent-be REST endpoints (`POST /api/conversations`, `GET /:id/status`, SSE `GET /:id/events`) are covered by existing unit/integration tests (`streaming.controller.spec.ts`, `conversations.service.spec.ts`, `sandbox-lifecycle.integration.spec.ts`). No new API tests needed.
+- [x] E2E tests generated (if UI exists) — 7 tests in `sandbox-lifecycle.spec.ts` covering AC-1, AC-2, and AC-5
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from the project's merged-fixtures
+- [x] Tests cover happy path — page renders with active input, POST + EventSource wiring, SESSION_READY transition
+- [x] Tests cover 1-2 critical error cases — SESSION_ERROR event (AC-5), SESSION_TIMEOUT + retry (AC-5)
+- [x] All generated tests run successfully — 7/7 pass (plus 1 auth setup)
+- [x] Tests use proper locators (semantic, accessible) — `getByRole('heading')`, `getByRole('textbox', { name })`, `getByRole('button', { name })`, `getByText`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
+- [x] No hardcoded waits or sleeps — all assertions use Playwright auto-waiting and `waitForFunction` for mock synchronization
+- [x] Tests are independent (no order dependency) — `test.describe.configure({ mode: 'serial' })`; each test seeds/cleans its own `RepoConnection` via the `withRepoConnection` fixture
+- [x] Test summary created — this section appended to the cumulative summary
+- [x] Tests saved to appropriate directories — `playwright/e2e/conversation/`
+
+### Next Steps
+
+- When Story 3.2 (Invoke BMAD Skills via Slash Command) is implemented, extend `ConversationPane` E2E to cover the slash-command picker and the URL transition from `/conversations/new` to `/conversations/:id`
+- When Story 3.3 (Converse with the Streaming Agent) is implemented, add E2E coverage for streaming tokens, tool pills, and the full chat UI — gated on `TEST_GITHUB_REPO_URL` for real-infrastructure tests (NFR-P2 10s chat-ready, NFR-P1 1.5s first token)
+- Rewrite the `ConversationPage` page object to match the actual chat UI when Stories 3.3–3.4 deliver it
+- Address the `/health` guard exclusion design smell when a load balancer or k8s probe is introduced
+
+---
+
+## Story 3.2: Invoke BMAD Skills via Slash Command — E2E Tests
+
+**Generated:** 2026-07-04
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### E2E Tests (Playwright)
+
+- [x] [playwright/e2e/conversation/slash-command-picker.spec.ts](../../../playwright/e2e/conversation/slash-command-picker.spec.ts) — Slash command picker, message sending, and URL transition (9 tests)
+- [x] [playwright/e2e/conversation/side-nav-conversations.spec.ts](../../../playwright/e2e/conversation/side-nav-conversations.spec.ts) — Side nav conversation list rendering (3 tests)
+
+### Supporting Infrastructure
+
+- [x] [apps/web/src/app/api/internal/test/conversations/route.ts](../../../apps/web/src/app/api/internal/test/conversations/route.ts) — Test seed endpoint for conversations (POST/DELETE), follows the existing `seed-user`/`repo-connections`/`artifacts` pattern
+- [x] [playwright/support/custom-fixtures.ts](../../../playwright/support/custom-fixtures.ts) — `withConversations` fixture added, seeds 3 conversations with titles and `lastActiveAt` ordering
+
+#### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| Picker opens on `/` and lists available skills | AC-1 | P0 | Typing `/` at start of empty input opens a listbox with all skills from `GET /:id/skills` |
+| Typing after `/` narrows the list by prefix | AC-1 | P0 | Typing `/bmad-a` filters the list to skills starting with `bmad-a` |
+| ArrowDown moves focus to next skill | AC-1 | P0 | ArrowDown moves `aria-selected` to the next option |
+| ArrowUp wraps focus from first to last | AC-1 | P0 | ArrowUp from index 0 wraps to the last option |
+| Enter selects focused skill and appends /{name} | AC-1 | P0 | Enter appends `/{name} ` to input, closes picker, focuses input |
+| Escape dismisses the picker | AC-1 | P0 | Escape closes the listbox and returns focus to input |
+| Outside click dismisses the picker | AC-1 | P1 | Clicking outside the picker container closes the listbox |
+| Picker shows "No skills found" when empty | AC-2 | P0 | Empty skills array renders the empty state message, no options |
+| Sending a message calls POST /:id/turns and transitions URL | AC-3, AC-4 | P0 | POST `/turns` called with Bearer JWT; URL transitions to `/conversations/:id` |
+| Side nav shows seeded conversations as links | AC-4 | P0 | Seeded conversations render as `<Link>` with correct titles and hrefs |
+| Side nav shows conversations ordered by lastActiveAt desc | AC-4 | P0 | Conversation links ordered by `lastActiveAt` descending |
+| Active conversation highlighted in side nav | AC-4 | P0 | Active conversation link has `bg-surface-raised` + `text-text-1` classes |
+
+## Coverage
+
+- E2E tests: 12 new tests covering all 4 ACs
+- AC-1 (Picker opens on `/`): 7 P0 + 1 P1
+- AC-2 (Empty skills state): 1 P0
+- AC-3 (Message persistence): 1 P0 (combined with AC-4)
+- AC-4 (URL transition + side nav): 1 P0 (URL transition) + 3 P0 (side nav)
+
+## Test Approach
+
+- **Mocked browser→agent-be calls** (slash-command-picker.spec.ts): `fetch` and `EventSource` are mocked from the page via `page.addInitScript`, following the Story 3.1 E2E pattern. The mock intercepts `POST /api/conversations`, `GET /:id/skills`, and `POST /:id/turns`. This exercises the real `ConversationPane` state machine without a live Daytona provision.
+- **Real Postgres data** (side-nav-conversations.spec.ts): The `withConversations` fixture seeds real `Conversation` rows via the test endpoint. The layout Server Component fetches these via Prisma, exercising the real side nav rendering pipeline.
+
+## Checklist Validation
+
+- [x] E2E tests generated (if UI exists) — 12 tests across 2 files covering AC-1, AC-2, AC-3, AC-4
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from the project's merged-fixtures
+- [x] Tests cover happy path — picker opens, filters, keyboard navigation, skill selection, message sending, URL transition, side nav rendering
+- [x] Tests cover 1-2 critical error cases — empty skills state (AC-2)
+- [x] All generated tests run successfully — 12/12 pass (plus 7 existing Story 3.1 tests + 1 auth setup = 20 total)
+- [x] Tests use proper locators (semantic, accessible) — `getByRole('listbox')`, `getByRole('option')`, `getByRole('textbox', { name })`, `getByRole('button', { name })`, `getByRole('link', { name })`, `getByTestId`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
+- [x] No hardcoded waits or sleeps — all assertions use Playwright auto-waiting and `waitForFunction` for mock synchronization
+- [x] Tests are independent (no order dependency) — `test.describe.configure({ mode: 'serial' })`; each test seeds/cleans its own data via fixtures
+- [x] Test summary created — this section appended to the cumulative summary
+- [x] Tests saved to appropriate directories — `playwright/e2e/conversation/`
+
+### Next Steps
+
+- When Story 3.3 (Converse with the Streaming Agent) is implemented, add E2E coverage for streaming tokens, tool pills, and the full chat UI
+- Consider adding a real-infrastructure E2E test (with `TEST_GITHUB_REPO_URL`) that exercises the full sandbox provisioning → skills listing → message sending flow end-to-end
+
+---
+
+## Story 3.3: Converse with the Streaming Agent — E2E Tests
+
+**Generated:** 2026-07-04
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### E2E Tests (Playwright)
+
+- [x] [playwright/e2e/conversation/streaming-chat.spec.ts](../../../playwright/e2e/conversation/streaming-chat.spec.ts) — Streaming chat: AG-UI event rendering, thinking/tool indicators, Stop button, copy actions, draft persistence, auto-growing textarea keyboard shortcuts (14 tests)
+
+#### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| RUN_STARTED shows thinking indicator with three-dot animation | AC-1 | P0 | Emitting `RUN_STARTED` via SSE makes the "Agent is thinking" `role="status"` element visible |
+| TEXT_MESSAGE_CONTENT events progressively render the agent response | AC-1 | P0 | Sequential `TEXT_MESSAGE_CONTENT` deltas ("The answer " + "is 4.") render progressively in the message stream |
+| TOOL_CALL_START shows tool execution indicator with tool name | AC-1 | P0 | `TOOL_CALL_START` with `toolName: "read_file"` renders "Running… read_file" inline |
+| RUN_FINISHED hides thinking indicator and re-enables Send button | AC-1 | P0 | After `RUN_FINISHED`, the thinking indicator disappears and the Send button reappears (replaces Stop) |
+| RUN_ERROR shows error message in the message stream | AC-1 | P1 | `RUN_ERROR` with a message renders the error text in the message stream and returns to idle |
+| Enter sends the message without Shift | AC-2 | P0 | Pressing Enter (no Shift) in the textarea triggers `POST /:id/turns` |
+| Shift+Enter inserts a newline and does not send | AC-2 | P0 | Pressing Shift+Enter inserts a newline; no `POST /:id/turns` call is made |
+| Stop button appears when agent is processing | AC-3 | P0 | After `RUN_STARTED`, the Stop button (aria-label="Stop agent") is visible and the Send button is hidden |
+| Clicking Stop calls POST /:id/stop with Bearer JWT | AC-3 | P0 | Clicking Stop triggers `POST /api/conversations/:id/stop` with `Authorization: Bearer` header |
+| After Stop, Send button reappears and user can send a new message | AC-3 | P0 | After Stop, Send button is visible; sending a second message results in 2 `POST /:id/turns` calls |
+| Copy button copies message content to clipboard | AC-4 | P0 | Clicking the "Copy to clipboard" button on a user message writes the message text to the clipboard and shows "Copied" label |
+| Timestamp is visible on hover over user message | AC-4 | P0 | Hovering over a user message reveals a timestamp matching `HH:MM` format |
+| Draft is restored from localStorage on page reload | AC-6 | P0 | Typing a draft, reloading the page, and re-establishing the session restores the draft text in the textarea |
+| Draft is cleared from localStorage on successful send | AC-6 | P0 | After sending a message, the textarea is empty and the localStorage draft key is cleared or empty |
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| E2E | `streaming-chat.spec.ts` | 14 | 14 | 0 | **ALL PASSING** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | E2E Test(s) | Unit/Component Tests |
+|---|---|---|---|
+| AC-1 | Streaming agent response with indicators | RUN_STARTED thinking indicator; TEXT_MESSAGE_CONTENT progressive rendering; TOOL_CALL_START tool indicator; RUN_FINISHED hides indicator + re-enables Send; RUN_ERROR error message | `ConversationPane.test.tsx` (streaming tests), `ChatComponents.test.tsx`, `AgentMessage.test.tsx`, `agent.service.spec.ts`, `streaming.controller.spec.ts` (back-pressure) |
+| AC-2 | Auto-growing chat input | Enter sends message; Shift+Enter inserts newline | `ChatInput.test.tsx` (auto-grow, Enter/Shift+Enter, Send button) |
+| AC-3 | Stop button | Stop button appears when processing; Stop calls POST /:id/stop with Bearer JWT; Send reappears after Stop | `ChatInput.test.tsx` (Stop button), `ConversationPane.test.tsx` (Stop calls POST /:id/stop), `conversations.service.spec.ts` (stopAgent) |
+| AC-4 | Copy actions and timestamps | Copy button copies to clipboard; Timestamp visible on hover | `ChatComponents.test.tsx` (CopyButton), `UserMessage.test.tsx` (timestamp), `AgentMessage.test.tsx` (timestamp) |
+| AC-5 | Scroll-to-bottom button | Not E2E tested — see note below | `ChatMessageList.test.tsx` (prop-based), `ChatComponents.test.tsx` (ScrollToBottomButton) |
+| AC-6 | Draft persistence keyed by conversationId | Draft restored on reload; Draft cleared on send | `useDraftPersistence.test.ts` (restore, clear, key switching) |
+
+### AC-5 Note: Why no E2E test for scroll-to-bottom button
+
+The `ConversationPane`'s `showScrollToBottom` state is initialized to `false` and only ever set to `false` (in `handleScrollToBottom`). The `ChatMessageList` tracks scroll position via `isAtBottomRef` but does not call a callback to update the parent's `showScrollToBottom` state. This means the scroll-to-bottom button never appears in the current implementation — the wiring between `ChatMessageList`'s scroll tracking and `ConversationPane`'s `showScrollToBottom` state is missing. This is an implementation gap, not a testing gap. The unit-level `ChatMessageList.test.tsx` verifies the button renders when `showScrollToBottom` is `true` (prop-based), and `ChatComponents.test.tsx` verifies `ScrollToBottomButton` calls `onClick` and shows the count. Full scroll behavior E2E coverage should be added when the implementation is completed.
+
+---
+
+## Test Execution
+
+```bash
+yarn test:e2e --grep "Streaming Chat" --reporter=list
+```
+
+```
+  15 passed (45.1s)   [14 streaming chat tests + 1 auth setup]
+```
+
+Lint: `yarn nx lint web` — 0 errors.
+
+---
+
+## Test Approach
+
+- **Mocked browser→agent-be calls:** `fetch` and `EventSource` are mocked from the page via `page.addInitScript`, following the Story 3.1/3.2 E2E pattern. The mock intercepts `POST /api/conversations`, `GET /:id/skills`, `POST /:id/turns`, and `POST /:id/stop`. AG-UI events (`RUN_STARTED`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `RUN_FINISHED`, `RUN_ERROR`) are emitted via the mock EventSource's `__emit` method. This exercises the real `ConversationPane` state machine without a live Daytona provision or a real Claude agent.
+- **Clipboard permissions:** The copy-to-clipboard test grants `clipboard-read` and `clipboard-write` permissions on the browser context via `page.context().grantPermissions()`, then verifies the clipboard content via `navigator.clipboard.readText()`.
+- **Draft persistence:** The draft restore test types a draft, verifies it persists to `localStorage` under the `conversation-${id}-draft` key, reloads the page, re-emits `SESSION_READY`, and asserts the textarea value is restored. The draft clear test verifies the localStorage key is cleared or empty after sending.
+- **Selectors:** `getByRole` and `getByText` only (no CSS classes or XPath), per the selector-resilience hierarchy. The timestamp test uses a regex pattern `/\d{2}:\d{2}/` to match the `Intl.DateTimeFormat` output.
+- **Serial mode:** `test.describe.configure({ mode: 'serial' })` manages the shared synthetic E2E user's `RepoConnection` state sequentially.
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no new HTTP API endpoint to test from E2E (the `POST /:id/stop` endpoint is tested via the mocked fetch in the Stop button test)
+- [x] E2E tests generated (if UI exists) — 14 tests in `streaming-chat.spec.ts` covering AC-1, AC-2, AC-3, AC-4, AC-6; AC-5 deferred (implementation gap)
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from the project's merged-fixtures
+- [x] Tests cover happy path — streaming response renders, thinking/tool indicators appear, Stop button works, copy works, draft persists
+- [x] Tests cover 1-2 critical error cases — RUN_ERROR error message display, draft cleared on send
+- [x] All generated tests run successfully — 14/14 pass (plus 1 auth setup = 15 total)
+- [x] Tests use proper locators (semantic, accessible) — `getByRole('textbox', { name })`, `getByRole('button', { name })`, `getByText`, `getByText(regex)`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
+- [x] No hardcoded waits or sleeps — all assertions use Playwright auto-waiting, `waitForFunction` for mock synchronization, and `expect().resolves` for localStorage checks
+- [x] Tests are independent (no order dependency) — `test.describe.configure({ mode: 'serial' })`; each test seeds/cleans its own `RepoConnection` via the `withRepoConnection` fixture
+- [x] Test summary created — this section appended to the cumulative summary
+- [x] Tests saved to appropriate directories — `playwright/e2e/conversation/`
+
+### Next Steps
+
+- Fix the AC-5 implementation gap: wire `ChatMessageList`'s scroll-position tracking to `ConversationPane`'s `showScrollToBottom` state so the scroll-to-bottom button appears when the user scrolls up during streaming
+- Add a real-infrastructure E2E test (with `TEST_GITHUB_REPO_URL` and a real Claude API key) to empirically validate NFR-P1 (first token ≤ 1,500ms) and the full streaming pipeline end-to-end
+- When Story 3.4 (Tool Pills) is implemented, extend the streaming chat E2E to cover the full Tool Pill (expand/collapse, input/output display) replacing the `ToolExecutionIndicator`

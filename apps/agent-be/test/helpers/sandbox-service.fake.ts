@@ -5,6 +5,7 @@ import type {
   SandboxInfo,
   GitUserConfig,
   WorkingTreeStatus,
+  SkillInfo,
 } from '@bmad-easy/shared-types';
 
 /**
@@ -17,6 +18,7 @@ export class SandboxServiceFake implements ISandboxService {
   private readonly sandboxes = new Map<string, SandboxInfo>();
   private provisionDelay = 0;
   private shouldFailNextProvision = false;
+  private skills: SkillInfo[] = [];
 
   /** Control hook: simulate a slow provision (milliseconds). */
   setProvisionDelay(ms: number): void {
@@ -26,6 +28,11 @@ export class SandboxServiceFake implements ISandboxService {
   /** Control hook: cause the next provision() call to throw. */
   failNextProvision(): void {
     this.shouldFailNextProvision = true;
+  }
+
+  /** Control hook: set the skills list returned by listSkills(). */
+  setSkills(skills: SkillInfo[]): void {
+    this.skills = skills;
   }
 
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
@@ -86,6 +93,10 @@ export class SandboxServiceFake implements ISandboxService {
       throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
     }
     return { stdout: `fake output for: ${command}`, exitCode: 0 };
+  }
+
+  async listSkills(_sandboxId: string): Promise<SkillInfo[]> {
+    return this.skills;
   }
 
   /** Inspection: sandboxes currently provisioned. */

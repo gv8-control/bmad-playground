@@ -8,10 +8,11 @@ import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
 
 interface AppShellProps {
   user: { name?: string | null; email?: string | null };
+  conversations: { id: string; title: string | null }[];
   children: React.ReactNode;
 }
 
-export function AppShell({ user, children }: AppShellProps) {
+export function AppShell({ user, conversations, children }: AppShellProps) {
   const pathname = usePathname();
   const mainRef = useRef<HTMLElement>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -60,7 +61,7 @@ export function AppShell({ user, children }: AppShellProps) {
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
       <aside className="hidden lg:flex w-[240px] flex-shrink-0">
-        <SideNavigation user={user} />
+        <SideNavigation user={user} conversations={conversations} />
       </aside>
 
       <main ref={mainRef} className="flex-1 overflow-hidden flex flex-col">
@@ -84,7 +85,7 @@ export function AppShell({ user, children }: AppShellProps) {
                 }
               }}
             >
-              <SideNavigation user={user} />
+              <SideNavigation user={user} conversations={conversations} />
             </SheetContent>
           </Sheet>
         </div>

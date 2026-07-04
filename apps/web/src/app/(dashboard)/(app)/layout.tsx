@@ -25,5 +25,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     return null as never;
   }
 
-  return <AppShell user={session.user}>{children}</AppShell>;
+  const conversations = await getPrisma().conversation.findMany({
+    where: { userId, title: { not: null } },
+    orderBy: { lastActiveAt: 'desc' },
+    take: 5,
+    select: { id: true, title: true },
+  });
+
+  return (
+    <AppShell user={session.user} conversations={conversations}>
+      {children}
+    </AppShell>
+  );
 }

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 
 interface SideNavigationProps {
   user: { name?: string | null; email?: string | null };
+  conversations?: { id: string; title: string | null }[];
 }
 
 function getInitials(name?: string | null): string {
@@ -15,7 +16,7 @@ function getInitials(name?: string | null): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
-export function SideNavigation({ user }: SideNavigationProps) {
+export function SideNavigation({ user, conversations = [] }: SideNavigationProps) {
   const pathname = usePathname();
 
   const isProjectMapActive = pathname === '/' || pathname === '/project-map';
@@ -37,7 +38,24 @@ export function SideNavigation({ user }: SideNavigationProps) {
         New Conversation
       </Link>
 
-      <div data-testid="conversation-list" className="flex-1 flex flex-col gap-1 px-3 mt-4 overflow-hidden" />
+      <div data-testid="conversation-list" className="flex-1 flex flex-col gap-1 px-3 mt-4 overflow-hidden">
+        {conversations
+          .filter((c) => c.title !== null)
+          .map((c) => (
+            <Link
+              key={c.id}
+              href={`/conversations/${c.id}`}
+              className={cn(
+                'px-3 py-2 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface truncate',
+                pathname === `/conversations/${c.id}`
+                  ? 'bg-surface-raised text-text-1'
+                  : 'text-text-2 hover:bg-surface-raised',
+              )}
+            >
+              {c.title}
+            </Link>
+          ))}
+      </div>
 
       <div className="border-t border-border-subtle my-4 mx-3" />
 
