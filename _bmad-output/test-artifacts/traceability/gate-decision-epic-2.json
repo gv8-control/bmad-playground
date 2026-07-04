@@ -1,0 +1,24 @@
+{
+  "schema_version": "0.1.0",
+  "evaluated_at": "2026-07-04T03:50:00.000Z",
+  "repo": "bmad-easy",
+  "target": {
+    "type": "epic",
+    "id": "epic-2",
+    "label": "Epic 2: Project Map & Artifact Browser"
+  },
+  "collection_status": "COLLECTED",
+  "gate_basis": "priority_thresholds",
+  "gate_status": "FAIL",
+  "rationale": "P0 coverage is 92% (required: 100%). 0 critical requirements uncovered. The P0 gap is 2.3-AC1 (Manual refresh) which has PARTIAL coverage: all 5 E2E tests in project-map-refresh.spec.ts are skipped (test.skip). Component and page tests provide comprehensive coverage of the AC, but the E2E journey is not covered. The fix is trivial — remove the test.skip() markers. No P0 criteria have NONE coverage.",
+  "p0_status": "NOT_MET",
+  "p1_status": "MET",
+  "overall_status": "MET",
+  "critical_open": 0,
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix-epic-2.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  }
+}

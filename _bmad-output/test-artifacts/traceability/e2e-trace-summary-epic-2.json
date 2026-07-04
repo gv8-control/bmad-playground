@@ -1,0 +1,139 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_at": "2026-07-04T03:50:00.000Z",
+  "repo": "bmad-easy",
+  "collection_mode": "manual",
+  "collection_status": "COLLECTED",
+  "inventory_basis": "acceptance_criteria",
+  "gate_basis": "priority_thresholds",
+  "source_sha": "d646fc30029ed258414685ef08b6b4f349d8c1f7",
+  "target": {
+    "type": "epic",
+    "id": "epic-2",
+    "label": "Epic 2: Project Map & Artifact Browser"
+  },
+  "decision_mode": "deterministic",
+  "evaluator": "Marius",
+  "confidence": "high",
+  "oracle": {
+    "resolution_mode": "formal_requirements",
+    "confidence": "high",
+    "sources": [
+      "_bmad-output/planning-artifacts/epics.md",
+      "_bmad-output/implementation-artifacts/2-1 through 2-6 story files",
+      "_bmad-output/test-artifacts/test-design-architecture.md",
+      "_bmad-output/test-artifacts/test-design-qa.md",
+      "_bmad-output/test-artifacts/nfr-assessment-2-6.md",
+      "_bmad-output/project-context.md"
+    ],
+    "external_pointer_status": "not_used",
+    "synthetic": false
+  },
+  "coverage": {
+    "inventory": {
+      "covered": 21,
+      "total": 22,
+      "pct": 95
+    },
+    "priority_breakdown": {
+      "P0": {
+        "total": 13,
+        "covered": 12,
+        "pct": 92
+      },
+      "P1": {
+        "total": 9,
+        "covered": 9,
+        "pct": 100
+      },
+      "P2": {
+        "total": 0,
+        "covered": 0,
+        "pct": 100
+      },
+      "P3": {
+        "total": 0,
+        "covered": 0,
+        "pct": 100
+      }
+    },
+    "by_level": {
+      "e2e": {
+        "tests": 35,
+        "criteria_covered": 12
+      },
+      "component": {
+        "tests": 100,
+        "criteria_covered": 18
+      },
+      "unit": {
+        "tests": 32,
+        "criteria_covered": 7
+      },
+      "other": {
+        "tests": 0,
+        "criteria_covered": 0
+      }
+    }
+  },
+  "tests": {
+    "files": 17,
+    "cases": 167,
+    "skipped_cases": 5,
+    "fixme_cases": 0,
+    "pending_cases": 0
+  },
+  "risk_summary": {
+    "critical_open": 0,
+    "high_open": 0,
+    "medium_open": 0,
+    "low_open": 0
+  },
+  "heuristics": {
+    "endpoint_gaps": 0,
+    "auth_negative_path_status": "present",
+    "error_path_status": "present",
+    "ui_journey_status": "partial",
+    "ui_state_status": "present"
+  },
+  "blockers": [
+    {
+      "id": "project-map-refresh.spec.ts:skip-all",
+      "severity": "high",
+      "reason": "All 5 tests use test.skip() — never activated despite Story 2.3 being done and RefreshButton being wired to the page",
+      "test_file": "playwright/e2e/project-map/project-map-refresh.spec.ts",
+      "test_title": "All 5 refresh E2E tests"
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "MEDIUM",
+      "action": "Activate 5 skipped E2E tests in project-map-refresh.spec.ts by removing test.skip() markers — Story 2.3 is done and RefreshButton is wired to the page",
+      "requirements": ["2.3-AC1"]
+    },
+    {
+      "priority": "LOW",
+      "action": "Run /bmad-testarch-test-review to assess test quality for Epic 2 test files",
+      "requirements": []
+    }
+  ],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix-epic-2.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  },
+  "gate_status": "FAIL",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "92%",
+    "p0_status": "NOT_MET",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "100%",
+    "p1_status": "MET",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "95%",
+    "overall_status": "MET"
+  }
+}
