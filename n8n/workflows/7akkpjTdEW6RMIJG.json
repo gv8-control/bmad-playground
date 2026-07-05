@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-02T23:36:09.097Z",
+  "updatedAt": "2026-07-05T22:06:22.085Z",
   "createdAt": "2026-07-02T23:24:43.130Z",
   "id": "7akkpjTdEW6RMIJG",
   "name": "Develop Epic",
@@ -336,7 +336,7 @@
     },
     {
       "parameters": {
-        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"Reflect ({{ $('Parse decision').first().json.story }})\" \\\n  --format json \\\n  --agent planner \\\n  \"$(node scripts/pipeline/reflect-prompt.mjs \"{{ $('Parse decision').first().json.story }}\" \"{{ $('Parse decision').first().json.runId }}\")\" < /dev/null | tail -n 5"
+        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"Reflect ({{ $('Parse decision').first().json.story }})\" \\\n  --format json \\\n  --agent reflector \\\n  \"$(node scripts/pipeline/reflect-prompt.mjs \"{{ $('Parse decision').first().json.story }}\" \"{{ $('Parse decision').first().json.runId }}\")\" < /dev/null | tail -n 5"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -764,15 +764,19 @@
   "settings": {
     "executionOrder": "v1",
     "saveExecutionProgress": true,
-    "errorWorkflow": "bmadErrNotify001"
+    "errorWorkflow": "bmadErrNotify001",
+    "availableInMCP": true
   },
   "staticData": null,
-  "meta": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "9a15c13e-c36f-42c7-8eb4-48c16b97d933",
+  "versionId": "92f86063-69e2-4474-87be-d10bbefca91b",
   "activeVersionId": "9a15c13e-c36f-42c7-8eb4-48c16b97d933",
-  "versionCounter": 2,
+  "versionCounter": 4,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],
