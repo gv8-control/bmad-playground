@@ -12,7 +12,7 @@
     "test:e2e:auth": "dotenv -e .env.test -- playwright test playwright/e2e/auth/",
     "test:e2e:conversation": "dotenv -e .env.test -- playwright test playwright/e2e/conversation/",
     "test:e2e:report": "playwright show-report playwright-report",
-    "develop-story": "curl -s --fail-with-body -X POST http://localhost:5678/webhook/develop-story -H \"Content-Type: application/json\" -d \"{\\\"story\\\":\\\"$0\\\"}\"",
+    "develop-epic": "curl -s --fail-with-body -X POST http://localhost:5678/webhook/develop-epic -H \"Content-Type: application/json\" -d \"{\\\"epic\\\":\\\"${1:-3}\\\"}\"",
     "rotate-kek": "dotenv -e .env -- ts-node --transpile-only scripts/rotate-kek.ts"
   },
   "devDependencies": {
