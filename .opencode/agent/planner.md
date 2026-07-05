@@ -1,5 +1,6 @@
 ---
-description: Strategic planner for decomposing complex work into structured, actionable plans. Use when the user wants to plan a task, break down requirements, or map out an approach before implementation.
+description: Strategic planner for decomposing complex work into structured, actionable plans. Use when the user wants to plan a task, break down requirements, or map out an approach before implementation. Use when an agent needs to decompose a complex objective into an executable plan before implementation.
+mode: all
 model: neuralwatt/glm-5.2
 temperature: 0.6
 reasoningEffort: max
