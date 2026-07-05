@@ -336,7 +336,7 @@
     },
     {
       "parameters": {
-        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"Reflect ({{ $('Parse decision').first().json.story }})\" \\\n  --format json \\\n  --agent reflector \\\n  \"$(node scripts/pipeline/reflect-prompt.mjs \"{{ $('Parse decision').first().json.story }}\" \"{{ $('Parse decision').first().json.runId }}\")\" < /dev/null | tail -n 5"
+        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"Reflect ({{ $('Parse decision').first().json.story }})\" \\\n  --format json \\\n  --agent planner \\\n  \"$(node scripts/pipeline/reflect-prompt.mjs \"{{ $('Parse decision').first().json.story }}\" \"{{ $('Parse decision').first().json.runId }}\")\" < /dev/null | tail -n 5"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,

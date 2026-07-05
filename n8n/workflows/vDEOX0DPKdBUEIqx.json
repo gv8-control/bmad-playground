@@ -1340,7 +1340,7 @@
   "nodeGroups": [],
   "pinData": {},
   "versionId": "34ea96ac-dce8-4047-9b9b-e5edfc7beb13",
-  "activeVersionId": "e12ab3a5-2b37-43b5-93c3-8dfd52d1ebe0",
+  "activeVersionId": "34ea96ac-dce8-4047-9b9b-e5edfc7beb13",
   "versionCounter": 537,
   "triggerCount": 0,
   "sourceWorkflowId": null,
@@ -1366,7 +1366,7 @@
     }
   ],
   "versionMetadata": {
-    "name": null,
-    "description": null
+    "name": "Version 34ea96ac",
+    "description": "Unblock disabled nodes"
   }
 }

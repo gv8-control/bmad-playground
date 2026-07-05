@@ -1,0 +1,89 @@
+{
+  "updatedAt": "2026-07-05T14:23:34.126Z",
+  "createdAt": "2026-07-05T14:17:58.905Z",
+  "id": "L0wT89ms9kzi9hiI",
+  "name": "Env Var Propagation Test",
+  "description": "Tests whether OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX from .env propagates to both n8n's process.env and Execute Command subprocesses.",
+  "active": false,
+  "isArchived": true,
+  "nodes": [
+    {
+      "id": "03349e02-2b43-4118-8e64-71adc6d7d9f4",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "1abb403a-034e-4562-8b5a-a72eee14ddc0",
+      "name": "Check subprocess env",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "command": "printenv OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || echo \"NOT SET\""
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Check subprocess env",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "890c6b88-5e20-46a3-8b60-c6c856bea983",
+  "activeVersionId": null,
+  "versionCounter": 2,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-05T14:17:58.905Z",
+      "createdAt": "2026-07-05T14:17:58.905Z",
+      "role": "workflow:owner",
+      "workflowId": "L0wT89ms9kzi9hiI",
+      "projectId": "AYEhcVrohjJ82DQg",
+      "project": {
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

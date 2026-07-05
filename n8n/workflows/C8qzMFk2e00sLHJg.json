@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-03T07:18:36.934Z",
+  "updatedAt": "2026-07-05T09:28:42.135Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -163,29 +163,18 @@
             {
               "id": "740f3353-2f56-451c-99a6-bfe3b657b647",
               "name": "finalResponse",
-              "value": "={{ $('Parse OpenCode Response').last().json.response }}",
-              "type": "string"
+              "type": "string",
+              "value": "={{ $('Parse OpenCode Response').last().json.response }}"
             },
             {
               "id": "f7a1c2d3-e4b5-6789-abcd-ef0123456789",
               "name": "questionCount",
-              "value": "={{ Math.max(0, $('Parse OpenCode Response').all().length - 1) }}",
-              "type": "number"
-            },
-            {
-              "id": "6fc6a7d7-568f-4452-a6a2-6dd1153caefd",
-              "name": "sessionId",
-              "value": "={{ $('Extract SessionID').item.json.sessionId }}",
-              "type": "string"
-            },
-            {
-              "id": "b3c4d5e6-f7a8-9012-abcd-ef0123456789",
-              "name": "outcomeHistory",
-              "value": "={{ JSON.stringify($('BMAD Outcome').all().map(r => r.json.outcome)) }}",
-              "type": "string"
+              "type": "number",
+              "value": "={{ $('Count halt').all().length > 0 ? $('Count halt').last().json.haltIndex + 1 : 0 }}"
             }
           ]
         },
+        "mode": "manual",
         "options": {}
       },
       "type": "n8n-nodes-base.set",
@@ -473,6 +462,20 @@
       ],
       "id": "14e986ff-2d7f-4fa4-8331-b8f446768410",
       "name": "Notify finish"
+    },
+    {
+      "id": "f7a1c2d3-0000-0000-0000-000000000001",
+      "name": "Count halt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        560
+      ],
+      "parameters": {
+        "jsCode": "return { json: { haltIndex: $runIndex } };",
+        "mode": "runOnceForEachItem"
+      }
     }
   ],
   "connections": {
@@ -583,6 +586,11 @@
             "node": "Notify",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Count halt",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -637,9 +645,9 @@
       }
     ]
   },
-  "versionId": "e43e53e1-be4b-4536-85d3-5bfd27b5b46e",
-  "activeVersionId": "e43e53e1-be4b-4536-85d3-5bfd27b5b46e",
-  "versionCounter": 165,
+  "versionId": "e8f466e2-10de-4d5c-8806-ac7f65375733",
+  "activeVersionId": "e8f466e2-10de-4d5c-8806-ac7f65375733",
+  "versionCounter": 166,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

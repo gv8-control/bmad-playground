@@ -1,0 +1,196 @@
+{
+  "updatedAt": "2026-07-05T09:38:03.481Z",
+  "createdAt": "2026-07-05T08:53:46.783Z",
+  "id": "NlwO2juJLNF7yJEE",
+  "name": "Test: $(Node).all() semantics in loops",
+  "description": "Tests whether $('NodeName').all() aggregates items across all runs of a node inside a Split In Batches loop, or returns only the last run's items. Outputs a conclusion field with the verdict.",
+  "active": false,
+  "isArchived": true,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cbb6ba77-1e26-4aad-be7c-2ae52e38fc30",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  { json: { i: 1, label: \"first\" } },\n  { json: { i: 2, label: \"second\" } },\n  { json: { i: 3, label: \"third\" } }\n];"
+      },
+      "id": "9c4a66d1-fb7b-4b1b-bfc0-40742f1062f0",
+      "name": "Generate Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const countHaltItems = $('Count halt').all();\nconst lastItem = countHaltItems.length > 0 ? countHaltItems[countHaltItems.length - 1] : null;\nconst haltIndex = lastItem?.json?.haltIndex;\nconst questionCount = haltIndex !== undefined ? haltIndex + 1 : 0;\nconst brokenAllLength = $('Target').all().length;\n\nreturn [{\n  json: {\n    hypothesis: \"Does $runIndex on a counting node give an accurate loop iteration count?\",\n    runIndexApproach: questionCount,\n    expectedCount: 3,\n    brokenAllLength: brokenAllLength,\n    countHaltLastItem: lastItem?.json,\n    conclusion: questionCount === 3\n      ? \"FIX WORKS: $runIndex counter is accurate and execution-scoped\"\n      : \"FIX FAILED: questionCount=\" + questionCount\n  }\n}];",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "c0e81e9c-a576-49f7-897a-bc5317ab33c4",
+      "name": "Probe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: { iteration: $json.i, label: $json.label } };"
+      },
+      "id": "c1df2763-4594-4857-bd8c-e26d381a17f8",
+      "name": "Target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "51b6c577-114f-41a3-aeb0-1b28d7de6a6e",
+      "name": "Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        688,
+        304
+      ]
+    },
+    {
+      "id": "23eafa0b-33e6-4207-936e-ba8b99aee1c7",
+      "name": "Count halt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "jsCode": "return { json: { haltIndex: $runIndex, iteration: $json.iteration } };",
+        "mode": "runOnceForEachItem"
+      }
+    }
+  ],
+  "connections": {
+    "Generate Items": {
+      "main": [
+        [
+          {
+            "node": "Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop": {
+      "main": [
+        [
+          {
+            "node": "Probe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Generate Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Target": {
+      "main": [
+        [
+          {
+            "node": "Count halt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count halt": {
+      "main": [
+        [
+          {
+            "node": "Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "7ed5fc19-1c51-4eda-be58-14e61c1b7110",
+  "activeVersionId": null,
+  "versionCounter": 5,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-05T08:53:46.783Z",
+      "createdAt": "2026-07-05T08:53:46.783Z",
+      "role": "workflow:owner",
+      "workflowId": "NlwO2juJLNF7yJEE",
+      "projectId": "AYEhcVrohjJ82DQg",
+      "project": {
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
+        "name": "Instance Owner <dev@dev.dev>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

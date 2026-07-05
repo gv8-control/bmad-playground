@@ -218,7 +218,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst step = $('Prep step').first().json;\nconst failed = item.error !== undefined;\nconst halts = Number(item.questionCount ?? 0);\nconst payload = { type: 'step_end', story: step.story, runId: step.RunId, step: step.id, index: step.index, status: failed ? 'failed' : 'success', durationMs: Date.now() - step.startedAt };\npayload.halts = halts;\nif (item.outcomeHistory) payload.outcomeHistory = item.outcomeHistory;\nif (item.sessionId) payload.sessionId = item.sessionId;\nlet error;\nif (failed) {\n  error = String(item.error?.message ?? item.error).slice(0, 500);\n  payload.error = error;\n} else {\n  payload.responseExcerpt = String(item.finalResponse ?? '').slice(0, 2000);\n}\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nconst traceCmd = item.sessionId ? `node scripts/pipeline/record-trace.mjs \"${item.sessionId}\" \"${step.RunId}\" \"${step.id}\"` : '';\nreturn [{ json: { failed, stepId: step.id, stepLabel: step.label, story: step.story, RunId: step.RunId, error, halts, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}`, traceCmd } }];"
+        "jsCode": "const item = $input.first().json;\nconst step = $('Prep step').first().json;\nconst failed = item.error !== undefined;\nconst payload = { type: 'step_end', story: step.story, runId: step.RunId, step: step.id, index: step.index, status: failed ? 'failed' : 'success', durationMs: Date.now() - step.startedAt };\nlet error;\nif (failed) {\n  error = String(item.error?.message ?? item.error).slice(0, 500);\n  payload.error = error;\n} else {\n  payload.responseExcerpt = String(item.finalResponse ?? '').slice(0, 2000);\n}\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { failed, stepId: step.id, stepLabel: step.label, story: step.story, RunId: step.RunId, error, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -241,19 +241,6 @@
       ],
       "id": "0fae5584-9f4c-4691-97b6-3b594f8cc7a1",
       "name": "Journal step end"
-    },
-    {
-      "parameters": {
-        "command": "={{ $('Assess step result').first().json.traceCmd || 'true' }}"
-      },
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [
-        1880,
-        96
-      ],
-      "id": "83adeda4-7606-43f7-9083-cd8526f5e0d0",
-      "name": "Record trace"
     },
     {
       "parameters": {
@@ -282,7 +269,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        2080,
+        1880,
         96
       ],
       "id": "a525a4a9-1bfb-4f2c-a37f-8f93885484ac",
@@ -549,17 +536,6 @@
       ]
     },
     "Journal step end": {
-      "main": [
-        [
-          {
-            "node": "Record trace",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Record trace": {
       "main": [
         [
           {
