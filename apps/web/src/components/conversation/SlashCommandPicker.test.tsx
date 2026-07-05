@@ -77,4 +77,19 @@ describe('[P0] SlashCommandPicker interactions', () => {
 
     expect(onSelect).toHaveBeenCalledWith({ name: 'bmad-prd' });
   });
+
+  it('assigns unique ids to each option', () => {
+    render(
+      <SlashCommandPicker
+        skills={SKILLS}
+        selectedIndex={0}
+        onSelect={jest.fn()}
+      />,
+    );
+
+    const options = screen.getAllByRole('option');
+    expect(options[0]).toHaveAttribute('id', 'skill-option-0');
+    expect(options[1]).toHaveAttribute('id', 'skill-option-1');
+    expect(options[2]).toHaveAttribute('id', 'skill-option-2');
+  });
 });

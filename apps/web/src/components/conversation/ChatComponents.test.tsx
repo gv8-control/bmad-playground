@@ -20,7 +20,7 @@ describe('ThinkingIndicator', () => {
 describe('ScrollToBottomButton', () => {
   it('[P0] shows count when count > 0', () => {
     render(<ScrollToBottomButton count={5} onClick={jest.fn()} />);
-    expect(screen.getByText('5 new')).toBeInTheDocument();
+    expect(screen.getByText('5 new messages')).toBeInTheDocument();
   });
 
   it('[P0] calls onClick when clicked', () => {

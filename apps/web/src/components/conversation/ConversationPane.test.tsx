@@ -583,6 +583,30 @@ describe('ConversationPane', () => {
       expect(screen.getByRole('status')).toBeInTheDocument();
     });
 
+    it('[P0] disables input during agent processing', async () => {
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+
+      const input = screen.getByLabelText('Message input') as HTMLTextAreaElement;
+      expect(input).not.toBeDisabled();
+
+      await act(async () => {
+        MockEventSource.emit('RUN_STARTED', {});
+      });
+
+      expect(input).toBeDisabled();
+
+      await act(async () => {
+        MockEventSource.emit('RUN_FINISHED', {});
+      });
+
+      expect(input).not.toBeDisabled();
+    });
+
     it('renders streaming agent response from SSE events', async () => {
       await act(async () => {
         render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);

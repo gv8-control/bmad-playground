@@ -121,4 +121,12 @@ describe('ChatInput', () => {
 
     expect(textarea.style.height).toBe('200px');
   });
+
+  it('[P0] disables textarea when disabled prop is true', () => {
+    const { container } = render(
+      <ChatInput value="hello" onChange={jest.fn()} onSubmit={jest.fn()} disabled={true} />,
+    );
+    const textarea = container.querySelector('textarea')!;
+    expect(textarea).toBeDisabled();
+  });
 });

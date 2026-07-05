@@ -177,6 +177,12 @@
               "name": "sessionId",
               "value": "={{ $('Extract SessionID').item.json.sessionId }}",
               "type": "string"
+            },
+            {
+              "id": "b3c4d5e6-f7a8-9012-abcd-ef0123456789",
+              "name": "outcomeHistory",
+              "value": "={{ JSON.stringify($('BMAD Outcome').all().map(r => r.json.outcome)) }}",
+              "type": "string"
             }
           ]
         },

@@ -20,10 +20,12 @@ export class SessionEventsService {
   }
 
   emit(conversationId: string, event: SseEvent): void {
-    const subject = this.emitters.get(conversationId);
-    if (subject) {
-      subject.next(event);
+    let subject = this.emitters.get(conversationId);
+    if (!subject) {
+      subject = new ReplaySubject<SseEvent>(100);
+      this.emitters.set(conversationId, subject);
     }
+    subject.next(event);
   }
 
   complete(conversationId: string): void {

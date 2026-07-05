@@ -17,8 +17,9 @@ export function SlashCommandPicker({
   if (skills.length === 0) {
     return (
       <div
-        className="absolute bottom-full left-0 mb-2 min-w-[240px] border border-border rounded-lg bg-surface p-2 shadow-lg z-10"
+        className="absolute bottom-full left-0 mb-2 min-w-[240px] border border-border rounded-lg bg-surface-raised p-2 z-10"
         role="listbox"
+        id="skill-listbox"
       >
         <p className="text-text-3 text-sm px-3 py-2">
           No skills found in this repository.
@@ -29,12 +30,14 @@ export function SlashCommandPicker({
 
   return (
     <div
-      className="absolute bottom-full left-0 mb-2 min-w-[240px] max-h-[320px] overflow-y-auto border border-border rounded-lg bg-surface shadow-lg z-10"
+      className="absolute bottom-full left-0 mb-2 min-w-[240px] max-h-[320px] overflow-y-auto border border-border rounded-lg bg-surface-raised z-10"
       role="listbox"
+      id="skill-listbox"
     >
       {skills.map((skill, index) => (
         <button
           key={skill.name}
+          id={`skill-option-${index}`}
           type="button"
           role="option"
           aria-selected={index === selectedIndex}

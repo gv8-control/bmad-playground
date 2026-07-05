@@ -252,6 +252,8 @@ export class AgentService implements IAgentService, OnModuleDestroy {
 
     this.logger.warn(`Circuit breaker fired for conversation ${conversationId}`);
 
+    const pendingPromises = this.pendingClassifierPromises.get(conversationId) ?? [];
+
     activeRun.abortController.abort();
 
     try {
@@ -266,10 +268,18 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         this.logger.warn(`Failed to terminate process: ${err}`);
       });
 
-    this.sessionEvents.emit(conversationId, {
-      event: 'RUN_ERROR',
-      data: { message: CIRCUIT_BREAKER_MESSAGE },
-    });
+    const emitRunError = () => {
+      this.sessionEvents.emit(conversationId, {
+        event: 'RUN_ERROR',
+        data: { message: CIRCUIT_BREAKER_MESSAGE },
+      });
+    };
+
+    if (pendingPromises.length > 0) {
+      void Promise.allSettled(pendingPromises).then(emitRunError);
+    } else {
+      emitRunError();
+    }
 
     this.circuitBreakerTimers.delete(conversationId);
   }
@@ -371,13 +381,32 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       type: string;
       content?: Array<{
         type: string;
+        id?: string;
+        name?: string;
+        input?: unknown;
         tool_use_id?: string;
         content?: unknown;
+        is_error?: boolean;
       }>;
     };
 
     if (!msg.content || !Array.isArray(msg.content)) {
       return '';
+    }
+
+    for (const block of msg.content) {
+      if (block.type === 'tool_use' && block.id) {
+        if (!this.activeToolCalls.has(conversationId)) {
+          this.activeToolCalls.set(conversationId, new Map());
+        }
+        if (!this.activeToolCalls.get(conversationId)!.has(block.id)) {
+          this.activeToolCalls.get(conversationId)!.set(block.id, {
+            toolCallId: block.id,
+            toolName: block.name ?? 'unknown',
+            input: typeof block.input === 'string' ? block.input : JSON.stringify(block.input ?? ''),
+          });
+        }
+      }
     }
 
     for (const block of msg.content) {
@@ -398,6 +427,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
             toolCallId,
             content: resultContent,
             role: 'tool',
+            isError: block.is_error === true,
           },
         });
 
