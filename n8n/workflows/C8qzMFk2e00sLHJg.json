@@ -171,6 +171,12 @@
               "name": "questionCount",
               "value": "={{ Math.max(0, $('Parse OpenCode Response').all().length - 1) }}",
               "type": "number"
+            },
+            {
+              "id": "6fc6a7d7-568f-4452-a6a2-6dd1153caefd",
+              "name": "sessionId",
+              "value": "={{ $('Extract SessionID').item.json.sessionId }}",
+              "type": "string"
             }
           ]
         },

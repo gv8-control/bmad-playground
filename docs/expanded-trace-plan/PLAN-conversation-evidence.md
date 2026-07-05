@@ -1,7 +1,7 @@
 # Plan: Conversation evidence for the self-reflector
 
 **Date:** 2026-07-05
-**Status:** Draft — S3 spike complete; ready for execution
+**Status:** Complete — S1–S8 implemented and verified
 **Commission:** `docs/expanded-trace-plan/commission-reflector-conversation-evidence.md`
 **Scope:** Persist step conversation content and expose it to the reflection step via progressive disclosure. The reflector agent itself is out of scope.
 
@@ -255,6 +255,24 @@ The user asked for deep analysis here. This is the heart of the plan's honesty a
 - Bad/missing sessionId → recording skipped, step loop continues, reflector falls back to journal excerpt.
 - Renamed part-type → manifest `schemaOk: false`, reflector degrades to journal-only.
 - Missing traces dir → `trace-view.mjs` prints "no trace for this step", reflector uses existing evidence sources.
+
+### S8 results (2026-07-05)
+
+Verified against story 3.7, runId `3.7-a1-20260704T225804` (7 steps recorded: create-story, validate-story, e2e-tests, review-code, review-tests, review-nfrs, update-project-context) plus the phantom-escalation session `ses_0d142e75effeqmGrh3pAURq8RW`.
+
+1. **Last substantive message without raw export — PASS.** `trace-view.mjs` default view returns the final text part(s) for every step. Example: `create-story` returns 2362 bytes, 1 of 149 parts shown. The raw `.json` file is never opened by the reflector.
+2. **On-demand widening without machinery noise — PASS.** `--narrative` on `review-code` returns 31 text parts (8001 bytes). `--include machinery` is required to see tool/reasoning (232 parts, 19728 bytes). `--from <msgId>` resumes from a specific message (30 of 232 parts, 6918 bytes).
+3. **Routine cost stays bounded — PASS.** Sum of default-view byte sizes across 7 steps: 19,172 bytes (~19 KB). Well under a single reflection prompt's budget. Widening is opt-in.
+4. **Contradiction → hypothesized cause + next step — PASS.** Against the phantom-escalation session, `--grep "HALT"` surfaces 3 matching lines across 188 parts: mid-stream narration says "HALT only for decisions the policy does not cover" and "halting only for uncovered ones"; the final message says "No HALT needed — the only decision that arose (AC-1 contradiction) was covered by DP-2." The reflector can cite `traces/<runId>/phantom-escalation.json, message msg_f2ed54f19001Z9cD090xBNafaC` as evidence for a hypothesized observation. The prompt's output schema supports `grade: "hypothesized"` with `hypothesis` + `nextStep` fields.
+5. **Subagent visibility — PASS.** `review-code` manifest shows 3 child sessions (all `agent: "general"`). `--subagents` includes child narrative (4 of 232 parts, 15301 bytes). `review-nfrs` manifest shows 2 child sessions.
+
+**Fail-soft paths — all PASS:**
+
+- Bad sessionId (`ses_INVALID`) → manifest with `schemaOk: false`, error message, exit 0. No crash.
+- Missing traces dir → `trace-view.mjs` prints "no trace for this step", exit 0.
+- Renamed part-type (fake trace with `unknown-type` only) → `trace-view.mjs` prints "no narrative in final step; widen with --narrative", exit 0. Manifest would carry `schemaOk: false`.
+
+**reflect-prompt.mjs dry run — PASS.** The rendered prompt for story 3.7 includes evidence source #6 (trace-view.mjs with all flags), reframed responseExcerpt (pointer + fallback), cost discipline (default for most, widen on suspicion), degradation path (fall back to journal + artifacts), trace-location citation guidance, and "step traces (via trace-view)" in the evidence list.
 
 ## 10. Open questions
 

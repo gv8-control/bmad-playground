@@ -12,6 +12,7 @@ export const PATHS = {
   journal: path.join(REPO_ROOT, '_bmad-output', 'pipeline', 'journal.jsonl'),
   ledger: path.join(REPO_ROOT, '_bmad-output', 'pipeline', 'ledger.jsonl'),
   proposalsDir: path.join(REPO_ROOT, '_bmad-output', 'pipeline', 'proposals'),
+  tracesDir: path.join(REPO_ROOT, '_bmad-output', 'pipeline', 'traces'),
   sprintStatus: path.join(REPO_ROOT, '_bmad-output', 'implementation-artifacts', 'sprint-status.yaml'),
 };
 
