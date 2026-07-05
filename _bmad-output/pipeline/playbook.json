@@ -6,7 +6,8 @@
     "ntfyTopic": "agent-outcome",
     "allowedAgents": [
       "planner",
-      "coder"
+      "coder",
+      "reviewer"
     ]
   },
   "policy": {
