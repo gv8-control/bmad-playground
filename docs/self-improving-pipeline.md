@@ -1,4 +1,4 @@
-# Self-Healing Development Pipeline (gen-2)
+# Self-Improving Development Pipeline (gen-2)
 
 Gen-1 automated a single story: a static n8n workflow (`Develop Story`) with one node per BMAD action. Changing the process meant editing the workflow; a failed run meant disabling completed nodes and re-running by hand.
 

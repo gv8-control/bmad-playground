@@ -1,4 +1,4 @@
-// Shared helpers for the gen-2 self-healing pipeline scripts.
+// Shared helpers for the gen-2 self-improving pipeline scripts.
 // Dependency-free on purpose: these run inside n8n executeCommand nodes and
 // must behave deterministically regardless of workspace install state.
 import fs from 'node:fs';

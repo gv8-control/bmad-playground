@@ -4,7 +4,7 @@ Status: draft, not started. No code, script, or workflow changes have been made 
 document is the design and risk analysis to review before any implementation begins.
 
 Written 2026-07-03 against `_bmad-output/pipeline/playbook.json` (version 2) and the n8n
-workflows described in [docs/self-healing-pipeline.md](self-healing-pipeline.md). Read that
+workflows described in [docs/self-improving-pipeline.md](self-improving-pipeline.md). Read that
 document first — this plan only covers the delta needed to make `stage` groups actually run
 concurrently instead of being metadata.
 
@@ -51,7 +51,7 @@ Two things fall out of that table that matter for scope:
 
 ## Constraint 1: n8n does not run branches concurrently
 
-Already documented and independently important enough to restate: `docs/self-healing-pipeline.md`
+Already documented and independently important enough to restate: `docs/self-improving-pipeline.md`
 records that n8n executes the branches of one workflow execution one node at a time, even when
 multiple nodes are wired to run "in parallel" — this was verified the hard way in gen-1. Wiring
 two `Execute Workflow` nodes to both fire from `Step loop` in `Develop Story (Playbook)`
@@ -195,7 +195,7 @@ real exception to "clean up right away," not a loose end, and it needs its own g
   finishes, well before the parked step resolves). Don't hold sibling worktrees open just because
   one member of the group is still parked.
 - A parked worktree living for a long time is the direct, known-in-advance consequence of the
-  same pre-existing limitation already called out in `docs/self-healing-pipeline.md`: "the
+  same pre-existing limitation already called out in `docs/self-improving-pipeline.md`: "the
   human-question form ... has no timeout, so an unanswered question stalls the loop indefinitely."
   This design doesn't introduce a new open-ended wait — it inherits that one. Fixing the
   no-timeout gap (out of scope here, per that doc) would also bound how long a parked worktree can
