@@ -3,12 +3,7 @@
   "version": 2,
   "config": {
     "runner": "opencode",
-    "ntfyTopic": "agent-outcome",
-    "allowedAgents": [
-      "planner",
-      "coder",
-      "reviewer"
-    ]
+    "ntfyTopic": "agent-outcome"
   },
   "policy": {
     "maxAttemptsPerStory": 2,
