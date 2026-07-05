@@ -789,7 +789,6 @@ export function ConversationPane({
       setShowScrollToBottom(true);
     }
   }
-  }
 
   const inputDisabled = state === 'init' || state === 'error' || state === 'timeout' || state === 'reconnecting' || agentState !== 'idle';
   const showSpinner = (state === 'provisioning' && queuedMessage !== null) || state === 'reconnecting';
