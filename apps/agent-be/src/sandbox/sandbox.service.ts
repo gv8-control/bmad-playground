@@ -117,6 +117,28 @@ export class SandboxService implements ISandboxService {
     return { dirty: true, files };
   }
 
+  async commit(sandboxId: string, message: string): Promise<void> {
+    const sandbox = await this.getSandbox(sandboxId);
+    const addResponse = await sandbox.process.executeCommand(
+      'git add -A',
+      undefined,
+      undefined,
+      10,
+    );
+    if (addResponse.exitCode !== 0) {
+      throw new Error(addResponse.result);
+    }
+    const response = await sandbox.process.executeCommand(
+      `git commit -m ${this.shellQuote(message)}`,
+      undefined,
+      undefined,
+      10,
+    );
+    if (response.exitCode !== 0) {
+      throw new Error(response.result);
+    }
+  }
+
   async terminateProcess(sandboxId: string, processId: string): Promise<void> {
     const sandbox = await this.getSandbox(sandboxId);
     try {

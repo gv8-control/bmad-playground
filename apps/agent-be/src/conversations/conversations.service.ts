@@ -11,6 +11,7 @@ import { CredentialsService } from '../credentials/credentials.service';
 import { ProvisionQueueService } from '../sandbox/provision-queue.service';
 import { IdleTimeoutService } from '../sandbox/idle-timeout.service';
 import { SessionEventsService } from '../streaming/session-events.service';
+import { ManualCommitService } from './manual-commit.service';
 import { generateSemanticTitle } from './semantic-title';
 
 type SandboxStatus = 'provisioning' | 'ready' | 'failed' | 'idle-timeout';
@@ -29,6 +30,7 @@ export class ConversationsService {
     private readonly idleTimeout: IdleTimeoutService,
     private readonly sessionEvents: SessionEventsService,
     @Inject(AGENT_SERVICE) private readonly agentService: IAgentService,
+    private readonly manualCommitService: ManualCommitService,
   ) {}
 
   async createConversation(userId: string): Promise<{ id: string }> {
@@ -56,6 +58,7 @@ export class ConversationsService {
 
       const repoConnection = await this.prisma.repoConnection.findUnique({
         where: { userId },
+        select: { id: true, repoUrl: true },
       });
       if (!repoConnection) {
         throw new Error(`No RepoConnection found for user ${userId}`);
@@ -63,23 +66,7 @@ export class ConversationsService {
 
       const credential = await this.credentialsService.resolveOAuthToken(userId);
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { name: true, email: true, githubLogin: true },
-      });
-      if (!user) {
-        throw new Error(`User ${userId} not found`);
-      }
-      const gitConfig: GitUserConfig = {
-        name:
-          user.name && user.name.trim().length > 0
-            ? user.name
-            : user.githubLogin,
-        email:
-          user.email && user.email.trim().length > 0
-            ? user.email
-            : `${user.githubLogin}@users.noreply.github.com`,
-      };
+      const gitConfig = await this.resolveGitIdentity(userId);
 
       const sandbox = await this.sandboxService.provision({
         conversationId,
@@ -238,6 +225,9 @@ export class ConversationsService {
     }
 
     await this.agentService.runTurn({ conversationId, sandboxId, message, userId });
+    await this.manualCommitService.flushPendingCommit(conversationId, sandboxId).catch((err) => {
+      this.logger.error(`flushPendingCommit failed for conversation ${conversationId}: ${err}`);
+    });
   }
 
   async stopAgent(conversationId: string, userId: string): Promise<{ conversationId: string; stopped: boolean }> {
@@ -253,5 +243,109 @@ export class ConversationsService {
     await this.agentService.stop(conversationId);
 
     return { conversationId, stopped: true };
+  }
+
+  async manualCommit(
+    conversationId: string,
+    userId: string,
+  ): Promise<{ committed: boolean; clean: boolean; queued: boolean }> {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+      select: { id: true },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    const sandboxId = this.sandboxIds.get(conversationId);
+    if (!sandboxId) {
+      throw new NotFoundException('Session is not ready');
+    }
+
+    return this.manualCommitService.requestCommit(conversationId, userId, sandboxId);
+  }
+
+  async resumeConversation(
+    conversationId: string,
+    userId: string,
+  ): Promise<{ conversationId: string; sandboxStatus: SandboxStatus }> {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+      select: { id: true },
+    });
+
+    if (!conversation) {
+      return { conversationId, sandboxStatus: 'failed' };
+    }
+
+    const currentStatus = this.sandboxStatuses.get(conversationId);
+    const sandboxId = this.sandboxIds.get(conversationId);
+
+    if (currentStatus === 'ready' && sandboxId) {
+      try {
+        const gitConfig = await this.resolveGitIdentity(userId);
+        await this.sandboxService.injectGitConfig(sandboxId, gitConfig);
+        const workingTree = await this.sandboxService.getWorkingTreeStatus(sandboxId);
+
+        if (workingTree.dirty) {
+          this.sessionEvents.emit(conversationId, {
+            event: 'WORKING_TREE_DIRTY',
+            data: { files: workingTree.files },
+          });
+        } else {
+          this.sessionEvents.emit(conversationId, {
+            event: 'WORKING_TREE_CLEAN',
+            data: {},
+          });
+        }
+
+        this.sessionEvents.emit(conversationId, {
+          event: 'SESSION_READY',
+          data: { sandboxId },
+        });
+
+        return { conversationId, sandboxStatus: 'ready' };
+      } catch (err) {
+        this.logger.error(`Fast-path resume failed for conversation ${conversationId}: ${err}`);
+        this.sandboxStatuses.set(conversationId, 'failed');
+        this.sessionEvents.emit(conversationId, {
+          event: 'SESSION_ERROR',
+          data: { message: err instanceof Error ? err.message : 'Unknown error' },
+        });
+        return { conversationId, sandboxStatus: 'failed' };
+      }
+    }
+
+    if (currentStatus === 'provisioning') {
+      return { conversationId, sandboxStatus: 'provisioning' };
+    }
+
+    this.sandboxStatuses.set(conversationId, 'provisioning');
+    void this.provisionSandbox(conversationId, userId).catch((err) => {
+      this.logger.error(`provisionSandbox failed during resume for conversation ${conversationId}: ${err}`);
+    });
+
+    return { conversationId, sandboxStatus: 'provisioning' };
+  }
+
+  private async resolveGitIdentity(userId: string): Promise<GitUserConfig> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true, githubLogin: true },
+    });
+    if (!user) {
+      throw new Error(`User ${userId} not found`);
+    }
+    return {
+      name:
+        user.name && user.name.trim().length > 0
+          ? user.name
+          : user.githubLogin,
+      email:
+        user.email && user.email.trim().length > 0
+          ? user.email
+          : `${user.githubLogin}@users.noreply.github.com`,
+    };
   }
 }

@@ -1,23 +1,26 @@
 /**
  * Story 3.1: Provision a Sandbox When Opening a Conversation
  * Story 3.2: Invoke BMAD Skills via Slash Command
+ * Story 3.5: Resume an Existing Conversation
  * Unit tests for ConversationsService.
  * Uses SandboxServiceFake via buildTestModule().
  *
  * Covers: AC-1 (provision pipeline), AC-3 (idle timeout), AC-4 (provision failure cleanup),
  * AC-6 (provision queue concurrency cap).
  * Story 3.2 covers: AC-1 (listSkills), AC-2 (empty skills), AC-3 (sendTurn persistence + title).
+ * Story 3.5 covers: AC-2 (resume fast/slow path, git identity re-injection, idle timer).
  *
- * TDD RED PHASE: Story 3.2 tests are skipped (it.skip). Remove skips
- * one describe-block at a time per task during implementation.
+ * TDD GREEN PHASE: Story 3.5 tests un-skipped and passing.
  */
 import { Test } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { ConversationsModule } from './conversations.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { CredentialsService } from '../credentials/credentials.service';
 import { SessionEventsService } from '../streaming/session-events.service';
 import { DAYTONA_CLIENT } from '../sandbox/daytona-client.provider';
+import { IdleTimeoutService } from '../sandbox/idle-timeout.service';
 import { AGENT_SERVICE, SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { buildTestModule } from '../../test/helpers/test-module-builder';
 import { SandboxServiceFake } from '../../test/helpers/sandbox-service.fake';
@@ -29,6 +32,7 @@ describe('ConversationsService', () => {
   let agentFake: AgentServiceFake;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let sandboxFake: any;
+  let idleTimeout: IdleTimeoutService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockPrisma: any;
 
@@ -82,6 +86,7 @@ describe('ConversationsService', () => {
     service = module.get(ConversationsService);
     sessionEvents = module.get(SessionEventsService);
     sandboxFake = sandboxFakeInstance;
+    idleTimeout = module.get(IdleTimeoutService);
   });
 
   afterEach(() => {
@@ -439,6 +444,184 @@ describe('ConversationsService', () => {
       const result = await service.stopAgent('conv-1', 'user-1');
 
       expect(result).toEqual({ conversationId: 'conv-1', stopped: true });
+    });
+  });
+
+  describe('[P0] Story 3.5 — resumeConversation (AC-2)', () => {
+    it('[P0] returns "ready" status and does NOT call provision when sandbox is already alive (fast path)', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const provisionSpy = jest.spyOn(sandboxFake, 'provision');
+      const result = await service.resumeConversation('conv-1', 'user-1');
+
+      expect(result.sandboxStatus).toBe('ready');
+      expect(provisionSpy).not.toHaveBeenCalled();
+    });
+
+    it('[P0] re-injects git config on fast-path resume (AC-2 git identity re-injection)', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+      await service.resumeConversation('conv-1', 'user-1');
+
+      expect(injectSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ name: expect.any(String), email: expect.any(String) }),
+      );
+    });
+
+    it('[P0] emits WORKING_TREE_* and SESSION_READY on fast-path resume', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+      await service.resumeConversation('conv-1', 'user-1');
+
+      const events = emitSpy.mock.calls.map((c: unknown[]) => (c[1] as { event: string }).event);
+      expect(events).toContain('SESSION_READY');
+      const hasWorkingTree =
+        events.includes('WORKING_TREE_CLEAN') || events.includes('WORKING_TREE_DIRTY');
+      expect(hasWorkingTree).toBe(true);
+
+      const workingTreeIndex = Math.max(
+        events.indexOf('WORKING_TREE_CLEAN'),
+        events.indexOf('WORKING_TREE_DIRTY'),
+      );
+      expect(workingTreeIndex).toBeLessThan(events.indexOf('SESSION_READY'));
+    });
+
+    it('[P0] returns "provisioning" and calls provisionSandbox when sandbox is not alive (slow path)', async () => {
+      const provisionSpy = jest.spyOn(service, 'provisionSandbox').mockResolvedValue(undefined);
+
+      const result = await service.resumeConversation('conv-1', 'user-1');
+
+      expect(result.sandboxStatus).toBe('provisioning');
+      expect(provisionSpy).toHaveBeenCalledWith('conv-1', 'user-1');
+    });
+
+    it('[P0] returns "failed" for conversation not owned by user (tenant isolation)', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.resumeConversation('conv-1', 'user-other');
+
+      expect(result.sandboxStatus).toBe('failed');
+      expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith({
+        where: { id: 'conv-1', userId: 'user-other' },
+        select: { id: true },
+      });
+    });
+
+    it('[P1] does not start duplicate idle timer when one is already running', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const startTimerSpy = jest.spyOn(idleTimeout, 'startTimer');
+      await service.resumeConversation('conv-1', 'user-1');
+
+      expect(startTimerSpy).not.toHaveBeenCalled();
+    });
+
+    it('[P1] resolveGitIdentity resolves git identity with noreply email fallback', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        name: null,
+        email: null,
+        githubLogin: 'testuser',
+      });
+
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+      await service.resumeConversation('conv-1', 'user-1');
+
+      expect(injectSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          name: 'testuser',
+          email: 'testuser@users.noreply.github.com',
+        }),
+      );
+    });
+  });
+
+  describe('[P0] Story 3.6 — manualCommit', () => {
+    it('manualCommit delegates to manualCommitService.requestCommit with correct args', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
+      jest.spyOn(sandboxFake, 'provision').mockResolvedValue({
+        sandboxId: 'sb-1',
+        conversationId: 'conv-1',
+        status: 'ready',
+        provisionedAt: new Date(),
+      });
+      jest.spyOn(sandboxFake, 'clone').mockResolvedValue(undefined);
+      jest.spyOn(sandboxFake, 'injectGitConfig').mockResolvedValue(undefined);
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({ dirty: false, files: [] });
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const requestCommitSpy = jest.spyOn(
+        service['manualCommitService'],
+        'requestCommit',
+      ).mockResolvedValue({ committed: true, clean: false, queued: false });
+
+      const result = await service.manualCommit('conv-1', 'user-1');
+
+      expect(result).toEqual({ committed: true, clean: false, queued: false });
+      expect(requestCommitSpy).toHaveBeenCalledWith('conv-1', 'user-1', 'sb-1');
+    });
+
+    it('manualCommit throws NotFoundException for conversation not owned by user (tenant isolation)', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.manualCommit('conv-1', 'wrong-user')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('manualCommit throws NotFoundException when sandboxId is missing (session not ready)', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
+
+      await expect(service.manualCommit('conv-1', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('[P0] Story 3.6 — runAgentTurn flushPendingCommit', () => {
+    it('runAgentTurn calls flushPendingCommit after agentService.runTurn completes', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
+      jest.spyOn(sandboxFake, 'provision').mockResolvedValue({
+        sandboxId: 'sb-1',
+        conversationId: 'conv-1',
+        status: 'ready',
+        provisionedAt: new Date(),
+      });
+      jest.spyOn(sandboxFake, 'clone').mockResolvedValue(undefined);
+      jest.spyOn(sandboxFake, 'injectGitConfig').mockResolvedValue(undefined);
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({ dirty: false, files: [] });
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const flushSpy = jest.spyOn(
+        service['manualCommitService'],
+        'flushPendingCommit',
+      ).mockResolvedValue(undefined);
+
+      await service.sendTurn('conv-1', 'user-1', 'test message');
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(flushSpy).toHaveBeenCalledWith('conv-1', 'sb-1');
+    });
+
+    it('runAgentTurn does NOT call flushPendingCommit when sandboxId is missing (early return path)', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
+
+      const flushSpy = jest.spyOn(
+        service['manualCommitService'],
+        'flushPendingCommit',
+      ).mockResolvedValue(undefined);
+
+      await service.sendTurn('conv-1', 'user-1', 'test message');
+
+      await new Promise((r) => setImmediate(r));
+
+      expect(flushSpy).not.toHaveBeenCalled();
     });
   });
 });

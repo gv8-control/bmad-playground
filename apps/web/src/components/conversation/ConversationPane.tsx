@@ -8,10 +8,14 @@ import { SlashCommandPicker } from './SlashCommandPicker';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
 import { ThinkingIndicator } from './ThinkingIndicator';
+import { WorkingTreeIndicator } from './WorkingTreeIndicator';
+import type { WorkingTreeState } from './WorkingTreeIndicator';
 import { useDraftPersistence } from './useDraftPersistence';
+import { useConversationPresence } from '@/hooks/use-conversation-presence';
+import { CredentialErrorBanner } from '@/components/project-map/CredentialErrorBanner';
 import type { ChatMessage } from './types';
 
-type SessionState = 'init' | 'provisioning' | 'ready' | 'error' | 'timeout';
+type SessionState = 'init' | 'provisioning' | 'ready' | 'error' | 'timeout' | 'reconnecting';
 type AgentState = 'idle' | 'thinking' | 'tool-executing' | 'streaming';
 
 const CLIENT_TIMEOUT_MS = 30_000;
@@ -33,6 +37,8 @@ export function ConversationPane({
   const [state, setState] = useState<SessionState>('init');
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [agentState, setAgentState] = useState<AgentState>('idle');
+  const [workingTreeState, setWorkingTreeState] = useState<WorkingTreeState>('hidden');
+  const [credentialFailed, setCredentialFailed] = useState(false);
   const streamingMessageIdRef = useRef<string | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
@@ -46,12 +52,15 @@ export function ConversationPane({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const queuedMessageRef = useRef<string | null>(null);
   const conversationIdRef = useRef<string | null>(initialConversationId ?? null);
+  const [conversationId, setConversationId] = useState<string | null>(initialConversationId ?? null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pickerContainerRef = useRef<HTMLDivElement>(null);
 
   const { draft, setDraft, clearDraft } = useDraftPersistence(
     conversationIdRef.current,
   );
+
+  useConversationPresence(conversationId);
 
   const filteredSkills = useMemo(
     () => skills.filter((s) => s.name.startsWith(pickerQuery)),
@@ -92,9 +101,11 @@ export function ConversationPane({
   }, [state]);
 
   async function startSession() {
-    setState('provisioning');
+    const isResume = conversationIdRef.current !== null;
+    setState(isResume ? 'reconnecting' : 'provisioning');
+    setCredentialFailed(false);
 
-    let convId = initialConversationId ?? null;
+    let convId = conversationIdRef.current;
 
     if (!convId) {
       try {
@@ -116,6 +127,7 @@ export function ConversationPane({
         const data = (await response.json()) as { id: string };
         convId = data.id;
         conversationIdRef.current = convId;
+        setConversationId(convId);
       } catch {
         setState('error');
         setErrorMessage('Failed to connect to the server.');
@@ -217,15 +229,23 @@ export function ConversationPane({
     eventSource.addEventListener('TOOL_CALL_START', (event) => {
       try {
         const data = JSON.parse((event as MessageEvent).data);
-        const toolName = data.toolName ?? 'unknown';
+        const toolCallName = data.toolCallName ?? 'unknown';
+        const toolCallId = data.toolCallId ?? `tc-${Date.now()}`;
         setAgentState('tool-executing');
         setMessages((prev) => [
           ...prev,
           {
-            id: `tool-${Date.now()}`,
+            id: toolCallId,
             role: 'assistant' as const,
-            content: `Running… ${toolName}`,
+            content: '',
             createdAt: new Date(),
+            toolCall: {
+              toolCallId,
+              toolName: toolCallName,
+              status: 'running',
+              input: '',
+              output: '',
+            },
           },
         ]);
       } catch {
@@ -233,8 +253,94 @@ export function ConversationPane({
       }
     });
 
-    eventSource.addEventListener('TOOL_CALL_END', () => {
-      setAgentState('thinking');
+    eventSource.addEventListener('TOOL_CALL_ARGS', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        const { toolCallId, delta } = data;
+        if (!toolCallId) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === toolCallId && m.toolCall
+              ? { ...m, toolCall: { ...m.toolCall, input: m.toolCall.input + (delta ?? '') } }
+              : m,
+          ),
+        );
+      } catch {
+        // ignore parse errors
+      }
+    });
+
+    eventSource.addEventListener('TOOL_CALL_END', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        const { toolCallId } = data;
+        if (toolCallId) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === toolCallId && m.toolCall
+                ? { ...m, toolCall: { ...m.toolCall, status: 'completed' as const } }
+                : m,
+            ),
+          );
+          setAgentState('thinking');
+        }
+      } catch {
+        // ignore parse errors
+      }
+    });
+
+    eventSource.addEventListener('TOOL_CALL_RESULT', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        const { toolCallId, content } = data;
+        if (!toolCallId) return;
+        const isError =
+          typeof content === 'string' &&
+          (/^error:/im.test(content) ||
+            /Command exited with code [1-9]/.test(content) ||
+            /failed to push/i.test(content));
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === toolCallId && m.toolCall
+              ? {
+                  ...m,
+                  toolCall: {
+                    ...m.toolCall,
+                    output: content ?? '',
+                    status: isError ? ('error' as const) : m.toolCall.status,
+                    errorMessage: isError ? content : m.toolCall.errorMessage,
+                  },
+                }
+              : m,
+          ),
+        );
+      } catch {
+        // ignore parse errors
+      }
+    });
+
+    eventSource.addEventListener('TOOL_CALL_PROMOTED', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        const { toolCallId, artifactType, artifactTitle, viewHref } = data;
+        if (!toolCallId) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === toolCallId && m.toolCall
+              ? {
+                  ...m,
+                  toolCall: {
+                    ...m.toolCall,
+                    status: 'completed' as const,
+                    semantic: { artifactType, artifactTitle, viewHref },
+                  },
+                }
+              : m,
+          ),
+        );
+      } catch {
+        // ignore parse errors
+      }
     });
 
     eventSource.addEventListener('RUN_FINISHED', () => {
@@ -251,7 +357,7 @@ export function ConversationPane({
           ...prev,
           {
             id: `error-${Date.now()}`,
-            role: 'assistant' as const,
+            role: 'system' as const,
             content: data.message ?? 'The agent stopped unexpectedly. Send a new message to try again.',
             createdAt: new Date(),
           },
@@ -261,7 +367,7 @@ export function ConversationPane({
           ...prev,
           {
             id: `error-${Date.now()}`,
-            role: 'assistant' as const,
+            role: 'system' as const,
             content: 'The agent stopped unexpectedly. Send a new message to try again.',
             createdAt: new Date(),
           },
@@ -276,20 +382,146 @@ export function ConversationPane({
         ...prev,
         {
           id: `stream-error-${Date.now()}`,
-          role: 'assistant' as const,
+          role: 'system' as const,
           content: 'Connection was slow and dropped. Please try again.',
           createdAt: new Date(),
         },
       ]);
     });
 
+    eventSource.addEventListener('WORKING_TREE_DIRTY', () => {
+      setWorkingTreeState('dirty');
+    });
+
+    eventSource.addEventListener('WORKING_TREE_CLEAN', () => {
+      setWorkingTreeState('clean');
+    });
+
+    eventSource.addEventListener('MANUAL_SAVE_SUCCEEDED', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        const { toolCallId } = data;
+        const id = toolCallId || `manual-save-${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id,
+            role: 'assistant' as const,
+            content: '',
+            createdAt: new Date(),
+            toolCall: {
+              toolCallId: id,
+              toolName: 'Save',
+              status: 'completed' as const,
+              input: '',
+              output: '',
+              semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
+            },
+          },
+        ]);
+        setWorkingTreeState('clean');
+      } catch {
+        // ignore parse errors
+      }
+    });
+
+    eventSource.addEventListener('MANUAL_SAVE_FAILED', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        const { toolCallId, error } = data;
+        const id = toolCallId || `manual-save-${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id,
+            role: 'assistant' as const,
+            content: '',
+            createdAt: new Date(),
+            toolCall: {
+              toolCallId: id,
+              toolName: 'Save',
+              status: 'error' as const,
+              input: '',
+              output: '',
+              errorMessage: error ?? 'Save failed',
+            },
+          },
+        ]);
+        setWorkingTreeState('dirty');
+      } catch {
+        // ignore parse errors
+      }
+    });
+
+    eventSource.addEventListener('CREDENTIAL_FAILURE', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        const { toolCallId } = data;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.toolCall && m.toolCall.toolCallId === toolCallId
+              ? {
+                  ...m,
+                  toolCall: {
+                    ...m.toolCall,
+                    status: 'error' as const,
+                    errorMessage: 'GitHub credentials have expired or been revoked.',
+                  },
+                }
+              : m,
+          ),
+        );
+      } catch {
+        // ignore parse errors
+      }
+      setCredentialFailed(true);
+    });
+
+    eventSource.addEventListener('ACCESS_DENIED', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        const { toolCallId, code, retryAfter } = data;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.toolCall && m.toolCall.toolCallId === toolCallId
+              ? {
+                  ...m,
+                  toolCall: {
+                    ...m.toolCall,
+                    status: 'error' as const,
+                    errorMessage: 'Access denied.',
+                    accessNotice: { code, retryAfter },
+                  },
+                }
+              : m,
+          ),
+        );
+      } catch {
+        // ignore parse errors
+      }
+    });
+
     eventSource.onerror = () => {
       setState((prev) => (prev === 'ready' ? prev : 'error'));
     };
 
+    if (isResume) {
+      void fetch(`${apiUrl}/api/conversations/${convId}/resume`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${boundaryJwt}`,
+        },
+        body: '{}',
+      }).catch(() => {
+        setState('error');
+        setErrorMessage('Failed to resume conversation.');
+      });
+    }
+
     timeoutRef.current = setTimeout(() => {
       setState((prev) => {
-        if (prev === 'provisioning') {
+        if (prev === 'provisioning' || prev === 'reconnecting') {
           setErrorMessage('Starting your session is taking longer than expected.');
           return 'timeout';
         }
@@ -375,6 +607,44 @@ export function ConversationPane({
     setAgentState('idle');
   }
 
+  async function handleSave() {
+    const convId = conversationIdRef.current;
+    if (!convId) return;
+
+    setWorkingTreeState('saving');
+
+    try {
+      const response = await fetch(`${apiUrl}/api/conversations/${convId}/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${boundaryJwt}`,
+        },
+        body: '{}',
+      });
+
+      if (!response.ok) {
+        setWorkingTreeState('dirty');
+        return;
+      }
+
+      const data = (await response.json()) as { committed: boolean; clean: boolean; queued: boolean };
+
+      if (data.queued) {
+        setWorkingTreeState('saving-after-response');
+      } else if (data.committed) {
+        // MANUAL_SAVE_SUCCEEDED SSE event will set 'clean' + add the Semantic Pill
+      } else if (data.clean) {
+        setWorkingTreeState('clean');
+      } else {
+        // MANUAL_SAVE_FAILED SSE event will set 'dirty' + add the error Tool Pill
+        setWorkingTreeState('dirty');
+      }
+    } catch {
+      setWorkingTreeState('dirty');
+    }
+  }
+
   function handleSelectSkill(skill: SkillInfo) {
     setDraft(`/${skill.name} `);
     setPickerOpen(false);
@@ -443,7 +713,6 @@ export function ConversationPane({
     queuedMessageRef.current = null;
     setQueuedMessage(null);
     setErrorMessage(null);
-    conversationIdRef.current = initialConversationId ?? null;
     void startSession();
   }
 
@@ -452,12 +721,18 @@ export function ConversationPane({
     setNewMessageCount(0);
   }
 
-  const inputDisabled = state === 'init' || state === 'error' || state === 'timeout';
-  const showSpinner = state === 'provisioning' && queuedMessage !== null;
+  const inputDisabled = state === 'init' || state === 'error' || state === 'timeout' || state === 'reconnecting';
+  const showSpinner = (state === 'provisioning' && queuedMessage !== null) || state === 'reconnecting';
   const isProcessing = agentState !== 'idle';
+  const effectiveWorkingTreeState = state === 'ready' ? workingTreeState : 'hidden';
 
   return (
     <div className="flex h-full flex-col">
+      {credentialFailed && (
+        <CredentialErrorBanner
+          callbackUrl={typeof window !== 'undefined' ? window.location.pathname : undefined}
+        />
+      )}
       <ChatMessageList
         messages={messages}
         showScrollToBottom={showScrollToBottom}
@@ -479,7 +754,14 @@ export function ConversationPane({
         </button>
       )}
       <div className="flex-shrink-0 border-t border-border px-8 py-4">
-        {showSpinner && <SessionStartSpinner />}
+        {showSpinner && (
+          state === 'reconnecting' ? (
+            <SessionStartSpinner label="Reconnecting…" />
+          ) : (
+            <SessionStartSpinner />
+          )
+        )}
+        <WorkingTreeIndicator state={effectiveWorkingTreeState} onSave={handleSave} />
         <div ref={pickerContainerRef} className="relative">
           {pickerOpen && (
             <SlashCommandPicker

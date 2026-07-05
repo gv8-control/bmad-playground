@@ -47,4 +47,19 @@ export class CredentialsService {
       throw new CredentialFailureError(401, { cause: err });
     }
   }
+
+  async markCredentialFailed(userId: string, capturedAt?: Date): Promise<void> {
+    try {
+      await this.prisma.repoConnection.updateMany({
+        where: capturedAt
+          ? { userId, updatedAt: { lt: capturedAt } }
+          : { userId },
+        data: { credentialHealth: 'failed' },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to update credential health for userId ${userId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 }

@@ -11,7 +11,7 @@
  * Priority tags: P0 for AC coverage, P1 for edge cases.
  */
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ArtifactCard } from './ArtifactCard';
 import type { ArtifactType, ArtifactStatus } from '@bmad-easy/shared-types';
 
@@ -152,5 +152,25 @@ describe('ArtifactCard — link behavior (AC-1, AC-2, Story 2.6)', () => {
     render(<ArtifactCard {...COMPLETED_ARTIFACT} />);
     const item = screen.getByRole('listitem');
     expect(item).toHaveAttribute('role', 'listitem');
+  });
+});
+
+describe('ArtifactCard — onClick prop (Story 3.5, AC-3)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] accepts optional onClick prop and calls it on click (backward compatible)', () => {
+    const onClickSpy = jest.fn();
+    render(
+      <ArtifactCard
+        type="prd"
+        title="Test PRD"
+        status="completed"
+        href="/artifacts?id=art-1"
+        onClick={onClickSpy}
+      />,
+    );
+    const item = screen.getByRole('listitem');
+    fireEvent.click(item);
+    expect(onClickSpy).toHaveBeenCalled();
   });
 });

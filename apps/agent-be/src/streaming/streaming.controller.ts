@@ -86,6 +86,24 @@ export class StreamingController {
       }
     };
 
+    const heartbeatInterval = setInterval(() => {
+      try {
+        res.write(': heartbeat\n\n');
+      } catch {
+        clearInterval(heartbeatInterval);
+      }
+    }, 15_000);
+    heartbeatInterval.unref?.();
+
+    const cleanupHeartbeat = () => {
+      clearInterval(heartbeatInterval);
+    };
+
+    const cleanupAll = () => {
+      cleanupBackPressure();
+      cleanupHeartbeat();
+    };
+
     const subscription = stream$.subscribe({
       next: (event: SseEvent) => {
         const messageEvent: MessageEvent = {
@@ -100,6 +118,8 @@ export class StreamingController {
           if (pendingCount >= 200 && !backPressureTimer) {
             backPressureTimer = setTimeout(() => {
               if (pendingCount >= 200) {
+                cleanupAll();
+                subscription.unsubscribe();
                 res.write('event: STREAM_ERROR\n');
                 res.write(`data: ${JSON.stringify({ code: 'STREAM_BACK_PRESSURE' })}\n\n`);
                 res.write('data: [DONE]\n\n');
@@ -108,16 +128,21 @@ export class StreamingController {
                 backPressureTimer = null;
               }
             }, 30_000);
+            backPressureTimer.unref?.();
           }
         }
       },
       complete: () => {
-        cleanupBackPressure();
-        res.end();
+        cleanupAll();
+        try {
+          res.end();
+        } catch {
+          // response already closed
+        }
       },
       error: (err: unknown) => {
         this.logger.error(`SSE stream error for conversation ${conversationId}: ${err}`);
-        cleanupBackPressure();
+        cleanupAll();
         try {
           res.end();
         } catch {
@@ -132,7 +157,7 @@ export class StreamingController {
     });
 
     req.on('close', () => {
-      cleanupBackPressure();
+      cleanupAll();
       subscription.unsubscribe();
     });
   }

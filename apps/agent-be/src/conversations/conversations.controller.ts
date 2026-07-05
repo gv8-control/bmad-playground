@@ -6,6 +6,8 @@ import type { UserContext } from '../common/types/user-context.type';
 import type { SkillInfo } from '@bmad-easy/shared-types';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { ResumeConversationDto } from './dto/resume-conversation.dto';
+import { SaveConversationDto } from './dto/save-conversation.dto';
 
 @Controller('conversations')
 export class ConversationsController {
@@ -53,5 +55,26 @@ export class ConversationsController {
     @User() user: UserContext,
   ): Promise<{ conversationId: string; stopped: boolean }> {
     return this.conversationsService.stopAgent(id, user.id);
+  }
+
+  @Post(':id/resume')
+  async resumeConversation(
+    @Param('id') id: string,
+    @User() user: UserContext,
+    @Body(new ZodValidationPipe()) _body: ResumeConversationDto,
+  ): Promise<{
+    conversationId: string;
+    sandboxStatus: 'provisioning' | 'ready' | 'failed' | 'idle-timeout';
+  }> {
+    return this.conversationsService.resumeConversation(id, user.id);
+  }
+
+  @Post(':id/save')
+  async saveConversation(
+    @Param('id') id: string,
+    @User() user: UserContext,
+    @Body(new ZodValidationPipe()) _body: SaveConversationDto,
+  ): Promise<{ committed: boolean; clean: boolean; queued: boolean }> {
+    return this.conversationsService.manualCommit(id, user.id);
   }
 }

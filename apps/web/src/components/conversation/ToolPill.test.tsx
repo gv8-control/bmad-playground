@@ -29,7 +29,7 @@ function makeToolCall(overrides: Partial<ToolCallData> = {}): ToolCallData {
 
 describe('ToolPill', () => {
   describe('[P0] AC-1 — Running state', () => {
-    it.skip('renders spinner and "Running… [toolName]" label', () => {
+    it('renders spinner and "Running… [toolName]" label', () => {
       render(<ToolPill toolCall={makeToolCall({ status: 'running', toolName: 'Bash' })} />);
       expect(screen.getByText(/Running.*Bash/)).toBeInTheDocument();
       expect(document.querySelector('.animate-spin')).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe('ToolPill', () => {
   });
 
   describe('[P0] AC-1 — Completed state', () => {
-    it.skip('renders checkmark and tool name without "completed" label', () => {
+    it('renders checkmark and tool name without "completed" label', () => {
       render(<ToolPill toolCall={makeToolCall({ status: 'completed', toolName: 'Bash' })} />);
       expect(screen.getByText(/Bash/)).toBeInTheDocument();
       expect(screen.queryByText(/completed/i)).not.toBeInTheDocument();
@@ -45,7 +45,7 @@ describe('ToolPill', () => {
   });
 
   describe('[P0] AC-3/AC-4 — Error state', () => {
-    it.skip('renders negative border/text and "[toolName] failed"', () => {
+    it('renders negative border/text and "[toolName] failed"', () => {
       render(
         <ToolPill
           toolCall={makeToolCall({
@@ -60,7 +60,7 @@ describe('ToolPill', () => {
       expect(pill.className).toContain('negative');
     });
 
-    it.skip('displays errorMessage in expanded view', () => {
+    it('displays errorMessage in expanded view', () => {
       render(
         <ToolPill
           toolCall={makeToolCall({
@@ -78,7 +78,7 @@ describe('ToolPill', () => {
   });
 
   describe('[P0] AC-1 — Expand/collapse', () => {
-    it.skip('expands on click to show raw input/output in monospace', () => {
+    it('expands on click to show raw input/output in monospace', () => {
       render(
         <ToolPill
           toolCall={makeToolCall({
@@ -95,7 +95,7 @@ describe('ToolPill', () => {
       expect(document.querySelector('pre.font-mono')).toBeInTheDocument();
     });
 
-    it.skip('collapses on second click', () => {
+    it('collapses on second click', () => {
       render(
         <ToolPill
           toolCall={makeToolCall({
@@ -113,7 +113,7 @@ describe('ToolPill', () => {
       expect(screen.queryByText('git status')).not.toBeInTheDocument();
     });
 
-    it.skip('aria-expanded reflects expanded state', () => {
+    it('aria-expanded reflects expanded state', () => {
       render(<ToolPill toolCall={makeToolCall({ status: 'completed' })} />);
       const pill = screen.getByRole('button');
       expect(pill).toHaveAttribute('aria-expanded', 'false');
@@ -123,7 +123,7 @@ describe('ToolPill', () => {
   });
 
   describe('[P1] AC-1 — Keyboard accessibility', () => {
-    it.skip('Enter key toggles expanded state', () => {
+    it('Enter key toggles expanded state', () => {
       render(<ToolPill toolCall={makeToolCall({ status: 'completed' })} />);
       const pill = screen.getByRole('button');
       pill.focus();
@@ -131,7 +131,7 @@ describe('ToolPill', () => {
       expect(pill).toHaveAttribute('aria-expanded', 'true');
     });
 
-    it.skip('Space key toggles expanded state', () => {
+    it('Space key toggles expanded state', () => {
       render(<ToolPill toolCall={makeToolCall({ status: 'completed' })} />);
       const pill = screen.getByRole('button');
       pill.focus();

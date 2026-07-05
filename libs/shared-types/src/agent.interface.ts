@@ -8,6 +8,7 @@ export interface AgentRunParams {
 export interface IAgentService {
   runTurn(params: AgentRunParams): Promise<void>;
   stop(conversationId: string): Promise<void>;
+  isIdle(conversationId: string): boolean;
 }
 
 export const AGENT_SERVICE = Symbol('IAgentService');

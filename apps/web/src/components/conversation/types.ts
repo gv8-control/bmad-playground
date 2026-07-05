@@ -1,3 +1,8 @@
+export interface AccessNoticeData {
+  code: 'RATE_LIMITED' | 'ORG_RESTRICTION' | 'INSUFFICIENT_PERMISSION';
+  retryAfter?: number;
+}
+
 export interface ToolCallData {
   toolCallId: string;
   toolName: string;
@@ -10,6 +15,7 @@ export interface ToolCallData {
     artifactTitle: string;
     viewHref: string;
   };
+  accessNotice?: AccessNoticeData;
 }
 
 export interface ChatMessage {

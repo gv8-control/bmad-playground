@@ -2,21 +2,21 @@
  * @jest-environment jsdom
  *
  * Story 3.4: See Tool Calls and Recognized Actions Inline
+ * Story 3.6: Track and Manually Save Working Tree State
  * Unit tests for SemanticPill component.
  *
  * Covers: AC-2 (Semantic Pill for confirmed git commit — "Progress saved"
  *         + artifact type/title + View link).
- *
- * TDD RED PHASE — tests are skipped until implementation lands.
- * Remove it.skip() → it() when activating for the current task.
+ * Story 3.6 covers: AC-4 (manual save variant — "Progress saved" without
+ *         artifact type/title/View link).
  */
 import { render, screen } from '@testing-library/react';
 import { SemanticPill } from './SemanticPill';
 
 jest.mock('next/link', () => ({
   __esModule: true,
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  default: ({ children, href, className }: { children: React.ReactNode; href: string; className?: string }) => (
+    <a href={href} className={className}>{children}</a>
   ),
 }));
 
@@ -28,24 +28,24 @@ describe('SemanticPill', () => {
   };
 
   describe('[P0] AC-2 — Content rendering', () => {
-    it.skip('renders "Progress saved" label', () => {
+    it('renders "Progress saved" label', () => {
       render(<SemanticPill {...defaultProps} />);
       expect(screen.getByText(/Progress saved/)).toBeInTheDocument();
     });
 
-    it.skip('renders artifact type and title', () => {
+    it('renders artifact type and title', () => {
       render(<SemanticPill {...defaultProps} />);
       expect(screen.getByText(/PRD/)).toBeInTheDocument();
       expect(screen.getByText(/Product Requirements Document/)).toBeInTheDocument();
     });
 
-    it.skip('renders View link with correct href', () => {
+    it('renders View link with correct href', () => {
       render(<SemanticPill {...defaultProps} />);
       const link = screen.getByRole('link', { name: /view/i });
       expect(link).toHaveAttribute('href', '/artifacts?id=art-1');
     });
 
-    it.skip('link has positive color and underline styling', () => {
+    it('link has positive color and underline styling', () => {
       render(<SemanticPill {...defaultProps} />);
       const link = screen.getByRole('link', { name: /view/i });
       expect(link.className).toContain('positive');
@@ -54,9 +54,51 @@ describe('SemanticPill', () => {
   });
 
   describe('[P1] AC-2 — Accessibility', () => {
-    it.skip('has role="status" for screen reader announcement', () => {
+    it('has role="status" for screen reader announcement', () => {
       render(<SemanticPill {...defaultProps} />);
       expect(screen.getByRole('status')).toBeInTheDocument();
+    });
+  });
+
+  describe('[P0] Story 3.6 AC-4 — Manual save variant (empty artifact props)', () => {
+    const manualSaveProps = {
+      artifactType: '',
+      artifactTitle: '',
+      viewHref: '',
+    };
+
+    it('renders "Progress saved" without View link when viewHref is empty', () => {
+      render(<SemanticPill {...manualSaveProps} />);
+      expect(screen.getByText(/Progress saved/)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /view/i })).not.toBeInTheDocument();
+    });
+
+    it('renders "Progress saved" without type label when artifactType is empty', () => {
+      render(<SemanticPill {...manualSaveProps} />);
+      expect(screen.getByText(/Progress saved/)).toBeInTheDocument();
+      expect(screen.queryByText(/PRD|Architecture|Epics|UX/)).not.toBeInTheDocument();
+    });
+
+    it('renders "Progress saved" without title when artifactTitle is empty', () => {
+      render(<SemanticPill {...manualSaveProps} />);
+      expect(screen.getByText(/Progress saved/)).toBeInTheDocument();
+      expect(screen.queryByText(/Product Requirements Document/)).not.toBeInTheDocument();
+    });
+
+    it('renders full pill with View link when all props are present (regression guard)', () => {
+      render(<SemanticPill {...defaultProps} />);
+      expect(screen.getByText(/Progress saved/)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /view/i })).toBeInTheDocument();
+      expect(screen.getByText(/PRD/)).toBeInTheDocument();
+      expect(screen.getByText(/Product Requirements Document/)).toBeInTheDocument();
+    });
+  });
+
+  describe('[P1] Story 3.6 AC-4 — Manual save accessibility', () => {
+    it('manual-save variant has role="status" and aria-live="polite"', () => {
+      render(<SemanticPill artifactType="" artifactTitle="" viewHref="" />);
+      const status = screen.getByRole('status');
+      expect(status).toHaveAttribute('aria-live', 'polite');
     });
   });
 });

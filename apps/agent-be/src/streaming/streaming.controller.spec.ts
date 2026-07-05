@@ -272,7 +272,7 @@ describe('StreamingController', () => {
   });
 
   describe('[P0] Story 3.4 — SSE Heartbeat (AC-5)', () => {
-    it.skip('[P0] writes heartbeat comment on 15s interval', async () => {
+    it('[P0] writes heartbeat comment on 15s interval', async () => {
       const { res, written } = mockResponse();
       const token = await mintToken();
 
@@ -289,7 +289,7 @@ describe('StreamingController', () => {
       jest.useRealTimers();
     });
 
-    it.skip('[P0] clears heartbeat on connection close', async () => {
+    it('[P0] clears heartbeat on connection close', async () => {
       const { res, written } = mockResponse();
       const token = await mintToken();
 
@@ -313,7 +313,7 @@ describe('StreamingController', () => {
       jest.useRealTimers();
     });
 
-    it.skip('[P0] clears heartbeat on stream complete', async () => {
+    it('[P0] clears heartbeat on stream complete', async () => {
       const { res, written } = mockResponse();
       const token = await mintToken();
 
@@ -321,7 +321,7 @@ describe('StreamingController', () => {
 
       await controller.stream('conv-1', token, { on: jest.fn(), headers: {} } as never, res as never);
 
-      sessionEvents.emit('conv-1', { event: 'RUN_FINISHED', data: {} });
+      sessionEvents.complete('conv-1');
 
       written.length = 0;
 
@@ -332,7 +332,7 @@ describe('StreamingController', () => {
       jest.useRealTimers();
     });
 
-    it.skip('[P1] clears heartbeat on stream error', async () => {
+    it('[P1] clears heartbeat on stream error', async () => {
       const { res, written } = mockResponse();
       const token = await mintToken();
 
@@ -340,8 +340,10 @@ describe('StreamingController', () => {
 
       await controller.stream('conv-1', token, { on: jest.fn(), headers: {} } as never, res as never);
 
-      const stream$ = sessionEvents.getEventStream('conv-1');
-      stream$.subscribe().unsubscribe();
+      const subject = sessionEvents.getEventStream('conv-1') as unknown as {
+        error: (err: unknown) => void;
+      };
+      subject.error(new Error('stream error'));
 
       written.length = 0;
 
@@ -352,7 +354,7 @@ describe('StreamingController', () => {
       jest.useRealTimers();
     });
 
-    it.skip('[P1] heartbeat write failure does not crash', async () => {
+    it('[P1] heartbeat write failure does not crash', async () => {
       const written: string[] = [];
       const headers: Record<string, string> = {};
       const res = {

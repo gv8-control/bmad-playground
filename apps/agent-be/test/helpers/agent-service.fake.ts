@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { IAgentService, AgentRunParams } from '@bmad-easy/shared-types';
+import type { AccessDeniedCode } from '@bmad-easy/shared-types';
 import type { SseEvent } from '../../src/streaming/session-events.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import type { ISandboxService } from '@bmad-easy/shared-types';
@@ -14,6 +15,8 @@ const DEFAULT_SCRIPT: SseEvent[] = [
   { event: 'TEXT_MESSAGE_END', data: { messageId: 'msg-1' } },
   { event: 'RUN_FINISHED', data: {} },
 ];
+
+const FILE_MODIFYING_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
 @Injectable()
 export class AgentServiceFake implements IAgentService {
@@ -35,6 +38,46 @@ export class AgentServiceFake implements IAgentService {
 
   setScript(events: SseEvent[]): void {
     this.script = events;
+  }
+
+  setToolCallScript(
+    toolName: string,
+    input: string,
+    output: string,
+    promoted?: { artifactType: string; artifactTitle: string; viewHref: string },
+    credentialFailure?: boolean,
+    accessDenied?: { code: AccessDeniedCode; retryAfter?: number },
+  ): void {
+    const toolCallId = `tc-${Date.now()}`;
+    const events: SseEvent[] = [
+      { event: 'RUN_STARTED', data: {} },
+      { event: 'TOOL_CALL_START', data: { toolCallId, toolCallName: toolName, parentMessageId: null } },
+      { event: 'TOOL_CALL_ARGS', data: { toolCallId, delta: input } },
+      { event: 'TOOL_CALL_END', data: { toolCallId } },
+      { event: 'TOOL_CALL_RESULT', data: { messageId: toolCallId, toolCallId, content: output, role: 'tool' } },
+    ];
+    if (credentialFailure) {
+      events.push({
+        event: 'CREDENTIAL_FAILURE',
+        data: { type: 'CREDENTIAL_FAILURE', toolCallId },
+      });
+    } else if (accessDenied) {
+      events.push({
+        event: 'ACCESS_DENIED',
+        data: { type: 'ACCESS_DENIED', toolCallId, code: accessDenied.code, retryAfter: accessDenied.retryAfter },
+      });
+    } else if (promoted) {
+      events.push({
+        event: 'TOOL_CALL_PROMOTED',
+        data: { type: 'TOOL_CALL_PROMOTED', toolCallId, artifactId: null, ...promoted },
+      });
+    }
+    events.push({ event: 'RUN_FINISHED', data: {} });
+    this.script = events;
+  }
+
+  setCircuitBreakerScript(): void {
+    this.script = [{ event: 'RUN_STARTED', data: {} }];
   }
 
   failNextRun(): void {
@@ -60,6 +103,7 @@ export class AgentServiceFake implements IAgentService {
     }
 
     let accumulatedText = '';
+    let currentToolName: string | null = null;
 
     for (const event of this.script) {
       if (event.event === 'TEXT_MESSAGE_CONTENT') {
@@ -67,7 +111,30 @@ export class AgentServiceFake implements IAgentService {
         accumulatedText += delta;
       }
 
+      if (event.event === 'TOOL_CALL_START') {
+        currentToolName = (event.data as { toolCallName?: string }).toolCallName ?? null;
+      }
+
       this.sessionEvents.emit(params.conversationId, event);
+
+      if (event.event === 'TOOL_CALL_RESULT' && currentToolName && FILE_MODIFYING_TOOLS.has(currentToolName)) {
+        try {
+          const status = await this.sandboxService.getWorkingTreeStatus(params.sandboxId);
+          if (status.dirty) {
+            this.sessionEvents.emit(params.conversationId, {
+              event: 'WORKING_TREE_DIRTY',
+              data: { files: status.files },
+            });
+          } else {
+            this.sessionEvents.emit(params.conversationId, {
+              event: 'WORKING_TREE_CLEAN',
+              data: {},
+            });
+          }
+        } catch {
+          // working tree check failure does not crash the fake run
+        }
+      }
 
       if (this.streamDelay > 0) {
         await new Promise((r) => setTimeout(r, this.streamDelay));
@@ -106,5 +173,9 @@ export class AgentServiceFake implements IAgentService {
     });
 
     this.activeRun = false;
+  }
+
+  isIdle(_conversationId: string): boolean {
+    return !this.activeRun;
   }
 }

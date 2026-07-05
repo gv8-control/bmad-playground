@@ -33,4 +33,27 @@ export interface ToolCallPromotedEvent {
   viewHref: string;
 }
 
-export type AgUiEventType = EventType | typeof STREAM_ERROR_EVENT | typeof TOOL_CALL_PROMOTED_EVENT;
+export const CREDENTIAL_FAILURE_EVENT = 'CREDENTIAL_FAILURE' as const;
+
+export interface CredentialFailureEvent {
+  type: typeof CREDENTIAL_FAILURE_EVENT;
+  toolCallId: string;
+}
+
+export type AccessDeniedCode = 'RATE_LIMITED' | 'ORG_RESTRICTION' | 'INSUFFICIENT_PERMISSION';
+
+export const ACCESS_DENIED_EVENT = 'ACCESS_DENIED' as const;
+
+export interface AccessDeniedEvent {
+  type: typeof ACCESS_DENIED_EVENT;
+  toolCallId: string;
+  code: AccessDeniedCode;
+  retryAfter?: number;
+}
+
+export type AgUiEventType =
+  | EventType
+  | typeof STREAM_ERROR_EVENT
+  | typeof TOOL_CALL_PROMOTED_EVENT
+  | typeof CREDENTIAL_FAILURE_EVENT
+  | typeof ACCESS_DENIED_EVENT;

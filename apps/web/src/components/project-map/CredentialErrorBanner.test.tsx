@@ -2,13 +2,12 @@
  * @jest-environment jsdom
  *
  * ATDD — Story 2.2: View the Project Map
+ * Story 3.7: Receive Real-Time Credential Failure Alerts Mid-Conversation
  * Component unit tests for CredentialErrorBanner (Client Component).
  * Covers AC-4 (credential error banner with re-auth modal, UX-DR10, UX-DR16).
+ * Story 3.7 added `callbackUrl` prop forwarding coverage (2 tests).
  *
- * RED PHASE: all tests will fail because CredentialErrorBanner.tsx does not
- * exist yet (Task 3.1). The "Cannot find module" error is the expected TDD
- * red-phase signal. The shadcn Dialog component (Task 1) is also not installed
- * yet — that's a transitive dependency.
+ * TDD GREEN PHASE — all tests un-skipped and passing.
  *
  * Priority tags: P0 for AC coverage, P1 for edge cases.
  */
@@ -116,5 +115,31 @@ describe('CredentialErrorBanner — non-dismissible (AC-4, UX-DR10)', () => {
     render(<CredentialErrorBanner />);
     const link = screen.getByRole('link', { name: /update access token/i });
     expect(link).toHaveAttribute('aria-label');
+  });
+});
+
+describe('CredentialErrorBanner — callbackUrl prop (Story 3.7 AC-3)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P1] passes callbackUrl to reauthorizeGitHub when provided', async () => {
+    (reauthorizeGitHub as jest.Mock).mockResolvedValue(undefined);
+    render(<CredentialErrorBanner callbackUrl="/conversations/conv-1" />);
+    await userEvent.click(
+      screen.getByRole('link', { name: /update access token/i }),
+    );
+    const reconnectButton = await screen.findByRole('button', { name: /reconnect/i });
+    await userEvent.click(reconnectButton);
+    expect(reauthorizeGitHub).toHaveBeenCalledWith('/conversations/conv-1');
+  });
+
+  it('[P1] calls reauthorizeGitHub with undefined when callbackUrl is not provided', async () => {
+    (reauthorizeGitHub as jest.Mock).mockResolvedValue(undefined);
+    render(<CredentialErrorBanner />);
+    await userEvent.click(
+      screen.getByRole('link', { name: /update access token/i }),
+    );
+    const reconnectButton = await screen.findByRole('button', { name: /reconnect/i });
+    await userEvent.click(reconnectButton);
+    expect(reauthorizeGitHub).toHaveBeenCalledWith(undefined);
   });
 });

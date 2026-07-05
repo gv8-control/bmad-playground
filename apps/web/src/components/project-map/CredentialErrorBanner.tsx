@@ -10,7 +10,11 @@ import {
 } from '@/components/ui/dialog';
 import { reauthorizeGitHub } from '@/actions/credential-health.actions';
 
-export function CredentialErrorBanner() {
+export interface CredentialErrorBannerProps {
+  callbackUrl?: string;
+}
+
+export function CredentialErrorBanner({ callbackUrl }: CredentialErrorBannerProps = {}) {
   const [open, setOpen] = React.useState(false);
   const [isPending, startTransition] = React.useTransition();
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
@@ -19,7 +23,7 @@ export function CredentialErrorBanner() {
     setErrorMessage(null);
     startTransition(async () => {
       try {
-        await reauthorizeGitHub();
+        await reauthorizeGitHub(callbackUrl);
       } catch {
         setErrorMessage(
           'Could not reconnect. Please try again or sign out and sign back in.',

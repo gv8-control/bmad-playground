@@ -233,7 +233,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
     await mocks.emit('RUN_FINISHED');
   });
 
-  test('[P0] TOOL_CALL_START shows tool execution indicator with tool name (AC-1)', async ({
+  test('[P0] TOOL_CALL_START shows running Tool Pill with tool name (AC-1)', async ({
     page,
     withRepoConnection,
   }) => {
@@ -244,7 +244,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
     await sendMessage(page, 'run a tool');
 
     await mocks.emit('RUN_STARTED');
-    await mocks.emit('TOOL_CALL_START', { toolName: 'read_file' });
+    await mocks.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'read_file' });
 
     await expect(page.getByText('Running… read_file')).toBeVisible();
   });

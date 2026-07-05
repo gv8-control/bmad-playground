@@ -32,6 +32,7 @@ export interface ISandboxService {
   destroy(sandboxId: string): Promise<void>;
   injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void>;
   getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus>;
+  commit(sandboxId: string, message: string): Promise<void>;
   terminateProcess(sandboxId: string, processId: string): Promise<void>;
   listSkills(sandboxId: string): Promise<SkillInfo[]>;
 }

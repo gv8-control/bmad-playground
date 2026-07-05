@@ -18,7 +18,9 @@ export class SandboxServiceFake implements ISandboxService {
   private readonly sandboxes = new Map<string, SandboxInfo>();
   private provisionDelay = 0;
   private shouldFailNextProvision = false;
+  private shouldFailNextCommit = false;
   private skills: SkillInfo[] = [];
+  private readonly commitCalls: Array<{ sandboxId: string; message: string }> = [];
 
   /** Control hook: simulate a slow provision (milliseconds). */
   setProvisionDelay(ms: number): void {
@@ -33,6 +35,16 @@ export class SandboxServiceFake implements ISandboxService {
   /** Control hook: set the skills list returned by listSkills(). */
   setSkills(skills: SkillInfo[]): void {
     this.skills = skills;
+  }
+
+  /** Control hook: cause the next commit() call to throw. */
+  failNextCommit(): void {
+    this.shouldFailNextCommit = true;
+  }
+
+  /** Inspection: list of commit() calls made. */
+  getCommitCalls(): Array<{ sandboxId: string; message: string }> {
+    return [...this.commitCalls];
   }
 
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
@@ -78,6 +90,14 @@ export class SandboxServiceFake implements ISandboxService {
   async getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus> {
     if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
     return { dirty: false, files: [] };
+  }
+
+  async commit(sandboxId: string, message: string): Promise<void> {
+    this.commitCalls.push({ sandboxId, message });
+    if (this.shouldFailNextCommit) {
+      this.shouldFailNextCommit = false;
+      throw new Error('SandboxServiceFake: simulated commit failure');
+    }
   }
 
   async terminateProcess(sandboxId: string, _processId: string): Promise<void> {
