@@ -22,9 +22,26 @@
       "model": "neuralwatt/glm-5.2",
       "temperature": 0.25,
       "reasoningEffort": "max"
+    },
+    "thinker": {
+      "tools": {
+        "n8n_*": true
+      }
+    }
+  },
+  "mcp": {
+    "n8n": {
+      "type": "remote",
+      "url": "http://localhost:5678/mcp-server/http",
+      "enabled": true,
+      "oauth": false,
+      "headers": {
+        "Authorization": "Bearer {env:N8N_MCP_TOKEN}"
+      }
     }
   },
   "tools": {
-    "skill": true
+    "skill": true,
+    "n8n_*": false
   }
 }
