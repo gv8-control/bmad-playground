@@ -11,13 +11,9 @@ The same evidence-based rigor as an execution review, but for design-time risk: 
 
 ## Your Approach
 
-Get the workflow ID from the user if not already given, then fetch its definition:
+Get the workflow ID from the user if not already given, then retrieve its definition — nodes (name, type, parameters, error handling settings), connections, settings, and active flag — using whatever access method is available in your environment.
 
-```
-uv run scripts/fetch_n8n.py workflow {id}
-```
-
-Run `uv run scripts/fetch_n8n.py --help` for exact flags. If it reports missing/invalid credentials, relay its instructions to the user rather than guessing at a fix.
+If you can't get the data you need, tell the user what's missing rather than guessing.
 
 Load `references/n8n-knowledge.md` and `references/evaluation-rubric.md`, then reason across the rubric dimensions that don't require run data: Correctness & Data Integrity (as designed, not as observed), Robustness & Failure Handling, Security & Credential Hygiene, Maintainability & Semantic Clarity, Best-Practice & Intent Alignment, and Orchestration & Sub-Execution Structure (structural sensibility of any Execute Workflow calls). Skip Performance & Efficiency and Failure Root-Cause Diagnosis outright — there's no run to measure or diagnose — and say so rather than inventing numbers.
 
