@@ -51,6 +51,9 @@ for (const obs of observations) {
     fingerprint: obs.fingerprint,
     summary: obs.summary,
     evidence: obs.evidence ?? '',
+    grade: obs.grade ?? 'confirmed',
+    hypothesis: obs.hypothesis ?? '',
+    nextStep: obs.nextStep ?? '',
   });
 }
 
