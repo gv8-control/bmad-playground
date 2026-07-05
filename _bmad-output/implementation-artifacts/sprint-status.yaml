@@ -74,7 +74,7 @@ development_status:
   3-4-see-tool-calls-and-recognized-actions-inline: done
   3-5-resume-an-existing-conversation: done
   3-6-track-and-manually-save-working-tree-state: done
-  3-7-receive-real-time-credential-failure-alerts-mid-conversation: review
+  3-7-receive-real-time-credential-failure-alerts-mid-conversation: done
   3-8-track-per-user-llm-spend: backlog
   3-9-terminate-idle-sandboxes-mid-conversation: backlog
   3-10-verify-commits-carry-the-users-own-identity: backlog
