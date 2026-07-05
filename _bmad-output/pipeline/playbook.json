@@ -43,9 +43,11 @@
       "stage": "pre-implementation",
       "skill": "bmad-testarch-atdd",
       "agent": "coder",
-      "prompt": "prepare tests",
+      "prompt": "prepare tests. Before deferring E2E coverage for a story, verify whether existing browser-level mock patterns could simulate the scenario without real external dependencies — only defer E2E if no mock approach can cover the acceptance criteria, and record the verification in the ATDD checklist.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-05T08:14:39.210Z",
+      "updatedByRun": "3.7-a1-20260704T225804"
     },
     {
       "id": "validate-story-2",
@@ -107,11 +109,11 @@
       "stage": "review",
       "skill": "bmad-testarch-test-review",
       "agent": "planner",
-      "prompt": "Review tests. Treat any skipped test related to the story as a test-quality failure — flag it for un-skipping or removal with a recorded reason.",
+      "prompt": "Review tests. Treat any skipped test related to the story as a test-quality failure — flag it for un-skipping or removal with a recorded reason. Also resolve stale transitional markers in test files: any comment or header that claims tests are skipped, disabled, or in a red phase when the tests are actually active must be updated to reflect the current state — fix these directly, do not just flag them.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-04T20:35:58.909Z",
-      "updatedByRun": "manual-20260704T203558"
+      "updatedAt": "2026-07-05T08:14:39.210Z",
+      "updatedByRun": "3.7-a1-20260704T225804"
     },
     {
       "id": "review-nfrs",

@@ -1,0 +1,13 @@
+{
+  "story": "3.2",
+  "runId": "3.2-a1-20260704T091636",
+  "observations": [
+    {
+      "fingerprint": "implement-step-missing-transaction-wrapper",
+      "summary": "The implement-story step did not wrap sendTurn's multi-write operations (conversation update + turn creation) in a Prisma $transaction; NFR review identified the gap but deferred it as dev work, code review did not catch it, and the issue persists unfixed — second occurrence after Story 2.1 where code review caught and patched the same class.",
+      "evidence": "Journal step_end for review-nfrs: 'sendTurn multi-write not transaction-wrapped (requires test mock updates — dev step)' listed under 7 deferred findings. Ledger entry for 2.1 records the first occurrence (implement-step-missing-transaction-wrapper, distinctRuns: 1)."
+    }
+  ],
+  "amendments": [],
+  "guardReports": []
+}

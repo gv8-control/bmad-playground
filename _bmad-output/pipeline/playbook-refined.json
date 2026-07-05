@@ -1,0 +1,158 @@
+{
+  "$comment": "Story playbook (refined v3) — the per-story sequence of BMAD actions executed by the 'Develop Epic' n8n loop. This file is a refinement of playbook.json v2; changes: (1) P0 verify-done gate added as final step; (2) P0 review-code chunk-completion loop (no more dropped chunks); (3) P1 implement-story self-checklist + migrate-db instruction; (4) P1 prepare-tests and e2e-tests prompts filled (were empty/thin); (5) P1 schema-drift check embedded in verify-done; (6) P2 validate-story-2 differentiated to spec↔test alignment; (7) P2 resolve-skipped-tests step added; (8) P3 reviewer agent added and assigned to all review + validation steps to eliminate self-review bias. scripts/pipeline/apply-amendments.mjs may update the prompt of any step, 'core' or 'learned', but may only retire (disable) steps with origin 'learned' — retiring a 'core' step stays human-only. Adjacent steps sharing a 'stage' value are order-independent (carried over from the gen-1 workflow's fan-out groups); execution is still strictly sequential in array order — the stage field only preserves which steps could run in parallel if that is ever built.",
+  "version": 3,
+  "config": {
+    "runner": "opencode",
+    "ntfyTopic": "agent-outcome",
+    "allowedAgents": [
+      "planner",
+      "coder",
+      "reviewer"
+    ]
+  },
+  "policy": {
+    "maxAttemptsPerStory": 2,
+    "addStepRecurrenceThreshold": 2,
+    "retireCleanStreak": 3,
+    "maxLearnedSteps": 4,
+    "responseExcerptChars": 2000
+  },
+  "steps": [
+    {
+      "id": "create-story",
+      "label": "Create story",
+      "stage": "create",
+      "skill": "bmad-create-story",
+      "agent": "planner",
+      "prompt": "run Creation mode. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "validate-story",
+      "label": "Validate story (1st pass)",
+      "stage": "validate",
+      "skill": "bmad-create-story",
+      "agent": "reviewer",
+      "prompt": "validate story independently — you did not create this story, so verify its claims against the actual codebase, architecture, UX specs, and epics rather than trusting the creator's assertions. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "prepare-tests",
+      "label": "Prepare tests",
+      "stage": "pre-implementation",
+      "skill": "bmad-testarch-atdd",
+      "agent": "coder",
+      "prompt": "prepare tests. Verify every acceptance criterion and every task in the story spec has a corresponding test scaffold before finishing. If you opt out of any test level (unit, component, E2E), record the reason in the ATDD checklist AND verify the codebase claim that justifies the opt-out — do not accept a gap based on an unverified assumption (e.g., 'loading.tsx is untested elsewhere' must be checked against the actual files). When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "validate-story-2",
+      "label": "Validate story (2nd pass — spec↔test alignment)",
+      "stage": "pre-implementation",
+      "skill": "bmad-create-story",
+      "agent": "reviewer",
+      "prompt": "validate story (2nd pass) — focus on spec↔test alignment now that ATDD scaffolds exist. Verify every acceptance criterion has at least one test scaffold that proves it, and every task in the story spec has a corresponding test. Flag any AC or task without test coverage as a gap. Also re-verify any codebase claims that changed since the first pass. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "implement-story",
+      "label": "Implement story",
+      "stage": "implement",
+      "skill": "bmad-dev-story",
+      "agent": "coder",
+      "prompt": "develop story autonomously, completing every task listed in the story spec before finishing. Before finishing, enumerate every task and subtask from the story spec and mark each done or pending; if any task is pending, do not declare completion — instead record progress in the story file and signal incomplete so the pipeline can route back. As each task makes a skipped test pass, remove its test.skip()/it.skip() or another equivalent marker — a skipped test provides zero signal. The story is not complete while skipped tests remain for tasks that are done. If you modify libs/database-schemas/src/prisma/schema.prisma, run `yarn prisma migrate deploy` before finishing so the database matches the generated client — a half-applied migration is a silent runtime failure. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core",
+      "updatedAt": "2026-07-03T15:32:49.310Z",
+      "updatedByRun": "2.3-a1-20260703T092056"
+    },
+    {
+      "id": "unit-tests",
+      "label": "Unit tests",
+      "stage": "test-generation",
+      "skill": "bmad-testarch-automate",
+      "agent": "coder",
+      "prompt": "Autonomously evaluate (Validate) if the Story is sufficiently covered; if needed, expand coverage (Create/Resume) by generating new tests — use Create mode only to generate missing coverage, not to modify existing tests you did not generate this run. Treat any skipped test (test.skip, it.skip, describe.skip, xtest, test.fixme, it.todo, or framework equivalent) as a coverage failure — a skipped test provides zero coverage. For each skipped test: un-skip and run it. If it passes, keep it un-skipped. If it fails, attempt to heal test-quality issues (selector, timing, mocking, data); if unfixable, mark with test.fixme() and a detailed comment, and record the failure and reason in the story file. Do not edit production code. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core",
+      "updatedAt": "2026-07-04T20:20:52.105Z",
+      "updatedByRun": "manual-20260704T202052"
+    },
+    {
+      "id": "e2e-tests",
+      "label": "E2E tests",
+      "stage": "test-generation",
+      "skill": "bmad-qa-generate-e2e-tests",
+      "agent": "reviewer",
+      "prompt": "Generate end-to-end tests for the story. Cover every acceptance criterion that has a user-visible surface. If a story has no testable UI or HTTP surface, record that decision with a verified reason (not an assumption) and produce no tests. Do not opt out of E2E for 'component-level changes' without checking whether a cross-page journey is genuinely uncovered. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "review-code",
+      "label": "Code review",
+      "stage": "review",
+      "skill": "bmad-code-review",
+      "agent": "reviewer",
+      "prompt": "Review the implementation of the story below. Use the story file in {implementation_artifacts} matching this story's key (pattern `<epic>-<story>-*.md`) as the explicit spec file (Tier 1) so the review target and diff baseline (its frontmatter `baseline_commit`) resolve without asking; if no `baseline_commit` is present, review all uncommitted changes instead of asking which target. Review ALL chunks of the diff — if the diff exceeds the chunking threshold, review each chunk sequentially until every chunk is covered. Do not stop after the first chunk; do not defer remaining chunks to a follow-up run that does not exist. Skip the pre-review checkpoint confirmation and proceed straight to the review. For decision-needed findings, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue — if the resolution is to defer, write your own one-line reason instead of asking. HALT only for decisions the policy does not cover. Once findings are triaged, choose 'apply every patch' (fix all patch findings now, no per-finding confirmation), then end the workflow rather than offering the next-steps menu. Do not implement features or wire missing components — if the implementation is incomplete, record the gap as a finding and let the pipeline route it back to implement-story.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "review-tests",
+      "label": "Test review",
+      "stage": "review",
+      "skill": "bmad-testarch-test-review",
+      "agent": "reviewer",
+      "prompt": "Review tests. Treat any skipped test related to the story (test.skip, it.skip or another equivalent) as a test-quality failure — flag it for un-skipping or removal with a recorded reason. Fix stale ATDD red-phase headers that claim tests are skipped when they are active — this is a trivial in-scope fix, not a deferred finding.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "review-nfrs",
+      "label": "NFR review",
+      "stage": "review",
+      "skill": "bmad-testarch-nfr",
+      "agent": "reviewer",
+      "prompt": "Run NFR audit for the story. Identify and apply NFR-specific patches only (performance, security, reliability, scalability — e.g., select projection, take limits, timing tests, security headers). Do not implement features, refactor unrelated code, create database migrations, or fix test quality issues — those belong in dev or test-review steps. If you modify schema.prisma, run `yarn prisma migrate deploy` before finishing so the database matches the generated client. Document deferred findings in the story's review section.",
+      "enabled": true,
+      "origin": "core",
+      "updatedAt": "2026-07-03T19:31:19.848Z",
+      "updatedByRun": "2.4-a1-20260703T153249"
+    },
+    {
+      "id": "resolve-skipped-tests",
+      "label": "Resolve skipped tests",
+      "stage": "review",
+      "skill": "bmad-testarch-automate",
+      "agent": "reviewer",
+      "prompt": "Resolve skipped tests. For tests related to this story: un-skip and run each one; if it passes, keep it un-skipped; if it fails, attempt to heal test-quality issues; if unfixable, mark with test.fixme() and a detailed comment. For skipped tests from prior stories that have been deferred on 2+ previous runs: attempt a fix if the skip reason is environmental and resolvable; if not resolvable, escalate to the project owner by recording it in _bmad-output/deferred-work.md with the recurrence count. Do not defer the same skip indefinitely. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "verify-done",
+      "label": "Definition-of-done gate",
+      "stage": "gate",
+      "skill": "bmad-testarch-trace",
+      "agent": "reviewer",
+      "prompt": "Definition-of-done gate. Before the story is marked done, verify ALL of the following: (1) every acceptance criterion in the story spec has at least one passing test that proves it; (2) zero skipped tests (test.skip/it.skip/describe.skip/xtest/test.fixme/it.todo or equivalent) remain for tasks that are done in this story; (3) all diff chunks were reviewed by review-code — check the story file for any 'remaining chunks for follow-up' note and FAIL if any remain; (4) schema drift check — if schema.prisma was modified, run `yarn prisma migrate deploy` and confirm the database matches the migrations directory by running a trivial query against each modified model; (5) no AC implementation gap is marked as deferred without a recorded reason and owner. If ANY check fails, record the failure in the story file, set story status to 'blocked' (not 'done'), and HALT with a clear signal so the pipeline can route back to implement-story or the appropriate step. Do not silently pass a story with unresolved gaps. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "update-project-context",
+      "label": "Update project context",
+      "stage": "review",
+      "skill": "bmad-agent-tech-writer",
+      "agent": "planner",
+      "prompt": "Review the story artifacts and the code implemented for it. Identify any new, repeatable patterns or conventions that emerged and aren't already captured in project-context.md. If none exist, do nothing. Otherwise, append them to project-context.md — keep entries lean, document only what's unobvious and repeatable. This is routine work, its outcome size depends on the uniqueness of the story.",
+      "enabled": true,
+      "origin": "core"
+    }
+  ]
+}
