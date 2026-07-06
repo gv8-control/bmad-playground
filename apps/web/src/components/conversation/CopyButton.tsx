@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Clipboard } from 'lucide-react';
 
 export interface CopyButtonProps {
   text: string;
@@ -25,9 +26,13 @@ export function CopyButton({ text, alwaysVisible = false }: CopyButtonProps) {
       type="button"
       onClick={handleCopy}
       className={`text-text-3 hover:text-text-2 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface rounded ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
-      aria-label="Copy to clipboard"
+      aria-label={copied ? 'Copied' : 'Copy to clipboard'}
     >
-      {copied ? 'Copied' : 'Copy'}
+      {copied ? (
+        <span className="text-xs">Copied</span>
+      ) : (
+        <Clipboard size={16} />
+      )}
     </button>
   );
 }

@@ -66,7 +66,7 @@ export default async function ProjectMapPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <header className="flex-shrink-0 px-8 py-6 flex items-center gap-3">
-        <h1 className="text-xl font-semibold text-text-1">Project Map</h1>
+        <h1 tabIndex={-1} className="text-xl font-semibold text-text-1">Project Map</h1>
         <RefreshButton />
       </header>
       {credentialFailed && <CredentialErrorBanner />}

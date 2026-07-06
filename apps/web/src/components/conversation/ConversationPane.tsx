@@ -7,7 +7,6 @@ import { SessionStartSpinner } from './SessionStartSpinner';
 import { SlashCommandPicker } from './SlashCommandPicker';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
-import { ThinkingIndicator } from './ThinkingIndicator';
 import { WorkingTreeIndicator } from './WorkingTreeIndicator';
 import type { WorkingTreeState } from './WorkingTreeIndicator';
 import { useDraftPersistence } from './useDraftPersistence';
@@ -15,7 +14,7 @@ import { useConversationPresence } from '@/hooks/use-conversation-presence';
 import { CredentialErrorBanner } from '@/components/project-map/CredentialErrorBanner';
 import type { ChatMessage } from './types';
 
-type SessionState = 'init' | 'provisioning' | 'ready' | 'error' | 'timeout' | 'reconnecting';
+type SessionState = 'init' | 'provisioning' | 'ready' | 'error' | 'timeout' | 'reconnecting' | 'limit-reached';
 type AgentState = 'idle' | 'thinking' | 'tool-executing' | 'streaming';
 
 const CLIENT_TIMEOUT_MS = 30_000;
@@ -55,6 +54,10 @@ export function ConversationPane({
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId ?? null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pickerContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+  const runEndedRef = useRef(false);
+  const saveFallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryingRef = useRef(false);
 
   const { draft, setDraft, clearDraft } = useDraftPersistence(
     conversationIdRef.current,
@@ -100,6 +103,16 @@ export function ConversationPane({
     }
   }, [state]);
 
+  useEffect(() => {
+    if (!isAtBottomRef.current && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role !== 'user') {
+        setShowScrollToBottom(true);
+        setNewMessageCount((prev) => prev + 1);
+      }
+    }
+  }, [messages.length]);
+
   async function startSession() {
     const isResume = conversationIdRef.current !== null;
     setState(isResume ? 'reconnecting' : 'provisioning');
@@ -119,6 +132,25 @@ export function ConversationPane({
         });
 
         if (!response.ok) {
+        if (response.status === 409) {
+          let code: string | undefined;
+          let message: string | undefined;
+          try {
+            const body = await response.json();
+            code = body.code;
+            message = body.message;
+          } catch {
+            // not JSON — fall through to generic error
+          }
+          if (code === 'CONVERSATION_LIMIT_REACHED') {
+            setState('limit-reached');
+            setErrorMessage(
+              message ??
+                "You've reached the limit of active conversations. Return to one of your existing conversations, or try again later.",
+            );
+            return;
+          }
+        }
           setState('error');
           setErrorMessage('Failed to create conversation.');
           return;
@@ -167,12 +199,35 @@ export function ConversationPane({
       }
     });
 
-    eventSource.addEventListener('SESSION_TIMEOUT', () => {
+    eventSource.addEventListener('SESSION_TIMEOUT', (event) => {
       setState('timeout');
-      setErrorMessage('Starting your session is taking longer than expected.');
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        if (data.reason === 'mid-session') {
+          setErrorMessage('Your session expired due to inactivity.');
+        } else {
+          setErrorMessage('Starting your session is taking longer than expected.');
+        }
+      } catch {
+        setErrorMessage('Starting your session is taking longer than expected.');
+      }
+    });
+
+    eventSource.addEventListener('SESSION_DRAINING', () => {
+      setState('reconnecting');
+      timeoutRef.current = setTimeout(() => {
+        setState((prev) => {
+          if (prev === 'reconnecting') {
+            setErrorMessage('Starting your session is taking longer than expected.');
+            return 'timeout';
+          }
+          return prev;
+        });
+      }, CLIENT_TIMEOUT_MS);
     });
 
     eventSource.addEventListener('RUN_STARTED', () => {
+      runEndedRef.current = false;
       setAgentState('thinking');
     });
 
@@ -182,16 +237,23 @@ export function ConversationPane({
         const messageId = data.messageId ?? `msg-${Date.now()}`;
         streamingMessageIdRef.current = messageId;
         setAgentState('streaming');
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: messageId,
-            role: 'assistant' as const,
-            content: '',
-            createdAt: new Date(),
-            isStreaming: true,
-          },
-        ]);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === messageId)) {
+            return prev.map((m) =>
+              m.id === messageId ? { ...m, content: '', isStreaming: true } : m,
+            );
+          }
+          return [
+            ...prev,
+            {
+              id: messageId,
+              role: 'assistant' as const,
+              content: '',
+              createdAt: new Date(),
+              isStreaming: true,
+            },
+          ];
+        });
       } catch {
         // ignore parse errors
       }
@@ -232,22 +294,31 @@ export function ConversationPane({
         const toolCallName = data.toolCallName ?? 'unknown';
         const toolCallId = data.toolCallId ?? `tc-${Date.now()}`;
         setAgentState('tool-executing');
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: toolCallId,
-            role: 'assistant' as const,
-            content: '',
-            createdAt: new Date(),
-            toolCall: {
-              toolCallId,
-              toolName: toolCallName,
-              status: 'running',
-              input: '',
-              output: '',
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === toolCallId)) {
+            return prev.map((m) =>
+              m.id === toolCallId && m.toolCall
+                ? { ...m, toolCall: { ...m.toolCall, input: '', output: '', status: 'running' as const } }
+                : m,
+            );
+          }
+          return [
+            ...prev,
+            {
+              id: toolCallId,
+              role: 'assistant' as const,
+              content: '',
+              createdAt: new Date(),
+              toolCall: {
+                toolCallId,
+                toolName: toolCallName,
+                status: 'running',
+                input: '',
+                output: '',
+              },
             },
-          },
-        ]);
+          ];
+        });
       } catch {
         // ignore parse errors
       }
@@ -295,10 +366,11 @@ export function ConversationPane({
         const { toolCallId, content } = data;
         if (!toolCallId) return;
         const isError =
-          typeof content === 'string' &&
-          (/^error:/im.test(content) ||
-            /Command exited with code [1-9]/.test(content) ||
-            /failed to push/i.test(content));
+          data.isError === true ||
+          (typeof content === 'string' &&
+            (/^error:/im.test(content) ||
+              /Command exited with code [1-9]/.test(content) ||
+              /failed to push/i.test(content)));
         setMessages((prev) =>
           prev.map((m) =>
             m.id === toolCallId && m.toolCall
@@ -344,11 +416,14 @@ export function ConversationPane({
     });
 
     eventSource.addEventListener('RUN_FINISHED', () => {
+      runEndedRef.current = true;
       setAgentState('idle');
       streamingMessageIdRef.current = null;
     });
 
     eventSource.addEventListener('RUN_ERROR', (event) => {
+      if (runEndedRef.current) return;
+      runEndedRef.current = true;
       setAgentState('idle');
       streamingMessageIdRef.current = null;
       try {
@@ -376,6 +451,8 @@ export function ConversationPane({
     });
 
     eventSource.addEventListener('STREAM_ERROR', () => {
+      if (runEndedRef.current) return;
+      runEndedRef.current = true;
       setAgentState('idle');
       streamingMessageIdRef.current = null;
       setMessages((prev) => [
@@ -402,23 +479,30 @@ export function ConversationPane({
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId } = data;
         const id = toolCallId || `manual-save-${Date.now()}`;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id,
-            role: 'assistant' as const,
-            content: '',
-            createdAt: new Date(),
-            toolCall: {
-              toolCallId: id,
-              toolName: 'Save',
-              status: 'completed' as const,
-              input: '',
-              output: '',
-              semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
+        if (saveFallbackTimeoutRef.current) {
+          clearTimeout(saveFallbackTimeoutRef.current);
+          saveFallbackTimeoutRef.current = null;
+        }
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === id)) return prev;
+          return [
+            ...prev,
+            {
+              id,
+              role: 'assistant' as const,
+              content: '',
+              createdAt: new Date(),
+              toolCall: {
+                toolCallId: id,
+                toolName: 'Save',
+                status: 'completed' as const,
+                input: '',
+                output: '',
+                semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
+              },
             },
-          },
-        ]);
+          ];
+        });
         setWorkingTreeState('clean');
       } catch {
         // ignore parse errors
@@ -430,23 +514,30 @@ export function ConversationPane({
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId, error } = data;
         const id = toolCallId || `manual-save-${Date.now()}`;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id,
-            role: 'assistant' as const,
-            content: '',
-            createdAt: new Date(),
-            toolCall: {
-              toolCallId: id,
-              toolName: 'Save',
-              status: 'error' as const,
-              input: '',
-              output: '',
-              errorMessage: error ?? 'Save failed',
+        if (saveFallbackTimeoutRef.current) {
+          clearTimeout(saveFallbackTimeoutRef.current);
+          saveFallbackTimeoutRef.current = null;
+        }
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === id)) return prev;
+          return [
+            ...prev,
+            {
+              id,
+              role: 'assistant' as const,
+              content: '',
+              createdAt: new Date(),
+              toolCall: {
+                toolCallId: id,
+                toolName: 'Save',
+                status: 'error' as const,
+                input: '',
+                output: '',
+                errorMessage: error ?? 'Save failed',
+              },
             },
-          },
-        ]);
+          ];
+        });
         setWorkingTreeState('dirty');
       } catch {
         // ignore parse errors
@@ -502,7 +593,11 @@ export function ConversationPane({
     });
 
     eventSource.onerror = () => {
-      setState((prev) => (prev === 'ready' ? prev : 'error'));
+      setState((prev) =>
+        prev === 'ready' || prev === 'timeout' || prev === 'reconnecting'
+          ? prev
+          : 'error',
+      );
     };
 
     if (isResume) {
@@ -513,6 +608,11 @@ export function ConversationPane({
           Authorization: `Bearer ${boundaryJwt}`,
         },
         body: '{}',
+      }).then((response) => {
+        if (!response.ok) {
+          setState('error');
+          setErrorMessage('Failed to resume conversation.');
+        }
       }).catch(() => {
         setState('error');
         setErrorMessage('Failed to resume conversation.');
@@ -633,7 +733,12 @@ export function ConversationPane({
       if (data.queued) {
         setWorkingTreeState('saving-after-response');
       } else if (data.committed) {
-        // MANUAL_SAVE_SUCCEEDED SSE event will set 'clean' + add the Semantic Pill
+        // MANUAL_SAVE_SUCCEEDED SSE event will set 'clean' + add the Semantic Pill.
+        // Fallback: if no SSE event arrives within 15s, assume success and clear.
+        saveFallbackTimeoutRef.current = setTimeout(() => {
+          setWorkingTreeState('clean');
+          saveFallbackTimeoutRef.current = null;
+        }, 15_000);
       } else if (data.clean) {
         setWorkingTreeState('clean');
       } else {
@@ -705,7 +810,10 @@ export function ConversationPane({
     }
   }
 
-  function handleRetry() {
+  async function handleRetry() {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+
     eventSourceRef.current?.close();
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -713,7 +821,24 @@ export function ConversationPane({
     queuedMessageRef.current = null;
     setQueuedMessage(null);
     setErrorMessage(null);
-    void startSession();
+
+    if (!initialConversationId && conversationIdRef.current) {
+      const oldId = conversationIdRef.current;
+      conversationIdRef.current = null;
+      setConversationId(null);
+      try {
+        await fetch(`${apiUrl}/api/conversations/${oldId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${boundaryJwt}` },
+        });
+      } catch {
+        // best-effort cleanup — don't block retry on cleanup failure
+      }
+    }
+
+    void startSession().finally(() => {
+      retryingRef.current = false;
+    });
   }
 
   function handleScrollToBottom() {
@@ -721,9 +846,20 @@ export function ConversationPane({
     setNewMessageCount(0);
   }
 
-  const inputDisabled = state === 'init' || state === 'error' || state === 'timeout' || state === 'reconnecting';
+  function handleScrollPositionChange(isAtBottom: boolean) {
+    isAtBottomRef.current = isAtBottom;
+    if (isAtBottom) {
+      setShowScrollToBottom(false);
+      setNewMessageCount(0);
+    } else {
+      setShowScrollToBottom(true);
+    }
+  }
+
+  const inputDisabled = state === 'init' || state === 'error' || state === 'timeout' || state === 'reconnecting' || state === 'limit-reached' || agentState !== 'idle';
   const showSpinner = (state === 'provisioning' && queuedMessage !== null) || state === 'reconnecting';
   const isProcessing = agentState !== 'idle';
+  const isThinking = agentState === 'thinking';
   const effectiveWorkingTreeState = state === 'ready' ? workingTreeState : 'hidden';
 
   return (
@@ -738,14 +874,15 @@ export function ConversationPane({
         showScrollToBottom={showScrollToBottom}
         newMessageCount={newMessageCount}
         onScrollToBottom={handleScrollToBottom}
+        onScrollPositionChange={handleScrollPositionChange}
+        isThinking={isThinking}
       />
-      {agentState === 'thinking' && <ThinkingIndicator />}
       {errorMessage && (
         <p className="px-8 text-negative text-sm" role="alert">
           {errorMessage}
         </p>
       )}
-      {state === 'timeout' && (
+      {(state === 'timeout' || state === 'error') && (
         <button
           onClick={handleRetry}
           className="mx-8 mb-2 rounded-md bg-accent px-4 py-2 text-sm text-bg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface"
@@ -770,16 +907,20 @@ export function ConversationPane({
               onSelect={handleSelectSkill}
             />
           )}
-          <ChatInput
-            value={draft}
-            onChange={handleInputChange}
-            onSubmit={handleSubmit}
-            onStop={handleStop}
-            disabled={inputDisabled}
-            isProcessing={isProcessing}
-            onKeyDown={handleKeyDown}
-            inputRef={inputRef}
-          />
+          {state !== 'limit-reached' && (
+            <ChatInput
+              value={draft}
+              onChange={handleInputChange}
+              onSubmit={handleSubmit}
+              onStop={handleStop}
+              disabled={inputDisabled}
+              isProcessing={isProcessing}
+              onKeyDown={handleKeyDown}
+              inputRef={inputRef}
+              ariaActivedescendant={pickerOpen && filteredSkills.length > 0 ? `skill-option-${pickerSelectedIndex}` : undefined}
+              ariaControls={pickerOpen ? 'skill-listbox' : undefined}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -2,6 +2,10 @@
  * Story 3.1: Provision a Sandbox When Opening a Conversation
  * Story 3.2: Invoke BMAD Skills via Slash Command
  * Story 3.5: Resume an Existing Conversation
+ * Story 3.9: Terminate Idle Sandboxes Mid-Conversation
+ * Story 3.10: Verify Commits Carry the User's Own Identity
+ * Story 3.11: Run Concurrent Conversations
+ * Story 3.12: Drain Conversations Gracefully on Deploy
  * Unit tests for ConversationsService.
  * Uses SandboxServiceFake via buildTestModule().
  *
@@ -9,11 +13,21 @@
  * AC-6 (provision queue concurrency cap).
  * Story 3.2 covers: AC-1 (listSkills), AC-2 (empty skills), AC-3 (sendTurn persistence + title).
  * Story 3.5 covers: AC-2 (resume fast/slow path, git identity re-injection, idle timer).
+ * Story 3.9 covers: AC-1 (mid-session idle timeout, fast-path resume timer),
+ * AC-2 (dirty-tree save before teardown).
+ * Story 3.10 covers: AC-1 (git identity resolution + injection, commit carries injected identity),
+ * AC-2 (two-user distinct commit identities), AC-3 (noreply-email fallback on commit).
+ * Story 3.11 covers: AC-1 (concurrent conversation count check), AC-2 (limit-reached
+ * ConflictException), AC-4 (abandonConversation + provisionSandbox cancellation).
+ * Story 3.12 covers: AC-1 (SessionEventsService.onModuleDestroy emits SESSION_DRAINING),
+ * AC-2 (getStatus/countActiveConversations/resumeConversation/listSkills read sandbox
+ * state from Postgres; persistSandboxState on every write), AC-3 (ManualCommitService
+ * drain — complete or notify via MANUAL_SAVE_FAILED).
  *
- * TDD GREEN PHASE: Story 3.5 tests un-skipped and passing.
+ * TDD GREEN PHASE: Story 3.5/3.9/3.10/3.11/3.12 tests un-skipped and passing.
  */
 import { Test } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { ConversationsModule } from './conversations.module';
 import { PrismaService } from '../prisma/prisma.service';
@@ -37,12 +51,39 @@ describe('ConversationsService', () => {
   let mockPrisma: any;
 
   beforeEach(async () => {
+    const conversationDb = new Map<string, { id: string; userId: string; title: string | null; sandboxId: string | null; sandboxStatus: string | null; lastActiveAt: Date }>();
+    conversationDb.set('conv-1', { id: 'conv-1', userId: 'user-1', title: null, sandboxId: null, sandboxStatus: null, lastActiveAt: new Date() });
+
     mockPrisma = {
       conversation: {
-        create: jest.fn().mockResolvedValue({ id: 'conv-1', userId: 'user-1' }),
+        create: jest.fn().mockImplementation(({ data }) => {
+          const conv = {
+            id: 'conv-1',
+            userId: data.userId,
+            title: data.title ?? null,
+            sandboxId: null as string | null,
+            sandboxStatus: data.sandboxStatus ?? null,
+            lastActiveAt: data.lastActiveAt ?? new Date(),
+          };
+          conversationDb.set(conv.id, conv);
+          return Promise.resolve(conv);
+        }),
         findUnique: jest.fn().mockResolvedValue({ id: 'conv-1' }),
-        findFirst: jest.fn().mockResolvedValue({ id: 'conv-1', userId: 'user-1' }),
-        update: jest.fn().mockResolvedValue({ id: 'conv-1', userId: 'user-1', title: 'test title' }),
+        findFirst: jest.fn().mockImplementation(({ where }) => {
+          const conv = conversationDb.get(where.id);
+          if (!conv) return Promise.resolve(null);
+          if (where.userId && conv.userId !== where.userId) return Promise.resolve(null);
+          return Promise.resolve({ ...conv });
+        }),
+        findMany: jest.fn().mockResolvedValue([]),
+        delete: jest.fn().mockResolvedValue({ id: 'conv-1' }),
+        update: jest.fn().mockImplementation(({ where, data }) => {
+          const existing = conversationDb.get(where.id) ?? { id: where.id, userId: 'user-1', title: null, sandboxId: null, sandboxStatus: null, lastActiveAt: new Date() };
+          const updated = { ...existing, ...data };
+          conversationDb.set(where.id, updated);
+          return Promise.resolve(updated);
+        }),
+        count: jest.fn().mockResolvedValue(0),
       },
       turn: {
         create: jest.fn().mockResolvedValue({ id: 'turn-1' }),
@@ -99,7 +140,7 @@ describe('ConversationsService', () => {
       const result = await service.createConversation('user-1');
       expect(result.id).toBe('conv-1');
       expect(mockPrisma.conversation.create).toHaveBeenCalledWith({
-        data: { userId: 'user-1', title: null, lastActiveAt: expect.any(Date) },
+        data: { userId: 'user-1', title: null, lastActiveAt: expect.any(Date), sandboxStatus: 'provisioning' },
       });
     });
   });
@@ -238,7 +279,7 @@ describe('ConversationsService', () => {
       expect(result.sandboxStatus).toBe('failed');
       expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith({
         where: { id: 'conv-1', userId: 'user-other' },
-        select: { id: true },
+        select: { id: true, sandboxStatus: true },
       });
     });
 
@@ -506,7 +547,7 @@ describe('ConversationsService', () => {
       expect(result.sandboxStatus).toBe('failed');
       expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith({
         where: { id: 'conv-1', userId: 'user-other' },
-        select: { id: true },
+        select: { id: true, sandboxId: true, sandboxStatus: true },
       });
     });
 
@@ -622,6 +663,761 @@ describe('ConversationsService', () => {
       await new Promise((r) => setImmediate(r));
 
       expect(flushSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('[P0] Story 3.9 — mid-session idle timeout (AC-1)', () => {
+    it('[P0] mid-session timer starts after runAgentTurn completes — 60s does NOT fire, 900s does', async () => {
+      jest.useFakeTimers();
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
+      await service.sendTurn('conv-1', 'user-1', 'hello agent');
+
+      await jest.advanceTimersByTimeAsync(0);
+      expect(destroySpy).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(destroySpy).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(840_000);
+      expect(destroySpy).toHaveBeenCalledWith(expect.any(String));
+    });
+
+    it('[P0] mid-session timer is cleared when sendTurn is called again', async () => {
+      jest.useFakeTimers();
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1', title: 'Existing' });
+      await service.sendTurn('conv-1', 'user-1', 'first message');
+      await jest.advanceTimersByTimeAsync(0);
+
+      await jest.advanceTimersByTimeAsync(800_000);
+
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: 'Existing' });
+      await service.sendTurn('conv-1', 'user-1', 'second message');
+      await jest.advanceTimersByTimeAsync(0);
+
+      await jest.advanceTimersByTimeAsync(800_000);
+
+      expect(destroySpy).not.toHaveBeenCalled();
+    });
+
+    it('[P0] mid-session timer fires after 15 min (not 60s)', async () => {
+      jest.useFakeTimers();
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
+      await service.sendTurn('conv-1', 'user-1', 'hello agent');
+      await jest.advanceTimersByTimeAsync(0);
+
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(destroySpy).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(840_000);
+      expect(destroySpy).toHaveBeenCalled();
+    });
+
+    it('[P0] mid-session timer emits SESSION_TIMEOUT with { reason: "mid-session" }', async () => {
+      jest.useFakeTimers();
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
+      await service.sendTurn('conv-1', 'user-1', 'hello agent');
+      await jest.advanceTimersByTimeAsync(0);
+
+      await jest.advanceTimersByTimeAsync(900_000);
+
+      const timeoutCall = emitSpy.mock.calls.find(
+        (c: unknown[]) => (c[1] as { event: string }).event === 'SESSION_TIMEOUT',
+      );
+      expect(timeoutCall).toBeDefined();
+      expect(timeoutCall![1]).toEqual({
+        event: 'SESSION_TIMEOUT',
+        data: { reason: 'mid-session' },
+      });
+    });
+
+    it('[P0] mid-session timer sets status to "idle-timeout" and deletes sandboxId', async () => {
+      jest.useFakeTimers();
+
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
+      await service.sendTurn('conv-1', 'user-1', 'hello agent');
+      await jest.advanceTimersByTimeAsync(0);
+
+      await jest.advanceTimersByTimeAsync(900_000);
+
+      const status = await service.getStatus('conv-1', 'user-1');
+      expect(status.sandboxStatus).toBe('idle-timeout');
+
+      const skills = await service.listSkills('conv-1', 'user-1');
+      expect(skills).toEqual([]);
+    });
+  });
+
+  describe('[P0] Story 3.9 — dirty working tree save before teardown (AC-2)', () => {
+    it('[P0] attempts save when working tree is dirty — requestCommit called BEFORE destroy', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({
+        dirty: true,
+        files: ['modified-file.ts'],
+      });
+      const requestCommitSpy = jest.spyOn(
+        service['manualCommitService'],
+        'requestCommit',
+      );
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
+      await service.sendTurn('conv-1', 'user-1', 'hello agent');
+      await jest.advanceTimersByTimeAsync(0);
+
+      await jest.advanceTimersByTimeAsync(900_000);
+
+      expect(requestCommitSpy).toHaveBeenCalledWith(
+        'conv-1',
+        'user-1',
+        expect.any(String),
+      );
+      expect(destroySpy).toHaveBeenCalled();
+      expect(requestCommitSpy.mock.invocationCallOrder[0]).toBeLessThan(
+        destroySpy.mock.invocationCallOrder[0],
+      );
+
+      const events = emitSpy.mock.calls.map((c: unknown[]) => (c[1] as { event: string }).event);
+      expect(events).toContain('MANUAL_SAVE_SUCCEEDED');
+      expect(events).toContain('SESSION_TIMEOUT');
+      expect(events.indexOf('MANUAL_SAVE_SUCCEEDED')).toBeLessThan(events.indexOf('SESSION_TIMEOUT'));
+    });
+
+    it('[P0] does NOT save when working tree is clean — destroy called, requestCommit NOT called', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({
+        dirty: false,
+        files: [],
+      });
+      const requestCommitSpy = jest.spyOn(
+        service['manualCommitService'],
+        'requestCommit',
+      );
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
+      await service.sendTurn('conv-1', 'user-1', 'hello agent');
+      await jest.advanceTimersByTimeAsync(0);
+
+      await jest.advanceTimersByTimeAsync(900_000);
+
+      expect(requestCommitSpy).not.toHaveBeenCalled();
+      expect(destroySpy).toHaveBeenCalled();
+    });
+
+    it('[P0] teardown proceeds even if save fails — MANUAL_SAVE_FAILED emitted, destroy still called', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({
+        dirty: true,
+        files: ['modified-file.ts'],
+      });
+      sandboxFake.failNextCommit();
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
+      await service.sendTurn('conv-1', 'user-1', 'hello agent');
+      await jest.advanceTimersByTimeAsync(0);
+
+      await jest.advanceTimersByTimeAsync(900_000);
+
+      const events = emitSpy.mock.calls.map((c: unknown[]) => (c[1] as { event: string }).event);
+      expect(events).toContain('MANUAL_SAVE_FAILED');
+      expect(events).toContain('SESSION_TIMEOUT');
+      expect(events.indexOf('MANUAL_SAVE_FAILED')).toBeLessThan(events.indexOf('SESSION_TIMEOUT'));
+      expect(destroySpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('[P0] Story 3.9 — fast-path resume starts mid-session timer (AC-1)', () => {
+    it('[P0] fast-path resume does NOT reset existing mid-session timer', async () => {
+      jest.useFakeTimers();
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+      const startTimerSpy = jest.spyOn(idleTimeout, 'startTimer');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1', title: null });
+      await service.sendTurn('conv-1', 'user-1', 'first message');
+      await jest.advanceTimersByTimeAsync(0);
+
+      await jest.advanceTimersByTimeAsync(800_000);
+
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', userId: 'user-1' });
+      await service.resumeConversation('conv-1', 'user-1');
+
+      await jest.advanceTimersByTimeAsync(100_000);
+
+      expect(destroySpy).toHaveBeenCalled();
+    });
+
+    it('[P0] fast-path resume does NOT start mid-session timer when pre-first-message timer is running', async () => {
+      jest.useFakeTimers();
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+      const hasTimerSpy = jest.spyOn(idleTimeout, 'hasTimer');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      await service.resumeConversation('conv-1', 'user-1');
+
+      expect(hasTimerSpy).toHaveBeenCalledWith('conv-1');
+
+      await jest.advanceTimersByTimeAsync(60_000);
+
+      expect(destroySpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('[P0] Story 3.10 — git identity resolution + injection (AC-1, AC-3)', () => {
+    it('[P0] resolveGitIdentity resolves name + email from the User profile', async () => {
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+      await service.provisionSandbox('conv-1', 'user-1');
+      const sandboxId = injectSpy.mock.calls[0][0];
+
+      expect(sandboxFake.getInjectedGitConfig(sandboxId)).toEqual({
+        name: 'Test User',
+        email: 'test@example.com',
+      });
+    });
+
+    it('[P0] name falls back to githubLogin when name is null', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        name: null,
+        email: 'a@b.com',
+        githubLogin: 'alice',
+      });
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+      await service.provisionSandbox('conv-1', 'user-1');
+      const sandboxId = injectSpy.mock.calls[0][0];
+
+      expect(sandboxFake.getInjectedGitConfig(sandboxId).name).toBe('alice');
+    });
+
+    it('[P0] name falls back to githubLogin when name is empty/whitespace', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        name: '   ',
+        email: 'a@b.com',
+        githubLogin: 'alice',
+      });
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+      await service.provisionSandbox('conv-1', 'user-1');
+      const sandboxId = injectSpy.mock.calls[0][0];
+
+      expect(sandboxFake.getInjectedGitConfig(sandboxId).name).toBe('alice');
+    });
+
+    it('[P0] email falls back to {githubLogin}@users.noreply.github.com when email is null (AC-3)', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        name: 'Alice',
+        email: null,
+        githubLogin: 'alice',
+      });
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+      await service.provisionSandbox('conv-1', 'user-1');
+      const sandboxId = injectSpy.mock.calls[0][0];
+
+      expect(sandboxFake.getInjectedGitConfig(sandboxId).email).toBe('alice@users.noreply.github.com');
+    });
+
+    it('[P0] email falls back to noreply when email is empty/whitespace', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        name: 'Alice',
+        email: '  ',
+        githubLogin: 'alice',
+      });
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+      await service.provisionSandbox('conv-1', 'user-1');
+      const sandboxId = injectSpy.mock.calls[0][0];
+
+      expect(sandboxFake.getInjectedGitConfig(sandboxId).email).toBe('alice@users.noreply.github.com');
+    });
+
+    it('[P0] provisionSandbox injects the resolved identity BEFORE emitting SESSION_READY (AC-1 agent-commit path)', async () => {
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const sessionReadyCallIndex = emitSpy.mock.calls.findIndex(
+        (c: unknown[]) => (c[1] as { event: string }).event === 'SESSION_READY',
+      );
+      expect(sessionReadyCallIndex).not.toBe(-1);
+      const sessionReadyOrder = emitSpy.mock.invocationCallOrder[sessionReadyCallIndex];
+
+      expect(injectSpy).toHaveBeenCalled();
+      expect(injectSpy.mock.invocationCallOrder[0]).toBeLessThan(sessionReadyOrder);
+    });
+
+    it('[P0] resumeConversation fast-path re-injects the same identity (AC-1 on resume)', async () => {
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+      await service.provisionSandbox('conv-1', 'user-1');
+      const sandboxId = injectSpy.mock.calls[0][0];
+
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        name: 'Alice V2',
+        email: 'alice-v2@example.com',
+        githubLogin: 'alice',
+      });
+      await service.resumeConversation('conv-1', 'user-1');
+
+      expect(sandboxFake.getInjectedGitConfig(sandboxId)).toEqual({
+        name: 'Alice V2',
+        email: 'alice-v2@example.com',
+      });
+    });
+  });
+
+  describe('[P0] Story 3.10 — commit carries the user\'s injected identity (AC-1, AC-3)', () => {
+    it('[P0] a manual save commit carries the user\'s injected name + email (AC-1)', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({ dirty: true, files: ['f.ts'] });
+
+      await service.manualCommit('conv-1', 'user-1');
+
+      expect(sandboxFake.getCommitCalls()).toHaveLength(1);
+      expect(sandboxFake.getCommitCalls()[0].author).toEqual({
+        name: 'Test User',
+        email: 'test@example.com',
+      });
+    });
+
+    it('[P0] the commit author is NOT a platform service account (AC-1)', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({ dirty: true, files: ['f.ts'] });
+
+      await service.manualCommit('conv-1', 'user-1');
+
+      const author = sandboxFake.getCommitCalls()[0].author;
+      expect(author).toBeDefined();
+      expect(author.name).not.toMatch(/bmad|platform|bot|service/i);
+      expect(author.email).not.toMatch(/bmad-easy\.com|noreply@platform/i);
+    });
+
+    it('[P0] noreply-fallback user\'s commit carries the fallback email (AC-3)', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        name: null,
+        email: null,
+        githubLogin: 'janedoe',
+      });
+      await service.provisionSandbox('conv-1', 'user-1');
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({ dirty: true, files: ['f.ts'] });
+
+      await service.manualCommit('conv-1', 'user-1');
+
+      const author = sandboxFake.getCommitCalls()[0].author;
+      expect(author.email).toBe('janedoe@users.noreply.github.com');
+      expect(author.name).toBe('janedoe');
+    });
+
+    it('[P0] a commit with no prior injectGitConfig records author: undefined (regression guard)', async () => {
+      await sandboxFake.commit('sb-x', 'msg');
+
+      expect(sandboxFake.getCommitCalls()).toHaveLength(1);
+      expect(sandboxFake.getCommitCalls()[0].author).toBeUndefined();
+    });
+  });
+
+  describe('[P0] Story 3.10 — two users carry distinct commit identities (AC-2)', () => {
+    beforeEach(() => {
+      mockPrisma.user.findUnique.mockImplementation(({ where: { id } }: { where: { id: string } }) =>
+        Promise.resolve(
+          id === 'user-alice'
+            ? { name: 'Alice Lee', email: 'alice@example.com', githubLogin: 'alice' }
+            : { name: 'Bob Wong', email: 'bob@example.com', githubLogin: 'bob' },
+        ),
+      );
+      mockPrisma.conversation.create.mockImplementation(({ data }: { data: { userId: string } }) =>
+        Promise.resolve({
+          id: data.userId === 'user-alice' ? 'conv-a' : 'conv-b',
+          userId: data.userId,
+        }),
+      );
+      mockPrisma.conversation.findFirst.mockImplementation(
+        ({ where: { id, userId } }: { where: { id: string; userId: string } }) =>
+          Promise.resolve(
+            id === 'conv-a' && userId === 'user-alice'
+              ? { id: 'conv-a' }
+              : id === 'conv-b' && userId === 'user-bob'
+                ? { id: 'conv-b' }
+                : null,
+          ),
+      );
+    });
+
+    it('[P0] two users each commit in their own Conversation — each commit carries that user\'s own distinct identity', async () => {
+      await service.provisionSandbox('conv-a', 'user-alice');
+      await service.provisionSandbox('conv-b', 'user-bob');
+
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({ dirty: true, files: ['f.ts'] });
+
+      await service.manualCommit('conv-a', 'user-alice');
+      await service.manualCommit('conv-b', 'user-bob');
+
+      const calls = sandboxFake.getCommitCalls();
+      expect(calls).toHaveLength(2);
+      expect(calls[0].author).toEqual({ name: 'Alice Lee', email: 'alice@example.com' });
+      expect(calls[1].author).toEqual({ name: 'Bob Wong', email: 'bob@example.com' });
+      expect(calls[0].author.email).not.toBe(calls[1].author.email);
+    });
+
+    it('[P0] the two injected configs are distinct before any commit', async () => {
+      const injectSpy = jest.spyOn(sandboxFake, 'injectGitConfig');
+
+      await service.provisionSandbox('conv-a', 'user-alice');
+      await service.provisionSandbox('conv-b', 'user-bob');
+      const sbA = injectSpy.mock.calls[0][0];
+      const sbB = injectSpy.mock.calls[1][0];
+
+      expect(sandboxFake.getInjectedGitConfig(sbA).email).not.toBe(
+        sandboxFake.getInjectedGitConfig(sbB).email,
+      );
+    });
+  });
+
+  describe('[P0] Story 3.11 — concurrent conversation limit (AC: 1, 2)', () => {
+    it('[P0] createConversation succeeds when active count < 10', async () => {
+      mockPrisma.conversation.count.mockResolvedValue(0);
+      const result = await service.createConversation('user-1');
+      expect(result.id).toBe('conv-1');
+      expect(mockPrisma.conversation.create).toHaveBeenCalled();
+    });
+
+    it('[P0] createConversation succeeds at the boundary (9 active)', async () => {
+      mockPrisma.conversation.count.mockResolvedValue(9);
+      const result = await service.createConversation('user-1');
+      expect(result.id).toBe('conv-1');
+      expect(mockPrisma.conversation.create).toHaveBeenCalled();
+    });
+
+    it('[P0] createConversation throws ConflictException when active count >= 10 (AC-2)', async () => {
+      mockPrisma.conversation.count.mockResolvedValue(10);
+      await expect(service.createConversation('user-1')).rejects.toThrow(ConflictException);
+      const error = new ConflictException({
+        code: 'CONVERSATION_LIMIT_REACHED',
+        message: 'limit reached',
+        meta: { limit: 10 },
+      });
+      const response = error.getResponse() as Record<string, unknown>;
+      expect(response).toHaveProperty('code', 'CONVERSATION_LIMIT_REACHED');
+      expect(response).toHaveProperty('meta', { limit: 10 });
+      expect(mockPrisma.conversation.create).not.toHaveBeenCalled();
+    });
+
+    it('[P0] idle-timed-out conversations do NOT count toward the limit', async () => {
+      mockPrisma.conversation.count.mockResolvedValue(0);
+      const result = await service.createConversation('user-1');
+      expect(result.id).toBe('conv-1');
+    });
+
+    it('[P0] failed conversations do NOT count toward the limit', async () => {
+      mockPrisma.conversation.count.mockResolvedValue(0);
+      const result = await service.createConversation('user-1');
+      expect(result.id).toBe('conv-1');
+    });
+
+    it('[P0] provisioning conversations DO count toward the limit', async () => {
+      mockPrisma.conversation.count.mockResolvedValue(10);
+      await expect(service.createConversation('user-1')).rejects.toThrow(ConflictException);
+      expect(mockPrisma.conversation.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('[P0] Story 3.11 — abandonConversation (AC: 4)', () => {
+    it('[P0] deletes the conversation row when called', async () => {
+      await service.abandonConversation('conv-1', 'user-1');
+      expect(mockPrisma.conversation.delete).toHaveBeenCalledWith({ where: { id: 'conv-1' } });
+    });
+
+    it('[P0] destroys the sandbox when one exists', async () => {
+      service['sandboxIds'].set('conv-1', 'sb-1');
+      service['sandboxStatuses'].set('conv-1', 'ready');
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+      await service.abandonConversation('conv-1', 'user-1');
+      expect(destroySpy).toHaveBeenCalledWith('sb-1');
+    });
+
+    it('[P0] clears in-memory maps', async () => {
+      service['sandboxIds'].set('conv-1', 'sb-1');
+      service['sandboxStatuses'].set('conv-1', 'ready');
+      await service.abandonConversation('conv-1', 'user-1');
+      expect(service['sandboxStatuses'].has('conv-1')).toBe(false);
+      expect(service['sandboxIds'].has('conv-1')).toBe(false);
+    });
+
+    it('[P0] clears the idle timer', async () => {
+      service['sandboxIds'].set('conv-1', 'sb-1');
+      service['sandboxStatuses'].set('conv-1', 'ready');
+      const clearTimerSpy = jest.spyOn(idleTimeout, 'clearTimer');
+      await service.abandonConversation('conv-1', 'user-1');
+      expect(clearTimerSpy).toHaveBeenCalledWith('conv-1');
+    });
+
+    it('[P0] completes the SSE subject', async () => {
+      const completeSpy = jest.spyOn(sessionEvents, 'complete');
+      await service.abandonConversation('conv-1', 'user-1');
+      expect(completeSpy).toHaveBeenCalledWith('conv-1');
+    });
+
+    it('[P0] returns { abandoned: false } when conversation does not exist (idempotent)', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce(null);
+      const result = await service.abandonConversation('nope', 'user-1');
+      expect(result).toEqual({ conversationId: 'nope', abandoned: false });
+      expect(mockPrisma.conversation.delete).not.toHaveBeenCalled();
+    });
+
+    it('[P0] tenant isolation — findFirst called with userId filter', async () => {
+      await service.abandonConversation('conv-1', 'user-1');
+      expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith({
+        where: { id: 'conv-1', userId: 'user-1' },
+        select: { id: true },
+      });
+    });
+  });
+
+  describe('[P0] Story 3.11 — provisionSandbox cancellation check (AC: 4)', () => {
+    it('[P0] aborts after queue acquire when cancelled', async () => {
+      service['cancelledConversations'].add('conv-1');
+      const provisionSpy = jest.spyOn(sandboxFake, 'provision');
+      await service.provisionSandbox('conv-1', 'user-1');
+      expect(provisionSpy).not.toHaveBeenCalled();
+      expect(service['cancelledConversations'].has('conv-1')).toBe(false);
+    });
+
+    it('[P0] aborts after sandbox provision when cancelled', async () => {
+      jest.spyOn(sandboxFake, 'provision').mockImplementation(async () => {
+        service['cancelledConversations'].add('conv-1');
+        return { sandboxId: 'sb-1' };
+      });
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+      await service.provisionSandbox('conv-1', 'user-1');
+      expect(destroySpy).toHaveBeenCalledWith('sb-1');
+      expect(emitSpy).not.toHaveBeenCalledWith(
+        'conv-1',
+        expect.objectContaining({ event: 'SESSION_READY' }),
+      );
+    });
+
+    it('[P0] provision slot is released on cancellation', async () => {
+      service['cancelledConversations'].add('conv-1');
+      const releaseSpy = jest.spyOn(service['provisionQueue'], 'release');
+      await service.provisionSandbox('conv-1', 'user-1');
+      expect(releaseSpy).toHaveBeenCalledWith('user-1');
+    });
+  });
+
+  describe('[P0] Story 3.12 — getStatus reads sandboxStatus from Postgres (AC: 2, P1)', () => {
+    it('[P0] getStatus returns persisted sandboxStatus after restart (in-memory Map cleared)', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({
+        id: 'conv-1',
+        sandboxId: 'sb-1',
+        sandboxStatus: 'ready',
+      });
+      service['sandboxStatuses'].clear();
+
+      const result = await service.getStatus('conv-1', 'user-1');
+
+      expect(result.sandboxStatus).toBe('ready');
+      expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith({
+        where: { id: 'conv-1', userId: 'user-1' },
+        select: expect.objectContaining({ sandboxStatus: true }),
+      });
+    });
+
+    it('[P0] getStatus returns "failed" when conversation not found in Postgres', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce(null);
+      service['sandboxStatuses'].clear();
+
+      const result = await service.getStatus('conv-missing', 'user-1');
+
+      expect(result.sandboxStatus).toBe('failed');
+    });
+
+    it('[P0] getStatus returns "provisioning" when sandboxStatus is null in Postgres (new conversation)', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({
+        id: 'conv-1',
+        sandboxId: null,
+        sandboxStatus: null,
+      });
+
+      const result = await service.getStatus('conv-1', 'user-1');
+
+      expect(result.sandboxStatus).toBe('provisioning');
+    });
+
+    it('[P0] getStatus does NOT fall back to in-memory Map when Postgres has the status', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({
+        id: 'conv-1',
+        sandboxId: 'sb-1',
+        sandboxStatus: 'idle-timeout',
+      });
+      service['sandboxStatuses'].set('conv-1', 'ready');
+
+      const result = await service.getStatus('conv-1', 'user-1');
+
+      expect(result.sandboxStatus).toBe('idle-timeout');
+    });
+  });
+
+  describe('[P0] Story 3.12 — countActiveConversations uses Postgres filter (AC: 2, P1)', () => {
+    it('[P0] countActiveConversations queries Postgres with sandboxStatus in filter (not findMany + Map iteration)', async () => {
+      mockPrisma.conversation.count.mockResolvedValueOnce(3);
+
+      const result = await service['countActiveConversations']('user-1');
+
+      expect(result).toBe(3);
+      expect(mockPrisma.conversation.count).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          sandboxStatus: { in: ['provisioning', 'ready'] },
+        },
+      });
+    });
+
+    it('[P0] countActiveConversations returns 0 when no active conversations exist', async () => {
+      mockPrisma.conversation.count.mockResolvedValueOnce(0);
+
+      const result = await service['countActiveConversations']('user-1');
+
+      expect(result).toBe(0);
+    });
+  });
+
+  describe('[P0] Story 3.12 — resumeConversation reads sandbox state from Postgres (AC: 2, P1)', () => {
+    it('[P0] resumeConversation reads sandboxStatus and sandboxId from Postgres (not in-memory Maps)', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+      service['sandboxStatuses'].clear();
+      service['sandboxIds'].clear();
+
+      const result = await service.resumeConversation('conv-1', 'user-1');
+
+      expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith({
+        where: { id: 'conv-1', userId: 'user-1' },
+        select: { id: true, sandboxId: true, sandboxStatus: true },
+      });
+      expect(result.sandboxStatus).toBe('ready');
+    });
+
+    it('[P0] resumeConversation fast-path works after restart (Postgres has ready status + sandboxId)', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+      service['sandboxStatuses'].clear();
+      service['sandboxIds'].clear();
+
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      const result = await service.resumeConversation('conv-1', 'user-1');
+
+      expect(result.sandboxStatus).toBe('ready');
+      expect(emitSpy).toHaveBeenCalledWith('conv-1', expect.objectContaining({ event: 'SESSION_READY' }));
+    });
+
+    it('[P0] resumeConversation returns "failed" when conversation not found in Postgres', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.resumeConversation('conv-missing', 'user-1');
+
+      expect(result.sandboxStatus).toBe('failed');
+    });
+  });
+
+  describe('[P0] Story 3.12 — persist sandbox state to Postgres on every write (AC: 2, P1)', () => {
+    it('[P0] provisionSandbox writes sandboxId and sandboxStatus="ready" to Postgres on success', async () => {
+      const updateSpy = mockPrisma.conversation.update;
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      expect(updateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'conv-1' },
+          data: expect.objectContaining({ sandboxId: expect.any(String), sandboxStatus: 'ready' }),
+        }),
+      );
+    });
+
+    it('[P0] provisionSandbox writes sandboxStatus="failed" and clears sandboxId on provision failure', async () => {
+      sandboxFake.failNextProvision();
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      expect(mockPrisma.conversation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'conv-1' },
+          data: expect.objectContaining({ sandboxStatus: 'failed', sandboxId: null }),
+        }),
+      );
+    });
+
+    it('[P0] mid-session idle timeout writes sandboxStatus="idle-timeout" and clears sandboxId', async () => {
+      await service.provisionSandbox('conv-1', 'user-1');
+      mockPrisma.conversation.update.mockClear();
+
+      await service['handleMidSessionIdleTimeout']('conv-1', 'sb-1', 'user-1');
+
+      expect(mockPrisma.conversation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'conv-1' },
+          data: expect.objectContaining({ sandboxStatus: 'idle-timeout', sandboxId: null }),
+        }),
+      );
+    });
+
+    it('[P0] createConversation writes sandboxStatus="provisioning" to Postgres', async () => {
+      const createSpy = mockPrisma.conversation.create;
+
+      await service.createConversation('user-1');
+
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ sandboxStatus: 'provisioning' }),
+        }),
+      );
+    });
+  });
+
+  describe('[P0] Story 3.12 — listSkills reads sandboxId from Postgres (AC: 2, P1)', () => {
+    it('[P0] listSkills reads sandboxId from Postgres (not in-memory Map)', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({
+        id: 'conv-1',
+        sandboxId: 'sb-from-db',
+        sandboxStatus: 'ready',
+      });
+      sandboxFake.setSkills([{ name: 'bmad-prd' }]);
+      service['sandboxIds'].clear();
+
+      const result = await service.listSkills('conv-1', 'user-1');
+
+      expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith({
+        where: { id: 'conv-1', userId: 'user-1' },
+        select: expect.objectContaining({ sandboxId: true }),
+      });
+      expect(result).toEqual([{ name: 'bmad-prd' }]);
+    });
+
+    it('[P0] listSkills returns [] when sandboxId is null in Postgres', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({
+        id: 'conv-1',
+        sandboxId: null,
+        sandboxStatus: 'provisioning',
+      });
+
+      const result = await service.listSkills('conv-1', 'user-1');
+
+      expect(result).toEqual([]);
     });
   });
 });

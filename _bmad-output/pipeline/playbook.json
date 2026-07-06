@@ -3,11 +3,7 @@
   "version": 2,
   "config": {
     "runner": "opencode",
-    "ntfyTopic": "agent-outcome",
-    "allowedAgents": [
-      "planner",
-      "coder"
-    ]
+    "ntfyTopic": "agent-outcome"
   },
   "policy": {
     "maxAttemptsPerStory": 2,
@@ -23,7 +19,7 @@
       "stage": "create",
       "skill": "bmad-create-story",
       "agent": "planner",
-      "prompt": "run Creation mode. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "prompt": "Create story. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core"
     },
@@ -33,7 +29,7 @@
       "stage": "validate",
       "skill": "bmad-create-story",
       "agent": "planner",
-      "prompt": "validate story. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "prompt": "Validate story. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core"
     },
@@ -43,11 +39,11 @@
       "stage": "pre-implementation",
       "skill": "bmad-testarch-atdd",
       "agent": "coder",
-      "prompt": "prepare tests. Before deferring E2E coverage for a story, verify whether existing browser-level mock patterns could simulate the scenario without real external dependencies — only defer E2E if no mock approach can cover the acceptance criteria, and record the verification in the ATDD checklist.",
+      "prompt": "Create tests. After applying TDD red-phase scaffolding (adding skipped test blocks to new or existing files, adding test seams, or creating stub files), update the story file's tasks to reflect what was already done — tasks that instruct the dev to create scaffolding that prepare-tests has already applied should be amended to instruct activation of the existing scaffolding instead, so the story does not contradict the codebase state. Before deferring E2E coverage, verify no browser-level mock pattern can simulate the scenario — only defer if no mock covers the ACs, and record the check in the ATDD checklist. When creating regression guards for code that executes external commands with user-controlled input, apply a uniform guard template to every call site: exercise both credential-isolation invariants (no credentials leak via command arguments or environment variables) and input-injection invariants (malicious input is safely quoted and cannot alter the command's behavior). For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-05T08:14:39.210Z",
-      "updatedByRun": "3.7-a1-20260704T225804"
+      "updatedAt": "2026-07-06T12:26:33.858Z",
+      "updatedByRun": "3.11-a1-20260706T082713"
     },
     {
       "id": "validate-story-2",
@@ -55,7 +51,7 @@
       "stage": "pre-implementation",
       "skill": "bmad-create-story",
       "agent": "planner",
-      "prompt": "validate story. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "prompt": "Validate story. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core"
     },
@@ -65,11 +61,11 @@
       "stage": "implement",
       "skill": "bmad-dev-story",
       "agent": "coder",
-      "prompt": "develop story autonomously, completing every task listed in the story spec before finishing. As each task makes a skipped test pass, remove its skip marker — a skipped test provides zero signal. The story is not complete while skipped tests remain for tasks that are done. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "prompt": "Develop story autonomously, completing every task listed in the story spec before finishing. Before marking the story complete, re-read project-context.md and verify each non-functional pattern documented there has been applied to your changes where applicable — apply any missing patterns before finishing, do not wait for the NFR review to catch them. As each task makes a skipped test pass, remove its skip marker and update any test-file headers that claim tests are skipped, disabled, or in a red-phase state to reflect that the tests are now active, and update story coverage lists in those headers to include the current story — the story is not complete while skipped tests or stale test-file headers remain for done tasks. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-04T20:35:58.909Z",
-      "updatedByRun": "manual-20260704T203558"
+      "updatedAt": "2026-07-06T15:31:43.986Z",
+      "updatedByRun": "3.12-a1-20260706T122634"
     },
     {
       "id": "unit-tests",
@@ -77,7 +73,7 @@
       "stage": "test-generation",
       "skill": "bmad-testarch-automate",
       "agent": "coder",
-      "prompt": "Autonomously evaluate (Validate) if the Story is sufficiently covered; if needed, expand coverage (Create/Resume) by generating new tests — use Create mode only to generate missing coverage, not to modify existing tests you did not generate this run. Treat any skipped or disabled test as a coverage failure — a skipped test provides zero coverage. For each skipped test: un-skip and run it. If it passes, keep it un-skipped. If it fails, attempt to heal test-quality issues (selector, timing, mocking, data); if unfixable, mark it as expected-to-fail with a detailed comment, and record the failure and reason in the story file. Do not edit production code. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "prompt": "Validate tests; if coverage is insufficient, switch to Create/Resume to generate missing tests only (don't modify existing tests you didn't generate this run). Treat skipped tests as coverage failures: un-skip and run each; if it passes keep it, if it fails heal test-quality issues (selector, timing, mocking, data), if unfixable mark expected-to-fail with a comment and record in the story file. Don't edit production code. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core",
       "updatedAt": "2026-07-04T20:35:58.909Z",
@@ -99,7 +95,7 @@
       "stage": "review",
       "skill": "bmad-code-review",
       "agent": "planner",
-      "prompt": "Review the implementation of the story below. Use the story file in {implementation_artifacts} matching this story's key (pattern `<epic>-<story>-*.md`) as the explicit spec file (Tier 1) so the review target and diff baseline (its frontmatter `baseline_commit`) resolve without asking; if no `baseline_commit` is present, review all uncommitted changes instead of asking which target. If the diff exceeds the chunking threshold, take the first chunk automatically and note remaining groups for a follow-up run — do not wait for confirmation. Skip the pre-review checkpoint confirmation and proceed straight to the review. For decision-needed findings, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue — if the resolution is to defer, write your own one-line reason instead of asking. HALT only for decisions the policy does not cover. Once findings are triaged, choose 'apply every patch' (fix all patch findings now, no per-finding confirmation), then end the workflow rather than offering the next-steps menu.",
+      "prompt": "Review the story implementation. Spec file: {implementation_artifacts}/`<epic>-<story>-*.md` (Tier 1); diff baseline = its frontmatter `baseline_commit`, or all uncommitted changes if absent — resolve without asking. Chunk automatically if over threshold (take first chunk, note rest for follow-up) — do not wait for confirmation. Skip the pre-review checkpoint. For decision-needed findings, consult @_bmad-output/decision-policy.md: if a rule covers it, decide and continue (if deferring, write a one-line reason instead of asking). HALT only for decisions no rule covers. After triage, choose 'apply every patch' (no per-finding confirmation) and end — no next-steps menu.",
       "enabled": true,
       "origin": "core"
     },
@@ -109,19 +105,19 @@
       "stage": "review",
       "skill": "bmad-testarch-test-review",
       "agent": "planner",
-      "prompt": "Review tests. Treat any skipped test related to the story as a test-quality failure — flag it for un-skipping or removal with a recorded reason. Also resolve stale transitional markers in test files: any comment or header that claims tests are skipped, disabled, or in a red phase when the tests are actually active must be updated to reflect the current state — fix these directly, do not just flag them.",
+      "prompt": "run Validate mode. Flag skipped story-related tests for un-skipping or removal (with reason). Fix stale transitional markers directly wherever found during the search, including those from earlier stories in the same directories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation. Treat empty placeholder test stubs (active tests with no assertions, only a comment or empty body) as transitional artifacts — remove them directly wherever found during the search, including those from earlier stories in the same directories, since an empty test that passes trivially inflates the count without verifying behavior.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-05T08:14:39.210Z",
-      "updatedByRun": "3.7-a1-20260704T225804"
+      "updatedAt": "2026-07-06T12:26:33.858Z",
+      "updatedByRun": "3.11-a1-20260706T082713"
     },
     {
       "id": "review-nfrs",
       "label": "NFR review",
       "stage": "review",
       "skill": "bmad-testarch-nfr",
-      "agent": "planner",
-      "prompt": "Run NFR audit for the story. Identify and apply NFR-specific patches only (performance, security, reliability, scalability — e.g., select projection, take limits, timing tests, security headers). Do not implement features, refactor unrelated code, create database migrations, or fix test quality issues — those belong in dev or test-review steps. Document deferred findings in the story's review section.",
+      "agent": "reviewer",
+      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section.",
       "enabled": true,
       "origin": "core",
       "updatedAt": "2026-07-03T19:31:19.848Z",
@@ -133,7 +129,17 @@
       "stage": "review",
       "skill": "bmad-agent-tech-writer",
       "agent": "planner",
-      "prompt": "Review the story artifacts and the code implemented for it. Identify any new, repeatable patterns or conventions that emerged and aren't already captured in project-context.md. If none exist, do nothing. Otherwise, append them to project-context.md — keep entries lean, document only what's unobvious and repeatable. This is routine work, its outcome size depends on the uniqueness of the story.",
+      "prompt": "Review the story artifacts and implemented code. If new, repeatable, unobvious patterns or conventions emerged that aren't in project-context.md, append them (lean entries). If none, do nothing. Additionally, mark the story as Done in all relevant artifacts.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "commit",
+      "label": "Commit story changes",
+      "stage": "commit",
+      "skill": "commit",
+      "agent": "coder",
+      "prompt": "Commit all changes from this story implementation.",
       "enabled": true,
       "origin": "core"
     }

@@ -61,7 +61,7 @@ export function ToolPill({ toolCall }: ToolPillProps) {
           />
         )}
         {!isRunning && !isError && (
-          <span className="text-positive" aria-hidden="true">
+          <span className="text-text-2" aria-hidden="true">
             ✓
           </span>
         )}

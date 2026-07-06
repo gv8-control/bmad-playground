@@ -30,7 +30,7 @@ try {
 
 const story = proposal.story ?? 'unknown';
 const playbook = readPlaybook();
-const { policy, config } = playbook;
+const { policy } = playbook;
 const applied = [];
 const rejected = [];
 const retired = [];
@@ -51,6 +51,9 @@ for (const obs of observations) {
     fingerprint: obs.fingerprint,
     summary: obs.summary,
     evidence: obs.evidence ?? '',
+    grade: obs.grade ?? 'confirmed',
+    hypothesis: obs.hypothesis ?? '',
+    nextStep: obs.nextStep ?? '',
   });
 }
 
@@ -87,7 +90,6 @@ for (const a of amendments) {
     if (!/^[a-z0-9][a-z0-9-]+$/.test(s.id ?? '')) reasons.push('invalid step id');
     if (playbook.steps.some((x) => x.id === s.id)) reasons.push(`step id "${s.id}" already exists`);
     if (!/^bmad-/.test(s.skill ?? '')) reasons.push('skill must be a bmad-* skill');
-    if (!config.allowedAgents.includes(s.agent)) reasons.push(`agent must be one of ${config.allowedAgents.join(', ')}`);
     if (!s.label || typeof s.prompt !== 'string') reasons.push('label and prompt are required');
     if (learnedCount() >= policy.maxLearnedSteps) reasons.push(`learned step cap reached (${policy.maxLearnedSteps})`);
     // infra-* fingerprints record machinery failures (runner, provider, n8n);

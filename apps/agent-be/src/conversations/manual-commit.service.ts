@@ -3,10 +3,13 @@ import type { ISandboxService, IAgentService } from '@bmad-easy/shared-types';
 import { SANDBOX_SERVICE, AGENT_SERVICE } from '@bmad-easy/shared-types';
 import { SessionEventsService } from '../streaming/session-events.service';
 
+const DRAIN_COMPLETION_TIMEOUT_MS = 5_000;
+
 @Injectable()
 export class ManualCommitService implements OnModuleDestroy {
   private readonly pendingCommits = new Set<string>();
   private readonly executingCommits = new Set<string>();
+  private readonly pendingSandboxIds = new Map<string, string>();
 
   constructor(
     @Inject(SANDBOX_SERVICE) private readonly sandboxService: ISandboxService,
@@ -25,6 +28,7 @@ export class ManualCommitService implements OnModuleDestroy {
 
     if (!this.agentService.isIdle(conversationId)) {
       this.pendingCommits.add(conversationId);
+      this.pendingSandboxIds.set(conversationId, sandboxId);
       return { committed: false, clean: false, queued: true };
     }
 
@@ -39,6 +43,7 @@ export class ManualCommitService implements OnModuleDestroy {
       return;
     }
     this.pendingCommits.delete(conversationId);
+    this.pendingSandboxIds.delete(conversationId);
     await this.runCommit(conversationId, sandboxId);
   }
 
@@ -55,6 +60,7 @@ export class ManualCommitService implements OnModuleDestroy {
     }
     if (this.pendingCommits.has(conversationId)) {
       this.pendingCommits.delete(conversationId);
+      this.pendingSandboxIds.delete(conversationId);
       void this.runCommit(conversationId, sandboxId).catch(() => undefined);
     }
     return result;
@@ -107,8 +113,58 @@ export class ManualCommitService implements OnModuleDestroy {
     }
   }
 
-  onModuleDestroy() {
+  async onModuleDestroy(): Promise<void> {
+    const pendingEntries = [...this.pendingCommits].map((conversationId) => ({
+      conversationId,
+      sandboxId: this.pendingSandboxIds.get(conversationId),
+    }));
+
+    for (const conversationId of this.executingCommits) {
+      this.emitDrainFailure(conversationId);
+    }
+
+    let drainTimer: ReturnType<typeof setTimeout> | undefined;
+    const drainDeadline = new Promise<'timeout'>((resolve) => {
+      drainTimer = setTimeout(() => resolve('timeout'), DRAIN_COMPLETION_TIMEOUT_MS);
+      drainTimer.unref?.();
+    });
+
+    await Promise.allSettled(
+      pendingEntries.map(async ({ conversationId, sandboxId }) => {
+        this.pendingCommits.delete(conversationId);
+        this.pendingSandboxIds.delete(conversationId);
+
+        if (
+          !sandboxId ||
+          !this.agentService.isIdle(conversationId) ||
+          this.executingCommits.has(conversationId)
+        ) {
+          this.emitDrainFailure(conversationId);
+          return;
+        }
+
+        const completionPromise = this.runCommit(conversationId, sandboxId)
+          .then(() => 'ok' as const)
+          .catch(() => 'error' as const);
+
+        const outcome = await Promise.race([completionPromise, drainDeadline]);
+        if (outcome === 'timeout' || outcome === 'error') {
+          this.emitDrainFailure(conversationId);
+        }
+      }),
+    );
+
+    if (drainTimer) clearTimeout(drainTimer);
+
     this.pendingCommits.clear();
     this.executingCommits.clear();
+    this.pendingSandboxIds.clear();
+  }
+
+  private emitDrainFailure(conversationId: string): void {
+    this.sessionEvents.emit(conversationId, {
+      event: 'MANUAL_SAVE_FAILED',
+      data: { toolCallId: 'manual-save-drain', error: 'Server shutting down' },
+    });
   }
 }

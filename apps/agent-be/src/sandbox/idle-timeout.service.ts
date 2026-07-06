@@ -1,6 +1,16 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 
 export const DEFAULT_IDLE_TIMEOUT_MS = 60_000;
+export const DEFAULT_MID_SESSION_IDLE_TIMEOUT_MS = 900_000;
+
+const MAX_MID_SESSION_IDLE_TIMEOUT_MS = 86_400_000;
+
+export const MID_SESSION_IDLE_TIMEOUT_MS = (() => {
+  const parsed = parseInt(process.env.MID_SESSION_IDLE_TIMEOUT_MS ?? '900000', 10);
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= MAX_MID_SESSION_IDLE_TIMEOUT_MS
+    ? parsed
+    : DEFAULT_MID_SESSION_IDLE_TIMEOUT_MS;
+})();
 
 @Injectable()
 export class IdleTimeoutService implements OnModuleDestroy {
@@ -12,9 +22,11 @@ export class IdleTimeoutService implements OnModuleDestroy {
     conversationId: string,
     sandboxId: string,
     onTimeout: () => Promise<void>,
+    timeoutMs?: number,
   ): void {
     this.clearTimer(conversationId);
 
+    const delay = timeoutMs ?? this.timeoutMs;
     const timer = setTimeout(async () => {
       this.logger.log(`Idle timeout fired for conversation ${conversationId}`);
       this.timers.delete(conversationId);
@@ -23,9 +35,10 @@ export class IdleTimeoutService implements OnModuleDestroy {
       } catch (err) {
         this.logger.error(`Idle timeout callback failed for conversation ${conversationId}: ${err}`);
       }
-    }, this.timeoutMs);
+    }, delay);
 
     this.timers.set(conversationId, timer);
+    timer.unref?.();
   }
 
   clearTimer(conversationId: string): void {
@@ -34,6 +47,10 @@ export class IdleTimeoutService implements OnModuleDestroy {
       clearTimeout(timer);
       this.timers.delete(conversationId);
     }
+  }
+
+  hasTimer(conversationId: string): boolean {
+    return this.timers.has(conversationId);
   }
 
   clearAll(): void {

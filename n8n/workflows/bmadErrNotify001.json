@@ -77,7 +77,7 @@
   "nodeGroups": [],
   "pinData": {},
   "versionId": "bd936b74-d0fd-4742-bbef-57b68bc6b843",
-  "activeVersionId": "1eed4bf2-d937-4ba5-902f-ddb4ac7f351a",
+  "activeVersionId": "bd936b74-d0fd-4742-bbef-57b68bc6b843",
   "versionCounter": 3,
   "triggerCount": 0,
   "sourceWorkflowId": null,
@@ -103,7 +103,7 @@
     }
   ],
   "versionMetadata": {
-    "name": null,
-    "description": null
+    "name": "Version bd936b74",
+    "description": ""
   }
 }

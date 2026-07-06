@@ -28,7 +28,6 @@ export function AppShell({ user, conversations, children }: AppShellProps) {
     if (!main) return;
 
     const focusH1 = (h1: HTMLElement) => {
-      h1.setAttribute('tabindex', '-1');
       h1.focus({ preventScroll: true });
     };
 

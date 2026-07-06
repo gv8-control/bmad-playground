@@ -5,7 +5,7 @@ export default function ArtifactsLoading() {
     <div className="flex h-full flex-col overflow-hidden">
       <header className="flex-shrink-0">
         <Breadcrumb />
-        <h1 className="px-8 text-xl font-semibold text-text-1">Artifact Browser</h1>
+        <h1 tabIndex={-1} className="px-8 text-xl font-semibold text-text-1">Artifact Browser</h1>
       </header>
       <div className="flex-1 overflow-y-auto px-8 pb-8">
         <div className="flex flex-col">

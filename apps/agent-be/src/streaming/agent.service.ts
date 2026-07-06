@@ -6,6 +6,7 @@ import { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionEventsService } from './session-events.service';
 import { ToolPillClassifierService } from './tool-pill-classifier.service';
+import { CostTrackingService } from '../cost-tracking/cost-tracking.service';
 
 interface ActiveRun {
   sandboxId: string;
@@ -47,10 +48,19 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     private readonly sessionEvents: SessionEventsService,
     private readonly prisma: PrismaService,
     private readonly classifier: ToolPillClassifierService,
+    private readonly costTracking: CostTrackingService,
   ) {}
 
   async runTurn(params: AgentRunParams): Promise<void> {
     const { conversationId, sandboxId, message, userId } = params;
+
+    if (this.activeRuns.has(conversationId)) {
+      this.logger.warn(
+        `Concurrent runTurn rejected for conversation ${conversationId} — a turn is already in flight`,
+      );
+      return;
+    }
+
     const processId = `agent-${conversationId}`;
     const abortController = new AbortController();
 
@@ -60,6 +70,12 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     });
 
     let accumulatedText = '';
+    let lastCostData: {
+      totalCostUsd: number;
+      sessionId: string;
+      numTurns: number;
+      durationMs: number;
+    } | null = null;
 
     const abortPromise = new Promise<never>((_, reject) => {
       abortController.signal.addEventListener(
@@ -103,6 +119,23 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         if (result.done) break;
         this.resetCircuitBreakerTimer(conversationId);
         accumulatedText += this.processSdkMessage(result.value, conversationId, userId);
+
+        if (result.value.type === 'result') {
+          const resultMsg = result.value as {
+            total_cost_usd: number;
+            session_id: string;
+            num_turns: number;
+            duration_ms: number;
+          };
+          if (Number.isFinite(resultMsg.total_cost_usd)) {
+            lastCostData = {
+              totalCostUsd: resultMsg.total_cost_usd,
+              sessionId: resultMsg.session_id,
+              numTurns: resultMsg.num_turns,
+              durationMs: resultMsg.duration_ms,
+            };
+          }
+        }
       }
 
       this.clearCircuitBreakerTimer(conversationId);
@@ -110,6 +143,23 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       const pendingPromises = this.pendingClassifierPromises.get(conversationId) ?? [];
       if (pendingPromises.length > 0) {
         await Promise.allSettled(pendingPromises);
+      }
+
+      if (lastCostData) {
+        try {
+          await this.costTracking.recordCost({
+            userId,
+            conversationId,
+            totalCostUsd: lastCostData.totalCostUsd,
+            sessionId: lastCostData.sessionId,
+            numTurns: lastCostData.numTurns,
+            durationMs: lastCostData.durationMs,
+          });
+        } catch (err) {
+          this.logger.error(
+            `Failed to record cost for conversation ${conversationId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
 
       if (!abortController.signal.aborted) {
@@ -219,6 +269,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
   }
 
   private startCircuitBreakerTimer(conversationId: string): void {
+    this.clearCircuitBreakerTimer(conversationId);
     const timer = setTimeout(() => {
       this.handleCircuitBreaker(conversationId);
     }, CIRCUIT_BREAKER_TIMEOUT_MS);
@@ -252,6 +303,8 @@ export class AgentService implements IAgentService, OnModuleDestroy {
 
     this.logger.warn(`Circuit breaker fired for conversation ${conversationId}`);
 
+    const pendingPromises = this.pendingClassifierPromises.get(conversationId) ?? [];
+
     activeRun.abortController.abort();
 
     try {
@@ -266,10 +319,18 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         this.logger.warn(`Failed to terminate process: ${err}`);
       });
 
-    this.sessionEvents.emit(conversationId, {
-      event: 'RUN_ERROR',
-      data: { message: CIRCUIT_BREAKER_MESSAGE },
-    });
+    const emitRunError = () => {
+      this.sessionEvents.emit(conversationId, {
+        event: 'RUN_ERROR',
+        data: { message: CIRCUIT_BREAKER_MESSAGE },
+      });
+    };
+
+    if (pendingPromises.length > 0) {
+      void Promise.allSettled(pendingPromises).then(emitRunError);
+    } else {
+      emitRunError();
+    }
 
     this.circuitBreakerTimers.delete(conversationId);
   }
@@ -371,13 +432,32 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       type: string;
       content?: Array<{
         type: string;
+        id?: string;
+        name?: string;
+        input?: unknown;
         tool_use_id?: string;
         content?: unknown;
+        is_error?: boolean;
       }>;
     };
 
     if (!msg.content || !Array.isArray(msg.content)) {
       return '';
+    }
+
+    for (const block of msg.content) {
+      if (block.type === 'tool_use' && block.id) {
+        if (!this.activeToolCalls.has(conversationId)) {
+          this.activeToolCalls.set(conversationId, new Map());
+        }
+        if (!this.activeToolCalls.get(conversationId)!.has(block.id)) {
+          this.activeToolCalls.get(conversationId)!.set(block.id, {
+            toolCallId: block.id,
+            toolName: block.name ?? 'unknown',
+            input: typeof block.input === 'string' ? block.input : JSON.stringify(block.input ?? ''),
+          });
+        }
+      }
     }
 
     for (const block of msg.content) {
@@ -398,6 +478,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
             toolCallId,
             content: resultContent,
             role: 'tool',
+            isError: block.is_error === true,
           },
         });
 

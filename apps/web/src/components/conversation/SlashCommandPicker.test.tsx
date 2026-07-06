@@ -7,8 +7,7 @@
  * Covers: AC-1 (picker renders skills, highlights selected, keyboard nav),
  * AC-2 (empty skills state).
  *
- * TDD RED PHASE: All tests are skipped (it.skip). Remove skips
- * one describe-block at a time per task during implementation.
+ * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -76,5 +75,20 @@ describe('[P0] SlashCommandPicker interactions', () => {
     fireEvent.click(screen.getByText('bmad-prd'));
 
     expect(onSelect).toHaveBeenCalledWith({ name: 'bmad-prd' });
+  });
+
+  it('assigns unique ids to each option', () => {
+    render(
+      <SlashCommandPicker
+        skills={SKILLS}
+        selectedIndex={0}
+        onSelect={jest.fn()}
+      />,
+    );
+
+    const options = screen.getAllByRole('option');
+    expect(options[0]).toHaveAttribute('id', 'skill-option-0');
+    expect(options[1]).toHaveAttribute('id', 'skill-option-1');
+    expect(options[2]).toHaveAttribute('id', 'skill-option-2');
   });
 });

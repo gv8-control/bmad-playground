@@ -74,6 +74,26 @@ describe('ChatMessageList', () => {
       />,
     );
 
-    expect(screen.getByText('3 new')).toBeInTheDocument();
+    expect(screen.getByText('3 new messages')).toBeInTheDocument();
+  });
+
+  it('[P0] renders system message with role=status', () => {
+    const systemMessage: ChatMessage = {
+      id: 'sys-1',
+      role: 'system',
+      content: 'The agent stopped unexpectedly.',
+      createdAt: new Date('2026-07-04T12:00:00Z'),
+    };
+
+    render(
+      <ChatMessageList
+        messages={[systemMessage]}
+        showScrollToBottom={false}
+        newMessageCount={0}
+        onScrollToBottom={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('The agent stopped unexpectedly.');
   });
 });

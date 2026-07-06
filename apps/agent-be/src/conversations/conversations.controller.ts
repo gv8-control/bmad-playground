@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { ConversationsService } from './conversations.service';
 import { User } from '../common/decorators/user.decorator';
@@ -76,5 +76,13 @@ export class ConversationsController {
     @Body(new ZodValidationPipe()) _body: SaveConversationDto,
   ): Promise<{ committed: boolean; clean: boolean; queued: boolean }> {
     return this.conversationsService.manualCommit(id, user.id);
+  }
+
+  @Delete(':id')
+  async abandonConversation(
+    @Param('id') id: string,
+    @User() user: UserContext,
+  ): Promise<{ conversationId: string; abandoned: boolean }> {
+    return this.conversationsService.abandonConversation(id, user.id);
   }
 }

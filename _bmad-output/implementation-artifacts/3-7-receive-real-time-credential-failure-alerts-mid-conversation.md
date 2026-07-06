@@ -4,9 +4,9 @@ baseline_commit: d19eddbf0529b71a12d8529570762d6f93873eef
 
 # Story 3.7: Receive Real-Time Credential Failure Alerts Mid-Conversation
 
-Status: review
+Status: done
 
-<!-- Review progress: Chunk 1 (agent-be backend) reviewed + patched 2026-07-05. NFR evidence audit completed 2026-07-05 (PASS, 1 timing test patch applied). Chunk 2 (web frontend) reviewed + patched 2026-07-05 (1 WCAG AA contrast patch on AccessNotice Dismiss button). Chunk 3 (adjacent changes + DI fix) reviewed + patched 2026-07-05 (1 redundant-null-assignment patch in StreamingController back-pressure timer; DI fix verified safe). All 3 chunks complete. -->
+<!-- Review progress: Chunk 1 (agent-be backend) reviewed + patched 2026-07-05. NFR evidence audit completed 2026-07-05 (PASS, 1 timing test patch applied). Chunk 2 (web frontend) reviewed + patched 2026-07-05 (1 WCAG AA contrast patch on AccessNotice Dismiss button). Chunk 3 (adjacent changes + DI fix) reviewed + patched 2026-07-05 (1 redundant-null-assignment patch in StreamingController back-pressure timer; DI fix verified safe). All 3 chunks complete. Test re-review completed 2026-07-05: 2 P1 must-fix + 2 medium-priority findings resolved, stale markers cleared, score 97/100 (A+), recommendation Approve. StreamingModule DI fix applied 2026-07-05 (SandboxModule import — agent-be:serve starts cleanly). Story transitioned to done. -->
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

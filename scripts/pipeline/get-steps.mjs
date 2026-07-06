@@ -9,13 +9,9 @@ const story = (process.argv[2] ?? '').trim();
 if (!/^\d+\.\d+$/.test(story)) fail(`Usage: get-steps.mjs <story-id>; got "${story}"`);
 
 const playbook = readPlaybook();
-const allowed = playbook.config.allowedAgents;
 
 const steps = playbook.steps.filter((s) => s.enabled);
 if (steps.length === 0) fail('Playbook has no enabled steps');
-
-const invalid = steps.find((s) => !allowed.includes(s.agent));
-if (invalid) fail(`Step "${invalid.id}" uses agent "${invalid.agent}" not in allowedAgents`);
 
 const items = steps.map((s, i) => ({
   index: i + 1,

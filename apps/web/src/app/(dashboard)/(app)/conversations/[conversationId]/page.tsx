@@ -50,7 +50,7 @@ export default async function ConversationPage({
     <div className="flex h-full flex-col overflow-hidden">
       <header className="flex-shrink-0">
         <Breadcrumb />
-        <h1 className="px-8 text-xl font-semibold text-text-1">
+        <h1 tabIndex={-1} className="px-8 text-xl font-semibold text-text-1">
           {conversation.title ?? 'Conversation'}
         </h1>
       </header>

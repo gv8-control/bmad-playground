@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type {
   ISandboxService,
   GitUserConfig,
@@ -9,18 +9,24 @@ import { SANDBOX_SERVICE, AGENT_SERVICE } from '@bmad-easy/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CredentialsService } from '../credentials/credentials.service';
 import { ProvisionQueueService } from '../sandbox/provision-queue.service';
-import { IdleTimeoutService } from '../sandbox/idle-timeout.service';
+import { IdleTimeoutService, MID_SESSION_IDLE_TIMEOUT_MS } from '../sandbox/idle-timeout.service';
 import { SessionEventsService } from '../streaming/session-events.service';
 import { ManualCommitService } from './manual-commit.service';
 import { generateSemanticTitle } from './semantic-title';
 
 type SandboxStatus = 'provisioning' | 'ready' | 'failed' | 'idle-timeout';
 
+const MAX_CONCURRENT_CONVERSATIONS = (() => {
+  const parsed = parseInt(process.env.MAX_CONCURRENT_CONVERSATIONS ?? '10', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+})();
+
 @Injectable()
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
   private readonly sandboxStatuses = new Map<string, SandboxStatus>();
   private readonly sandboxIds = new Map<string, string>();
+  private readonly cancelledConversations = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -34,11 +40,21 @@ export class ConversationsService {
   ) {}
 
   async createConversation(userId: string): Promise<{ id: string }> {
+    const activeCount = await this.countActiveConversations(userId);
+    if (activeCount >= MAX_CONCURRENT_CONVERSATIONS) {
+      throw new ConflictException({
+        code: 'CONVERSATION_LIMIT_REACHED',
+        message: `You've reached the limit of ${MAX_CONCURRENT_CONVERSATIONS} active conversations. Return to one of your existing conversations, or try again later.`,
+        meta: { limit: MAX_CONCURRENT_CONVERSATIONS },
+      });
+    }
+
     const conversation = await this.prisma.conversation.create({
       data: {
         userId,
         title: null,
         lastActiveAt: new Date(),
+        sandboxStatus: 'provisioning',
       },
     });
 
@@ -50,11 +66,25 @@ export class ConversationsService {
     return { id: conversation.id };
   }
 
+  private async countActiveConversations(userId: string): Promise<number> {
+    return this.prisma.conversation.count({
+      where: {
+        userId,
+        sandboxStatus: { in: ['provisioning', 'ready'] },
+      },
+    });
+  }
+
   async provisionSandbox(conversationId: string, userId: string): Promise<void> {
     let sandboxId: string | null = null;
 
     try {
       await this.provisionQueue.acquire(userId);
+
+      if (this.cancelledConversations.has(conversationId)) {
+        this.logger.log(`Provisioning cancelled for conversation ${conversationId} after queue acquire`);
+        return;
+      }
 
       const repoConnection = await this.prisma.repoConnection.findUnique({
         where: { userId },
@@ -74,6 +104,13 @@ export class ConversationsService {
         credential,
       });
       sandboxId = sandbox.sandboxId;
+
+      if (this.cancelledConversations.has(conversationId)) {
+        this.logger.log(`Provisioning cancelled for conversation ${conversationId} after sandbox provision`);
+        await this.sandboxService.destroy(sandboxId);
+        return;
+      }
+
       this.sandboxIds.set(conversationId, sandboxId);
 
       await this.sandboxService.clone(sandboxId, repoConnection.repoUrl, credential);
@@ -97,6 +134,7 @@ export class ConversationsService {
         data: { sandboxId },
       });
       this.sandboxStatuses.set(conversationId, 'ready');
+      await this.persistSandboxState(conversationId, sandboxId, 'ready');
 
       this.idleTimeout.startTimer(conversationId, sandboxId, async () => {
         this.sessionEvents.emit(conversationId, {
@@ -105,6 +143,7 @@ export class ConversationsService {
         });
         this.sandboxStatuses.set(conversationId, 'idle-timeout');
         this.sandboxIds.delete(conversationId);
+        await this.persistSandboxState(conversationId, null, 'idle-timeout');
         try {
           await this.sandboxService.destroy(sandboxId!);
         } catch (err) {
@@ -114,6 +153,10 @@ export class ConversationsService {
         }
       });
     } catch (err) {
+      if (this.cancelledConversations.has(conversationId)) {
+        this.logger.log(`Provisioning cancelled for conversation ${conversationId} during pipeline`);
+        return;
+      }
       this.logger.error(`provisionSandbox pipeline failed for conversation ${conversationId}: ${err}`);
       if (sandboxId) {
         try {
@@ -124,6 +167,7 @@ export class ConversationsService {
       }
       this.sandboxStatuses.set(conversationId, 'failed');
       this.sandboxIds.delete(conversationId);
+      await this.persistSandboxState(conversationId, null, 'failed');
       this.sessionEvents.emit(conversationId, {
         event: 'SESSION_ERROR',
         data: { message: err instanceof Error ? err.message : 'Unknown error' },
@@ -131,7 +175,46 @@ export class ConversationsService {
       this.sessionEvents.complete(conversationId);
     } finally {
       this.provisionQueue.release(userId);
+      this.cancelledConversations.delete(conversationId);
     }
+  }
+
+  async abandonConversation(
+    conversationId: string,
+    userId: string,
+  ): Promise<{ conversationId: string; abandoned: boolean }> {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+      select: { id: true },
+    });
+    if (!conversation) {
+      return { conversationId, abandoned: false };
+    }
+
+    this.cancelledConversations.add(conversationId);
+
+    const sandboxId = this.sandboxIds.get(conversationId);
+    if (sandboxId) {
+      try {
+        await this.sandboxService.destroy(sandboxId);
+      } catch (err) {
+        this.logger.error(`Failed to destroy sandbox ${sandboxId} on abandon: ${err}`);
+      }
+    }
+
+    this.idleTimeout.clearTimer(conversationId);
+    this.sandboxStatuses.delete(conversationId);
+    this.sandboxIds.delete(conversationId);
+
+    try {
+      await this.prisma.conversation.delete({ where: { id: conversationId } });
+    } catch (err) {
+      this.logger.error(`Failed to delete conversation ${conversationId} on abandon: ${err}`);
+    }
+
+    this.sessionEvents.complete(conversationId);
+
+    return { conversationId, abandoned: true };
   }
 
   async onFirstMessage(conversationId: string): Promise<void> {
@@ -144,28 +227,31 @@ export class ConversationsService {
   }> {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, userId },
-      select: { id: true },
+      select: { id: true, sandboxStatus: true },
     });
 
     if (!conversation) {
       return { conversationId, sandboxStatus: 'failed' };
     }
 
-    const status = this.sandboxStatuses.get(conversationId) ?? 'provisioning';
+    const status =
+      (conversation.sandboxStatus as SandboxStatus | null) ??
+      this.sandboxStatuses.get(conversationId) ??
+      'provisioning';
     return { conversationId, sandboxStatus: status };
   }
 
   async listSkills(conversationId: string, userId: string): Promise<SkillInfo[]> {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, userId },
-      select: { id: true },
+      select: { id: true, sandboxId: true },
     });
 
     if (!conversation) {
       return [];
     }
 
-    const sandboxId = this.sandboxIds.get(conversationId);
+    const sandboxId = conversation.sandboxId;
     if (!sandboxId) {
       return [];
     }
@@ -228,6 +314,47 @@ export class ConversationsService {
     await this.manualCommitService.flushPendingCommit(conversationId, sandboxId).catch((err) => {
       this.logger.error(`flushPendingCommit failed for conversation ${conversationId}: ${err}`);
     });
+
+    this.idleTimeout.startTimer(
+      conversationId,
+      sandboxId,
+      () => this.handleMidSessionIdleTimeout(conversationId, sandboxId, userId),
+      MID_SESSION_IDLE_TIMEOUT_MS,
+    );
+  }
+
+  private async handleMidSessionIdleTimeout(
+    conversationId: string,
+    sandboxId: string,
+    userId: string,
+  ): Promise<void> {
+    try {
+      const workingTree = await this.sandboxService.getWorkingTreeStatus(sandboxId);
+      if (workingTree.dirty) {
+        await this.manualCommitService.requestCommit(conversationId, userId, sandboxId);
+      }
+    } catch (err) {
+      this.logger.error(
+        `Pre-teardown save failed for conversation ${conversationId}: ${err}`,
+      );
+    }
+
+    this.sessionEvents.emit(conversationId, {
+      event: 'SESSION_TIMEOUT',
+      data: { reason: 'mid-session' },
+    });
+    this.sandboxStatuses.set(conversationId, 'idle-timeout');
+    this.sandboxIds.delete(conversationId);
+    await this.persistSandboxState(conversationId, null, 'idle-timeout');
+    try {
+      await this.sandboxService.destroy(sandboxId);
+    } catch (err) {
+      this.logger.error(
+        `Failed to destroy sandbox ${sandboxId} on mid-session idle timeout: ${err}`,
+      );
+    } finally {
+      this.sessionEvents.complete(conversationId);
+    }
   }
 
   async stopAgent(conversationId: string, userId: string): Promise<{ conversationId: string; stopped: boolean }> {
@@ -272,15 +399,15 @@ export class ConversationsService {
   ): Promise<{ conversationId: string; sandboxStatus: SandboxStatus }> {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, userId },
-      select: { id: true },
+      select: { id: true, sandboxId: true, sandboxStatus: true },
     });
 
     if (!conversation) {
       return { conversationId, sandboxStatus: 'failed' };
     }
 
-    const currentStatus = this.sandboxStatuses.get(conversationId);
-    const sandboxId = this.sandboxIds.get(conversationId);
+    const currentStatus = conversation.sandboxStatus as SandboxStatus | null;
+    const sandboxId = conversation.sandboxId;
 
     if (currentStatus === 'ready' && sandboxId) {
       try {
@@ -305,10 +432,23 @@ export class ConversationsService {
           data: { sandboxId },
         });
 
+        this.sandboxStatuses.set(conversationId, 'ready');
+        this.sandboxIds.set(conversationId, sandboxId);
+
+        if (!this.idleTimeout.hasTimer(conversationId)) {
+          this.idleTimeout.startTimer(
+            conversationId,
+            sandboxId,
+            () => this.handleMidSessionIdleTimeout(conversationId, sandboxId, userId),
+            MID_SESSION_IDLE_TIMEOUT_MS,
+          );
+        }
+
         return { conversationId, sandboxStatus: 'ready' };
       } catch (err) {
         this.logger.error(`Fast-path resume failed for conversation ${conversationId}: ${err}`);
         this.sandboxStatuses.set(conversationId, 'failed');
+        await this.persistSandboxState(conversationId, null, 'failed');
         this.sessionEvents.emit(conversationId, {
           event: 'SESSION_ERROR',
           data: { message: err instanceof Error ? err.message : 'Unknown error' },
@@ -322,6 +462,7 @@ export class ConversationsService {
     }
 
     this.sandboxStatuses.set(conversationId, 'provisioning');
+    await this.persistSandboxState(conversationId, null, 'provisioning');
     void this.provisionSandbox(conversationId, userId).catch((err) => {
       this.logger.error(`provisionSandbox failed during resume for conversation ${conversationId}: ${err}`);
     });
@@ -347,5 +488,22 @@ export class ConversationsService {
           ? user.email
           : `${user.githubLogin}@users.noreply.github.com`,
     };
+  }
+
+  private async persistSandboxState(
+    conversationId: string,
+    sandboxId: string | null,
+    sandboxStatus: SandboxStatus,
+  ): Promise<void> {
+    try {
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { sandboxId, sandboxStatus },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to persist sandbox state for conversation ${conversationId}: ${err}`,
+      );
+    }
   }
 }

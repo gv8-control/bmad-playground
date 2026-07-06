@@ -1,0 +1,55 @@
+{
+  "story": "3.12",
+  "runId": "3.12-a1-20260706T122634",
+  "observations": [
+    {
+      "fingerprint": "stale-atdd-red-phase-headers",
+      "summary": "Stale test-file headers persist for a 7th story (3.4, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12); the review-tests guard (updated 3.7, 3.9, 3.11) is working — it fixed 6 stale markers directly — but the root cause persists: implement-story un-skips tests without updating test-file headers, and prepare-tests adds scaffolding to existing files without updating story coverage lists.",
+      "evidence": "_bmad-output/test-artifacts/test-review-validation-report-3-12.md:76-128 — 6 stale/incomplete markers fixed: Fix 1 (session-events.service.spec.ts:13 — stale RED PHASE header claimed 'all tests skipped until implementation lands' but all 6 tests were active; fixed to GREEN PHASE), Fixes 2-6 (conversations.service.spec.ts, manual-commit.service.spec.ts, sandbox.service.nfr-s1.spec.ts, ConversationPane.test.tsx, sandbox-lifecycle.integration.spec.ts — story lists and coverage lines didn't mention Story 3.12 despite active 3.12 tests). Journal step_end for review-tests confirms '6 stale transitional markers fixed'. No trace exists for this run (no trace directory at _bmad-output/pipeline/traces/3.12-a1-20260706T122634/) — evidence from journal excerpt + produced artifact. Ledger entries 23 (3.4), 32 (3.7), 36 (3.8), 42 (3.9), 51 (3.10), 58 (3.11) record prior occurrences; ledger entries 34 (3.7), 46 (3.9), 62 (3.11) record update_steps to review-tests. Playbook implement-story prompt (updatedAt: 2026-07-06T05:41:22.969Z) says 'remove its skip marker' but does not instruct updating test-file headers.",
+      "grade": "confirmed",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "review-tests-empty-placeholder-stubs-unresolved",
+      "summary": "Prior confirmed observation (ledger entries 49, 54 — Stories 3.10, 3.11) — the pattern did NOT recur in 3.12: the 3.11 update_step (ledger entry 62) is working, as review-tests removed 2 empty placeholder test stubs directly this run, including the Story 3.3/3.4 stub previously flagged in 3.10 and 3.11 but never removed.",
+      "evidence": "_bmad-output/test-artifacts/test-review-validation-report-3-12.md:159-189 — Removal 1 (sandbox-lifecycle.integration.spec.ts:127-129, Story 3.1 stub 'destroys sandbox on conversation close' — no assertions, only a comment) and Removal 2 (sandbox-lifecycle.integration.spec.ts:154-156, Story 3.3/3.4 stub 'terminates agent process via Daytona API when sandbox-agent crashes' — previously flagged in 3.10 and 3.11 validation reports, 'still present'; removed directly this pass). Journal step_end for review-tests confirms '2 empty placeholder test stubs removed'. Playbook review-tests prompt updatedAt: 2026-07-06T12:26:33.858Z (updatedByRun: 3.11-a1-20260706T082713) — the 3.11 amendment was active for this run. Integration file went from 16 tests (14 real + 2 empty stubs) to 14.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "implement-step-skips-nfr-hardening",
+      "summary": "Prior confirmed observation (ledger entries 5, 37, 43, 52, 59 — Stories 2.2, 3.8, 3.9, 3.10, 3.11) — the pattern did NOT recur in 3.12: the 3.9 update_step is working, as implement-story proactively applied all documented NFR patterns; the 3 NEW missing select projections found by review-nfrs are on conversation.update calls, which the project-context.md rule (line 175) does not cover — it names findFirst/findUnique only.",
+      "evidence": "_bmad-output/test-artifacts/nfr-assessment-3-12.md:214-225 — 5 LOW findings for missing select projections on write operations (create, update, delete); 3 are NEW in 3.12 (persistSandboxState conversation.update, 2x resumeConversation conversation.update) but all are on write operations. _bmad-output/project-context.md:175 — rule text: 'select projection on findFirst/findUnique for column-level performance: always pass select: { ... } with only the columns actually read.' nfr-assessment-3-12.md:218 confirms 'All findFirst/findUnique calls in Story 3.12 code have select projections.' Playbook implement-story prompt updatedAt: 2026-07-06T05:41:22.969Z (updatedByRun: 3.9-a1-20260706T022258) — the 3.9 amendment was active for this run. Ledger entry 59 (3.11) deduced non-recurrence with the same rationale.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "prepare-tests-scaffolding-not-reflected-in-story",
+      "summary": "Prior confirmed observation (ledger entries 38, 55 — Stories 3.8, 3.11) — the pattern did NOT recur in 3.12: the 3.11 update_step (ledger entry 63) is working, as prepare-tests amended the story file's Task 9 to instruct activation of existing scaffolding rather than creation, and validate-story-2 found 0 critical issues.",
+      "evidence": "Journal step_end for prepare-tests: 'Story file amended: Task 9 now instructs ACTIVATION of existing scaffolds (remove it.skip()) rather than creation. ATDD artifacts referenced in Dev Notes.' Story file _bmad-output/implementation-artifacts/3-12-drain-conversations-gracefully-on-deploy.md:77 — Task 9.1: 'ACTIVATE existing scaffolds in conversations.service.spec.ts — remove it.skip() for getStatus/countActiveConversations/resumeConversation/persist-on-write/listSkills tests (13 tests across 5 describe blocks), confirm RED, then implement to GREEN.' Journal step_end for validate-story-2: 'I verified every line-number reference, file path, code pattern, and source citation in the story against the actual codebase and planning artifacts. I found 0 critical issues, 0 enhancement gaps remaining.' Playbook prepare-tests prompt updatedAt: 2026-07-06T12:26:33.858Z (updatedByRun: 3.11-a1-20260706T082713) — the 3.11 amendment was active for this run.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "atdd-step-opts-out-of-e2e-prematurely",
+      "summary": "Prior observation (ledger entry 33, Story 3.7; ledger entry 61, Story 3.11) — the pattern did NOT recur in 3.12: the 3.7 update_step is working, as prepare-tests performed the mock-feasibility check and correctly deferred all 3 ACs (backend-internal: SIGTERM trigger, Postgres persistence, onModuleDestroy drain logic — no browser-level mock can simulate them); browser-observable parts covered by component tests. This is a stronger test of the guard than 3.11 (where some ACs were not deferred) — all 3 ACs were deferred here.",
+      "evidence": "Journal step_end for prepare-tests: 'E2E Deferral (all 3 ACs, DP-5): Core behaviors are backend-internal (SIGTERM trigger, Postgres persistence, onModuleDestroy drain logic) — no browser-level mock can simulate them. Browser-observable parts covered by component tests.' Journal step_end for e2e-tests: 'Story 3.12's E2E deferral (DP-5) was a deliberate, documented decision, not a failure.' Playbook prepare-tests prompt updatedAt: 2026-07-06T08:27:13.232Z (updatedByRun: 3.10-a1-20260706T055517) — includes the 3.7 mock-feasibility check amendment. Ledger entry 33 (3.7) records original observation; ledger entry 35 (3.7) records applied update_step; ledger entry 61 (3.11) deduces non-recurrence.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    }
+  ],
+  "amendments": [
+    {
+      "type": "update_step",
+      "stepId": "implement-story",
+      "prompt": "Develop story autonomously, completing every task listed in the story spec before finishing. Before marking the story complete, re-read project-context.md and verify each non-functional pattern documented there has been applied to your changes where applicable — apply any missing patterns before finishing, do not wait for the NFR review to catch them. As each task makes a skipped test pass, remove its skip marker and update any test-file headers that claim tests are skipped, disabled, or in a red-phase state to reflect that the tests are now active, and update story coverage lists in those headers to include the current story — the story is not complete while skipped tests or stale test-file headers remain for done tasks. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
+      "rationale": "The implement-story step has un-skipped tests without updating test-file headers in 7 stories (3.4, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12), forcing the review-tests step to fix stale markers; directing the agent to update headers when activating skipped tests addresses the root cause and reduces rework."
+    }
+  ],
+  "guardReports": []
+}

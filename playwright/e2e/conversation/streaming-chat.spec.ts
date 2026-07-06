@@ -490,4 +490,175 @@ test.describe('Story 3.3: Streaming Chat', () => {
     const storedAfter = await mocks.getLocalStorage(`conversation-${CONVERSATION_ID}-draft`);
     expect(storedAfter === null || storedAfter === '').toBeTruthy();
   });
+
+  // ─── AC-5: Scroll-to-bottom during streaming (UX-DR9) ───
+
+  test('[P2] auto-scroll follows streaming messages (UX-DR9)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupStreamingMocks(page);
+    await page.goto('/conversations/new');
+    await readySession(mocks);
+
+    await sendMessage(page, 'tell me a long story');
+
+    await mocks.emit('RUN_STARTED');
+    await mocks.emit('TEXT_MESSAGE_START', { messageId: 'msg-1' });
+
+    // Stream enough content to make the container overflow
+    for (let i = 0; i < 30; i++) {
+      await mocks.emit('TEXT_MESSAGE_CONTENT', {
+        messageId: 'msg-1',
+        delta: `Line ${i} of the story. `.repeat(3),
+      });
+    }
+
+    // Verify auto-scroll kept the view at the bottom
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('[aria-live="polite"]') as HTMLElement | null;
+        if (!el) return false;
+        return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+      },
+      { timeout: 5000 },
+    );
+
+    await mocks.emit('TEXT_MESSAGE_END');
+    await mocks.emit('RUN_FINISHED');
+  });
+
+  test('[P2] scrolling up during streaming pauses auto-scroll and shows scroll-to-bottom button with count (UX-DR9)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupStreamingMocks(page);
+    await page.goto('/conversations/new');
+    await readySession(mocks);
+
+    await sendMessage(page, 'tell me a long story');
+
+    await mocks.emit('RUN_STARTED');
+    await mocks.emit('TEXT_MESSAGE_START', { messageId: 'msg-1' });
+
+    // Stream enough content to make the container overflow
+    for (let i = 0; i < 30; i++) {
+      await mocks.emit('TEXT_MESSAGE_CONTENT', {
+        messageId: 'msg-1',
+        delta: `Line ${i} of the story. `.repeat(3),
+      });
+    }
+
+    // Verify we're at the bottom first
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('[aria-live="polite"]') as HTMLElement | null;
+        if (!el) return false;
+        return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+      },
+      { timeout: 5000 },
+    );
+
+    // Scroll up to pause auto-scroll
+    await page
+      .locator('[aria-live="polite"]')
+      .evaluate((el) => {
+        el.scrollTop = 0;
+      });
+
+    // Wait for the scroll-to-bottom button to appear (confirms isAtBottomRef is false)
+    await expect(page.getByRole('button', { name: /scroll to bottom/i })).toBeVisible();
+
+    // Start a new message (changes messages.length → increments newMessageCount)
+    await mocks.emit('TEXT_MESSAGE_END');
+    await mocks.emit('TEXT_MESSAGE_START', { messageId: 'msg-2' });
+    await mocks.emit('TEXT_MESSAGE_CONTENT', {
+      messageId: 'msg-2',
+      delta: 'New message after scroll up. '.repeat(10),
+    });
+
+    // Verify button now shows a new-message count badge
+    await expect(page.getByText(/\d+ new messages/i)).toBeVisible();
+
+    // Verify scroll position did NOT jump to bottom
+    const stillScrolledUp = await page
+      .locator('[aria-live="polite"]')
+      .evaluate((el) => el.scrollTop < 50);
+    expect(stillScrolledUp).toBe(true);
+
+    await mocks.emit('TEXT_MESSAGE_END');
+    await mocks.emit('RUN_FINISHED');
+  });
+
+  test('[P2] clicking scroll-to-bottom re-enables auto-scroll (UX-DR9)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupStreamingMocks(page);
+    await page.goto('/conversations/new');
+    await readySession(mocks);
+
+    await sendMessage(page, 'tell me a long story');
+
+    await mocks.emit('RUN_STARTED');
+    await mocks.emit('TEXT_MESSAGE_START', { messageId: 'msg-1' });
+
+    // Stream enough content to make the container overflow
+    for (let i = 0; i < 30; i++) {
+      await mocks.emit('TEXT_MESSAGE_CONTENT', {
+        messageId: 'msg-1',
+        delta: `Line ${i} of the story. `.repeat(3),
+      });
+    }
+
+    // Scroll up to pause auto-scroll
+    await page
+      .locator('[aria-live="polite"]')
+      .evaluate((el) => {
+        el.scrollTop = 0;
+      });
+
+    // Wait for the scroll-to-bottom button to appear
+    await expect(page.getByRole('button', { name: /scroll to bottom/i })).toBeVisible();
+
+    // Emit a new message while scrolled up
+    await mocks.emit('TEXT_MESSAGE_END');
+    await mocks.emit('TEXT_MESSAGE_START', { messageId: 'msg-2' });
+    await mocks.emit('TEXT_MESSAGE_CONTENT', {
+      messageId: 'msg-2',
+      delta: 'New content after scroll up. '.repeat(10),
+    });
+
+    // Click scroll-to-bottom button
+    await page.getByRole('button', { name: /scroll to bottom/i }).click();
+
+    // Verify scroll position is at the bottom
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('[aria-live="polite"]') as HTMLElement | null;
+        if (!el) return false;
+        return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+      },
+      { timeout: 5000 },
+    );
+
+    // Emit more content — auto-scroll should follow
+    await mocks.emit('TEXT_MESSAGE_CONTENT', {
+      messageId: 'msg-2',
+      delta: 'More content after re-enable. '.repeat(10),
+    });
+
+    // Verify auto-scroll is still following
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('[aria-live="polite"]') as HTMLElement | null;
+        if (!el) return false;
+        return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+      },
+      { timeout: 5000 },
+    );
+
+    await mocks.emit('TEXT_MESSAGE_END');
+    await mocks.emit('RUN_FINISHED');
+  });
 });

@@ -12,6 +12,8 @@ export interface ChatInputProps {
   placeholder?: string;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+  ariaActivedescendant?: string;
+  ariaControls?: string;
 }
 
 const MIN_HEIGHT = 52;
@@ -27,6 +29,8 @@ export function ChatInput({
   placeholder = 'Type a message...',
   onKeyDown,
   inputRef,
+  ariaActivedescendant,
+  ariaControls,
 }: ChatInputProps) {
   const internalRef = useRef<HTMLTextAreaElement>(null);
   const ref = inputRef ?? internalRef;
@@ -61,8 +65,10 @@ export function ChatInput({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder={placeholder}
+        aria-activedescendant={ariaActivedescendant}
+        aria-controls={ariaControls}
         style={{ minHeight: MIN_HEIGHT, maxHeight: MAX_HEIGHT }}
-        className="flex-1 resize-none rounded-md border border-border bg-surface px-3 py-2 text-text-1 placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50"
+        className="flex-1 resize-none rounded-lg border border-border bg-surface-raised px-3 py-2 text-text-1 placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50"
         aria-label="Message input"
       />
       {isProcessing && onStop ? (
@@ -79,7 +85,7 @@ export function ChatInput({
           type="button"
           onClick={onSubmit}
           disabled={disabled || !value.trim()}
-          className="rounded-md bg-accent px-4 py-2 text-sm text-bg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50"
+          className="rounded-md bg-accent px-4 py-2 text-sm text-accent-fg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50"
         >
           Send
         </button>

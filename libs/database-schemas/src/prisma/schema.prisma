@@ -19,6 +19,7 @@ model User {
   oauthCredential OAuthCredential?
   repoConnection  RepoConnection?
   conversations   Conversation[]
+  costRecords     CostRecord[]
 
   @@map("users")
 }
@@ -77,12 +78,15 @@ model Conversation {
   id          String   @id @default(cuid())
   userId      String   @map("user_id")
   title       String?
+  sandboxId   String?  @map("sandbox_id")
+  sandboxStatus String? @map("sandbox_status")
   lastActiveAt DateTime @default(now()) @map("last_active_at")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   turns Turn[]
+  costRecords CostRecord[]
 
   @@index([userId, lastActiveAt])
   @@map("conversations")
@@ -99,4 +103,21 @@ model Turn {
 
   @@index([conversationId, createdAt])
   @@map("turns")
+}
+
+model CostRecord {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  conversationId String   @map("conversation_id")
+  costUsd        Float    @map("cost_usd")
+  sessionId      String   @map("session_id")
+  numTurns       Int      @map("num_turns")
+  durationMs     Int      @map("duration_ms")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("cost_records")
 }

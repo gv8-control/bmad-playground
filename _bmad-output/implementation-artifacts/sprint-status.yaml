@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-07-05T00:00:00Z
+# last_updated: 2026-07-06T18:00:00Z
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-05T00:00:00Z
+last_updated: 2026-07-06T20:00:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -54,17 +54,17 @@ development_status:
   1-7-enforce-authenticated-full-access-for-all-mvp-users: done
   1-8-build-the-persistent-app-shell: done
   1-9-document-and-validate-the-kek-rotation-runbook: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   # ── Epic 2: Project Map & Artifact Browser ──
-  epic-2: in-progress
+  epic-2: done
   2-1-mirror-repository-artifacts-into-postgres: done
   2-2-view-the-project-map: done
   2-3-manually-refresh-the-project-map: done
   2-4-browse-and-read-all-committed-artifacts: done
   2-5-view-a-single-artifacts-rendered-content: done
   2-6-navigate-from-the-project-map-to-an-artifact: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # ── Epic 3: Conversations — Running BMAD Skills with the Agent ──
   epic-3: in-progress
@@ -74,10 +74,10 @@ development_status:
   3-4-see-tool-calls-and-recognized-actions-inline: done
   3-5-resume-an-existing-conversation: done
   3-6-track-and-manually-save-working-tree-state: done
-  3-7-receive-real-time-credential-failure-alerts-mid-conversation: review
-  3-8-track-per-user-llm-spend: backlog
-  3-9-terminate-idle-sandboxes-mid-conversation: backlog
-  3-10-verify-commits-carry-the-users-own-identity: backlog
-  3-11-run-concurrent-conversations: backlog
-  3-12-drain-conversations-gracefully-on-deploy: backlog
+  3-7-receive-real-time-credential-failure-alerts-mid-conversation: done
+  3-8-track-per-user-llm-spend: done
+  3-9-terminate-idle-sandboxes-mid-conversation: done
+  3-10-verify-commits-carry-the-users-own-identity: done
+  3-11-run-concurrent-conversations: done
+  3-12-drain-conversations-gracefully-on-deploy: done
   epic-3-retrospective: optional

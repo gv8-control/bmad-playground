@@ -75,6 +75,9 @@ describe('AppShell', () => {
     const hamburger = screen.getByRole('button', { name: /open navigation/i });
     expect(screen.queryByTestId('side-navigation')).toBeInTheDocument();
     await userEvent.click(hamburger);
+    await waitFor(() => {
+      expect(document.querySelectorAll('.bg-overlay')).toHaveLength(1);
+    });
   });
 
   it('[P0] drawer closes on Escape', async () => {
@@ -85,7 +88,13 @@ describe('AppShell', () => {
     );
     const hamburger = screen.getByRole('button', { name: /open navigation/i });
     await userEvent.click(hamburger);
+    await waitFor(() => {
+      expect(document.querySelectorAll('.bg-overlay')).toHaveLength(1);
+    });
     await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(document.querySelectorAll('.bg-overlay')).toHaveLength(0);
+    });
   });
 
   it('[P0] drawer closes on pathname change', async () => {
@@ -112,7 +121,7 @@ describe('AppShell', () => {
     mockUsePathname.mockReturnValue('/project-map');
     const { rerender } = render(
       <AppShell user={USER} conversations={CONVERSATIONS}>
-        <h1>Project Map</h1>
+        <h1 tabIndex={-1}>Project Map</h1>
       </AppShell>,
     );
 
@@ -122,7 +131,7 @@ describe('AppShell', () => {
     mockUsePathname.mockReturnValue('/artifacts');
     rerender(
       <AppShell user={USER} conversations={CONVERSATIONS}>
-        <h1>Artifacts</h1>
+        <h1 tabIndex={-1}>Artifacts</h1>
       </AppShell>,
     );
 
@@ -144,7 +153,7 @@ describe('AppShell', () => {
       if (!ready) {
         return <button>Loading placeholder</button>;
       }
-      return <h1>Deferred Artifacts</h1>;
+      return <h1 tabIndex={-1}>Deferred Artifacts</h1>;
     }
 
     mockUsePathname.mockReturnValue('/artifacts');
@@ -170,7 +179,7 @@ describe('AppShell', () => {
     mockUsePathname.mockReturnValue('/project-map');
     render(
       <AppShell user={USER} conversations={CONVERSATIONS}>
-        <h1>Immediate Heading</h1>
+        <h1 tabIndex={-1}>Immediate Heading</h1>
       </AppShell>,
     );
 

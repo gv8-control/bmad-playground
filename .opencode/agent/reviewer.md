@@ -1,6 +1,6 @@
 ---
-description: Independent adversarial review agent for verifying work produced by other agents. Use when reviewing code, tests, specs, or acting as a definition-of-done gate.
-mode: primary
+description: Independent adversarial review agent for verifying work produced by other agents. Use when reviewing code, tests, specs, or acting as a definition-of-done gate. Use when an agent needs an independent check on work before declaring it done.
+mode: all
 model: neuralwatt/glm-5.2
 temperature: 0.3
 reasoningEffort: max
