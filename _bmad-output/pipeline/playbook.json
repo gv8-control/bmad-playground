@@ -61,11 +61,11 @@
       "stage": "implement",
       "skill": "bmad-dev-story",
       "agent": "coder",
-      "prompt": "Develop story autonomously, completing every task listed in the story spec before finishing. Before marking the story complete, re-read project-context.md and verify each non-functional pattern documented there has been applied to your changes where applicable — apply any missing patterns before finishing, do not wait for the NFR review to catch them. As each task makes a skipped test pass, remove its skip marker — the story is not complete while skipped tests remain for done tasks. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
+      "prompt": "Develop story autonomously, completing every task listed in the story spec before finishing. Before marking the story complete, re-read project-context.md and verify each non-functional pattern documented there has been applied to your changes where applicable — apply any missing patterns before finishing, do not wait for the NFR review to catch them. As each task makes a skipped test pass, remove its skip marker and update any test-file headers that claim tests are skipped, disabled, or in a red-phase state to reflect that the tests are now active, and update story coverage lists in those headers to include the current story — the story is not complete while skipped tests or stale test-file headers remain for done tasks. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-06T05:41:22.969Z",
-      "updatedByRun": "3.9-a1-20260706T022258"
+      "updatedAt": "2026-07-06T15:31:43.986Z",
+      "updatedByRun": "3.12-a1-20260706T122634"
     },
     {
       "id": "unit-tests",
