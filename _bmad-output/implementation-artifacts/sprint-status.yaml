@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-07-02
+# last_updated: 2026-07-04T00:00:00Z
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-02
+last_updated: 2026-07-04T00:00:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -57,13 +57,13 @@ development_status:
   epic-1-retrospective: optional
 
   # ── Epic 2: Project Map & Artifact Browser ──
-  epic-2: backlog
-  2-1-mirror-repository-artifacts-into-postgres: backlog
-  2-2-view-the-project-map: backlog
-  2-3-manually-refresh-the-project-map: backlog
-  2-4-browse-and-read-all-committed-artifacts: backlog
-  2-5-view-a-single-artifacts-rendered-content: backlog
-  2-6-navigate-from-the-project-map-to-an-artifact: backlog
+  epic-2: in-progress
+  2-1-mirror-repository-artifacts-into-postgres: done
+  2-2-view-the-project-map: done
+  2-3-manually-refresh-the-project-map: done
+  2-4-browse-and-read-all-committed-artifacts: done
+  2-5-view-a-single-artifacts-rendered-content: done
+  2-6-navigate-from-the-project-map-to-an-artifact: done
   epic-2-retrospective: optional
 
   # ── Epic 3: Conversations — Running BMAD Skills with the Agent ──

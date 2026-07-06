@@ -39,14 +39,35 @@ model OAuthCredential {
 }
 
 model RepoConnection {
+  id               String    @id @default(cuid())
+  userId           String    @unique @map("user_id")
+  repoUrl          String    @map("repo_url")
+  credentialHealth String    @default("healthy") @map("credential_health")
+  lastSyncedAt     DateTime? @map("last_synced_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  artifacts Artifact[]
+
+  @@map("repo_connections")
+}
+
+model Artifact {
   id               String   @id @default(cuid())
-  userId           String   @unique @map("user_id")
-  repoUrl          String   @map("repo_url")
-  credentialHealth String   @default("healthy") @map("credential_health")
+  repoConnectionId String   @map("repo_connection_id")
+  path             String
+  type             String
+  title            String
+  status           String   @default("completed")
+  lastModifiedAt   DateTime @map("last_modified_at")
+  content          String
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repoConnection RepoConnection @relation(fields: [repoConnectionId], references: [id], onDelete: Cascade)
 
-  @@map("repo_connections")
+  @@unique([repoConnectionId, path])
+  @@index([repoConnectionId, lastModifiedAt])
+  @@map("artifacts")
 }

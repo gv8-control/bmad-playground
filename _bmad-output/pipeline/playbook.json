@@ -1,0 +1,135 @@
+{
+  "$comment": "Story playbook — the per-story sequence of BMAD actions executed by the 'Develop Epic' n8n loop. This file is the source of truth; the n8n workflow only interprets it. scripts/pipeline/apply-amendments.mjs may update the prompt of any step, 'core' or 'learned', but may only retire (disable) steps with origin 'learned' — retiring a 'core' step stays human-only. Adjacent steps sharing a 'stage' value are order-independent (carried over from the gen-1 workflow's fan-out groups); execution is still strictly sequential in array order — the stage field only preserves which steps could run in parallel if that is ever built.",
+  "version": 2,
+  "config": {
+    "runner": "opencode",
+    "ntfyTopic": "agent-outcome",
+    "allowedAgents": [
+      "planner",
+      "coder"
+    ]
+  },
+  "policy": {
+    "maxAttemptsPerStory": 2,
+    "addStepRecurrenceThreshold": 2,
+    "retireCleanStreak": 3,
+    "maxLearnedSteps": 4,
+    "responseExcerptChars": 2000
+  },
+  "steps": [
+    {
+      "id": "create-story",
+      "label": "Create story",
+      "stage": "create",
+      "skill": "bmad-create-story",
+      "agent": "planner",
+      "prompt": "run Creation mode. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "validate-story",
+      "label": "Validate story (1st pass)",
+      "stage": "validate",
+      "skill": "bmad-create-story",
+      "agent": "planner",
+      "prompt": "validate story. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "prepare-tests",
+      "label": "Prepare tests",
+      "stage": "pre-implementation",
+      "skill": "bmad-testarch-atdd",
+      "agent": "coder",
+      "prompt": "prepare tests",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "validate-story-2",
+      "label": "Validate story (2nd pass)",
+      "stage": "pre-implementation",
+      "skill": "bmad-create-story",
+      "agent": "planner",
+      "prompt": "validate story. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "implement-story",
+      "label": "Implement story",
+      "stage": "implement",
+      "skill": "bmad-dev-story",
+      "agent": "coder",
+      "prompt": "develop story autonomously, completing every task listed in the story spec before finishing. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "enabled": true,
+      "origin": "core",
+      "updatedAt": "2026-07-03T15:32:49.310Z",
+      "updatedByRun": "2.3-a1-20260703T092056"
+    },
+    {
+      "id": "unit-tests",
+      "label": "Unit tests",
+      "stage": "test-generation",
+      "skill": "bmad-testarch-automate",
+      "agent": "coder",
+      "prompt": "Autonomously evaluate (Validate) if the Story is sufficiently covered. If needed, expand coverage (Create/Resume).",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "e2e-tests",
+      "label": "E2E tests",
+      "stage": "test-generation",
+      "skill": "bmad-qa-generate-e2e-tests",
+      "agent": "planner",
+      "prompt": "",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "review-code",
+      "label": "Code review",
+      "stage": "review",
+      "skill": "bmad-code-review",
+      "agent": "planner",
+      "prompt": "Review the implementation of the story below. Use the story file in {implementation_artifacts} matching this story's key (pattern `<epic>-<story>-*.md`) as the explicit spec file (Tier 1) so the review target and diff baseline (its frontmatter `baseline_commit`) resolve without asking; if no `baseline_commit` is present, review all uncommitted changes instead of asking which target. If the diff exceeds the chunking threshold, take the first chunk automatically and note remaining groups for a follow-up run — do not wait for confirmation. Skip the pre-review checkpoint confirmation and proceed straight to the review. For decision-needed findings, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue — if the resolution is to defer, write your own one-line reason instead of asking. HALT only for decisions the policy does not cover. Once findings are triaged, choose 'apply every patch' (fix all patch findings now, no per-finding confirmation), then end the workflow rather than offering the next-steps menu.",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "review-tests",
+      "label": "Test review",
+      "stage": "review",
+      "skill": "bmad-testarch-test-review",
+      "agent": "planner",
+      "prompt": "Review tests",
+      "enabled": true,
+      "origin": "core"
+    },
+    {
+      "id": "review-nfrs",
+      "label": "NFR review",
+      "stage": "review",
+      "skill": "bmad-testarch-nfr",
+      "agent": "planner",
+      "prompt": "Run NFR audit for the story. Identify and apply NFR-specific patches only (performance, security, reliability, scalability — e.g., select projection, take limits, timing tests, security headers). Do not implement features, refactor unrelated code, create database migrations, or fix test quality issues — those belong in dev or test-review steps. Document deferred findings in the story's review section.",
+      "enabled": true,
+      "origin": "core",
+      "updatedAt": "2026-07-03T19:31:19.848Z",
+      "updatedByRun": "2.4-a1-20260703T153249"
+    },
+    {
+      "id": "update-project-context",
+      "label": "Update project context",
+      "stage": "review",
+      "skill": "bmad-agent-tech-writer",
+      "agent": "planner",
+      "prompt": "Review the story artifacts and the code implemented for it. Identify any new, repeatable patterns or conventions that emerged and aren't already captured in project-context.md. If none exist, do nothing. Otherwise, append them to project-context.md — keep entries lean, document only what's unobvious and repeatable. This is routine work, its outcome size depends on the uniqueness of the story.",
+      "enabled": true,
+      "origin": "core"
+    }
+  ]
+}
