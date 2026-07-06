@@ -27,7 +27,7 @@ export function SideNavigation({ user, conversations = [] }: SideNavigationProps
 
   return (
     <nav className="w-[240px] h-full bg-surface border-r border-border-subtle flex flex-col">
-      <div className="h-12 flex items-center px-4 text-text-1 font-semibold">
+      <div data-testid="product-wordmark" className="h-12 flex items-center px-4 text-text-1 font-semibold">
         bmad-easy
       </div>
 

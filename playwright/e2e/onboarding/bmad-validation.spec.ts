@@ -15,6 +15,7 @@
  */
 
 import { test, expect } from '../../support/merged-fixtures';
+import { resetRepoConnection } from '../../support/reset-repo-connection';
 
 /**
  * Generates a React Flight (RSC) wire-format payload for a Server Action
@@ -28,6 +29,11 @@ function rscActionPayload(result: unknown): string {
 }
 
 const BMAD_DOCS_URL = 'https://docs.bmad-method.org';
+
+// Clear any stale RepoConnection left by prior test runs. All tests in this
+// file use the authenticated `page` fixture and expect the user to have NO
+// connection so the /onboarding form is visible (not redirected to /project-map).
+test.beforeAll(resetRepoConnection);
 
 // ─── MISSING_DIRECTORY error (AC-3) ──────────────────────────────────────────
 

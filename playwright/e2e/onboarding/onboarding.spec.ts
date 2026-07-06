@@ -12,6 +12,7 @@
  */
 
 import { test, expect } from '../../support/merged-fixtures';
+import { resetRepoConnection } from '../../support/reset-repo-connection';
 
 /**
  * Generates a minimal React Flight (RSC) wire-format payload for a Server Action
@@ -21,6 +22,12 @@ import { test, expect } from '../../support/merged-fixtures';
 function rscActionPayload(result: unknown): string {
   return `1:${JSON.stringify(result)}\n0:{"a":"$@1","f":"","b":""}`;
 }
+
+// Clear any stale RepoConnection left by prior test runs. Tests in this file
+// that use the authenticated `page` fixture (without withRepoConnection) expect
+// the user to have NO connection — a stale row would redirect /onboarding to
+// /project-map, failing those tests.
+test.beforeAll(resetRepoConnection);
 
 // ─── Unauthenticated access guard ────────────────────────────────────────────
 

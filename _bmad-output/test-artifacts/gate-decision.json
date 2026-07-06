@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1.0",
-  "evaluated_at": "2026-07-06T15:48:02Z",
+  "evaluated_at": "2026-07-06T19:02:00Z",
   "repo": "bmad-easy",
   "target": {
     "type": "story",
@@ -10,7 +10,7 @@
   "collection_status": "COLLECTED",
   "gate_basis": "priority_thresholds",
   "gate_status": "PASS",
-  "rationale": "P0 coverage is 100% (45/45), meeting the required threshold. P1 coverage is 96% (51/53), exceeding the 90% target. Overall coverage is 95% (101/106), well above the 80% minimum. The previous FAIL gate decision (2026-07-04) was driven by 2.3-AC1 having PARTIAL coverage (skipped E2E tests) — this is now resolved with 6 active E2E tests. All Epic 3 stories (3.4-3.12) are now implemented with comprehensive test coverage. Unit/integration tests (921 pass, 0 fail) confirm application code correctness. The 36 E2E failures are environmental (stale auth state, seed API 500), not coverage gaps.",
+  "rationale": "P0 coverage is 100%, P1 coverage is 95% (target: 90%), and overall coverage is 92% (minimum: 80%).",
   "p0_status": "MET",
   "p1_status": "MET",
   "overall_status": "MET",

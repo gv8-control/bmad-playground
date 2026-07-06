@@ -15,7 +15,7 @@ test.describe.serial('Story 1.8 — App Shell', () => {
     test('[P0] side nav visible with all items', async ({ page, withRepoConnection }) => {
       await page.goto('/project-map');
 
-      await expect(page.getByText('bmad-easy')).toBeVisible();
+      await expect(page.getByTestId('product-wordmark')).toBeVisible();
       await expect(page.getByRole('link', { name: /new conversation/i })).toBeVisible();
       await expect(page.getByRole('link', { name: /project map/i })).toBeVisible();
       await expect(page.getByRole('link', { name: /artifact browser/i })).toBeVisible();
@@ -229,7 +229,7 @@ test.describe.serial('Story 1.8 — App Shell', () => {
   test.describe('Side nav NOT shown on onboarding (AC-1)', () => {
     test('[P0] side nav not visible on /onboarding (no repo connection)', async ({ page }) => {
       await page.goto('/onboarding');
-      await expect(page.getByText('bmad-easy')).not.toBeVisible();
+      await expect(page.getByTestId('product-wordmark')).not.toBeVisible();
       await expect(page.getByRole('link', { name: /new conversation/i })).not.toBeVisible();
     });
   });
@@ -262,7 +262,7 @@ test.describe.serial('Story 1.8 — App Shell', () => {
     test('[P1] desktop layout at 1280px: side nav visible, hamburger hidden', async ({ page, withRepoConnection }) => {
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.goto('/project-map');
-      await expect(page.getByText('bmad-easy')).toBeVisible();
+      await expect(page.getByTestId('product-wordmark')).toBeVisible();
       await expect(page.getByRole('button', { name: /open navigation/i })).not.toBeVisible();
     });
 
