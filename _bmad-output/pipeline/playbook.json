@@ -132,6 +132,16 @@
       "prompt": "Review the story artifacts and implemented code. If new, repeatable, unobvious patterns or conventions emerged that aren't in project-context.md, append them (lean entries). If none, do nothing.",
       "enabled": true,
       "origin": "core"
+    },
+    {
+      "id": "commit",
+      "label": "Commit story changes",
+      "stage": "commit",
+      "skill": "commit",
+      "agent": "coder",
+      "prompt": "Commit all changes from this story implementation.",
+      "enabled": true,
+      "origin": "core"
     }
   ]
 }
