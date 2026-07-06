@@ -96,6 +96,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
           env: {
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
           },
+          includePartialMessages: true,
         },
       });
 
@@ -343,7 +344,10 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       return '';
     }
     if (sdkMessage.type === 'assistant') {
-      return this.processAssistantMessage(sdkMessage, conversationId, userId);
+      return this.processAssistantMessage(sdkMessage, conversationId);
+    }
+    if (sdkMessage.type === 'user') {
+      return this.processUserMessage(sdkMessage, conversationId, userId);
     }
     return '';
   }
@@ -427,25 +431,25 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     return '';
   }
 
-  private processAssistantMessage(message: SDKMessage, conversationId: string, userId: string): string {
+  private processAssistantMessage(message: SDKMessage, conversationId: string): string {
     const msg = message as {
       type: string;
-      content?: Array<{
-        type: string;
-        id?: string;
-        name?: string;
-        input?: unknown;
-        tool_use_id?: string;
-        content?: unknown;
-        is_error?: boolean;
-      }>;
+      message?: {
+        content?: Array<{
+          type: string;
+          id?: string;
+          name?: string;
+          input?: unknown;
+        }>;
+      };
     };
 
-    if (!msg.content || !Array.isArray(msg.content)) {
+    const content = msg.message?.content;
+    if (!content || !Array.isArray(content)) {
       return '';
     }
 
-    for (const block of msg.content) {
+    for (const block of content) {
       if (block.type === 'tool_use' && block.id) {
         if (!this.activeToolCalls.has(conversationId)) {
           this.activeToolCalls.set(conversationId, new Map());
@@ -460,81 +464,105 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       }
     }
 
-    for (const block of msg.content) {
-      if (block.type === 'tool_result' && block.tool_use_id) {
-        const toolCallId = block.tool_use_id;
-        const rawContent = block.content;
-        const resultContent =
-          typeof rawContent === 'string'
-            ? rawContent
-            : Array.isArray(rawContent)
-              ? rawContent.map((b: { text?: string }) => b.text ?? '').join('\n')
-              : rawContent != null ? String(rawContent) : '';
+    return '';
+  }
 
-        this.sessionEvents.emit(conversationId, {
-          event: 'TOOL_CALL_RESULT',
-          data: {
-            messageId: toolCallId,
-            toolCallId,
-            content: resultContent,
-            role: 'tool',
-            isError: block.is_error === true,
-          },
+  private processUserMessage(message: SDKMessage, conversationId: string, userId: string): string {
+    const msg = message as {
+      type: string;
+      message?: {
+        content?: string | Array<{
+          type: string;
+          tool_use_id?: string;
+          content?: unknown;
+          is_error?: boolean;
+        }>;
+      };
+    };
+
+    const content = msg.message?.content;
+    if (!content || typeof content === 'string' || !Array.isArray(content)) {
+      return '';
+    }
+
+    for (const block of content) {
+      if (block.type !== 'tool_result' || !block.tool_use_id) {
+        continue;
+      }
+      const toolCallId = block.tool_use_id;
+      const rawContent = block.content;
+      const resultContent =
+        typeof rawContent === 'string'
+          ? rawContent
+          : Array.isArray(rawContent)
+            ? rawContent.map((b: { text?: string }) => b.text ?? '').join('\n')
+            : rawContent != null ? String(rawContent) : '';
+
+      this.sessionEvents.emit(conversationId, {
+        event: 'TOOL_CALL_RESULT',
+        data: {
+          messageId: toolCallId,
+          toolCallId,
+          content: resultContent,
+          role: 'tool',
+          isError: block.is_error === true,
+        },
+      });
+
+      const toolCalls = this.activeToolCalls.get(conversationId);
+      const toolCallInfo = toolCalls?.get(toolCallId);
+      if (!toolCallInfo) {
+        continue;
+      }
+
+      const classifierPromise = this.classifier
+        .classifyToolResult(
+          toolCallId,
+          toolCallInfo.toolName,
+          toolCallInfo.input,
+          resultContent,
+          userId,
+        )
+        .then((result) => {
+          if (!result) return;
+          this.sessionEvents.emit(conversationId, {
+            event: result.type,
+            data: result,
+          });
+        })
+        .catch((err) => {
+          this.logger.error(`Classifier failed for tool call ${toolCallId}: ${err}`);
         });
 
-        const toolCalls = this.activeToolCalls.get(conversationId);
-        const toolCallInfo = toolCalls?.get(toolCallId);
-        if (toolCallInfo) {
-          const classifierPromise = this.classifier
-            .classifyToolResult(
-              toolCallId,
-              toolCallInfo.toolName,
-              toolCallInfo.input,
-              resultContent,
-              userId,
-            )
-            .then((result) => {
-              if (!result) return;
-              this.sessionEvents.emit(conversationId, {
-                event: result.type,
-                data: result,
-              });
+      if (!this.pendingClassifierPromises.has(conversationId)) {
+        this.pendingClassifierPromises.set(conversationId, []);
+      }
+      this.pendingClassifierPromises.get(conversationId)!.push(classifierPromise);
+
+      if (FILE_MODIFYING_TOOLS.has(toolCallInfo.toolName)) {
+        const activeRun = this.activeRuns.get(conversationId);
+        if (activeRun) {
+          const workingTreePromise = this.sandboxService
+            .getWorkingTreeStatus(activeRun.sandboxId)
+            .then((status) => {
+              if (status.dirty) {
+                this.sessionEvents.emit(conversationId, {
+                  event: 'WORKING_TREE_DIRTY',
+                  data: { files: status.files },
+                });
+              } else {
+                this.sessionEvents.emit(conversationId, {
+                  event: 'WORKING_TREE_CLEAN',
+                  data: {},
+                });
+              }
             })
             .catch((err) => {
-              this.logger.error(`Classifier failed for tool call ${toolCallId}: ${err}`);
+              this.logger.warn(`Working tree check failed for conversation ${conversationId}: ${err}`);
             });
-
-          if (!this.pendingClassifierPromises.has(conversationId)) {
-            this.pendingClassifierPromises.set(conversationId, []);
-          }
-          this.pendingClassifierPromises.get(conversationId)!.push(classifierPromise);
-
-          if (FILE_MODIFYING_TOOLS.has(toolCallInfo.toolName)) {
-            const activeRun = this.activeRuns.get(conversationId);
-            if (activeRun) {
-              const workingTreePromise = this.sandboxService
-                .getWorkingTreeStatus(activeRun.sandboxId)
-                .then((status) => {
-                  if (status.dirty) {
-                    this.sessionEvents.emit(conversationId, {
-                      event: 'WORKING_TREE_DIRTY',
-                      data: { files: status.files },
-                    });
-                  } else {
-                    this.sessionEvents.emit(conversationId, {
-                      event: 'WORKING_TREE_CLEAN',
-                      data: {},
-                    });
-                  }
-                })
-                .catch((err) => {
-                  this.logger.warn(`Working tree check failed for conversation ${conversationId}: ${err}`);
-                });
-              const pending = this.pendingClassifierPromises.get(conversationId);
-              if (pending) {
-                pending.push(workingTreePromise);
-              }
-            }
+          const pending = this.pendingClassifierPromises.get(conversationId);
+          if (pending) {
+            pending.push(workingTreePromise);
           }
         }
       }

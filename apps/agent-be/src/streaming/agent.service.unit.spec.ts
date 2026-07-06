@@ -118,6 +118,19 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     } as unknown as SDKMessage);
   }
 
+  function makeToolResultUserMessage(toolCallId: string, content: string): SDKMessage {
+    return makeSdkMessage({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: toolCallId, content },
+        ],
+      },
+      parent_tool_use_id: null,
+    });
+  }
+
   async function* yieldMessages(messages: SDKMessage[]): AsyncGenerator<SDKMessage> {
     for (const msg of messages) {
       yield msg;
@@ -220,12 +233,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'nothing to commit' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'nothing to commit'),
       ]);
 
       agentService = createAgentService();
@@ -252,12 +260,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: '1 file changed' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', '1 file changed'),
       ]);
 
       agentService = createAgentService();
@@ -292,12 +295,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: '1 file changed' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', '1 file changed'),
       ]);
 
       agentService = createAgentService();
@@ -499,12 +497,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Write' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File written' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'File written'),
       ]);
 
       agentService = createAgentService();
@@ -533,12 +526,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Write' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File written' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'File written'),
       ]);
 
       agentService = createAgentService();
@@ -561,12 +549,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Read' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File contents' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'File contents'),
       ]);
 
       agentService = createAgentService();
@@ -597,12 +580,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Write' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File written' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'File written'),
       ]);
 
       agentService = createAgentService();
@@ -635,12 +613,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Write' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File written' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'File written'),
       ]);
 
       agentService = createAgentService();
@@ -673,12 +646,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'remote: Invalid username or token.' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'remote: Invalid username or token.'),
       ]);
 
       agentService = createAgentService();
@@ -705,12 +673,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'Rate limit exceeded' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'Rate limit exceeded'),
       ]);
 
       agentService = createAgentService();
@@ -736,12 +699,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'remote: Invalid username or token.' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'remote: Invalid username or token.'),
       ]);
 
       agentService = createAgentService();
@@ -773,12 +731,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'Rate limit exceeded' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'Rate limit exceeded'),
       ]);
 
       agentService = createAgentService();
@@ -806,12 +759,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'output' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'output'),
       ]);
 
       agentService = createAgentService();
@@ -974,12 +922,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
           content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
         }),
         makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'done' },
-          ],
-        }),
+        makeToolResultUserMessage('tc-1', 'done'),
         makeResultMessage(0.77),
       ]);
 
