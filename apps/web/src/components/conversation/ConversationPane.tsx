@@ -14,7 +14,7 @@ import { useConversationPresence } from '@/hooks/use-conversation-presence';
 import { CredentialErrorBanner } from '@/components/project-map/CredentialErrorBanner';
 import type { ChatMessage } from './types';
 
-type SessionState = 'init' | 'provisioning' | 'ready' | 'error' | 'timeout' | 'reconnecting';
+type SessionState = 'init' | 'provisioning' | 'ready' | 'error' | 'timeout' | 'reconnecting' | 'limit-reached';
 type AgentState = 'idle' | 'thinking' | 'tool-executing' | 'streaming';
 
 const CLIENT_TIMEOUT_MS = 30_000;
@@ -57,6 +57,7 @@ export function ConversationPane({
   const isAtBottomRef = useRef(true);
   const runEndedRef = useRef(false);
   const saveFallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryingRef = useRef(false);
 
   const { draft, setDraft, clearDraft } = useDraftPersistence(
     conversationIdRef.current,
@@ -131,6 +132,25 @@ export function ConversationPane({
         });
 
         if (!response.ok) {
+        if (response.status === 409) {
+          let code: string | undefined;
+          let message: string | undefined;
+          try {
+            const body = await response.json();
+            code = body.code;
+            message = body.message;
+          } catch {
+            // not JSON — fall through to generic error
+          }
+          if (code === 'CONVERSATION_LIMIT_REACHED') {
+            setState('limit-reached');
+            setErrorMessage(
+              message ??
+                "You've reached the limit of active conversations. Return to one of your existing conversations, or try again later.",
+            );
+            return;
+          }
+        }
           setState('error');
           setErrorMessage('Failed to create conversation.');
           return;
@@ -179,9 +199,18 @@ export function ConversationPane({
       }
     });
 
-    eventSource.addEventListener('SESSION_TIMEOUT', () => {
+    eventSource.addEventListener('SESSION_TIMEOUT', (event) => {
       setState('timeout');
-      setErrorMessage('Starting your session is taking longer than expected.');
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        if (data.reason === 'mid-session') {
+          setErrorMessage('Your session expired due to inactivity.');
+        } else {
+          setErrorMessage('Starting your session is taking longer than expected.');
+        }
+      } catch {
+        setErrorMessage('Starting your session is taking longer than expected.');
+      }
     });
 
     eventSource.addEventListener('RUN_STARTED', () => {
@@ -551,7 +580,11 @@ export function ConversationPane({
     });
 
     eventSource.onerror = () => {
-      setState((prev) => (prev === 'ready' ? prev : 'error'));
+      setState((prev) =>
+        prev === 'ready' || prev === 'timeout' || prev === 'reconnecting'
+          ? prev
+          : 'error',
+      );
     };
 
     if (isResume) {
@@ -764,7 +797,10 @@ export function ConversationPane({
     }
   }
 
-  function handleRetry() {
+  async function handleRetry() {
+    if (retryingRef.current) return;
+    retryingRef.current = true;
+
     eventSourceRef.current?.close();
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -772,7 +808,24 @@ export function ConversationPane({
     queuedMessageRef.current = null;
     setQueuedMessage(null);
     setErrorMessage(null);
-    void startSession();
+
+    if (!initialConversationId && conversationIdRef.current) {
+      const oldId = conversationIdRef.current;
+      conversationIdRef.current = null;
+      setConversationId(null);
+      try {
+        await fetch(`${apiUrl}/api/conversations/${oldId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${boundaryJwt}` },
+        });
+      } catch {
+        // best-effort cleanup — don't block retry on cleanup failure
+      }
+    }
+
+    void startSession().finally(() => {
+      retryingRef.current = false;
+    });
   }
 
   function handleScrollToBottom() {
@@ -790,7 +843,7 @@ export function ConversationPane({
     }
   }
 
-  const inputDisabled = state === 'init' || state === 'error' || state === 'timeout' || state === 'reconnecting' || agentState !== 'idle';
+  const inputDisabled = state === 'init' || state === 'error' || state === 'timeout' || state === 'reconnecting' || state === 'limit-reached' || agentState !== 'idle';
   const showSpinner = (state === 'provisioning' && queuedMessage !== null) || state === 'reconnecting';
   const isProcessing = agentState !== 'idle';
   const isThinking = agentState === 'thinking';
@@ -841,18 +894,20 @@ export function ConversationPane({
               onSelect={handleSelectSkill}
             />
           )}
-          <ChatInput
-            value={draft}
-            onChange={handleInputChange}
-            onSubmit={handleSubmit}
-            onStop={handleStop}
-            disabled={inputDisabled}
-            isProcessing={isProcessing}
-            onKeyDown={handleKeyDown}
-            inputRef={inputRef}
-            ariaActivedescendant={pickerOpen && filteredSkills.length > 0 ? `skill-option-${pickerSelectedIndex}` : undefined}
-            ariaControls={pickerOpen ? 'skill-listbox' : undefined}
-          />
+          {state !== 'limit-reached' && (
+            <ChatInput
+              value={draft}
+              onChange={handleInputChange}
+              onSubmit={handleSubmit}
+              onStop={handleStop}
+              disabled={inputDisabled}
+              isProcessing={isProcessing}
+              onKeyDown={handleKeyDown}
+              inputRef={inputRef}
+              ariaActivedescendant={pickerOpen && filteredSkills.length > 0 ? `skill-option-${pickerSelectedIndex}` : undefined}
+              ariaControls={pickerOpen ? 'skill-listbox' : undefined}
+            />
+          )}
         </div>
       </div>
     </div>

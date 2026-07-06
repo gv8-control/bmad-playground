@@ -16,11 +16,13 @@ import type {
 @Injectable()
 export class SandboxServiceFake implements ISandboxService {
   private readonly sandboxes = new Map<string, SandboxInfo>();
+  private readonly injectedGitConfigs = new Map<string, GitUserConfig>();
   private provisionDelay = 0;
   private shouldFailNextProvision = false;
   private shouldFailNextCommit = false;
   private skills: SkillInfo[] = [];
-  private readonly commitCalls: Array<{ sandboxId: string; message: string }> = [];
+  private sandboxCounter = 0;
+  private readonly commitCalls: Array<{ sandboxId: string; message: string; author?: GitUserConfig }> = [];
 
   /** Control hook: simulate a slow provision (milliseconds). */
   setProvisionDelay(ms: number): void {
@@ -43,8 +45,14 @@ export class SandboxServiceFake implements ISandboxService {
   }
 
   /** Inspection: list of commit() calls made. */
-  getCommitCalls(): Array<{ sandboxId: string; message: string }> {
+  getCommitCalls(): Array<{ sandboxId: string; message: string; author?: GitUserConfig }> {
     return [...this.commitCalls];
+  }
+
+  /** Inspection: the git config last injected for a sandbox. */
+  getInjectedGitConfig(sandboxId: string): GitUserConfig | undefined {
+    const config = this.injectedGitConfigs.get(sandboxId);
+    return config ? { ...config } : undefined;
   }
 
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
@@ -58,7 +66,7 @@ export class SandboxServiceFake implements ISandboxService {
     }
 
     const sandbox: SandboxInfo = {
-      sandboxId: `fake-sandbox-${Date.now()}`,
+      sandboxId: `fake-sandbox-${Date.now()}-${this.sandboxCounter++}`,
       conversationId: params.conversationId,
       status: 'ready',
       provisionedAt: new Date(),
@@ -81,10 +89,12 @@ export class SandboxServiceFake implements ISandboxService {
   async destroy(sandboxId: string): Promise<void> {
     if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
     this.sandboxes.delete(sandboxId);
+    this.injectedGitConfigs.delete(sandboxId);
   }
 
-  async injectGitConfig(sandboxId: string, _config: GitUserConfig): Promise<void> {
+  async injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void> {
     if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
+    this.injectedGitConfigs.set(sandboxId, { ...config });
   }
 
   async getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus> {
@@ -93,7 +103,8 @@ export class SandboxServiceFake implements ISandboxService {
   }
 
   async commit(sandboxId: string, message: string): Promise<void> {
-    this.commitCalls.push({ sandboxId, message });
+    const author = this.injectedGitConfigs.get(sandboxId);
+    this.commitCalls.push({ sandboxId, message, author: author ? { ...author } : undefined });
     if (this.shouldFailNextCommit) {
       this.shouldFailNextCommit = false;
       throw new Error('SandboxServiceFake: simulated commit failure');

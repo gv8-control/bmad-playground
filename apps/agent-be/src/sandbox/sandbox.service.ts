@@ -87,18 +87,24 @@ export class SandboxService implements ISandboxService {
 
   async injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void> {
     const sandbox = await this.getSandbox(sandboxId);
-    await sandbox.process.executeCommand(
+    const nameResponse = await sandbox.process.executeCommand(
       `git config user.name ${this.shellQuote(config.name)}`,
       undefined,
       undefined,
       10,
     );
-    await sandbox.process.executeCommand(
+    if (nameResponse.exitCode !== 0) {
+      throw new Error(nameResponse.result);
+    }
+    const emailResponse = await sandbox.process.executeCommand(
       `git config user.email ${this.shellQuote(config.email)}`,
       undefined,
       undefined,
       10,
     );
+    if (emailResponse.exitCode !== 0) {
+      throw new Error(emailResponse.result);
+    }
   }
 
   async getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus> {

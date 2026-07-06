@@ -5,10 +5,11 @@ import { AgentService } from './agent.service';
 import { ToolPillClassifierService } from './tool-pill-classifier.service';
 import { CredentialsModule } from '../credentials/credentials.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
+import { CostTrackingModule } from '../cost-tracking/cost-tracking.module';
 import { AGENT_SERVICE } from '@bmad-easy/shared-types';
 
 @Module({
-  imports: [CredentialsModule, SandboxModule],
+  imports: [CredentialsModule, SandboxModule, CostTrackingModule],
   providers: [
     SessionEventsService,
     ToolPillClassifierService,

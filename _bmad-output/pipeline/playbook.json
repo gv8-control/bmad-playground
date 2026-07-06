@@ -39,11 +39,11 @@
       "stage": "pre-implementation",
       "skill": "bmad-testarch-atdd",
       "agent": "coder",
-      "prompt": "Create tests. Before deferring E2E coverage, verify no browser-level mock pattern can simulate the scenario — only defer if no mock covers the ACs, and record the check in the ATDD checklist. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
+      "prompt": "Create tests. Before deferring E2E coverage, verify no browser-level mock pattern can simulate the scenario — only defer if no mock covers the ACs, and record the check in the ATDD checklist. When creating regression guards for code that executes external commands with user-controlled input, apply a uniform guard template to every call site: exercise both credential-isolation invariants (no credentials leak via command arguments or environment variables) and input-injection invariants (malicious input is safely quoted and cannot alter the command's behavior). For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-05T08:14:39.210Z",
-      "updatedByRun": "3.7-a1-20260704T225804"
+      "updatedAt": "2026-07-06T08:27:13.232Z",
+      "updatedByRun": "3.10-a1-20260706T055517"
     },
     {
       "id": "validate-story-2",
@@ -61,11 +61,11 @@
       "stage": "implement",
       "skill": "bmad-dev-story",
       "agent": "coder",
-      "prompt": "Develop story autonomously, completing every task listed in the story spec before finishing. Apply non-functional patterns documented in project-context.md proactively — do not wait for the NFR review to catch them. As each task makes a skipped test pass, remove its skip marker — the story is not complete while skipped tests remain for done tasks. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
+      "prompt": "Develop story autonomously, completing every task listed in the story spec before finishing. Before marking the story complete, re-read project-context.md and verify each non-functional pattern documented there has been applied to your changes where applicable — apply any missing patterns before finishing, do not wait for the NFR review to catch them. As each task makes a skipped test pass, remove its skip marker — the story is not complete while skipped tests remain for done tasks. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-06T02:22:58.166Z",
-      "updatedByRun": "3.8-a1-20260706T003852"
+      "updatedAt": "2026-07-06T05:41:22.969Z",
+      "updatedByRun": "3.9-a1-20260706T022258"
     },
     {
       "id": "unit-tests",
@@ -105,11 +105,11 @@
       "stage": "review",
       "skill": "bmad-testarch-test-review",
       "agent": "planner",
-      "prompt": "run Validate mode. Flag skipped story-related tests for un-skipping or removal (with reason). Fix stale transitional markers directly: comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state.",
+      "prompt": "run Validate mode. Flag skipped story-related tests for un-skipping or removal (with reason). Fix stale transitional markers directly wherever found during the search, including those from earlier stories in the same directories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-05T08:14:39.210Z",
-      "updatedByRun": "3.7-a1-20260704T225804"
+      "updatedAt": "2026-07-06T05:41:22.968Z",
+      "updatedByRun": "3.9-a1-20260706T022258"
     },
     {
       "id": "review-nfrs",
@@ -129,7 +129,7 @@
       "stage": "review",
       "skill": "bmad-agent-tech-writer",
       "agent": "planner",
-      "prompt": "Review the story artifacts and implemented code. If new, repeatable, unobvious patterns or conventions emerged that aren't in project-context.md, append them (lean entries). If none, do nothing.",
+      "prompt": "Review the story artifacts and implemented code. If new, repeatable, unobvious patterns or conventions emerged that aren't in project-context.md, append them (lean entries). If none, do nothing. Additionally, mark the story as Done in all relevant artifacts.",
       "enabled": true,
       "origin": "core"
     },

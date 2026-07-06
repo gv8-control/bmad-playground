@@ -3,6 +3,8 @@
  *
  * Story 3.4: See Tool Calls and Recognized Actions Inline
  * Story 3.7: Receive Real-Time Credential Failure Alerts Mid-Conversation
+ * Story 3.8: Track Per-User LLM Spend
+ * Story 3.11: Run Concurrent Conversations
  * Unit tests for the REAL AgentService (not AgentServiceFake).
  *
  * Tests the full AG-UI tool call lifecycle emission and circuit breaker
@@ -13,8 +15,12 @@
  *                   AC-5 (circuit breaker).
  * Story 3.7 covers: AC-1 (CREDENTIAL_FAILURE/ACCESS_DENIED SSE emission),
  *                   AC-2 (event ordering before RUN_FINISHED).
+ * Story 3.8 covers: AC-1 (cost recorded per turn from SDK result message,
+ *                   recorded before RUN_FINISHED, recorded on abort if result arrived).
+ * Story 3.11 covers: AC-3 (concurrent-turn guard — second runTurn rejected,
+ *                    no RUN_STARTED/RUN_ERROR emitted, circuitBreakerTimers not overwritten).
  *
- * TDD GREEN PHASE — all tests un-skipped and passing.
+ * TDD GREEN PHASE — Story 3.4/3.7/3.8/3.11 tests un-skipped and passing.
  */
 import { SessionEventsService } from './session-events.service';
 import { AgentService } from './agent.service';
@@ -30,6 +36,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockPrisma: any;
   let mockClassifier: { classifyToolResult: jest.Mock };
+  let mockCostTracking: { recordCost: jest.Mock };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockQuery: any;
   let emitSpy: jest.SpyInstance;
@@ -50,6 +57,10 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     mockClassifier = {
       classifyToolResult: jest.fn().mockResolvedValue(null),
+    };
+
+    mockCostTracking = {
+      recordCost: jest.fn().mockResolvedValue(undefined),
     };
 
     mockQuery = null;
@@ -73,6 +84,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
         sessionEvents,
         mockPrisma,
         mockClassifier as never,
+        mockCostTracking as never,
       );
     });
     return service!;
@@ -87,6 +99,23 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       type: 'stream_event',
       event: { type: eventType, ...data },
     });
+  }
+
+  function makeResultMessage(costUsd = 0.42, subtype = 'success'): SDKMessage {
+    return makeSdkMessage({
+      type: 'result',
+      subtype,
+      total_cost_usd: costUsd,
+      session_id: 'sess-1',
+      num_turns: 3,
+      duration_ms: 5000,
+      is_error: false,
+      result: '',
+      usage: {},
+      modelUsage: {},
+      permission_denials: [],
+      uuid: 'uuid-1',
+    } as unknown as SDKMessage);
   }
 
   async function* yieldMessages(messages: SDKMessage[]): AsyncGenerator<SDKMessage> {
@@ -802,6 +831,286 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining('Classifier failed'),
       );
+    });
+  });
+
+  describe('[P0] Story 3.8 AC-1 — cost recording from SDK result message', () => {
+    it('recordCost is called with correct cost data when a result message is in the stream', async () => {
+      setupMockQuery([
+        makeStreamEvent('content_block_start', {
+          content_block: { type: 'text', id: 'msg-1' },
+        }),
+        makeStreamEvent('content_block_delta', {
+          delta: { type: 'text_delta', text: 'Hello' },
+        }),
+        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeResultMessage(0.42),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(mockCostTracking.recordCost).toHaveBeenCalledWith({
+        userId: 'user-1',
+        conversationId: 'conv-1',
+        totalCostUsd: 0.42,
+        sessionId: 'sess-1',
+        numTurns: 3,
+        durationMs: 5000,
+      });
+    });
+
+    it('recordCost is called BEFORE RUN_FINISHED is emitted (event ordering)', async () => {
+      setupMockQuery([
+        makeStreamEvent('content_block_start', {
+          content_block: { type: 'text', id: 'msg-1' },
+        }),
+        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeResultMessage(0.42),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const recordCostCallOrder = mockCostTracking.recordCost.mock.invocationCallOrder[0];
+      const finishedEmitCall = emitSpy.mock.calls.find(
+        (c) => c[1]?.event === 'RUN_FINISHED',
+      );
+      expect(finishedEmitCall).toBeDefined();
+      const finishedEmitOrder = emitSpy.mock.invocationCallOrder[
+        emitSpy.mock.calls.indexOf(finishedEmitCall)
+      ];
+      expect(recordCostCallOrder).toBeLessThan(finishedEmitOrder);
+    });
+
+    it('recordCost is NOT called when no result message is in the stream (e.g. circuit breaker fires before result)', async () => {
+      setupMockQuery([
+        makeStreamEvent('content_block_start', {
+          content_block: { type: 'text', id: 'msg-1' },
+        }),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(mockCostTracking.recordCost).not.toHaveBeenCalled();
+    });
+
+    it('recordCost failure does not crash the agent run — RUN_FINISHED still emits', async () => {
+      mockCostTracking.recordCost.mockRejectedValue(new Error('cost DB write failed'));
+
+      setupMockQuery([
+        makeStreamEvent('content_block_start', {
+          content_block: { type: 'text', id: 'msg-1' },
+        }),
+        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeResultMessage(0.42),
+      ]);
+
+      agentService = createAgentService();
+      const loggerErrorSpy = jest.spyOn(agentService['logger'], 'error').mockImplementation(() => undefined);
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const finishedEvents = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === 'RUN_FINISHED',
+      );
+      expect(finishedEvents).toHaveLength(1);
+      expect(loggerErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to record cost for conversation conv-1'),
+      );
+      loggerErrorSpy.mockRestore();
+    });
+
+    it('cost is recorded from SDKResultError (subtype error_max_turns) as well as SDKResultSuccess', async () => {
+      setupMockQuery([
+        makeStreamEvent('content_block_start', {
+          content_block: { type: 'text', id: 'msg-1' },
+        }),
+        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeResultMessage(1.5, 'error_max_turns'),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(mockCostTracking.recordCost).toHaveBeenCalledWith({
+        userId: 'user-1',
+        conversationId: 'conv-1',
+        totalCostUsd: 1.5,
+        sessionId: 'sess-1',
+        numTurns: 3,
+        durationMs: 5000,
+      });
+    });
+
+    it('[P1] cost is recorded when the result message arrives after tool calls', async () => {
+      setupMockQuery([
+        makeStreamEvent('content_block_start', {
+          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
+        }),
+        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeSdkMessage({
+          type: 'assistant',
+          content: [
+            { type: 'tool_result', tool_use_id: 'tc-1', content: 'done' },
+          ],
+        }),
+        makeResultMessage(0.77),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(mockCostTracking.recordCost).toHaveBeenCalledWith({
+        userId: 'user-1',
+        conversationId: 'conv-1',
+        totalCostUsd: 0.77,
+        sessionId: 'sess-1',
+        numTurns: 3,
+        durationMs: 5000,
+      });
+    });
+  });
+
+  describe('[P0] Story 3.11 — concurrent-turn guard (AC: 3)', () => {
+    async function* yieldThenHang(messages: SDKMessage[]): AsyncGenerator<SDKMessage> {
+      for (const msg of messages) {
+        yield msg;
+      }
+      await new Promise(() => undefined);
+    }
+
+    it('[P0] second runTurn on an in-flight conversationId is rejected (returns without overwriting)', async () => {
+      mockQuery = jest.fn(() => yieldThenHang([makeStreamEvent('text', {})]));
+      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+
+      agentService = createAgentService();
+      const firstRun = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'first',
+        userId: 'user-1',
+      });
+      await jest.advanceTimersByTimeAsync(0);
+
+      await expect(agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'second',
+        userId: 'user-1',
+      })).resolves.toBeUndefined();
+
+      expect(agentService.isIdle('conv-1')).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(120_000);
+      await firstRun.catch(() => undefined);
+    });
+
+    it('[P0] the rejected second turn does NOT emit RUN_STARTED or RUN_ERROR', async () => {
+      mockQuery = jest.fn(() => yieldThenHang([makeStreamEvent('text', {})]));
+      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+
+      agentService = createAgentService();
+      const firstRun = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'first',
+        userId: 'user-1',
+      });
+      await jest.advanceTimersByTimeAsync(0);
+
+      emitSpy.mockClear();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'second',
+        userId: 'user-1',
+      });
+
+      const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedEvents).not.toContain('RUN_STARTED');
+      expect(emittedEvents).not.toContain('RUN_ERROR');
+
+      await jest.advanceTimersByTimeAsync(120_000);
+      await firstRun.catch(() => undefined);
+    });
+
+    it('[P0] the rejected second turn does NOT overwrite circuitBreakerTimers', async () => {
+      mockQuery = jest.fn(() => yieldThenHang([makeStreamEvent('text', {})]));
+      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+
+      agentService = createAgentService();
+      const firstRun = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'first',
+        userId: 'user-1',
+      });
+      await jest.advanceTimersByTimeAsync(0);
+
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'second',
+        userId: 'user-1',
+      });
+
+      expect(agentService['circuitBreakerTimers'].size).toBe(1);
+
+      await jest.advanceTimersByTimeAsync(120_000);
+      await firstRun.catch(() => undefined);
+    });
+
+    it('[P0] startCircuitBreakerTimer clears a pre-existing timer before setting a new one', async () => {
+      setupMockQuery([makeResultMessage(0.5)]);
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'first',
+        userId: 'user-1',
+      });
+
+      setupMockQuery([makeResultMessage(0.6)]);
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'second',
+        userId: 'user-1',
+      });
+
+      expect(agentService['circuitBreakerTimers'].size).toBeLessThanOrEqual(1);
     });
   });
 });

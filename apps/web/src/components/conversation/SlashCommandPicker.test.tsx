@@ -7,8 +7,7 @@
  * Covers: AC-1 (picker renders skills, highlights selected, keyboard nav),
  * AC-2 (empty skills state).
  *
- * TDD RED PHASE: All tests are skipped (it.skip). Remove skips
- * one describe-block at a time per task during implementation.
+ * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent } from '@testing-library/react';

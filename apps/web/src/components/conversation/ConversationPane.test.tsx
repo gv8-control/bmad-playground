@@ -5,6 +5,8 @@
  * Story 3.2: Invoke BMAD Skills via Slash Command
  * Story 3.3: Converse with the Streaming Agent
  * Story 3.5: Resume an Existing Conversation
+ * Story 3.9: Terminate Idle Sandboxes Mid-Conversation
+ * Story 3.11: Run Concurrent Conversations
  * Unit tests for ConversationPane Client Component.
  *
  * Covers: AC-1 (provisioning on mount, streaming), AC-2 (auto-growing input),
@@ -15,7 +17,11 @@
  * Story 3.3 covers: AC-1 (streaming agent response, thinking indicator),
  * AC-3 (stop button), AC-5 (scroll-to-bottom), AC-6 (draft persistence).
  * Story 3.5 covers: AC-1 (reconnecting state on resume), AC-2 (timeout + retry
- * reuses conversationId). TDD GREEN PHASE — all tests un-skipped and passing.
+ * reuses conversationId).
+ * Story 3.9 covers: AC-3 (SESSION_TIMEOUT mid-session reason, onerror state preservation).
+ * Story 3.11 covers: AC-2 (limit-reached blocking state), AC-4 (retry cancels
+ * in-flight provisioning via DELETE before minting new conversation).
+ * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
@@ -1780,6 +1786,363 @@ describe('ConversationPane', () => {
           screen.getByText(/Your account doesn't have access to this resource/),
         ).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('Story 3.9 — SESSION_TIMEOUT mid-session', () => {
+    it('[P0] shows "Your session expired due to inactivity." when SESSION_TIMEOUT has { reason: "mid-session" }', async () => {
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+
+      await act(async () => {
+        MockEventSource.emit('SESSION_TIMEOUT', { reason: 'mid-session' });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Your session expired due to inactivity.')).toBeInTheDocument();
+      });
+    });
+
+    it('[P0] shows "Starting your session is taking longer than expected." when SESSION_TIMEOUT has no reason (pre-first-message)', async () => {
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+
+      await act(async () => {
+        MockEventSource.emit('SESSION_TIMEOUT', {});
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Starting your session is taking longer than expected.'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('[P0] shows "Starting your session is taking longer than expected." when SESSION_TIMEOUT data is unparseable', async () => {
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+
+      await act(async () => {
+        const listeners = MockEventSource.listeners['SESSION_TIMEOUT'] ?? [];
+        const event = new MessageEvent('message', { data: 'not-valid-json{' });
+        for (const listener of listeners) listener(event);
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Starting your session is taking longer than expected.'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('[P0] Retry button calls POST /resume after mid-session SESSION_TIMEOUT', async () => {
+      await act(async () => {
+        render(
+          <ConversationPane
+            boundaryJwt="test-jwt"
+            apiUrl="http://localhost:3001"
+            initialConversationId="conv-resume-1"
+          />,
+        );
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_TIMEOUT', { reason: 'mid-session' });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Retry')).toBeInTheDocument();
+      });
+
+      (global.fetch as jest.Mock).mockClear();
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Retry'));
+      });
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          expect.stringContaining('/resume'),
+          expect.objectContaining({ method: 'POST' }),
+        );
+      });
+    });
+
+    it('[P0] onerror does not override "timeout" state — Retry button remains visible', async () => {
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_TIMEOUT', { reason: 'mid-session' });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Your session expired due to inactivity.')).toBeInTheDocument();
+      });
+
+      const es = MockEventSource.instances[0];
+      await act(async () => {
+        if (es.onerror) es.onerror(new Event('error'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Your session expired due to inactivity.')).toBeInTheDocument();
+        expect(screen.getByText('Retry')).toBeInTheDocument();
+      });
+    });
+
+    it('[P0] onerror does not override "reconnecting" state — Reconnecting label remains visible', async () => {
+      await act(async () => {
+        render(
+          <ConversationPane
+            boundaryJwt="test-jwt"
+            apiUrl="http://localhost:3001"
+            initialConversationId="conv-resume-1"
+          />,
+        );
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Reconnecting…')).toBeInTheDocument();
+      });
+
+      const es = MockEventSource.instances[0];
+      await act(async () => {
+        if (es.onerror) es.onerror(new Event('error'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Reconnecting…')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('[P0] Story 3.11 — conversation limit reached (AC: 2)', () => {
+    const LIMIT_REACHED_BODY = {
+      code: 'CONVERSATION_LIMIT_REACHED',
+      message: "You've reached the limit of 10 active conversations. Return to one of your existing conversations, or try again later.",
+      meta: { limit: 10 },
+    };
+
+    it('[P0] shows the "limit reached" blocking message', async () => {
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/conversations') && !url.includes('/turns') && !url.includes('/skills') && !url.includes('/events')) {
+          return Promise.resolve({
+            ok: false,
+            status: 409,
+            json: async () => LIMIT_REACHED_BODY,
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/reached the limit of 10 active conversations/i)).toBeInTheDocument();
+      });
+    });
+
+    it('[P0] chat input is hidden when limit reached', async () => {
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/conversations') && !url.includes('/turns') && !url.includes('/skills') && !url.includes('/events')) {
+          return Promise.resolve({
+            ok: false,
+            status: 409,
+            json: async () => LIMIT_REACHED_BODY,
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/reached the limit/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByLabelText('Message input')).not.toBeInTheDocument();
+    });
+
+    it('[P0] no Retry button in limit-reached state', async () => {
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/conversations') && !url.includes('/turns') && !url.includes('/skills') && !url.includes('/events')) {
+          return Promise.resolve({
+            ok: false,
+            status: 409,
+            json: async () => LIMIT_REACHED_BODY,
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/reached the limit/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+
+    it('[P0] non-409 error still shows generic error + Retry', async () => {
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/conversations') && !url.includes('/turns') && !url.includes('/skills') && !url.includes('/events')) {
+          return Promise.resolve({
+            ok: false,
+            status: 500,
+            json: async () => ({ code: 'INTERNAL_ERROR', message: 'Something went wrong' }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Failed to create conversation/i)).toBeInTheDocument();
+      });
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    });
+  });
+
+  describe('[P0] Story 3.11 — retry cancels in-flight provisioning (AC: 4)', () => {
+    it('[P0] handleRetry calls DELETE on the old conversation before minting new', async () => {
+      let postCount = 0;
+      (global.fetch as jest.Mock).mockImplementation((url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        if (url.includes('/api/conversations') && method === 'POST') {
+          postCount++;
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ id: 'conv-retry-1' }),
+          });
+        }
+        if (url.includes('/api/conversations/') && method === 'DELETE') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ conversationId: 'conv-retry-1', abandoned: true }),
+          });
+        }
+        if (url.includes('/skills')) {
+          return Promise.resolve({ ok: true, json: async () => [] });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+
+      await waitFor(() => {
+        expect(MockEventSource.instances).toHaveLength(1);
+      });
+
+      await act(async () => {
+        MockEventSource.emit('SESSION_TIMEOUT', {});
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        screen.getByRole('button', { name: 'Retry' }).click();
+      });
+
+      const calls = (global.fetch as jest.Mock).mock.calls;
+      const deleteCallIndex = calls.findIndex(
+        (c: [string, RequestInit?]) => c[1]?.method === 'DELETE',
+      );
+      const secondPostIndex = calls.findIndex(
+        (c: [string, RequestInit?], i: number) => i > deleteCallIndex && c[1]?.method === 'POST',
+      );
+      expect(deleteCallIndex).toBeGreaterThan(-1);
+      expect(secondPostIndex).toBeGreaterThan(deleteCallIndex);
+    });
+
+    it('[P0] handleRetry does NOT call DELETE when initialConversationId is defined', async () => {
+      await act(async () => {
+        render(
+          <ConversationPane
+            boundaryJwt="test-jwt"
+            apiUrl="http://localhost:3001"
+            initialConversationId="conv-existing"
+          />,
+        );
+      });
+
+      await act(async () => {
+        MockEventSource.emit('SESSION_TIMEOUT', {});
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        screen.getByRole('button', { name: 'Retry' }).click();
+      });
+
+      const calls = (global.fetch as jest.Mock).mock.calls;
+      const hasDelete = calls.some(
+        (c: [string, RequestInit?]) => c[1]?.method === 'DELETE',
+      );
+      expect(hasDelete).toBe(false);
+    });
+
+    it('[P0] handleRetry does NOT call DELETE when conversationIdRef is null (POST never succeeded)', async () => {
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/conversations') && !url.includes('/turns') && !url.includes('/skills') && !url.includes('/events')) {
+          return Promise.reject(new Error('Network error'));
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(30000);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        screen.getByRole('button', { name: 'Retry' }).click();
+      });
+
+      const calls = (global.fetch as jest.Mock).mock.calls;
+      const hasDelete = calls.some(
+        (c: [string, RequestInit?]) => c[1]?.method === 'DELETE',
+      );
+      expect(hasDelete).toBe(false);
     });
   });
 });
