@@ -9,6 +9,7 @@ import { AppModule } from './app/app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix, {
     exclude: [{ path: 'health', method: RequestMethod.GET }],

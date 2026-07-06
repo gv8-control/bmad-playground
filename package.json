@@ -16,6 +16,7 @@
     "rotate-kek": "dotenv -e .env -- ts-node --transpile-only scripts/rotate-kek.ts"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "0.110.0",
     "@eslint/js": "^9.8.0",
     "@faker-js/faker": "^10.5.0",
     "@nestjs/schematics": "^11.0.0",
@@ -69,8 +70,13 @@
     "webpack-dev-server": "^5.2.1"
   },
   "dependencies": {
+    "@ag-ui/client": "0.0.55",
+    "@ag-ui/core": "0.0.57",
+    "@anthropic-ai/claude-agent-sdk": "0.3.177",
     "@auth/core": "0.41.2",
+    "@daytonaio/sdk": "0.187.0",
     "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@prisma/adapter-pg": "7.8.0",
@@ -81,6 +87,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.20.0",
+    "nestjs-zod": "^5.4.0",
     "next": "~16.1.6",
     "next-auth": "5.0.0-beta.31",
     "pg": "^8.21.0",

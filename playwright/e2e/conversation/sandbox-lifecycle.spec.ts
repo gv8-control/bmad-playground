@@ -1,100 +1,246 @@
-import { test, expect } from '../../support/merged-fixtures';
-import { ConversationPage } from '../../support/page-objects/conversation-page';
+import { test, expect, type Page } from '../../support/merged-fixtures';
 
 /**
- * P0-003 / P0-004: Sandbox provisioning and SSE streaming.
+ * Story 3.1: Provision a Sandbox When Opening a Conversation
  *
- * NFR-P2: Chat ready ≤ 10s from page open (SESSION_READY received).
- * NFR-P1: First streamed token ≤ 1,500ms from send.
+ * E2E tests for the New Conversation page session-start lifecycle.
+ * Covers AC-1 (provisioning on page open), AC-2 (queued first message),
+ * and AC-5 (client-side session-start timeout / retry affordance).
+ *
+ * The browser calls agent-be directly (POST /api/conversations + SSE).
+ * Both `fetch` and `EventSource` are mocked from the page so the tests
+ * exercise the real ConversationPane state machine without a live
+ * Daytona provision or a real GitHub repo. agent-be still starts (via
+ * the playwright webServer block) so the page's boundary-JWT mint path
+ * runs against the real AUTH_SECRET, but no browser request reaches it.
+ *
+ * Selectors follow the selector-resilience hierarchy:
+ * getByRole > getByText > getByLabel (no CSS classes or XPath).
+ *
+ * Priority tags: P0 for AC coverage, P1 for edge cases.
  */
-test.describe('Sandbox lifecycle and SSE streaming', () => {
-  test('SESSION_READY arrives within 10 seconds of page open', async ({ page }) => {
-    const repoUrl = process.env.TEST_GITHUB_REPO_URL;
-    if (!repoUrl) test.skip(true, 'TEST_GITHUB_REPO_URL not set');
 
-    await page.goto('/dashboard');
-    await page.getByTestId('new-conversation-button').click();
-    await page.getByTestId('repository-url-input').fill(repoUrl!);
-    await page.getByTestId('start-conversation-button').click();
+const CONVERSATION_ID = 'conv-e2e-1';
 
-    const conversation = new ConversationPage(page);
+interface FetchCall {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+}
 
-    const start = Date.now();
-    await conversation.waitForSessionReady(10_000);
-    const elapsed = Date.now() - start;
+interface MockHandle {
+  waitForEventSource: () => Promise<void>;
+  emit: (type: string, data?: unknown) => Promise<void>;
+  eventSourceUrl: () => Promise<string | null>;
+  fetchCalls: () => Promise<FetchCall[]>;
+  waitForFetchCount: (count: number) => Promise<void>;
+}
 
-    expect(elapsed).toBeLessThan(10_000); // NFR-P2
+async function setupConversationMocks(page: Page): Promise<MockHandle> {
+  await page.addInitScript((conversationId) => {
+    class MockEventSource {
+      url: string;
+      readyState = 0;
+      onerror: ((event: Event) => void) | null = null;
+      private readonly listeners: Record<string, Array<(event: { data: string }) => void>> = {};
+
+      constructor(url: string) {
+        this.url = url;
+        (window as unknown as Record<string, unknown>).__mockEventSource = this;
+      }
+
+      addEventListener(type: string, handler: (event: { data: string }) => void): void {
+        (this.listeners[type] = this.listeners[type] || []).push(handler);
+      }
+
+      removeEventListener(): void {
+        // no-op for test mock
+      }
+
+      close(): void {
+        this.readyState = 2;
+      }
+
+      __emit(type: string, data: unknown): void {
+        const event = { data: typeof data === 'string' ? data : JSON.stringify(data) };
+        (this.listeners[type] || []).forEach((handler) => handler(event));
+      }
+    }
+
+    (window as unknown as Record<string, unknown>).EventSource = MockEventSource;
+
+    const w = window as unknown as Record<string, unknown>;
+    if (!w.__mockFetchInstalled) {
+      w.__mockFetchInstalled = true;
+      const originalFetch = window.fetch.bind(window);
+      w.__mockFetchCalls = [] as FetchCall[];
+      w.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = init?.method ?? 'GET';
+        const rawHeaders = (init?.headers as Record<string, string>) ?? {};
+        const headers: Record<string, string> = {};
+        for (const k of Object.keys(rawHeaders)) headers[k.toLowerCase()] = rawHeaders[k];
+        (w.__mockFetchCalls as FetchCall[]).push({ url, method, headers });
+        if (url.includes('/api/conversations') && method === 'POST') {
+          return new Response(JSON.stringify({ id: conversationId }), {
+            status: 201,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return originalFetch(input as RequestInfo, init);
+      };
+    }
+  }, CONVERSATION_ID);
+
+  return {
+    waitForEventSource: () =>
+      page
+        .waitForFunction(() => (window as unknown as Record<string, unknown>).__mockEventSource != null)
+        .then(() => undefined),
+    emit: (type: string, data: unknown = {}) =>
+      page.evaluate(
+        ({ type, data }) => {
+          const es = (window as unknown as Record<string, unknown>).__mockEventSource as
+            | { __emit: (type: string, data: unknown) => void }
+            | undefined;
+          es?.__emit(type, data);
+        },
+        { type, data },
+      ),
+    eventSourceUrl: () =>
+      page.evaluate(() => {
+        const es = (window as unknown as Record<string, unknown>).__mockEventSource as { url: string } | undefined;
+        return es?.url ?? null;
+      }),
+    fetchCalls: () =>
+      page.evaluate(() => {
+        const calls = (window as unknown as Record<string, unknown>).__mockFetchCalls as FetchCall[];
+        return calls ?? [];
+      }),
+    waitForFetchCount: (count: number) =>
+      page
+        .waitForFunction(
+          (n) => ((window as unknown as Record<string, unknown>).__mockFetchCalls as FetchCall[] | undefined)?.length ?? 0 >= n,
+          count,
+        )
+        .then(() => undefined),
+  };
+}
+
+test.describe('Story 3.1: Sandbox provisioning lifecycle', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  test('[P0] New Conversation page renders heading, intro prompt, and active input during provisioning (AC-1)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupConversationMocks(page);
+    await page.goto('/conversations/new');
+    await mocks.waitForEventSource();
+
+    await expect(page.getByRole('heading', { name: 'New Conversation' })).toBeVisible();
+    await expect(page.getByText(/browse available skills/)).toBeVisible();
+
+    const input = page.getByRole('textbox', { name: 'Message input' });
+    await expect(input).toBeVisible();
+    await expect(input).toBeEnabled();
   });
 
-  test('first token streams within 1,500ms of send', async ({ page, interceptNetworkCall }) => {
-    const repoUrl = process.env.TEST_GITHUB_REPO_URL;
-    if (!repoUrl) test.skip(true, 'TEST_GITHUB_REPO_URL not set');
+  test('[P0] browser POSTs to /api/conversations with Bearer boundary JWT on mount (AC-1)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupConversationMocks(page);
+    await page.goto('/conversations/new');
+    await mocks.waitForEventSource();
 
-    await page.goto('/dashboard');
-    await page.getByTestId('new-conversation-button').click();
-    await page.getByTestId('repository-url-input').fill(repoUrl!);
-    await page.getByTestId('start-conversation-button').click();
-
-    const conversation = new ConversationPage(page);
-    await conversation.waitForSessionReady(10_000);
-
-    const sendTimestamp = Date.now();
-    await conversation.sendMessage('List the files in this repository.');
-
-    await conversation.waitForFirstToken(1_500); // NFR-P1
-    const ttft = Date.now() - sendTimestamp;
-    expect(ttft).toBeLessThan(1_500);
+    const calls = await mocks.fetchCalls();
+    const post = calls.find((c) => c.method === 'POST' && c.url.includes('/api/conversations'));
+    expect(post).toBeDefined();
+    expect(post?.url).toMatch(/\/api\/conversations$/);
+    expect(post?.headers.authorization).toMatch(/^Bearer .+/);
   });
 
-  test('tool pills appear for git operations during streaming', async ({ page }) => {
-    const repoUrl = process.env.TEST_GITHUB_REPO_URL;
-    if (!repoUrl) test.skip(true, 'TEST_GITHUB_REPO_URL not set');
+  test('[P0] opens EventSource to the conversations events URL with token query param (AC-1)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupConversationMocks(page);
+    await page.goto('/conversations/new');
+    await mocks.waitForEventSource();
 
-    await page.goto('/dashboard');
-    await page.getByTestId('new-conversation-button').click();
-    await page.getByTestId('repository-url-input').fill(repoUrl!);
-    await page.getByTestId('start-conversation-button').click();
-
-    const conversation = new ConversationPage(page);
-    await conversation.waitForSessionReady(10_000);
-    await conversation.sendMessage('Show me the git log for this repository.');
-    await conversation.waitForStreamComplete(60_000);
-
-    await expect(conversation.toolPills.first()).toBeVisible();
+    const url = (await mocks.eventSourceUrl()) ?? '';
+    expect(url).toContain(`/api/conversations/${CONVERSATION_ID}/events`);
+    expect(url).toMatch(/[?&]token=.+/);
   });
 
-  test('working tree indicator transitions to dirty after agent writes', async ({ page }) => {
-    const repoUrl = process.env.TEST_GITHUB_REPO_URL;
-    if (!repoUrl) test.skip(true, 'TEST_GITHUB_REPO_URL not set');
+  test('[P0] message submitted during provisioning shows spinner, then clears after SESSION_READY (AC-2)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupConversationMocks(page);
+    await page.goto('/conversations/new');
+    await mocks.waitForEventSource();
 
-    await page.goto('/dashboard');
-    await page.getByTestId('new-conversation-button').click();
-    await page.getByTestId('repository-url-input').fill(repoUrl!);
-    await page.getByTestId('start-conversation-button').click();
+    await expect(page.getByText(/Starting session/)).toHaveCount(0);
 
-    const conversation = new ConversationPage(page);
-    await conversation.waitForSessionReady(10_000);
-    await conversation.sendMessage('Create a file called test-artifact.md with "hello" as content.');
-    await conversation.waitForStreamComplete(60_000);
+    const input = page.getByRole('textbox', { name: 'Message input' });
+    await input.fill('hello world');
+    await page.getByRole('button', { name: 'Send' }).click();
 
-    expect(await conversation.workingTreeState()).toBe('dirty');
+    await expect(page.getByText(/Starting session/)).toBeVisible();
+
+    await mocks.emit('SESSION_READY', { sandboxId: 'sb-1' });
+
+    await expect(page.getByText(/Starting session/)).toHaveCount(0);
+    await expect(input).toBeEnabled();
   });
 
-  test('manual commit succeeds and working tree returns to clean', async ({ page }) => {
-    const repoUrl = process.env.TEST_GITHUB_REPO_URL;
-    if (!repoUrl) test.skip(true, 'TEST_GITHUB_REPO_URL not set');
+  test('[P0] SESSION_ERROR event displays the error message to the user (AC-5)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupConversationMocks(page);
+    await page.goto('/conversations/new');
+    await mocks.waitForEventSource();
 
-    await page.goto('/dashboard');
-    await page.getByTestId('new-conversation-button').click();
-    await page.getByTestId('repository-url-input').fill(repoUrl!);
-    await page.getByTestId('start-conversation-button').click();
+    await mocks.emit('SESSION_ERROR', { message: 'Daytona provisioning failed' });
 
-    const conversation = new ConversationPage(page);
-    await conversation.waitForSessionReady(10_000);
-    await conversation.sendMessage('Create a file called commit-test.md with "commit me" as content.');
-    await conversation.waitForStreamComplete(60_000);
+    await expect(page.getByText('Daytona provisioning failed')).toBeVisible();
+  });
 
-    await conversation.triggerManualCommit(); // NFR-P5: ≤ 5s
-    expect(await conversation.workingTreeState()).toBe('clean');
+  test('[P0] SESSION_TIMEOUT event shows "taking longer" message and Retry button (AC-5)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupConversationMocks(page);
+    await page.goto('/conversations/new');
+    await mocks.waitForEventSource();
+
+    await mocks.emit('SESSION_TIMEOUT');
+
+    await expect(page.getByText(/taking longer than expected/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+  });
+
+  test('[P1] clicking Retry re-attempts session start (AC-5)', async ({
+    page,
+    withRepoConnection,
+  }) => {
+    const mocks = await setupConversationMocks(page);
+    await page.goto('/conversations/new');
+    await mocks.waitForEventSource();
+
+    await mocks.emit('SESSION_TIMEOUT');
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Retry' }).click();
+
+    await mocks.waitForFetchCount(2);
+
+    const calls = await mocks.fetchCalls();
+    const posts = calls.filter((c) => c.method === 'POST');
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.headers.authorization).toMatch(/^Bearer .+/);
   });
 });

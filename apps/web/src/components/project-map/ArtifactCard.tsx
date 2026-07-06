@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { MouseEvent } from 'react';
 import type { ArtifactType, ArtifactStatus } from '@bmad-easy/shared-types';
 import { cn } from '@/lib/utils';
 
@@ -34,9 +35,10 @@ export interface ArtifactCardProps {
   title: string;
   status: ArtifactStatus;
   href: string;
+  onClick?: (e: MouseEvent<HTMLAnchorElement>) => void;
 }
 
-export function ArtifactCard({ type, title, status, href }: ArtifactCardProps) {
+export function ArtifactCard({ type, title, status, href, onClick }: ArtifactCardProps) {
   const typeLabel = TYPE_LABELS[type] ?? 'Other';
   const statusLabel = STATUS_LABELS[status] ?? 'Completed';
 
@@ -44,6 +46,7 @@ export function ArtifactCard({ type, title, status, href }: ArtifactCardProps) {
     <Link
       href={href}
       role="listitem"
+      onClick={onClick}
       aria-label={`${typeLabel}: ${title} — ${statusLabel}`}
       className={cn(
         'bg-surface-raised border border-border rounded-lg p-3 px-4 flex items-center justify-between max-w-[720px]',

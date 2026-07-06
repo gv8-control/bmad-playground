@@ -49,9 +49,9 @@ jest.mock('@/actions/artifacts.actions', () => ({
   syncArtifactsAction: (...args: unknown[]) => mockSyncArtifactsAction(...args),
 }));
 
-jest.mock('@/components/project-map/ArtifactCard', () => ({
-  ArtifactCard: ({ title, type, status, href }: { title: string; type: string; status: string; href: string }) =>
-    `ArtifactCard:${type}:${title}:${status}:${href}`,
+jest.mock('@/components/project-map/ProjectMapArtifacts', () => ({
+  ProjectMapArtifacts: ({ artifacts }: { artifacts: { id: string; type: string; title: string; status: string; href: string }[] }) =>
+    `ProjectMapArtifacts:${artifacts.map((a) => `${a.type}:${a.title}:${a.status}:${a.href}`).join('|')}`,
 }));
 
 jest.mock('@/components/project-map/CredentialErrorBanner', () => ({
@@ -272,17 +272,14 @@ describe('ProjectMapPage — page structure (AC-1, UX-DR16)', () => {
   });
 });
 
-describe('ProjectMapPage — artifact card href (AC-1, AC-2, Story 2.6)', () => {
+describe('ProjectMapPage — artifact data passed to ProjectMapArtifacts (AC-1, AC-2, Story 2.6)', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('[P0] passes href={`/artifacts?id=${a.id}`} to each ArtifactCard', async () => {
+  it('[P0] passes href={`/artifacts?id=${a.id}`} for each artifact to ProjectMapArtifacts', async () => {
     setupArtifacts(ARTIFACTS);
     const html = await renderPage();
     expect(html).toContain(
-      'ArtifactCard:prd:bmad-easy PRD:completed:/artifacts?id=art_1',
-    );
-    expect(html).toContain(
-      'ArtifactCard:architecture:System Architecture:in-progress:/artifacts?id=art_2',
+      'ProjectMapArtifacts:prd:bmad-easy PRD:completed:/artifacts?id=art_1|architecture:System Architecture:in-progress:/artifacts?id=art_2',
     );
   });
 });

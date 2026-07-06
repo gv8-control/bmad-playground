@@ -3,10 +3,10 @@ import { auth } from '@/lib/auth';
 import { getPrisma } from '@/lib/prisma';
 import { getCredentialHealthStatus } from '@/actions/credential-health.actions';
 import { syncArtifactsAction } from '@/actions/artifacts.actions';
-import { ArtifactCard } from '@/components/project-map/ArtifactCard';
+import { ProjectMapArtifacts } from '@/components/project-map/ProjectMapArtifacts';
 import { CredentialErrorBanner } from '@/components/project-map/CredentialErrorBanner';
 import { RefreshButton } from '@/components/project-map/RefreshButton';
-import type { ArtifactType, ArtifactStatus } from '@bmad-easy/shared-types';
+import type { ArtifactType } from '@bmad-easy/shared-types';
 
 export default async function ProjectMapPage() {
   const session = await auth();
@@ -17,6 +17,7 @@ export default async function ProjectMapPage() {
 
   const repoConnection = await getPrisma().repoConnection.findUnique({
     where: { userId: session.userId },
+    select: { id: true },
   });
 
   if (!repoConnection) {
@@ -77,17 +78,15 @@ export default async function ProjectMapPage() {
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3" role="list">
-            {renderArtifacts.map((a) => (
-              <ArtifactCard
-                key={a.id}
-                type={a.type as ArtifactType}
-                title={a.title}
-                status={a.status as ArtifactStatus}
-                href={`/artifacts?id=${a.id}`}
-              />
-            ))}
-          </div>
+          <ProjectMapArtifacts
+            artifacts={renderArtifacts.map((a) => ({
+              id: a.id,
+              type: a.type as ArtifactType,
+              title: a.title,
+              status: a.status,
+              href: `/artifacts?id=${a.id}`,
+            }))}
+          />
         )}
       </div>
     </div>

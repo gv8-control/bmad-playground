@@ -1,16 +1,6 @@
 # n8n Knowledge Base
 
-Preloaded so you don't have to rediscover the API shape or node behavior from scratch on every run. Treat version-sensitive details as best-effort — the fetch script degrades gracefully when a field it expects isn't there; degrade the same way rather than asserting facts this document can't back up.
-
-## REST API
-
-- Base URL: `N8N_BASE_URL` env var, default `http://localhost:5678`.
-- Auth: header `X-N8N-API-KEY: <key>`. Keys are created manually in the n8n UI (Settings → n8n API → Create an API key) — there is no self-service creation endpoint. `N8N_API_KEY` env var holds it.
-- `GET /api/v1/executions/{id}?includeData=true` — one execution, full run data.
-- `GET /api/v1/executions?workflowId=&status=&limit=` — list/filter executions (`status`: `success` | `error` | `waiting` | ...).
-- `GET /api/v1/workflows/{id}` — workflow definition: nodes, connections, settings, active flag.
-- `GET /api/v1/workflows?active=&tags=` — list/filter workflows.
-- 401 = missing/invalid API key. 404 = ID doesn't exist or isn't visible to the key's owner/project.
+Preloaded so you don't have to rediscover the data shape or node behavior from scratch on every run. Treat version-sensitive details as best-effort — degrade gracefully when a field you expect isn't there rather than asserting facts this document can't back up.
 
 ## Execution Data Shape
 
@@ -18,7 +8,7 @@ Preloaded so you don't have to rediscover the API shape or node behavior from sc
 - `data.resultData.runData[nodeName]` — an array of run attempts for that node (loops and retries produce more than one entry). Each entry carries `startTime`, `executionTime` (ms), `executionStatus` (`success` | `error`), `error` (message/description), `data.main[][]` (arrays of `{json, binary}` items — the node's actual input/output payload), `source` (which upstream node/output-index fed it).
 - `data.resultData.error` — a top-level error when the whole execution stopped outside any single node's own handling.
 - `data.resultData.lastNodeExecuted` — the last node touched before the run stopped.
-- Sub-execution linkage (Execute Workflow calls): a run-data entry for the calling node may carry a reference to the child execution's ID. The exact field name has moved around across n8n versions — the fetch script searches a few likely spots and flags in its `warnings` array when it can't find one, rather than guessing.
+- Sub-execution linkage (Execute Workflow calls): a run-data entry for the calling node may carry a reference to the child execution's ID. The exact field name has moved around across n8n versions — check a few likely spots (`metadata.subExecution`, a direct `subExecution` key on the entry) and flag when you can't find one rather than guessing.
 
 ## Common Node Types & What Typically Goes Wrong
 

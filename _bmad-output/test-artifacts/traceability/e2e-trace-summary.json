@@ -1,16 +1,16 @@
 {
   "schema_version": "0.1.0",
-  "snapshot_at": "2026-07-02T00:00:00.000Z",
+  "snapshot_at": "2026-07-04T14:35:00.000Z",
   "repo": "bmad-easy",
   "collection_mode": "sequential",
   "collection_status": "COLLECTED",
   "inventory_basis": "acceptance_criteria",
   "gate_basis": "priority_thresholds",
-  "source_sha": "a6cad47a5900827f81c90785e586121dffe70f3e",
+  "source_sha": "d357b97be3d7eef62d701ad96b5c264fa16a5a78",
   "target": {
     "type": "system",
-    "id": "bmad-easy-epic-1",
-    "label": "Epic 1: Authentication & Repository Connection (done)"
+    "id": null,
+    "label": "bmad-easy (Epics 1-3, implemented stories)"
   },
   "decision_mode": "deterministic",
   "evaluator": "Marius",
@@ -20,38 +20,51 @@
     "confidence": "high",
     "sources": [
       "_bmad-output/planning-artifacts/epics.md",
+      "_bmad-output/implementation-artifacts/sprint-status.yaml",
       "_bmad-output/test-artifacts/test-design-architecture.md",
       "_bmad-output/test-artifacts/test-design-qa.md",
-      "_bmad-output/implementation-artifacts/sprint-status.yaml",
       "_bmad-output/project-context.md"
     ],
     "external_pointer_status": "not_used",
     "synthetic": false
   },
+  "gate_status": "FAIL",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "97%",
+    "p0_status": "NOT_MET",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "94%",
+    "p1_status": "MET",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "91%",
+    "overall_status": "MET"
+  },
   "coverage": {
     "inventory": {
-      "covered": 27,
-      "total": 31,
-      "pct": 87
+      "covered": 64,
+      "total": 70,
+      "pct": 91
     },
     "priority_breakdown": {
-      "P0": { "total": 10, "covered": 10, "pct": 100 },
-      "P1": { "total": 15, "covered": 13, "pct": 87 },
-      "P2": { "total": 4, "covered": 3, "pct": 75 },
+      "P0": { "total": 29, "covered": 28, "pct": 97 },
+      "P1": { "total": 34, "covered": 32, "pct": 94 },
+      "P2": { "total": 5, "covered": 3, "pct": 60 },
       "P3": { "total": 2, "covered": 1, "pct": 50 }
     },
     "by_level": {
-      "e2e": { "tests": 73, "criteria_covered": 20 },
-      "api": { "tests": 3, "criteria_covered": 3 },
-      "component": { "tests": 9, "criteria_covered": 15 },
-      "unit": { "tests": 311, "criteria_covered": 25 },
+      "e2e": { "tests": 133, "criteria_covered": 40 },
+      "api": { "tests": 4, "criteria_covered": 4 },
+      "component": { "tests": 29, "criteria_covered": 35 },
+      "unit": { "tests": 22, "criteria_covered": 45 },
       "other": { "tests": 0, "criteria_covered": 0 }
     }
   },
   "tests": {
-    "files": 34,
-    "cases": 393,
-    "skipped_cases": 8,
+    "files": 71,
+    "cases": 738,
+    "skipped_cases": 5,
     "fixme_cases": 0,
     "pending_cases": 0
   },
@@ -69,38 +82,47 @@
     "ui_state_status": "not_applicable"
   },
   "blockers": [
-    { "id": "sandbox-lifecycle.spec.ts:13", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
-    { "id": "sandbox-lifecycle.spec.ts:31", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
-    { "id": "sandbox-lifecycle.spec.ts:51", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
-    { "id": "sandbox-lifecycle.spec.ts:68", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
-    { "id": "sandbox-lifecycle.spec.ts:85", "severity": "high", "reason": "TEST_GITHUB_REPO_URL not set" },
-    { "id": "sign-in.spec.ts:124", "severity": "high", "reason": "Requires real GitHub OAuth credentials" },
-    { "id": "onboarding.spec.ts:215", "severity": "high", "reason": "Requires real GitHub credentials" },
-    { "id": "onboarding.spec.ts:265", "severity": "high", "reason": "Requires real GitHub credentials" }
+    {
+      "id": "project-map-refresh.spec.ts",
+      "severity": "high",
+      "reason": "All 5 E2E tests use test.skip() — never activated after implementation. Story 2.3 IS done.",
+      "test_file": "playwright/e2e/project-map/project-map-refresh.spec.ts",
+      "test_title": "All refresh E2E tests"
+    },
+    {
+      "id": "e2e-test-failures",
+      "severity": "high",
+      "reason": "25 E2E tests failing (environmental: stale auth state, seed API 500 errors). Unit/integration all pass (605/605).",
+      "test_file": "multiple",
+      "test_title": "25 E2E failures across sign-in, onboarding, project-map, artifact-browser, conversation"
+    }
   ],
   "recommendations": [
-    { "priority": "MEDIUM", "action": "Complete coverage for 2 partially covered requirements", "requirements": ["1.6-AC3", "1.8-AC4"] },
-    { "priority": "MEDIUM", "action": "Add error/edge scenario tests for 1 happy-path-only criterion", "requirements": ["1.6-AC3"] },
-    { "priority": "MEDIUM", "action": "Add state coverage for 1 UI journey", "requirements": ["1.8-AC4"] },
-    { "priority": "LOW", "action": "Run /bmad:tea:test-review to assess test quality", "requirements": [] }
+    {
+      "priority": "URGENT",
+      "action": "Remove test.skip() markers from project-map-refresh.spec.ts — Story 2.3 is done but all 5 E2E tests are skipped. This is the sole P0 gap blocking the gate.",
+      "requirements": ["2.3-AC1"]
+    },
+    {
+      "priority": "HIGH",
+      "action": "Investigate 25 E2E test failures (environmental: stale auth state, seed API 500 errors)",
+      "requirements": []
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Complete coverage for 4 partially covered requirements (1.6-AC3, 1.8-AC4, 2.3-AC1, 3.3-AC5)",
+      "requirements": ["1.6-AC3", "1.8-AC4", "2.3-AC1", "3.3-AC5"]
+    },
+    {
+      "priority": "LOW",
+      "action": "Run /bmad:tea:test-review to assess test quality",
+      "requirements": []
+    }
   ],
   "links": {
     "trace_report_path": "_bmad-output/test-artifacts/traceability-matrix.md",
     "trace_report_url": "",
     "artifact_url": "",
     "journey_evidence_url": ""
-  },
-  "gate_status": "CONCERNS",
-  "gate_criteria": {
-    "p0_coverage_required": "100%",
-    "p0_coverage_actual": "100%",
-    "p0_status": "MET",
-    "p1_coverage_target": "90%",
-    "p1_coverage_minimum": "80%",
-    "p1_coverage_actual": "87%",
-    "p1_status": "PARTIAL",
-    "overall_coverage_minimum": "80%",
-    "overall_coverage_actual": "87%",
-    "overall_status": "MET"
   }
 }

@@ -43,9 +43,11 @@
       "stage": "pre-implementation",
       "skill": "bmad-testarch-atdd",
       "agent": "coder",
-      "prompt": "prepare tests",
+      "prompt": "prepare tests. Before deferring E2E coverage for a story, verify whether existing browser-level mock patterns could simulate the scenario without real external dependencies — only defer E2E if no mock approach can cover the acceptance criteria, and record the verification in the ATDD checklist.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-05T08:14:39.210Z",
+      "updatedByRun": "3.7-a1-20260704T225804"
     },
     {
       "id": "validate-story-2",
@@ -63,11 +65,11 @@
       "stage": "implement",
       "skill": "bmad-dev-story",
       "agent": "coder",
-      "prompt": "develop story autonomously, completing every task listed in the story spec before finishing. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
+      "prompt": "develop story autonomously, completing every task listed in the story spec before finishing. As each task makes a skipped test pass, remove its skip marker — a skipped test provides zero signal. The story is not complete while skipped tests remain for tasks that are done. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-03T15:32:49.310Z",
-      "updatedByRun": "2.3-a1-20260703T092056"
+      "updatedAt": "2026-07-04T20:35:58.909Z",
+      "updatedByRun": "manual-20260704T203558"
     },
     {
       "id": "unit-tests",
@@ -75,9 +77,11 @@
       "stage": "test-generation",
       "skill": "bmad-testarch-automate",
       "agent": "coder",
-      "prompt": "Autonomously evaluate (Validate) if the Story is sufficiently covered. If needed, expand coverage (Create/Resume).",
+      "prompt": "Autonomously evaluate (Validate) if the Story is sufficiently covered; if needed, expand coverage (Create/Resume) by generating new tests — use Create mode only to generate missing coverage, not to modify existing tests you did not generate this run. Treat any skipped or disabled test as a coverage failure — a skipped test provides zero coverage. For each skipped test: un-skip and run it. If it passes, keep it un-skipped. If it fails, attempt to heal test-quality issues (selector, timing, mocking, data); if unfixable, mark it as expected-to-fail with a detailed comment, and record the failure and reason in the story file. Do not edit production code. When a decision arises, apply _bmad-output/decision-policy.md: if a rule covers it, decide, record the decision and rule ID in the story file, and continue. HALT only for decisions the policy does not cover.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-04T20:35:58.909Z",
+      "updatedByRun": "manual-20260704T203558"
     },
     {
       "id": "e2e-tests",
@@ -105,9 +109,11 @@
       "stage": "review",
       "skill": "bmad-testarch-test-review",
       "agent": "planner",
-      "prompt": "Review tests",
+      "prompt": "Review tests. Treat any skipped test related to the story as a test-quality failure — flag it for un-skipping or removal with a recorded reason. Also resolve stale transitional markers in test files: any comment or header that claims tests are skipped, disabled, or in a red phase when the tests are actually active must be updated to reflect the current state — fix these directly, do not just flag them.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-05T08:14:39.210Z",
+      "updatedByRun": "3.7-a1-20260704T225804"
     },
     {
       "id": "review-nfrs",

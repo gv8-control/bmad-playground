@@ -2,7 +2,7 @@
 title: "EXPERIENCE: bmad-easy"
 status: final
 created: 2026-06-15
-updated: 2026-07-02
+updated: 2026-07-04
 sources:
   - _bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md
   - _bmad-output/planning-artifacts/briefs/brief-bmad-easy-2026-06-12/brief.md
@@ -160,6 +160,7 @@ Displayed in the chat input area, left-aligned below the textarea. Two states:
 - Color: `{colors.caution}`
 - Background pill: `{colors.caution-bg}`
 - Interactive: clicking opens a confirmation tooltip with a "Save" button
+- A separate small "ⓘ" info affordance sits beside the label, dirty state only. It is its own focusable element (Tab reaches it independently of the indicator label), `aria-label="Why does this matter?"`. Activating it (click, Enter, or Space) shows a tooltip/popover: "Unsaved changes are lost if you close this page or your session restarts. Saving commits them permanently to your repository." This is deliberately a separate interactive target from the label, not a hover-only tooltip on the label itself — a hover-only affordance would be unreachable by keyboard, and Enter/Space on the label must always open the Save confirmation, never the info text.
 
 **Clean (no uncommitted changes):**
 - Label: `✓ All saved`
@@ -236,13 +237,16 @@ Entry point: "New Conversation" button in side nav, or at `/conversations/new`.
 | Conversation limit reached | User already has 10 active Conversations — the per-user maximum (FR-11's "session limit reached" message, phrased in platform vocabulary) | "You've reached the limit of 10 active conversations. Return to one of your existing conversations, or try again later." No upgrade action — this limit applies to every plan. |
 | Seat limit exceeded | User's team has exceeded its Seat allocation (FR-9) | "Your team has used all of its seats. Upgrade your plan to start new conversations." with an upgrade prompt. The upgrade action's destination is post-MVP billing; in MVP all users have full access (FR-19), so this state is specified but not reachable until billing ships. |
 
+**Session start timeout.** If session start-up never completes (the backend's `SESSION_READY` signal never arrives) within a client-side timeout — distinct from the server-side idle timeout that tears down an unused Sandbox — the spinner and "Starting session…" label are replaced, in the same chat area, by: "Starting your session is taking longer than expected." with a **Retry** button. Clicking Retry re-attempts session start-up. This does not disable the side nav's New Conversation button. The same treatment applies if reconnection stalls past the equivalent timeout during Conversation Loading (Returning), below — one consistent pattern for both cases.
+
 ### Conversation Loading (Returning)
 
 When a user opens an existing Conversation from the side nav or a direct URL:
 
 1. Chat history loads immediately from platform storage.
 2. If the underlying sandbox requires re-initialization (e.g. session expired): a status label "Reconnecting…" appears in the chat input area (input disabled). The user sees full chat history during reconnection. Input re-enables when ready.
-3. Working tree indicator reflects the current git state once the session is active.
+3. If reconnection never completes within the client-side timeout: the "Reconnecting…" label and chat history give way to the same Session start timeout treatment described above ("Starting your session is taking longer than expected." with a **Retry** button) — chat history remains visible above it.
+4. Working tree indicator reflects the current git state once the session is active.
 
 ### Conversation Surface States
 
@@ -256,6 +260,7 @@ Mockup: [mockups/key-conversation.html](mockups/key-conversation.html)
 | Active / idle | Full history; input enabled; working tree indicator visible |
 | Credential failed (mid-Conversation) | The failing git operation renders as an error-state Tool Pill in the stream; simultaneously, the Credential Error Banner appears above the message panel — same component and inline re-auth flow as Project Map and Artifact Browser — in real time, without requiring navigation or a page reload. The banner clears once credentials are updated. (Banner reuse confirmed by Marius, 2026-07-02.) |
 | Access denied (mid-Conversation) | A 403 is not a credential failure (per FINDING-12) — the Credential Error Banner does NOT appear and no re-auth prompt is shown, because re-authentication resolves none of the three 403 causes. Instead the failing git operation renders as an error-state Tool Pill (same as the credential-failed state), with an Access Notice inline in the message stream directly below the failing pill. The notice copy is derived from the `ACCESS_DENIED` event's `code`: `RATE_LIMITED` → "GitHub is rate-limiting this request. Wait a moment and try again." (with a retry hint when `retryAfter` is present); `ORG_RESTRICTION` → "Your organization hasn't approved this app. Ask an org admin to grant access."; `INSUFFICIENT_PERMISSION` → "Your account doesn't have access to this resource." The raw GitHub error text remains available in the Tool Pill's expanded output. The notice is dismissible (unlike the Credential Error Banner) and does not block the input — the agent turn continues; the tool call's error result is returned to the agent, which adapts. (Event contract defined in architecture.md; parallels the credential-failed row added 2026-07-02.) |
+| Agent process terminated (circuit breaker) | Distinct from a single failed tool call (which produces only an error-state Tool Pill and lets the agent keep working, per the Tool Pills and Semantic Pills pattern): when `sandbox-agent` crashes or stalls and the backend's circuit breaker terminates the whole Claude Code agent process, the entire in-flight turn ends. A system message (platform copy, not an agent message, same visual treatment as the "Couldn't load…" error copy elsewhere) appears at the point the stream stopped: "The agent stopped unexpectedly. Send a new message to try again." Any partial streamed response already rendered stays visible above it — it is not retracted. Input re-enables (Agent Processing state returns to Idle); no automatic retry. |
 
 ### Agent Processing States
 
@@ -266,7 +271,7 @@ Mockup: [mockups/key-conversation.html](mockups/key-conversation.html)
 | Tool executing | Disabled | Visible | Inline tool execution label in stream |
 | Streaming response | Disabled | Visible | Cursor at stream position |
 
-The Stop button terminates the in-flight response and any tool execution, but does not terminate the sandbox. After Stop, state returns to Idle and the user can send a new message.
+The Stop button terminates the in-flight response and any tool execution, but does not terminate the sandbox. After Stop, state returns to Idle and the user can send a new message. An agent-process termination by the backend circuit breaker (see Conversation Surface States) returns to Idle the same way, but is not user-initiated and is announced by the system message described there rather than by the user's own Stop action.
 
 ### Project Map States
 
@@ -380,6 +385,7 @@ Behavioral accessibility baseline. Visual contrast ratios are governed by DESIGN
 - Side nav is in natural tab order before the content area.
 - Slash command picker is keyboard-navigable (arrow keys, Enter, Escape) per Interaction Primitives.
 - Dialog/modal (re-auth, save confirmation): focus traps inside while open; Escape dismisses; focus returns to the trigger on close.
+- Working Tree Indicator's info affordance (dirty state) is independently reachable by Tab, separate from the indicator label's own tab stop — Enter/Space on the label always opens Save confirmation; Enter/Space on the info affordance always opens the disclosure text.
 
 **Non-color state indicators:**
 - Unsaved working tree state: `●` icon + text label + caution color (three distinct signals — never color alone).
@@ -388,7 +394,7 @@ Behavioral accessibility baseline. Visual contrast ratios are governed by DESIGN
 
 **Live regions:**
 - The chat message stream is wrapped in `aria-live="polite"`. New messages are announced to screen readers.
-- Status messages (loading states, tool execution labels, save confirmations) use `role="status"`.
+- Status messages (loading states, tool execution labels, save confirmations, the agent-process-terminated system message) use `role="status"`.
 - The working tree indicator uses `aria-live="polite"` so state changes are announced.
 
 **Motion:**

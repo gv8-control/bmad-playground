@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-07-04T00:00:00Z
+# last_updated: 2026-07-05T00:00:00Z
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-04T00:00:00Z
+last_updated: 2026-07-05T00:00:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -67,14 +67,14 @@ development_status:
   epic-2-retrospective: optional
 
   # ── Epic 3: Conversations — Running BMAD Skills with the Agent ──
-  epic-3: backlog
-  3-1-provision-a-sandbox-when-opening-a-conversation: backlog
-  3-2-invoke-bmad-skills-via-slash-command: backlog
-  3-3-converse-with-the-streaming-agent: backlog
-  3-4-see-tool-calls-and-recognized-actions-inline: backlog
-  3-5-resume-an-existing-conversation: backlog
-  3-6-track-and-manually-save-working-tree-state: backlog
-  3-7-receive-real-time-credential-failure-alerts-mid-conversation: backlog
+  epic-3: in-progress
+  3-1-provision-a-sandbox-when-opening-a-conversation: done
+  3-2-invoke-bmad-skills-via-slash-command: done
+  3-3-converse-with-the-streaming-agent: done
+  3-4-see-tool-calls-and-recognized-actions-inline: done
+  3-5-resume-an-existing-conversation: done
+  3-6-track-and-manually-save-working-tree-state: done
+  3-7-receive-real-time-credential-failure-alerts-mid-conversation: review
   3-8-track-per-user-llm-spend: backlog
   3-9-terminate-idle-sandboxes-mid-conversation: backlog
   3-10-verify-commits-carry-the-users-own-identity: backlog

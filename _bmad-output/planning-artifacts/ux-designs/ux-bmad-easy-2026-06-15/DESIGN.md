@@ -2,7 +2,7 @@
 title: "DESIGN: bmad-easy"
 status: final
 created: 2026-06-15
-updated: 2026-07-02
+updated: 2026-07-04
 
 colors:
   # Backgrounds — elevation via lightness, no shadows
@@ -115,6 +115,9 @@ components:
     # Clean state
     clean-color:  "{colors.text-3}"
     clean-label:  "✓ All saved"
+    # Info affordance (dirty state only)
+    info-icon-color:       "{colors.text-3}"
+    info-icon-color-hover: "{colors.text-2}"
 
   avatar-circle:
     size:          "32px"
@@ -345,8 +348,8 @@ While agent is processing: **Stop** button replaces Send. Stop is outlined (bord
 
 Displayed in the chat input area, left-aligned, below the textarea.
 
-- **Dirty:** `● Unsaved changes` — `{colors.caution}` text, `caution-bg` pill background. Clickable — activates the manual save flow (confirmation → platform commit).
-- **Clean:** `✓ All saved` — `{colors.text-3}` text, no background. Not clickable.
+- **Dirty:** `● Unsaved changes` — `{colors.caution}` text, `caution-bg` pill background. Clickable — activates the manual save flow (confirmation → platform commit). A small `ⓘ` icon sits immediately after the label, its own click/focus target: `{colors.text-3}` default, `{colors.text-2}` on hover/focus. 14px, `{typography.scale.xs}`. Opens a disclosure tooltip, distinct from the Save-confirmation popover triggered by the label itself.
+- **Clean:** `✓ All saved` — `{colors.text-3}` text, no background. Not clickable. No info icon (nothing at risk to disclose).
 - **Hidden:** when no working tree exists (new conversation, pre-first-message).
 
 ### Artifact Cards (Project Map)
