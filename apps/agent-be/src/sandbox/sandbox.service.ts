@@ -64,7 +64,7 @@ export class SandboxService implements ISandboxService {
     await this.daytona.start(sandbox);
     return {
       sandboxId: sandbox.id,
-      conversationId: sandboxId,
+      conversationId: sandbox.labels?.conversationId || sandboxId,
       status: 'ready',
       provisionedAt: new Date(),
     };

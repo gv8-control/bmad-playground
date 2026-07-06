@@ -1,9 +1,11 @@
 import { ConversationsModule } from '../../src/conversations/conversations.module';
 import { ConversationsService } from '../../src/conversations/conversations.service';
+import { ManualCommitService } from '../../src/conversations/manual-commit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { CredentialsService } from '../../src/credentials/credentials.service';
 import { SessionEventsService } from '../../src/streaming/session-events.service';
 import { DAYTONA_CLIENT } from '../../src/sandbox/daytona-client.provider';
+import { AGENT_SERVICE } from '@bmad-easy/shared-types';
 import { buildTestModule } from '../helpers/test-module-builder';
 import { ConflictException } from '@nestjs/common';
 
@@ -19,10 +21,15 @@ import { ConflictException } from '@nestjs/common';
  * Story 3.11 covers: AC-1 (two conversations provision independently with distinct sandbox IDs),
  * AC-2 (createConversation rejects at 10 active), AC-4 (abandonConversation tears down
  * sandbox + deletes row through full NestJS module wiring).
+ * Story 3.12 covers: AC-1 (SessionEventsService.onModuleDestroy emits SESSION_DRAINING to
+ * all active conversations), AC-2 (getStatus returns persisted sandboxStatus after simulated
+ * restart), AC-3 (MANUAL_SAVE_FAILED emits before SESSION_DRAINING — shutdown ordering).
  */
 describe('Sandbox lifecycle (integration)', () => {
   let conversationsService: ConversationsService;
   let sessionEvents: SessionEventsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let module: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let sandboxFake: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,21 +37,38 @@ describe('Sandbox lifecycle (integration)', () => {
 
   beforeEach(async () => {
     let conversationCounter = 0;
+    const conversationDb = new Map<string, { id: string; userId: string; title: string | null; sandboxId: string | null; sandboxStatus: string | null; lastActiveAt: Date }>();
+
     mockPrisma = {
       conversation: {
-        create: jest.fn().mockImplementation(({ data }) =>
-          Promise.resolve({
-            id: `conv-${++conversationCounter}`,
-            userId: data.userId,
-            title: null,
-            lastActiveAt: data.lastActiveAt,
-          }),
-        ),
+        create: jest.fn().mockImplementation(({ data }) => {
+          const conv = {
+              id: `conv-${++conversationCounter}`,
+              userId: data.userId,
+            title: data.title ?? null,
+            sandboxId: null as string | null,
+            sandboxStatus: data.sandboxStatus ?? null,
+            lastActiveAt: data.lastActiveAt ?? new Date(),
+          };
+          conversationDb.set(conv.id, conv);
+          return Promise.resolve(conv);
+        }),
         findUnique: jest.fn().mockResolvedValue({ id: 'conv-1' }),
-        findFirst: jest.fn().mockResolvedValue({ id: 'conv-1', userId: 'user-1' }),
+        findFirst: jest.fn().mockImplementation(({ where }) => {
+          const conv = conversationDb.get(where.id);
+          if (!conv) return Promise.resolve(null);
+          if (where.userId && conv.userId !== where.userId) return Promise.resolve(null);
+          return Promise.resolve({ ...conv });
+        }),
         findMany: jest.fn().mockResolvedValue([]),
         delete: jest.fn().mockResolvedValue({ id: 'conv-1' }),
-        update: jest.fn().mockResolvedValue({ id: 'conv-1', userId: 'user-1', title: 'test title' }),
+        update: jest.fn().mockImplementation(({ where, data }) => {
+          const existing = conversationDb.get(where.id) ?? { id: where.id, userId: 'user-1', title: null, sandboxId: null, sandboxStatus: null, lastActiveAt: new Date() };
+          const updated = { ...existing, ...data };
+          conversationDb.set(where.id, updated);
+          return Promise.resolve(updated);
+        }),
+        count: jest.fn().mockResolvedValue(0),
       },
       turn: {
         create: jest.fn().mockResolvedValue({ id: 'turn-1' }),
@@ -61,7 +85,7 @@ describe('Sandbox lifecycle (integration)', () => {
       },
     };
 
-    const { module, sandboxFake: sf } = await buildTestModule([ConversationsModule], [
+    const { module: m, sandboxFake: sf } = await buildTestModule([ConversationsModule], [
       { provide: PrismaService, useValue: mockPrisma },
       { provide: DAYTONA_CLIENT, useValue: null },
       {
@@ -70,6 +94,7 @@ describe('Sandbox lifecycle (integration)', () => {
       },
     ]);
 
+    module = m;
     conversationsService = module.get(ConversationsService);
     sessionEvents = module.get(SessionEventsService);
     sandboxFake = sf;
@@ -99,10 +124,6 @@ describe('Sandbox lifecycle (integration)', () => {
     expect(events).toContain('SESSION_READY');
   });
 
-  it('destroys sandbox on conversation close', () => {
-    // No close-conversation endpoint in Story 3.1 — deferred
-  });
-
   it('[P0] tears down sandbox after idle timeout (60s default) when no first message is sent', async () => {
     jest.useFakeTimers();
     const destroySpy = jest.spyOn(sandboxFake, 'destroy');
@@ -124,10 +145,6 @@ describe('Sandbox lifecycle (integration)', () => {
 
     expect(destroySpy).not.toHaveBeenCalled();
     expect(sandboxFake.activeSandboxCount()).toBe(0);
-  });
-
-  it('terminates agent process via Daytona API when sandbox-agent crashes', () => {
-    // Story 3.3/3.4 scope
   });
 
   it('[P0] tears down sandbox after mid-session idle timeout (15 min) when no further message is sent', async () => {
@@ -227,12 +244,7 @@ describe('Sandbox lifecycle (integration)', () => {
     });
 
     it('[P0] createConversation rejects at 10 active (AC-2)', async () => {
-      mockPrisma.conversation.findMany.mockResolvedValue(
-        Array.from({ length: 10 }, (_, i) => ({ id: `conv-${i + 1}` })),
-      );
-      for (let i = 1; i <= 10; i++) {
-        conversationsService['sandboxStatuses'].set(`conv-${i}`, 'ready');
-      }
+      mockPrisma.conversation.count.mockResolvedValue(10);
       await expect(conversationsService.createConversation('user-1')).rejects.toThrow(ConflictException);
     });
 
@@ -248,6 +260,76 @@ describe('Sandbox lifecycle (integration)', () => {
       expect(destroySpy).toHaveBeenCalled();
       expect(mockPrisma.conversation.delete).toHaveBeenCalledWith({ where: { id: result.id } });
       expect(completeSpy).toHaveBeenCalledWith(result.id);
+    });
+  });
+
+  describe('[P0] Story 3.12 — SIGTERM drain → reconnect → resume from Postgres (AC: 1, 2, 3)', () => {
+    it('[P0] SessionEventsService.onModuleDestroy emits SESSION_DRAINING to all active conversations', async () => {
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await conversationsService.provisionSandbox('conv-1', 'user-1');
+      await conversationsService.provisionSandbox('conv-2', 'user-1');
+
+      emitSpy.mockClear();
+      await sessionEvents.onModuleDestroy();
+
+      const drainEvents = emitSpy.mock.calls.filter((c) => c[1].event === 'SESSION_DRAINING');
+      expect(drainEvents.length).toBeGreaterThanOrEqual(2);
+      const drainedIds = drainEvents.map((c) => c[0]);
+      expect(drainedIds).toContain('conv-1');
+      expect(drainedIds).toContain('conv-2');
+    });
+
+    it('[P0] ManualCommitService.onModuleDestroy emits MANUAL_SAVE_FAILED for pending commits before subjects complete', async () => {
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await conversationsService.provisionSandbox('conv-1', 'user-1');
+      const manualCommitService = module.get(ManualCommitService);
+      const agentService = module.get(AGENT_SERVICE);
+      jest.spyOn(agentService, 'isIdle').mockReturnValue(false);
+      await manualCommitService.requestCommit('conv-1', 'user-1', 'sandbox-1');
+
+      await manualCommitService.onModuleDestroy();
+
+      const failedEvents = emitSpy.mock.calls.filter((c) => c[1].event === 'MANUAL_SAVE_FAILED');
+      expect(failedEvents.length).toBeGreaterThan(0);
+    });
+
+    it('[P0] getStatus returns persisted sandboxStatus after simulated restart (in-memory Maps cleared)', async () => {
+      await conversationsService.provisionSandbox('conv-1', 'user-1');
+
+      mockPrisma.conversation.findFirst.mockResolvedValueOnce({
+        id: 'conv-1',
+        sandboxId: 'sb-1',
+        sandboxStatus: 'ready',
+      });
+      conversationsService['sandboxStatuses'].clear();
+      conversationsService['sandboxIds'].clear();
+
+      const result = await conversationsService.getStatus('conv-1', 'user-1');
+
+      expect(result.sandboxStatus).toBe('ready');
+    });
+
+    it('[P0] full drain sequence: MANUAL_SAVE_FAILED emits before SESSION_DRAINING (shutdown ordering)', async () => {
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await conversationsService.provisionSandbox('conv-1', 'user-1');
+      const manualCommitService = module.get(ManualCommitService);
+      const agentService = module.get(AGENT_SERVICE);
+      jest.spyOn(agentService, 'isIdle').mockReturnValue(false);
+      await manualCommitService.requestCommit('conv-1', 'user-1', 'sandbox-1');
+
+      emitSpy.mockClear();
+      await manualCommitService.onModuleDestroy();
+      await sessionEvents.onModuleDestroy();
+
+      const events = emitSpy.mock.calls.map((c) => c[1].event);
+      const manualFailIndex = events.indexOf('MANUAL_SAVE_FAILED');
+      const drainIndex = events.indexOf('SESSION_DRAINING');
+      expect(manualFailIndex).toBeGreaterThan(-1);
+      expect(drainIndex).toBeGreaterThan(-1);
+      expect(manualFailIndex).toBeLessThan(drainIndex);
     });
   });
 });

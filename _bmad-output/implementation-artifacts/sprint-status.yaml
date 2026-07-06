@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-06T11:35:00Z
+last_updated: 2026-07-06T20:00:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -79,5 +79,5 @@ development_status:
   3-9-terminate-idle-sandboxes-mid-conversation: done
   3-10-verify-commits-carry-the-users-own-identity: done
   3-11-run-concurrent-conversations: done
-  3-12-drain-conversations-gracefully-on-deploy: backlog
+  3-12-drain-conversations-gracefully-on-deploy: done
   epic-3-retrospective: optional

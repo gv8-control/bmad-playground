@@ -3,10 +3,13 @@
  *
  * Story 3.8: Track Per-User LLM Spend
  * Story 3.10: Verify Commits Carry the User's Own Identity
+ * Story 3.12: Drain Conversations Gracefully on Deploy
  * NFR-S1 regression guard tests for SandboxService.
  *
  * Covers: AC-3 (platform-internal credentials never injected into Sandbox).
  * Story 3.10 covers: AC-1 (commit attribution regression guards).
+ * Story 3.12 covers: AC-1 (resume() returns conversationId from sandbox.labels,
+ * not the sandboxId — contract fix for reconnect/resume).
  *
  * These tests verify the EXISTING SandboxService implementation satisfies NFR-S1.
  * They are regression guards — if a future change adds env vars to daytona.create()
@@ -216,6 +219,39 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
       await expect(
         service.injectGitConfig('sandbox-1', { name: 'A', email: 'a@b.com' }),
       ).rejects.toThrow('email config failed');
+    });
+  });
+
+  describe('[P0] Story 3.12 — resume() returns correct conversationId (AC: 1, P3)', () => {
+    it('[P0] resume() returns conversationId from sandbox.labels, not the sandboxId', async () => {
+      mockSandbox.labels = { conversationId: 'conv-from-label' };
+      mockDaytona.get.mockResolvedValueOnce(mockSandbox);
+
+      const result = await service.resume('sandbox-1');
+
+      expect(result.conversationId).toBe('conv-from-label');
+      expect(result.conversationId).not.toBe('sandbox-1');
+    });
+
+    it('[P0] resume() returns the correct sandboxId (distinct from conversationId)', async () => {
+      mockSandbox.id = 'sb-123';
+      mockSandbox.labels = { conversationId: 'conv-456' };
+      mockDaytona.get.mockResolvedValueOnce(mockSandbox);
+
+      const result = await service.resume('sb-123');
+
+      expect(result.sandboxId).toBe('sb-123');
+      expect(result.conversationId).toBe('conv-456');
+    });
+
+    it('[P0] resume() returns status "ready" after starting the sandbox', async () => {
+      mockSandbox.labels = { conversationId: 'conv-1' };
+      mockDaytona.get.mockResolvedValueOnce(mockSandbox);
+
+      const result = await service.resume('sandbox-1');
+
+      expect(result.status).toBe('ready');
+      expect(mockDaytona.start).toHaveBeenCalledWith(mockSandbox);
     });
   });
 });

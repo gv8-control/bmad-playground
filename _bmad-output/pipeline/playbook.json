@@ -39,11 +39,11 @@
       "stage": "pre-implementation",
       "skill": "bmad-testarch-atdd",
       "agent": "coder",
-      "prompt": "Create tests. Before deferring E2E coverage, verify no browser-level mock pattern can simulate the scenario — only defer if no mock covers the ACs, and record the check in the ATDD checklist. When creating regression guards for code that executes external commands with user-controlled input, apply a uniform guard template to every call site: exercise both credential-isolation invariants (no credentials leak via command arguments or environment variables) and input-injection invariants (malicious input is safely quoted and cannot alter the command's behavior). For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
+      "prompt": "Create tests. After applying TDD red-phase scaffolding (adding skipped test blocks to new or existing files, adding test seams, or creating stub files), update the story file's tasks to reflect what was already done — tasks that instruct the dev to create scaffolding that prepare-tests has already applied should be amended to instruct activation of the existing scaffolding instead, so the story does not contradict the codebase state. Before deferring E2E coverage, verify no browser-level mock pattern can simulate the scenario — only defer if no mock covers the ACs, and record the check in the ATDD checklist. When creating regression guards for code that executes external commands with user-controlled input, apply a uniform guard template to every call site: exercise both credential-isolation invariants (no credentials leak via command arguments or environment variables) and input-injection invariants (malicious input is safely quoted and cannot alter the command's behavior). For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-06T08:27:13.232Z",
-      "updatedByRun": "3.10-a1-20260706T055517"
+      "updatedAt": "2026-07-06T12:26:33.858Z",
+      "updatedByRun": "3.11-a1-20260706T082713"
     },
     {
       "id": "validate-story-2",
@@ -105,11 +105,11 @@
       "stage": "review",
       "skill": "bmad-testarch-test-review",
       "agent": "planner",
-      "prompt": "run Validate mode. Flag skipped story-related tests for un-skipping or removal (with reason). Fix stale transitional markers directly wherever found during the search, including those from earlier stories in the same directories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation.",
+      "prompt": "run Validate mode. Flag skipped story-related tests for un-skipping or removal (with reason). Fix stale transitional markers directly wherever found during the search, including those from earlier stories in the same directories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation. Treat empty placeholder test stubs (active tests with no assertions, only a comment or empty body) as transitional artifacts — remove them directly wherever found during the search, including those from earlier stories in the same directories, since an empty test that passes trivially inflates the count without verifying behavior.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-06T05:41:22.968Z",
-      "updatedByRun": "3.9-a1-20260706T022258"
+      "updatedAt": "2026-07-06T12:26:33.858Z",
+      "updatedByRun": "3.11-a1-20260706T082713"
     },
     {
       "id": "review-nfrs",

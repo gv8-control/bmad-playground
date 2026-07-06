@@ -2,12 +2,18 @@
  * @jest-environment node
  *
  * Story 3.6: Track and Manually Save Working Tree State
+ * Story 3.12: Drain Conversations Gracefully on Deploy
  * Unit tests for ManualCommitService.
  *
  * Covers: AC-2 (manual save via commit), AC-3 (queued save behind agent turn),
  *         AC-4 (successful save produces Semantic Pill + resets indicator),
  *         AC-5 (failed save produces error-state Tool Pill + indicator stays dirty),
  *         AC-6 (no-op on clean tree + duplicate submission prevention).
+ * Story 3.12 covers: AC-3 (onModuleDestroy drain — bounded completion of pending
+ * commits or MANUAL_SAVE_FAILED notification; executingCommits guard preserved;
+ * async lifecycle hook).
+ *
+ * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { Test } from '@nestjs/testing';
 import { ManualCommitService } from './manual-commit.service';
@@ -208,6 +214,86 @@ describe('ManualCommitService', () => {
         clean: false,
         queued: false,
       });
+    });
+  });
+
+  describe('[P0] Story 3.12 — onModuleDestroy drains pending commits (AC: 3, P2)', () => {
+    it('[P0] onModuleDestroy emits MANUAL_SAVE_FAILED for each pending commit', async () => {
+      agentFake.setActiveRun(true);
+      await service.requestCommit('conv-1', 'user-1', 'sandbox-1');
+
+      await service.onModuleDestroy();
+
+      const drainFailedEvents = emitSpy.mock.calls
+        .filter((c) => c[1].event === 'MANUAL_SAVE_FAILED')
+        .map((c) => c[1].data);
+      expect(drainFailedEvents.length).toBeGreaterThan(0);
+      expect(drainFailedEvents.some((d) => d.error && typeof d.error === 'string')).toBe(true);
+    });
+
+    it('[P0] onModuleDestroy does NOT silently drop pending commits (clear without emit is forbidden)', async () => {
+      agentFake.setActiveRun(true);
+      await service.requestCommit('conv-1', 'user-1', 'sandbox-1');
+
+      const emitCountBefore = emitSpy.mock.calls.filter((c) => c[1].event === 'MANUAL_SAVE_FAILED').length;
+      await service.onModuleDestroy();
+      const emitCountAfter = emitSpy.mock.calls.filter((c) => c[1].event === 'MANUAL_SAVE_FAILED').length;
+
+      expect(emitCountAfter).toBeGreaterThan(emitCountBefore);
+    });
+
+    it('[P0] onModuleDestroy attempts bounded completion of pending commits before emitting failure', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockResolvedValue({ dirty: true, files: ['src/foo.ts'] });
+      agentFake.setActiveRun(true);
+      await service.requestCommit('conv-1', 'user-1', 'sandbox-1');
+
+      const commitSpy = jest.spyOn(sandboxFake, 'commit');
+      agentFake.setActiveRun(false);
+
+      const drainPromise = service.onModuleDestroy();
+      await jest.advanceTimersByTimeAsync(0);
+      await drainPromise;
+
+      expect(commitSpy).toHaveBeenCalled();
+    });
+
+    it('[P0] onModuleDestroy emits MANUAL_SAVE_FAILED when completion attempt times out (NFR-P5 ≤ 5s budget)', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(sandboxFake, 'getWorkingTreeStatus').mockImplementation(
+        () => new Promise(() => undefined),
+      );
+      agentFake.setActiveRun(true);
+      await service.requestCommit('conv-1', 'user-1', 'sandbox-1');
+      agentFake.setActiveRun(false);
+
+      const drainPromise = service.onModuleDestroy();
+      await jest.advanceTimersByTimeAsync(5001);
+      await drainPromise;
+
+      const drainFailedEvents = emitSpy.mock.calls
+        .filter((c) => c[1].event === 'MANUAL_SAVE_FAILED')
+        .map((c) => c[1].data);
+      expect(drainFailedEvents.length).toBeGreaterThan(0);
+    });
+
+    it('[P0] onModuleDestroy emits MANUAL_SAVE_FAILED for in-flight executingCommits entries (does not start a parallel commit)', async () => {
+      const commitSpy = jest.spyOn(sandboxFake, 'commit');
+      service['executingCommits'].add('conv-1');
+
+      await service.onModuleDestroy();
+
+      const drainFailedEvents = emitSpy.mock.calls.filter(
+        (c) => c[1].event === 'MANUAL_SAVE_FAILED',
+      );
+      expect(drainFailedEvents.length).toBeGreaterThan(0);
+      expect(commitSpy).not.toHaveBeenCalled();
+    });
+
+    it('[P0] onModuleDestroy is async (NestJS awaits async lifecycle hooks)', async () => {
+      const result = service.onModuleDestroy();
+      expect(result).toBeInstanceOf(Promise);
+      await result;
     });
   });
 });

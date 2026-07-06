@@ -51,9 +51,16 @@ export interface AccessDeniedEvent {
   retryAfter?: number;
 }
 
+export const SESSION_DRAINING_EVENT = 'SESSION_DRAINING' as const;
+
+export interface SessionDrainingEvent {
+  type: typeof SESSION_DRAINING_EVENT;
+}
+
 export type AgUiEventType =
   | EventType
   | typeof STREAM_ERROR_EVENT
   | typeof TOOL_CALL_PROMOTED_EVENT
   | typeof CREDENTIAL_FAILURE_EVENT
-  | typeof ACCESS_DENIED_EVENT;
+  | typeof ACCESS_DENIED_EVENT
+  | typeof SESSION_DRAINING_EVENT;

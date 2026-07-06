@@ -54,6 +54,7 @@ export class ConversationsService {
         userId,
         title: null,
         lastActiveAt: new Date(),
+        sandboxStatus: 'provisioning',
       },
     });
 
@@ -66,18 +67,12 @@ export class ConversationsService {
   }
 
   private async countActiveConversations(userId: string): Promise<number> {
-    const conversations = await this.prisma.conversation.findMany({
-      where: { userId },
-      select: { id: true },
+    return this.prisma.conversation.count({
+      where: {
+        userId,
+        sandboxStatus: { in: ['provisioning', 'ready'] },
+      },
     });
-    let active = 0;
-    for (const conv of conversations) {
-      const status = this.sandboxStatuses.get(conv.id);
-      if (status === 'provisioning' || status === 'ready') {
-        active++;
-      }
-    }
-    return active;
   }
 
   async provisionSandbox(conversationId: string, userId: string): Promise<void> {
@@ -139,6 +134,7 @@ export class ConversationsService {
         data: { sandboxId },
       });
       this.sandboxStatuses.set(conversationId, 'ready');
+      await this.persistSandboxState(conversationId, sandboxId, 'ready');
 
       this.idleTimeout.startTimer(conversationId, sandboxId, async () => {
         this.sessionEvents.emit(conversationId, {
@@ -147,6 +143,7 @@ export class ConversationsService {
         });
         this.sandboxStatuses.set(conversationId, 'idle-timeout');
         this.sandboxIds.delete(conversationId);
+        await this.persistSandboxState(conversationId, null, 'idle-timeout');
         try {
           await this.sandboxService.destroy(sandboxId!);
         } catch (err) {
@@ -170,6 +167,7 @@ export class ConversationsService {
       }
       this.sandboxStatuses.set(conversationId, 'failed');
       this.sandboxIds.delete(conversationId);
+      await this.persistSandboxState(conversationId, null, 'failed');
       this.sessionEvents.emit(conversationId, {
         event: 'SESSION_ERROR',
         data: { message: err instanceof Error ? err.message : 'Unknown error' },
@@ -229,28 +227,31 @@ export class ConversationsService {
   }> {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, userId },
-      select: { id: true },
+      select: { id: true, sandboxStatus: true },
     });
 
     if (!conversation) {
       return { conversationId, sandboxStatus: 'failed' };
     }
 
-    const status = this.sandboxStatuses.get(conversationId) ?? 'provisioning';
+    const status =
+      (conversation.sandboxStatus as SandboxStatus | null) ??
+      this.sandboxStatuses.get(conversationId) ??
+      'provisioning';
     return { conversationId, sandboxStatus: status };
   }
 
   async listSkills(conversationId: string, userId: string): Promise<SkillInfo[]> {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, userId },
-      select: { id: true },
+      select: { id: true, sandboxId: true },
     });
 
     if (!conversation) {
       return [];
     }
 
-    const sandboxId = this.sandboxIds.get(conversationId);
+    const sandboxId = conversation.sandboxId;
     if (!sandboxId) {
       return [];
     }
@@ -344,6 +345,7 @@ export class ConversationsService {
     });
     this.sandboxStatuses.set(conversationId, 'idle-timeout');
     this.sandboxIds.delete(conversationId);
+    await this.persistSandboxState(conversationId, null, 'idle-timeout');
     try {
       await this.sandboxService.destroy(sandboxId);
     } catch (err) {
@@ -397,15 +399,15 @@ export class ConversationsService {
   ): Promise<{ conversationId: string; sandboxStatus: SandboxStatus }> {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, userId },
-      select: { id: true },
+      select: { id: true, sandboxId: true, sandboxStatus: true },
     });
 
     if (!conversation) {
       return { conversationId, sandboxStatus: 'failed' };
     }
 
-    const currentStatus = this.sandboxStatuses.get(conversationId);
-    const sandboxId = this.sandboxIds.get(conversationId);
+    const currentStatus = conversation.sandboxStatus as SandboxStatus | null;
+    const sandboxId = conversation.sandboxId;
 
     if (currentStatus === 'ready' && sandboxId) {
       try {
@@ -430,6 +432,9 @@ export class ConversationsService {
           data: { sandboxId },
         });
 
+        this.sandboxStatuses.set(conversationId, 'ready');
+        this.sandboxIds.set(conversationId, sandboxId);
+
         if (!this.idleTimeout.hasTimer(conversationId)) {
           this.idleTimeout.startTimer(
             conversationId,
@@ -443,6 +448,7 @@ export class ConversationsService {
       } catch (err) {
         this.logger.error(`Fast-path resume failed for conversation ${conversationId}: ${err}`);
         this.sandboxStatuses.set(conversationId, 'failed');
+        await this.persistSandboxState(conversationId, null, 'failed');
         this.sessionEvents.emit(conversationId, {
           event: 'SESSION_ERROR',
           data: { message: err instanceof Error ? err.message : 'Unknown error' },
@@ -456,6 +462,7 @@ export class ConversationsService {
     }
 
     this.sandboxStatuses.set(conversationId, 'provisioning');
+    await this.persistSandboxState(conversationId, null, 'provisioning');
     void this.provisionSandbox(conversationId, userId).catch((err) => {
       this.logger.error(`provisionSandbox failed during resume for conversation ${conversationId}: ${err}`);
     });
@@ -481,5 +488,22 @@ export class ConversationsService {
           ? user.email
           : `${user.githubLogin}@users.noreply.github.com`,
     };
+  }
+
+  private async persistSandboxState(
+    conversationId: string,
+    sandboxId: string | null,
+    sandboxStatus: SandboxStatus,
+  ): Promise<void> {
+    try {
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { sandboxId, sandboxStatus },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to persist sandbox state for conversation ${conversationId}: ${err}`,
+      );
+    }
   }
 }

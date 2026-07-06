@@ -7,6 +7,7 @@
  * Story 3.5: Resume an Existing Conversation
  * Story 3.9: Terminate Idle Sandboxes Mid-Conversation
  * Story 3.11: Run Concurrent Conversations
+ * Story 3.12: Drain Conversations Gracefully on Deploy
  * Unit tests for ConversationPane Client Component.
  *
  * Covers: AC-1 (provisioning on mount, streaming), AC-2 (auto-growing input),
@@ -21,6 +22,8 @@
  * Story 3.9 covers: AC-3 (SESSION_TIMEOUT mid-session reason, onerror state preservation).
  * Story 3.11 covers: AC-2 (limit-reached blocking state), AC-4 (retry cancels
  * in-flight provisioning via DELETE before minting new conversation).
+ * Story 3.12 covers: AC-1 (SESSION_DRAINING event handler sets state to
+ * 'reconnecting' — reuses existing SessionState; onerror preserves state).
  * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 
@@ -2143,6 +2146,89 @@ describe('ConversationPane', () => {
         (c: [string, RequestInit?]) => c[1]?.method === 'DELETE',
       );
       expect(hasDelete).toBe(false);
+    });
+  });
+
+  describe('Story 3.12 — SESSION_DRAINING event handler', () => {
+    it('[P0] sets state to "reconnecting" when SESSION_DRAINING is received', async () => {
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+
+      await act(async () => {
+        MockEventSource.emit('SESSION_DRAINING', {});
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Reconnecting…')).toBeInTheDocument();
+      });
+    });
+
+    it('[P0] SESSION_DRAINING handler does not throw on malformed data (no JSON.parse needed — no data payload)', async () => {
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+
+      await act(async () => {
+        const listeners = MockEventSource.listeners['SESSION_DRAINING'] ?? [];
+        const event = new MessageEvent('message', { data: 'not-valid-json{' });
+        for (const listener of listeners) listener(event);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Reconnecting…')).toBeInTheDocument();
+      });
+    });
+
+    it('[P0] onerror does not override "reconnecting" state set by SESSION_DRAINING', async () => {
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_DRAINING', {});
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Reconnecting…')).toBeInTheDocument();
+      });
+
+      const es = MockEventSource.instances[0];
+      await act(async () => {
+        if (es.onerror) es.onerror(new Event('error'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Reconnecting…')).toBeInTheDocument();
+      });
+    });
+
+    it('[P0] SESSION_DRAINING transitions from "ready" to "reconnecting" (not "error")', async () => {
+      await act(async () => {
+        render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+      });
+      await act(async () => {
+        MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+      });
+
+      expect(screen.queryByText('Reconnecting…')).not.toBeInTheDocument();
+
+      await act(async () => {
+        MockEventSource.emit('SESSION_DRAINING', {});
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Reconnecting…')).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/Session failed to start/i)).not.toBeInTheDocument();
     });
   });
 });

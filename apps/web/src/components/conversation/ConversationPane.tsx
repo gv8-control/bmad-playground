@@ -213,6 +213,19 @@ export function ConversationPane({
       }
     });
 
+    eventSource.addEventListener('SESSION_DRAINING', () => {
+      setState('reconnecting');
+      timeoutRef.current = setTimeout(() => {
+        setState((prev) => {
+          if (prev === 'reconnecting') {
+            setErrorMessage('Starting your session is taking longer than expected.');
+            return 'timeout';
+          }
+          return prev;
+        });
+      }, CLIENT_TIMEOUT_MS);
+    });
+
     eventSource.addEventListener('RUN_STARTED', () => {
       runEndedRef.current = false;
       setAgentState('thinking');

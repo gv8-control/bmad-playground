@@ -83,7 +83,12 @@ export class SandboxServiceFake implements ISandboxService {
   async resume(sandboxId: string): Promise<SandboxInfo> {
     const sandbox = this.sandboxes.get(sandboxId);
     if (!sandbox) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
-    return { ...sandbox, status: 'ready' };
+    return {
+      sandboxId,
+      conversationId: sandbox.conversationId,
+      status: 'ready',
+      provisionedAt: sandbox.provisionedAt ?? new Date(),
+    };
   }
 
   async destroy(sandboxId: string): Promise<void> {
