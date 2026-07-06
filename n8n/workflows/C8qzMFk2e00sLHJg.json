@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-05T09:28:42.135Z",
+  "updatedAt": "2026-07-05T22:40:41.295Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -170,7 +170,7 @@
               "id": "f7a1c2d3-e4b5-6789-abcd-ef0123456789",
               "name": "questionCount",
               "type": "number",
-              "value": "={{ $('Count halt').all().length > 0 ? $('Count halt').last().json.haltIndex + 1 : 0 }}"
+              "value": "={{ $('Run counter').last().json.runIndex }}"
             }
           ]
         },
@@ -465,16 +465,16 @@
     },
     {
       "id": "f7a1c2d3-0000-0000-0000-000000000001",
-      "name": "Count halt",
+      "name": "Run counter",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1264,
-        560
+        768,
+        128
       ],
       "parameters": {
-        "jsCode": "return { json: { haltIndex: $runIndex } };",
-        "mode": "runOnceForEachItem"
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { ...$input.first().json, runIndex: $runIndex } }];"
       }
     }
   ],
@@ -586,9 +586,15 @@
             "node": "Notify",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Extract SessionID": {
+      "main": [
+        [
           {
-            "node": "Count halt",
+            "node": "Parse OpenCode Response",
             "type": "main",
             "index": 0
           }
@@ -599,18 +605,18 @@
       "main": [
         [
           {
-            "node": "BMAD Outcome",
+            "node": "Run counter",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Extract SessionID": {
+    "Run counter": {
       "main": [
         [
           {
-            "node": "Parse OpenCode Response",
+            "node": "BMAD Outcome",
             "type": "main",
             "index": 0
           }
@@ -645,9 +651,9 @@
       }
     ]
   },
-  "versionId": "e8f466e2-10de-4d5c-8806-ac7f65375733",
+  "versionId": "81b8bb02-84b0-46ca-a91a-6848d8d6114d",
   "activeVersionId": "e8f466e2-10de-4d5c-8806-ac7f65375733",
-  "versionCounter": 166,
+  "versionCounter": 167,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
