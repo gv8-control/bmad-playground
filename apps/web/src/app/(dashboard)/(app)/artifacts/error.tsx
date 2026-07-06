@@ -16,7 +16,7 @@ export default function ArtifactsError({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <header className="flex-shrink-0 px-8 py-6">
-        <h1 className="text-xl font-semibold text-text-1">Artifact Browser</h1>
+        <h1 tabIndex={-1} className="text-xl font-semibold text-text-1">Artifact Browser</h1>
       </header>
       <div className="flex flex-1 flex-col items-center justify-center px-8 pb-8">
         <p className="text-text-2 text-sm">

@@ -2,7 +2,7 @@ export default function ProjectMapLoading() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <header className="flex-shrink-0 px-8 py-6">
-        <h1 className="text-xl font-semibold text-text-1">Project Map</h1>
+        <h1 tabIndex={-1} className="text-xl font-semibold text-text-1">Project Map</h1>
       </header>
       <div className="px-8 pb-8">
         <div className="flex flex-col gap-3">

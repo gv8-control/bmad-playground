@@ -7,6 +7,7 @@ import { test as logFixture } from '@seontechnologies/playwright-utils/log/fixtu
 import { test as networkErrorMonitorFixture } from '@seontechnologies/playwright-utils/network-error-monitor/fixtures';
 
 import githubAuthProvider from './auth/github-auth-provider';
+import { test as consoleErrorGuard } from './console-error-guard';
 import { test as customFixtures } from './custom-fixtures';
 
 setAuthProvider(githubAuthProvider);
@@ -18,6 +19,7 @@ const authFixture = base.extend<AuthFixtures>(createAuthFixtures() as any);
 export const test = mergeTests(
   apiRequestFixture,
   authFixture,
+  consoleErrorGuard,
   interceptFixture,
   recurseFixture,
   logFixture,

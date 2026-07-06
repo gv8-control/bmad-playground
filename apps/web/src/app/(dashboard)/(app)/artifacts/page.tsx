@@ -83,7 +83,7 @@ export default async function ArtifactsPage({
     <div className="flex h-full flex-col overflow-hidden">
       <header className="flex-shrink-0">
         <Breadcrumb />
-        <h1 className="px-8 text-xl font-semibold text-text-1">Artifact Browser</h1>
+        <h1 tabIndex={-1} className="px-8 text-xl font-semibold text-text-1">Artifact Browser</h1>
       </header>
       {credentialFailed && <CredentialErrorBanner />}
       {selectedArtifactId ? (

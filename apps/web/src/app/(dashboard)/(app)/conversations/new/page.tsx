@@ -18,7 +18,7 @@ export default async function NewConversationPage() {
     <div className="flex h-full flex-col overflow-hidden">
       <header className="flex-shrink-0">
         <Breadcrumb />
-        <h1 className="px-8 text-xl font-semibold text-text-1">New Conversation</h1>
+        <h1 tabIndex={-1} className="px-8 text-xl font-semibold text-text-1">New Conversation</h1>
       </header>
       <div className="flex-1 overflow-hidden">
         <ConversationPane boundaryJwt={boundaryJwt} apiUrl={apiUrl} initialMessages={[]} />
