@@ -48,12 +48,15 @@ export class SandboxService implements ISandboxService {
   async clone(sandboxId: string, repoUrl: string, credential: string): Promise<void> {
     const sandbox = await this.getSandbox(sandboxId);
     const repoWithToken = this.injectCredentialIntoUrl(repoUrl, credential);
-    await sandbox.process.executeCommand(
+    const response = await sandbox.process.executeCommand(
       `git clone --depth=1 ${this.shellQuote(repoWithToken)} .`,
       undefined,
       undefined,
       30,
     );
+    if (response.exitCode !== 0) {
+      throw new Error(response.result);
+    }
   }
 
   async resume(sandboxId: string): Promise<SandboxInfo> {
@@ -115,6 +118,9 @@ export class SandboxService implements ISandboxService {
       undefined,
       10,
     );
+    if (response.exitCode !== 0) {
+      throw new Error(response.result);
+    }
     const output = response.result.trim();
     if (!output) {
       return { dirty: false, files: [] };

@@ -19,6 +19,7 @@ export class SandboxServiceFake implements ISandboxService {
   private readonly injectedGitConfigs = new Map<string, GitUserConfig>();
   private provisionDelay = 0;
   private shouldFailNextProvision = false;
+  private shouldFailNextClone = false;
   private shouldFailNextCommit = false;
   private skills: SkillInfo[] = [];
   private sandboxCounter = 0;
@@ -37,6 +38,11 @@ export class SandboxServiceFake implements ISandboxService {
   /** Control hook: set the skills list returned by listSkills(). */
   setSkills(skills: SkillInfo[]): void {
     this.skills = skills;
+  }
+
+  /** Control hook: cause the next clone() call to throw. */
+  failNextClone(): void {
+    this.shouldFailNextClone = true;
   }
 
   /** Control hook: cause the next commit() call to throw. */
@@ -78,6 +84,10 @@ export class SandboxServiceFake implements ISandboxService {
 
   async clone(sandboxId: string, _repoUrl: string, _credential: string): Promise<void> {
     if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
+    if (this.shouldFailNextClone) {
+      this.shouldFailNextClone = false;
+      throw new Error('SandboxServiceFake: simulated clone failure');
+    }
   }
 
   async resume(sandboxId: string): Promise<SandboxInfo> {

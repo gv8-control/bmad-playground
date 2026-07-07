@@ -4,6 +4,7 @@
  * Story 3.8: Track Per-User LLM Spend
  * Story 3.10: Verify Commits Carry the User's Own Identity
  * Story 3.12: Drain Conversations Gracefully on Deploy
+ * Post-3.12 fix: clone() and getWorkingTreeStatus() exitCode checks
  * NFR-S1 regression guard tests for SandboxService.
  *
  * Covers: AC-3 (platform-internal credentials never injected into Sandbox).
@@ -219,6 +220,48 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
       await expect(
         service.injectGitConfig('sandbox-1', { name: 'A', email: 'a@b.com' }),
       ).rejects.toThrow('email config failed');
+    });
+  });
+
+  describe('[P0] clone() — throws on non-zero exitCode (error propagation guard)', () => {
+    it('[P0] clone() throws with the command output when git clone fails', async () => {
+      mockSandbox.process.executeCommand.mockResolvedValueOnce({
+        exitCode: 128,
+        result: 'fatal: repository not found',
+      });
+
+      await expect(
+        service.clone('sandbox-1', 'https://github.com/test/repo.git', 'fake-token'),
+      ).rejects.toThrow('fatal: repository not found');
+    });
+
+    it('[P0] clone() does not throw when exitCode is 0', async () => {
+      mockSandbox.process.executeCommand.mockResolvedValueOnce({ exitCode: 0, result: '' });
+
+      await expect(
+        service.clone('sandbox-1', 'https://github.com/test/repo.git', 'fake-token'),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('[P0] getWorkingTreeStatus() — throws on non-zero exitCode (error propagation guard)', () => {
+    it('[P0] getWorkingTreeStatus() throws with the command output when git status fails', async () => {
+      mockSandbox.process.executeCommand.mockResolvedValueOnce({
+        exitCode: 128,
+        result: 'fatal: not a git directory',
+      });
+
+      await expect(
+        service.getWorkingTreeStatus('sandbox-1'),
+      ).rejects.toThrow('fatal: not a git directory');
+    });
+
+    it('[P0] getWorkingTreeStatus() does not throw when exitCode is 0', async () => {
+      mockSandbox.process.executeCommand.mockResolvedValueOnce({ exitCode: 0, result: '' });
+
+      await expect(
+        service.getWorkingTreeStatus('sandbox-1'),
+      ).resolves.toEqual({ dirty: false, files: [] });
     });
   });
 
