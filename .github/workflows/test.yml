@@ -47,12 +47,39 @@ jobs:
       - name: Lint all apps and libs
         run: yarn nx run-many --target=lint --all --parallel=4
 
+  # ── Typecheck (tsc --noEmit, not just ts-jest transpile-only) ────────────────
+  # ts-jest runs in transpile-only mode (isolatedModules: true), so type errors
+  # in test files would NOT surface in the test step. This gate enforces real
+  # type-checking against SDK declarations (audit finding C-1).
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run typecheck (enforces tsc --noEmit against real SDK declarations)
+        run: yarn nx run-many --target=typecheck --all --parallel=4
+
   # ── Unit & integration tests (NestJS / Jest) ──────────────────────────────────
   unit:
     name: Unit & Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: lint
+    needs: [lint, typecheck]
 
     steps:
       - uses: actions/checkout@v4

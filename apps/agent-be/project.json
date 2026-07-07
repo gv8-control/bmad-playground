@@ -58,6 +58,12 @@
         "passWithNoTests": true
       }
     },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p apps/agent-be/tsconfig.spec.json"
+      }
+    },
     "test-integration": {
       "executor": "nx:run-commands",
       "options": {

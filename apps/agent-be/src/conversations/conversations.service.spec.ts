@@ -26,7 +26,6 @@
  *
  * TDD GREEN PHASE: Story 3.5/3.9/3.10/3.11/3.12 tests un-skipped and passing.
  */
-import { Test } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { ConversationsModule } from './conversations.module';
@@ -113,7 +112,7 @@ describe('ConversationsService', () => {
     const sessionEventsInstance = new SessionEventsService();
     agentFake = new AgentServiceFake(sessionEventsInstance, mockPrisma, sandboxFakeInstance);
 
-    const { module, sandboxFake: sf } = await buildTestModule([ConversationsModule], [
+    const { module } = await buildTestModule([ConversationsModule], [
       { provide: PrismaService, useValue: mockPrisma },
       { provide: DAYTONA_CLIENT, useValue: null },
       {
@@ -849,7 +848,6 @@ describe('ConversationsService', () => {
     it('[P0] fast-path resume does NOT reset existing mid-session timer', async () => {
       jest.useFakeTimers();
       const destroySpy = jest.spyOn(sandboxFake, 'destroy');
-      const startTimerSpy = jest.spyOn(idleTimeout, 'startTimer');
 
       await service.provisionSandbox('conv-1', 'user-1');
       mockPrisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1', title: null });
