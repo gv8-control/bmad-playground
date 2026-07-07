@@ -42,9 +42,39 @@ Replace `as SDKMessage` type assertions with real construction. If the SDK expor
 
 **What it doesn't catch:** the fixture being correct in shape but wrong in content (e.g. a `tool_result` block placed in an assistant-typed message when the real SDK puts it in a user-typed message). Shape-correct but semantically-wrong fixtures require the recorded-session approach.
 
+### Failure-mode and environmental-state coverage
+
+For each code path that consumes an external contract, enumerate: what does the real contract return when it fails? What preconditions must hold for it to succeed? What environmental state does it depend on? A success-only mock is Gap C regardless of how well-shaped it is — the fix is to model the contract's behaviors, not just its type.
+
+**When it applies:** the mock is at the correct boundary and shape-correct, but only models the success path (Gap C). The real contract has failure modes or environmental dependencies the mock never represents.
+
+This technique has two sub-approaches. Choose by a single decision criterion: **can the failure mode be faithfully modeled in a mock?**
+
+#### Mock enrichment — when the failure modes are contract-internal
+
+When the contract's failure modes are return-value variations the SDK or API can produce — non-zero exit codes, error response shapes, empty results, malformed-but-valid output — enrich the mock to return these. The mock already sits at the correct boundary; it just needs to exhibit more of the contract's behaviors.
+
+**What it catches:** code that mishandles the contract's documented failure modes — unhandled non-zero exits, unchecked error fields, assumptions about always-populated responses.
+
+**When it is sufficient:** the failure modes are enumerable from the contract's type declarations or documentation, and the code path's correctness depends only on how it processes the return value. No environmental preconditions are involved.
+
+**When it is insufficient:** the contract's behavior depends on environmental state — filesystem contents, container image contents, network conditions, permissions, process state. A mock that models these is reimplementing the environment, and any reimplementation can be wrong in the same ways the original assumption was wrong. Mock enrichment reaches diminishing returns and becomes a fabrication of the environment, not a verification of the contract.
+
+#### Gated live integration test — when the failure modes are environmental
+
+When the contract's behavior depends on environmental state that cannot be faithfully modeled in a mock, no mock-based technique closes the gap. The only sufficient technique is a test that runs against the real external dependency — a gated live integration test, gated behind an environment flag (e.g. `RUN_LIVE_SANDBOX_TESTS=true`), excluded from the default CI run, and run manually or on a schedule.
+
+**What it catches:** production failures that occur when the real environment doesn't match the mock's assumptions — non-empty working directories, missing permissions, container image state, network conditions, filesystem state. These are failures no mock can catch because the mock is the assumption being tested.
+
+**Why this is not an escalation but a first-class technique:** by the Decision Principle below, the technique that exercises the real contract by construction is preferred over one that exercises a fabrication. A live integration test exercises the real contract and the real environment by construction — the test cannot pass without touching the real thing. Mock enrichment, even when enriched, still exercises a fabrication. When the failure mode is environmental, mock enrichment is insufficient by construction, not just by effort — the Decision Principle already prefers the live test.
+
+**Trade-off:** highest maintenance cost of any technique — requires real credentials, real infrastructure, and ongoing upkeep. Excluded from default CI to avoid blocking on external dependencies. The cost is justified because no cheaper technique catches the bug class: environmental-state failures are invisible to every mock-based approach.
+
 ## Decision Principle
 
-Prefer the technique that makes the contract exercised *by construction* — where the test cannot pass without touching the real contract — over techniques that rely on the author's diligence. A recorded-session fixture exercises the real contract by construction. A "process-only checklist item enforced by review" exercises it by intention. The first catches bugs; the second catches nothing if the reviewer forgets.
+Prefer the technique that makes the contract exercised *by construction* — where the test cannot pass without touching the real contract — over techniques that rely on the author's diligence. A recorded-session fixture exercises the real contract by construction. A gated live integration test exercises the real contract and the real environment by construction. A "process-only checklist item enforced by review" exercises it by intention. The first two catch bugs; the third catches nothing if the reviewer forgets.
+
+When choosing between mock enrichment and a gated live integration test for Gap C, apply this principle directly: if the failure mode is environmental (depends on real filesystem, container image, network, or process state), mock enrichment is insufficient by construction — it exercises a fabrication of the environment, not the environment. The live test is the preferred technique, not the escalation. Cost does not override this: an insufficient technique is insufficient at any cost.
 
 If the architecture or epics already prescribe a safeguard (e.g. "validate against a recorded session replay"), the recommendation is to implement that prescription — not invent a new one. Quote the existing prescription and cite where it lives. The gap is often not a missing technique but an unimplemented one.
 
@@ -53,7 +83,7 @@ If the architecture or epics already prescribe a safeguard (e.g. "validate again
 For each fidelity gap found in the audit, a recommendation block:
 
 1. **Gap** — reference to the audit finding.
-2. **Recommended technique** — one of the three above (or a justified alternative).
+2. **Recommended technique** — one of the four above (or a justified alternative).
 3. **Why this technique** — what bug class it catches, what it doesn't.
 4. **Boundary** — where the test seam should sit and why that boundary is correct.
 5. **Existing prescription** — if the architecture or epics already prescribe this, quote and cite it. The recommendation is "implement what's already prescribed," not "invent something new."

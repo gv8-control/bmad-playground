@@ -21,6 +21,7 @@ Scan for the mechanical fingerprints of fabricated-contract testing:
 
 - **Type-assertion bypasses** — `as SDKMessage`, `as unknown as SDKMessage`, `as never`, `as any` in test files. Each one silences the compiler where the real shape mismatch would have surfaced. Not every assertion is a problem (some are legitimate test scaffolding), but every assertion that casts a fabricated object to an external SDK type is a contract assumption that was never verified.
 - **Mocks of external SDK packages** — `jest.doMock('@anthropic-ai/...')`, `jest.mock('...')`, `__mocks__/` directories for external packages. A mock replaces the real contract with the author's assumption of it. The question is always: does the mock's return shape match the real SDK's actual output shape?
+- **Success-only mocks** — a mock of an external SDK or environment that returns only the happy path. The mock's return shape matches the real type, but it has no representation of the contract's failure modes, preconditions, or environmental states. A mock that always returns `{ exitCode: 0 }`, always yields a well-formed message, always returns a populated response — these are contracts reduced to their success shape. The real contract fails, returns empty, returns malformed-but-valid output, or depends on environmental state (filesystem contents, container image contents, network conditions) the mock never models. This is the hardest fingerprint to catch because the mock is at the correct boundary and shape-correct — the gap is in what the mock never does, not in what it does.
 - **Test fakes placed at the wrong boundary** — an `IAgentService` fake that replaces the *entire* service (including the SDK consumption and event-mapping code) rather than mocking only the SDK boundary. The fake emits the downstream events directly; the mapping code is never exercised. This is the most dangerous pattern because the fake is often praised as "well-designed" — it just tests the wrong layer.
 - **Missing recorded-session replay fixtures** — where the architecture prescribes "validate against a recorded session replay" (check architecture.md and epics.md for this language), is there actually a recorded fixture? A prescription without a fixture is a safeguard that was never implemented.
 
@@ -30,12 +31,13 @@ For each candidate finding, verify against the real contract. Read the SDK's typ
 
 Start from the code that consumes an external contract, not from the test files. The question is: "does any test exercise this code path against the real contract?" Trace from the production code outward to the tests — not from the tests inward to the code. A test file that looks comprehensive but never instantiates the code under test is the most common finding.
 
-Distinguish between two gaps that share the same root cause:
+Distinguish between three gaps that share the same root cause:
 
 - **Gap A — untested contract consumer.** The code that consumes an external contract has zero test coverage. A test seam (fake, mock, interface) was placed at the service boundary, replacing the entire service including the contract-consuming code. The fake emits downstream events directly; the mapping code is never exercised.
 - **Gap B — fabricated-contract test.** The contract-consuming code IS tested, but against a hand-rolled fixture whose shape doesn't match the real contract. The test passes because the fixture matches what the (possibly broken) code expects.
+- **Gap C — contract-behavior blind spot.** The contract-consuming code IS tested, the mock IS at the correct boundary, the mock's return shape IS correct — but the mock only models the contract's success path. The real contract has failure modes, preconditions, or environmental states that the mock never represents. The tests pass because both the code and the mock assume the same happy path. Production fails because the real environment has states the mock never modeled. This gap is invisible to Gap A (the code is tested) and Gap B (the shape is correct) — the failure lives in the behaviors the mock never exhibits.
 
-Both gaps are fidelity failures. Both produce green tests. Both hide production bugs. The report should name which gap each finding represents.
+All three gaps are fidelity failures. All three produce green tests. All three hide production bugs. The report should name which gap each finding represents.
 
 ## Scope
 
