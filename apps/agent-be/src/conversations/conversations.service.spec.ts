@@ -167,6 +167,9 @@ describe('ConversationsService', () => {
       expect(provisionOrder).toBeLessThan(cloneOrder);
       expect(cloneOrder).toBeLessThan(injectOrder);
       expect(injectOrder).toBeLessThan(statusOrder);
+
+      const clonedSandboxId = cloneSpy.mock.calls[0][0];
+      expect(sandboxFake.isCloned(clonedSandboxId)).toBe(true);
     });
 
     it('emits SESSION_READY after provision + clone + git-config + WORKING_TREE status', async () => {

@@ -11,6 +11,8 @@ import type {
 import type { Daytona, Sandbox } from '@daytonaio/sdk';
 import { DAYTONA_CLIENT } from './daytona-client.provider';
 
+const REPO_SUBDIRECTORY = 'repo';
+
 @Injectable()
 export class SandboxService implements ISandboxService {
   private readonly logger = new Logger(SandboxService.name);
@@ -49,13 +51,13 @@ export class SandboxService implements ISandboxService {
     const sandbox = await this.getSandbox(sandboxId);
     const repoWithToken = this.injectCredentialIntoUrl(repoUrl, credential);
     const response = await sandbox.process.executeCommand(
-      `git clone --depth=1 ${this.shellQuote(repoWithToken)} .`,
+      `git clone --depth=1 ${this.shellQuote(repoWithToken)} ${REPO_SUBDIRECTORY}`,
       undefined,
       undefined,
       30,
     );
     if (response.exitCode !== 0) {
-      throw new Error(response.result);
+      throw new Error(this.redactCredential(response.result, credential));
     }
   }
 
@@ -92,7 +94,7 @@ export class SandboxService implements ISandboxService {
     const sandbox = await this.getSandbox(sandboxId);
     const nameResponse = await sandbox.process.executeCommand(
       `git config user.name ${this.shellQuote(config.name)}`,
-      undefined,
+      REPO_SUBDIRECTORY,
       undefined,
       10,
     );
@@ -101,7 +103,7 @@ export class SandboxService implements ISandboxService {
     }
     const emailResponse = await sandbox.process.executeCommand(
       `git config user.email ${this.shellQuote(config.email)}`,
-      undefined,
+      REPO_SUBDIRECTORY,
       undefined,
       10,
     );
@@ -114,7 +116,7 @@ export class SandboxService implements ISandboxService {
     const sandbox = await this.getSandbox(sandboxId);
     const response = await sandbox.process.executeCommand(
       'git status --porcelain',
-      undefined,
+      REPO_SUBDIRECTORY,
       undefined,
       10,
     );
@@ -133,7 +135,7 @@ export class SandboxService implements ISandboxService {
     const sandbox = await this.getSandbox(sandboxId);
     const addResponse = await sandbox.process.executeCommand(
       'git add -A',
-      undefined,
+      REPO_SUBDIRECTORY,
       undefined,
       10,
     );
@@ -142,7 +144,7 @@ export class SandboxService implements ISandboxService {
     }
     const response = await sandbox.process.executeCommand(
       `git commit -m ${this.shellQuote(message)}`,
-      undefined,
+      REPO_SUBDIRECTORY,
       undefined,
       10,
     );
@@ -165,7 +167,7 @@ export class SandboxService implements ISandboxService {
       const sandbox = await this.getSandbox(sandboxId);
       const response = await sandbox.process.executeCommand(
         'ls -1 .claude/skills/',
-        undefined,
+        REPO_SUBDIRECTORY,
         undefined,
         10,
       );
@@ -196,6 +198,20 @@ export class SandboxService implements ISandboxService {
     url.username = 'x-access-token';
     url.password = credential;
     return url.toString();
+  }
+
+  /**
+   * Strip the OAuth token from git command output before it reaches user-facing
+   * error messages (SESSION_ERROR → FE). Modern git redacts userinfo in
+   * `fatal: Authentication failed for '<url>'`, but response.result is opaque
+   * combined output and the sandbox's git version is not controlled — defense
+   * in depth against token leakage.
+   */
+  private redactCredential(text: string, credential: string): string {
+    if (!credential) {
+      return text;
+    }
+    return text.split(credential).join('[REDACTED]');
   }
 
   private shellQuote(value: string): string {

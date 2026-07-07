@@ -17,6 +17,7 @@ import type {
 export class SandboxServiceFake implements ISandboxService {
   private readonly sandboxes = new Map<string, SandboxInfo>();
   private readonly injectedGitConfigs = new Map<string, GitUserConfig>();
+  private readonly clonedSandboxes = new Set<string>();
   private provisionDelay = 0;
   private shouldFailNextProvision = false;
   private shouldFailNextClone = false;
@@ -61,6 +62,16 @@ export class SandboxServiceFake implements ISandboxService {
     return config ? { ...config } : undefined;
   }
 
+  /** Inspection: whether clone() has succeeded for a sandbox (repo is present). */
+  isCloned(sandboxId: string): boolean {
+    return this.clonedSandboxes.has(sandboxId);
+  }
+
+  /** Inspection: list of sandbox IDs that have been cloned. */
+  getClonedSandboxes(): string[] {
+    return [...this.clonedSandboxes];
+  }
+
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
     if (this.shouldFailNextProvision) {
       this.shouldFailNextProvision = false;
@@ -88,6 +99,7 @@ export class SandboxServiceFake implements ISandboxService {
       this.shouldFailNextClone = false;
       throw new Error('SandboxServiceFake: simulated clone failure');
     }
+    this.clonedSandboxes.add(sandboxId);
   }
 
   async resume(sandboxId: string): Promise<SandboxInfo> {
@@ -105,6 +117,7 @@ export class SandboxServiceFake implements ISandboxService {
     if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
     this.sandboxes.delete(sandboxId);
     this.injectedGitConfigs.delete(sandboxId);
+    this.clonedSandboxes.delete(sandboxId);
   }
 
   async injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void> {
@@ -134,11 +147,15 @@ export class SandboxServiceFake implements ISandboxService {
     return this.sandboxes.get(sandboxId) ?? null;
   }
 
-  async executeCommand(sandboxId: string, command: string): Promise<{ stdout: string; exitCode: number }> {
+  async executeCommand(
+    sandboxId: string,
+    command: string,
+  ): Promise<{ exitCode: number; result: string; artifacts?: { stdout: string } }> {
     if (!this.sandboxes.has(sandboxId)) {
       throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
     }
-    return { stdout: `fake output for: ${command}`, exitCode: 0 };
+    const output = `fake output for: ${command}`;
+    return { exitCode: 0, result: output, artifacts: { stdout: output } };
   }
 
   async listSkills(_sandboxId: string): Promise<SkillInfo[]> {
