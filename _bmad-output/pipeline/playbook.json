@@ -19,9 +19,11 @@
       "stage": "create",
       "skill": "bmad-create-story",
       "agent": "planner",
-      "prompt": "Create story. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
+      "prompt": "Create story. Before generating the story spec, read @_bmad-output/implementation-artifacts/deferred-work.md and check whether any deferred finding is in scope for this story's code changes (matching by file path or component). If so, pull the deferred item into the story's tasks and mark it as picked-up in deferred-work.md. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-06T21:00:49.878Z",
+      "updatedByRun": "manual-20260706T210049"
     },
     {
       "id": "validate-story",
@@ -129,9 +131,11 @@
       "stage": "review",
       "skill": "bmad-agent-tech-writer",
       "agent": "planner",
-      "prompt": "Review the story artifacts and implemented code. If new, repeatable, unobvious patterns or conventions emerged that aren't in project-context.md, append them (lean entries). If none, do nothing. Additionally, mark the story as Done in all relevant artifacts.",
+      "prompt": "Review the story artifacts and implemented code. If new, repeatable, unobvious patterns or conventions emerged that aren't in project-context.md, append them (lean entries). When appending a new pattern, also search the codebase for existing code that the pattern applies to but does not follow, and record each instance as a finding in @_bmad-output/implementation-artifacts/deferred-work.md — do not patch the code in this step, just record the finding so a future story whose scope touches that code can pick it up. If none, do nothing. Additionally, mark the story as Done in all relevant artifacts.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-06T21:00:49.878Z",
+      "updatedByRun": "manual-20260706T210049"
     },
     {
       "id": "commit",
