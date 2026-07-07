@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { IAgentService, AgentRunParams } from '@bmad-easy/shared-types';
 import { query, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { EventType } from '@ag-ui/core';
 import type { ISandboxService } from '@bmad-easy/shared-types';
 import { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -65,7 +66,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     const abortController = new AbortController();
 
     this.sessionEvents.emit(conversationId, {
-      event: 'RUN_STARTED',
+      event: EventType.RUN_STARTED,
       data: { threadId: conversationId },
     });
 
@@ -165,7 +166,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
 
       if (!abortController.signal.aborted) {
         this.sessionEvents.emit(conversationId, {
-          event: 'RUN_FINISHED',
+          event: EventType.RUN_FINISHED,
           data: {},
         });
 
@@ -190,7 +191,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         const errorMessage = err instanceof Error ? err.message : 'Unknown agent error';
         this.logger.error(`Agent run failed for conversation ${conversationId}: ${errorMessage}`);
         this.sessionEvents.emit(conversationId, {
-          event: 'RUN_ERROR',
+          event: EventType.RUN_ERROR,
           data: { message: errorMessage },
         });
       }
@@ -240,7 +241,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     }
 
     this.sessionEvents.emit(conversationId, {
-      event: 'RUN_FINISHED',
+      event: EventType.RUN_FINISHED,
       data: {},
     });
 
@@ -308,21 +309,36 @@ export class AgentService implements IAgentService, OnModuleDestroy {
 
     activeRun.abortController.abort();
 
+    // Chain terminateProcess AFTER interrupt resolves so the agent run is
+    // cancelled before the sandbox is torn down (test I-3 ordering).
+    // Stays synchronous at the call site so the immediate RUN_ERROR emit
+    // still happens within the same macrotask as the setTimeout callback.
     try {
-      activeRun.query.interrupt();
+      void activeRun.query
+        .interrupt()
+        .catch((err) => {
+          this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
+        })
+        .finally(() => {
+          void this.sandboxService
+            .terminateProcess(activeRun.sandboxId, activeRun.processId)
+            .catch((err) => {
+              this.logger.warn(`Failed to terminate process: ${err}`);
+            });
+        });
     } catch (err) {
+      // Sync error path (e.g., interrupt is not a function) — still tear down.
       this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
+      void this.sandboxService
+        .terminateProcess(activeRun.sandboxId, activeRun.processId)
+        .catch((terminateErr) => {
+          this.logger.warn(`Failed to terminate process: ${terminateErr}`);
+        });
     }
-
-    void this.sandboxService
-      .terminateProcess(activeRun.sandboxId, activeRun.processId)
-      .catch((err) => {
-        this.logger.warn(`Failed to terminate process: ${err}`);
-      });
 
     const emitRunError = () => {
       this.sessionEvents.emit(conversationId, {
-        event: 'RUN_ERROR',
+        event: EventType.RUN_ERROR,
         data: { message: CIRCUIT_BREAKER_MESSAGE },
       });
     };
@@ -361,7 +377,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         this.currentMessageIds.set(conversationId, messageId);
         this.currentBlockTypes.set(conversationId, 'text');
         this.sessionEvents.emit(conversationId, {
-          event: 'TEXT_MESSAGE_START',
+          event: EventType.TEXT_MESSAGE_START,
           data: { messageId, role: 'assistant' },
         });
       } else if (contentBlock.type === 'tool_use') {
@@ -378,7 +394,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
           input: '',
         });
         this.sessionEvents.emit(conversationId, {
-          event: 'TOOL_CALL_START',
+          event: EventType.TOOL_CALL_START,
           data: { toolCallId, toolCallName, parentMessageId: null },
         });
       }
@@ -387,7 +403,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       if (delta.type === 'text_delta' && delta.text) {
         const messageId = this.currentMessageIds.get(conversationId) ?? `msg-${Date.now()}`;
         this.sessionEvents.emit(conversationId, {
-          event: 'TEXT_MESSAGE_CONTENT',
+          event: EventType.TEXT_MESSAGE_CONTENT,
           data: { messageId, delta: delta.text },
         });
         return delta.text;
@@ -401,7 +417,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
             toolCallInfo.input += delta.partial_json;
           }
           this.sessionEvents.emit(conversationId, {
-            event: 'TOOL_CALL_ARGS',
+            event: EventType.TOOL_CALL_ARGS,
             data: { toolCallId, delta: delta.partial_json },
           });
         }
@@ -412,7 +428,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         const toolCallId = this.currentToolCallIds.get(conversationId);
         if (toolCallId) {
           this.sessionEvents.emit(conversationId, {
-            event: 'TOOL_CALL_END',
+            event: EventType.TOOL_CALL_END,
             data: { toolCallId },
           });
         }
@@ -421,7 +437,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       } else {
         const messageId = this.currentMessageIds.get(conversationId) ?? `msg-${Date.now()}`;
         this.sessionEvents.emit(conversationId, {
-          event: 'TEXT_MESSAGE_END',
+          event: EventType.TEXT_MESSAGE_END,
           data: { messageId },
         });
         this.currentMessageIds.delete(conversationId);
@@ -499,7 +515,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
             : rawContent != null ? String(rawContent) : '';
 
       this.sessionEvents.emit(conversationId, {
-        event: 'TOOL_CALL_RESULT',
+        event: EventType.TOOL_CALL_RESULT,
         data: {
           messageId: toolCallId,
           toolCallId,

@@ -9,6 +9,7 @@ import { StreamingController } from './streaming.controller';
 import { SessionEventsService } from './session-events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SignJWT } from 'jose';
+import { EventType } from '@ag-ui/core';
 
 describe('StreamingController', () => {
   let controller: StreamingController;
@@ -174,7 +175,7 @@ describe('StreamingController', () => {
       setWriteReturn(false);
 
       for (let i = 0; i < 200; i++) {
-        sessionEvents.emit('conv-1', { event: 'TEXT_MESSAGE_CONTENT', data: { delta: 'x' } });
+        sessionEvents.emit('conv-1', { event: EventType.TEXT_MESSAGE_CONTENT, data: { delta: 'x' } });
       }
 
       jest.advanceTimersByTime(31_000);
@@ -198,7 +199,7 @@ describe('StreamingController', () => {
       setWriteReturn(false);
 
       for (let i = 0; i < 200; i++) {
-        sessionEvents.emit('conv-1', { event: 'TEXT_MESSAGE_CONTENT', data: { delta: 'x' } });
+        sessionEvents.emit('conv-1', { event: EventType.TEXT_MESSAGE_CONTENT, data: { delta: 'x' } });
       }
 
       setWriteReturn(true);
@@ -222,7 +223,7 @@ describe('StreamingController', () => {
       setWriteReturn(false);
 
       for (let i = 0; i < 200; i++) {
-        sessionEvents.emit('conv-1', { event: 'TEXT_MESSAGE_CONTENT', data: { delta: 'x' } });
+        sessionEvents.emit('conv-1', { event: EventType.TEXT_MESSAGE_CONTENT, data: { delta: 'x' } });
       }
 
       setWriteReturn(true);
@@ -231,7 +232,7 @@ describe('StreamingController', () => {
       setWriteReturn(false);
 
       for (let i = 0; i < 200; i++) {
-        sessionEvents.emit('conv-1', { event: 'TEXT_MESSAGE_CONTENT', data: { delta: 'x' } });
+        sessionEvents.emit('conv-1', { event: EventType.TEXT_MESSAGE_CONTENT, data: { delta: 'x' } });
       }
 
       jest.advanceTimersByTime(31_000);
@@ -263,7 +264,7 @@ describe('StreamingController', () => {
       setWriteReturn(false);
 
       for (let i = 0; i < 200; i++) {
-        sessionEvents.emit('conv-1', { event: 'TEXT_MESSAGE_CONTENT', data: { delta: 'x' } });
+        sessionEvents.emit('conv-1', { event: EventType.TEXT_MESSAGE_CONTENT, data: { delta: 'x' } });
       }
 
       if (closeHandlerRef.current) closeHandlerRef.current();

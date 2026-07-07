@@ -11,6 +11,7 @@ import { CredentialsService } from '../credentials/credentials.service';
 import { ProvisionQueueService } from '../sandbox/provision-queue.service';
 import { IdleTimeoutService, MID_SESSION_IDLE_TIMEOUT_MS } from '../sandbox/idle-timeout.service';
 import { SessionEventsService } from '../streaming/session-events.service';
+import { EventType } from '@ag-ui/core';
 import { ManualCommitService } from './manual-commit.service';
 import { generateSemanticTitle } from './semantic-title';
 
@@ -304,7 +305,7 @@ export class ConversationsService {
     const sandboxId = this.sandboxIds.get(conversationId);
     if (!sandboxId) {
       this.sessionEvents.emit(conversationId, {
-        event: 'RUN_ERROR',
+        event: EventType.RUN_ERROR,
         data: { message: 'Session is not ready' },
       });
       return;

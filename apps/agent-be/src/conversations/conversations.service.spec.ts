@@ -32,6 +32,7 @@ import { ConversationsModule } from './conversations.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { CredentialsService } from '../credentials/credentials.service';
 import { SessionEventsService } from '../streaming/session-events.service';
+import { EventType } from '@ag-ui/core';
 import { DAYTONA_CLIENT } from '../sandbox/daytona-client.provider';
 import { IdleTimeoutService } from '../sandbox/idle-timeout.service';
 import { AGENT_SERVICE, SANDBOX_SERVICE } from '@bmad-easy/shared-types';
@@ -459,7 +460,7 @@ describe('ConversationsService', () => {
 
       const runErrorEmitted = emitSpy.mock.calls.some(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (call: any[]) => call[1]?.event === 'RUN_ERROR',
+        (call: any[]) => call[1]?.event === EventType.RUN_ERROR,
       );
       expect(runErrorEmitted).toBe(true);
     });

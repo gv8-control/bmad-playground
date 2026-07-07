@@ -26,12 +26,13 @@ import { SessionEventsService } from './session-events.service';
 import { AgentService } from './agent.service';
 import type { SandboxServiceFake } from '../../test/helpers/sandbox-service.fake';
 
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import {
   createMockQuery,
   makeQueryFromGenerator,
   getInterruptMock,
 } from '../../test/helpers/mock-query';
+import { EventType } from '@ag-ui/core';
 
 describe('AgentService (real — tool call lifecycle + circuit breaker)', () => {
   let sessionEvents: SessionEventsService;
@@ -332,7 +333,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const startCall = emitSpy.mock.calls.find(
-        (c) => c[1]?.event === 'TOOL_CALL_START',
+        (c) => c[1]?.event === EventType.TOOL_CALL_START,
       );
       expect(startCall).toBeDefined();
       expect(startCall[1].data).toHaveProperty('toolCallName', 'Bash');
@@ -355,7 +356,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const argsCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'TOOL_CALL_ARGS',
+        (c) => c[1]?.event === EventType.TOOL_CALL_ARGS,
       );
       expect(argsCalls.length).toBeGreaterThanOrEqual(2);
       expect(argsCalls[0][1].data).toHaveProperty('toolCallId', 'tc-1');
@@ -377,13 +378,13 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const endCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'TOOL_CALL_END',
+        (c) => c[1]?.event === EventType.TOOL_CALL_END,
       );
       expect(endCalls).toHaveLength(1);
       expect(endCalls[0][1].data).toHaveProperty('toolCallId', 'tc-1');
 
       const textEndCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'TEXT_MESSAGE_END',
+        (c) => c[1]?.event === EventType.TEXT_MESSAGE_END,
       );
       expect(textEndCalls).toHaveLength(0);
     });
@@ -404,7 +405,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const resultCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'TOOL_CALL_RESULT',
+        (c) => c[1]?.event === EventType.TOOL_CALL_RESULT,
       );
       expect(resultCalls).toHaveLength(1);
       expect(resultCalls[0][1].data).toHaveProperty('toolCallId', 'tc-1');
@@ -494,7 +495,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(getInterruptMock(mockQuery)).toHaveBeenCalled();
 
       const errorCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
       expect(errorCalls).toHaveLength(1);
       expect(errorCalls[0][1].data.message).toBe(
@@ -536,14 +537,14 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       jest.advanceTimersByTime(100_000);
 
       const errorBefore100s = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
       expect(errorBefore100s).toHaveLength(0);
 
       jest.advanceTimersByTime(30_000);
 
       const errorAfter130s = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
       expect(errorAfter130s).toHaveLength(1);
 
@@ -575,12 +576,116 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       // so the agent run is cancelled before the sandbox is torn down. Order
       // matters: terminating the sandbox while interrupt() is still pending
       // would leave the agent loop running against a dead sandbox.
+      // Note: this assertion verifies invocation order, not resolution order.
+      // The resolution-ordering test below verifies the actual behavior
+      // (that terminateProcess waits for interrupt() to resolve).
       const interruptMock = getInterruptMock(mockQuery);
       expect(interruptMock).toHaveBeenCalled();
       const interruptCallOrder = interruptMock.mock.invocationCallOrder[0];
       const terminateCallOrder = (sandboxFake.terminateProcess as jest.Mock).mock.invocationCallOrder[0];
       expect(interruptCallOrder).toBeLessThan(terminateCallOrder);
       expect(sandboxFake.terminateProcess).toHaveBeenCalledWith('sb-1', expect.any(String));
+    });
+
+    it('[P1] terminateProcess waits for interrupt() to resolve before running (not just invocation order)', async () => {
+      // This test directly verifies RESOLUTION order, which the
+      // `invocationCallOrder` assertion above cannot do. interrupt() returns a
+      // promise that resolves only after 50ms of fake time has elapsed; if the
+      // production code used fire-and-forget (old buggy form: terminateProcess
+      // invoked synchronously inside handleCircuitBreaker with no .finally()
+      // chain), terminateProcess would run BEFORE the 50ms timer could fire
+      // and this test would FAIL at the `not.toHaveBeenCalled()` assertion.
+      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
+        yield* [];
+        await new Promise<never>(jest.fn());
+      };
+      const slowInterrupt = jest.fn(
+        () => new Promise<void>((resolve) => setTimeout(resolve, 50)),
+      );
+      const customQuery = Object.assign(stalledGenerator(), {
+        interrupt: slowInterrupt,
+      }) as unknown as Query;
+
+      mockQuery = jest.fn(() => customQuery);
+      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+
+      agentService = createAgentService();
+      const runTurnPromise = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      // Fire the circuit breaker timeout (120s). Microtasks flush: abort fires,
+      // runTurn's loop exits and settles. But interrupt()'s 50ms promise is
+      // still pending — it does not resolve until 50ms of additional fake time.
+      await jest.advanceTimersByTimeAsync(120_000);
+
+      // interrupt() has been invoked; terminateProcess has NOT — the .finally()
+      // chain is gated on interrupt() resolving.
+      expect(slowInterrupt).toHaveBeenCalled();
+      expect(sandboxFake.terminateProcess).not.toHaveBeenCalled();
+
+      // RUN_ERROR is emitted synchronously inside handleCircuitBreaker (it does
+      // not wait for the interrupt/terminate chain).
+      const errorCalls = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === EventType.RUN_ERROR,
+      );
+      expect(errorCalls).toHaveLength(1);
+
+      // Advance past the 50ms interrupt timer — interrupt() resolves, .finally()
+      // runs, terminateProcess is called.
+      await jest.advanceTimersByTimeAsync(50);
+
+      expect(sandboxFake.terminateProcess).toHaveBeenCalledWith(
+        'sb-1',
+        expect.any(String),
+      );
+
+      await runTurnPromise.catch(() => undefined);
+    });
+
+    it('[P1] sync error in interrupt() still tears down the process (fallback path)', async () => {
+      // The Finding 8 fix added an outer try/catch around the .interrupt() call
+      // so a synchronous throw (e.g. "interrupt is not a function" when the SDK
+      // contract changes) still tears down the sandbox. This test exercises
+      // that fallback path with an interrupt() that throws synchronously.
+      const customQuery = Object.assign(
+        (async function* (): AsyncGenerator<SDKMessage, void> { yield* []; })(),
+        { interrupt: jest.fn(() => { throw new Error('interrupt is not a function'); }) },
+      ) as unknown as Query;
+      mockQuery = jest.fn(() => customQuery);
+      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+
+      agentService = createAgentService();
+      const warnSpy = jest.spyOn(agentService['logger'], 'warn');
+      const runTurnPromise = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      jest.advanceTimersByTime(120_000);
+      await runTurnPromise.catch(() => undefined);
+
+      // Sync-error fallback path still ran terminateProcess.
+      expect(sandboxFake.terminateProcess).toHaveBeenCalledWith(
+        'sb-1',
+        expect.any(String),
+      );
+
+      // The sync error was logged via the outer catch's logger.warn call.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('interrupt is not a function'),
+      );
+
+      // RUN_ERROR SSE event was still emitted.
+      const errorCalls = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === EventType.RUN_ERROR,
+      );
+      expect(errorCalls).toHaveLength(1);
     });
   });
 
@@ -610,18 +715,22 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       // I-3: stop() must call interrupt() before terminateProcess, so the agent
       // loop is cancelled before the sandbox is torn down. Asserting just
       // `toHaveBeenCalled()` would pass even if terminateProcess ran first.
+      // Note: this assertion verifies invocation order, not resolution order.
+      // The resolution-ordering test in the [P0] AC-5 describe block above
+      // verifies the actual behavior (that terminateProcess waits for
+      // interrupt() to resolve).
       const interruptCallOrder = interruptMock.mock.invocationCallOrder[0];
       const terminateCallOrder = (sandboxFake.terminateProcess as jest.Mock).mock.invocationCallOrder[0];
       expect(interruptCallOrder).toBeLessThan(terminateCallOrder);
 
       const errorBeforeTimeout = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
 
       jest.advanceTimersByTime(120_000);
 
       const errorAfterTimeout = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
 
       expect(errorBeforeTimeout).toHaveLength(0);
@@ -646,13 +755,13 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const errorBefore = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
 
       jest.advanceTimersByTime(120_000);
 
       const errorAfter = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
 
       expect(errorBefore).toHaveLength(0);
@@ -761,7 +870,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const finishedEvents = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_FINISHED',
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
       );
       expect(finishedEvents).toHaveLength(1);
       expect(warnSpy).toHaveBeenCalledWith(
@@ -791,7 +900,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       const events = emitSpy.mock.calls.map((c) => c[1].event);
       const dirtyIndex = events.indexOf('WORKING_TREE_DIRTY');
-      const finishedIndex = events.indexOf('RUN_FINISHED');
+      const finishedIndex = events.indexOf(EventType.RUN_FINISHED);
 
       expect(dirtyIndex).toBeGreaterThan(-1);
       expect(finishedIndex).toBeGreaterThan(-1);
@@ -871,7 +980,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       const events = emitSpy.mock.calls.map((c) => c[1].event);
       const credentialIndex = events.indexOf('CREDENTIAL_FAILURE');
-      const finishedIndex = events.indexOf('RUN_FINISHED');
+      const finishedIndex = events.indexOf(EventType.RUN_FINISHED);
 
       expect(credentialIndex).toBeGreaterThan(-1);
       expect(finishedIndex).toBeGreaterThan(-1);
@@ -901,7 +1010,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       const events = emitSpy.mock.calls.map((c) => c[1].event);
       const deniedIndex = events.indexOf('ACCESS_DENIED');
-      const finishedIndex = events.indexOf('RUN_FINISHED');
+      const finishedIndex = events.indexOf(EventType.RUN_FINISHED);
 
       expect(deniedIndex).toBeGreaterThan(-1);
       expect(finishedIndex).toBeGreaterThan(-1);
@@ -928,7 +1037,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const finishedEvents = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_FINISHED',
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
       );
       expect(finishedEvents).toHaveLength(1);
       expect(errorSpy).toHaveBeenCalledWith(
@@ -981,7 +1090,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       const recordCostCallOrder = mockCostTracking.recordCost.mock.invocationCallOrder[0];
       const finishedEmitCall = emitSpy.mock.calls.find(
-        (c) => c[1]?.event === 'RUN_FINISHED',
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
       );
       expect(finishedEmitCall).toBeDefined();
       const finishedEmitOrder = emitSpy.mock.invocationCallOrder[
@@ -1025,7 +1134,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const finishedEvents = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_FINISHED',
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
       );
       expect(finishedEvents).toHaveLength(1);
       expect(loggerErrorSpy).toHaveBeenCalledWith(
@@ -1142,8 +1251,8 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
-      expect(emittedEvents).not.toContain('RUN_STARTED');
-      expect(emittedEvents).not.toContain('RUN_ERROR');
+      expect(emittedEvents).not.toContain(EventType.RUN_STARTED);
+      expect(emittedEvents).not.toContain(EventType.RUN_ERROR);
 
       await jest.advanceTimersByTimeAsync(120_000);
       await firstRun.catch(() => undefined);

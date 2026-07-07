@@ -25,6 +25,7 @@ import { AgentService } from '../src/streaming/agent.service';
 import type { SandboxServiceFake } from './helpers/sandbox-service.fake';
 import type { Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { createMockQuery, getInterruptMock } from './helpers/mock-query';
+import { EventType } from '@ag-ui/core';
 
 const FIXTURE_PATH = join(__dirname, 'fixtures/sdk-session-replay.jsonl');
 
@@ -140,21 +141,21 @@ describe('SDK contract replay (real recorded session → AgentService → AG-UI)
     const events = emitSpy.mock.calls.map((c) => c[1]?.event as string);
 
     // Lifecycle bookends, no error.
-    expect(events[0]).toBe('RUN_STARTED');
-    expect(events[events.length - 1]).toBe('RUN_FINISHED');
-    expect(events).not.toContain('RUN_ERROR');
+    expect(events[0]).toBe(EventType.RUN_STARTED);
+    expect(events[events.length - 1]).toBe(EventType.RUN_FINISHED);
+    expect(events).not.toContain(EventType.RUN_ERROR);
 
     // Tool-call lifecycle from the streaming content_block_* events (Bash tool_use).
-    const toolStart = events.indexOf('TOOL_CALL_START');
-    const toolArgs = events.indexOf('TOOL_CALL_ARGS');
-    const toolEnd = events.indexOf('TOOL_CALL_END');
+    const toolStart = events.indexOf(EventType.TOOL_CALL_START);
+    const toolArgs = events.indexOf(EventType.TOOL_CALL_ARGS);
+    const toolEnd = events.indexOf(EventType.TOOL_CALL_END);
     expect(toolStart).toBeGreaterThan(-1);
     expect(toolArgs).toBeGreaterThan(toolStart);
     expect(toolEnd).toBeGreaterThan(toolArgs);
 
     // The SDKUserMessage's tool_result → TOOL_CALL_RESULT (processUserMessage),
     // followed by a working-tree event (Bash is a file-modifying tool).
-    const toolResult = events.indexOf('TOOL_CALL_RESULT');
+    const toolResult = events.indexOf(EventType.TOOL_CALL_RESULT);
     expect(toolResult).toBeGreaterThan(toolEnd);
     const workingTreeAfter = events.findIndex(
       (e, i) => i > toolResult && /^WORKING_TREE_(DIRTY|CLEAN)$/.test(e),
@@ -162,9 +163,9 @@ describe('SDK contract replay (real recorded session → AgentService → AG-UI)
     expect(workingTreeAfter).toBeGreaterThan(toolResult);
 
     // Text lifecycle from the second assistant turn's content_block_* events.
-    const textStart = events.indexOf('TEXT_MESSAGE_START');
-    const textContent = events.indexOf('TEXT_MESSAGE_CONTENT');
-    const textEnd = events.indexOf('TEXT_MESSAGE_END');
+    const textStart = events.indexOf(EventType.TEXT_MESSAGE_START);
+    const textContent = events.indexOf(EventType.TEXT_MESSAGE_CONTENT);
+    const textEnd = events.indexOf(EventType.TEXT_MESSAGE_END);
     expect(textStart).toBeGreaterThan(workingTreeAfter);
     expect(textContent).toBeGreaterThan(textStart);
     expect(textEnd).toBeGreaterThan(textContent);
@@ -223,7 +224,7 @@ describe('SDK contract replay (real recorded session → AgentService → AG-UI)
 
     // No RUN_ERROR from a missing interrupt(): stop() emits RUN_FINISHED.
     const events = emitSpy.mock.calls.map((c) => c[1]?.event as string);
-    expect(events).not.toContain('RUN_ERROR');
-    expect(events).toContain('RUN_FINISHED');
+    expect(events).not.toContain(EventType.RUN_ERROR);
+    expect(events).toContain(EventType.RUN_FINISHED);
   });
 });
