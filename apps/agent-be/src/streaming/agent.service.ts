@@ -11,7 +11,6 @@ import { CostTrackingService } from '../cost-tracking/cost-tracking.service';
 
 interface ActiveRun {
   sandboxId: string;
-  processId: string;
   abortController: AbortController;
   query: Query;
   userId: string;
@@ -62,7 +61,6 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       return;
     }
 
-    const processId = `agent-${conversationId}`;
     const abortController = new AbortController();
 
     this.sessionEvents.emit(conversationId, {
@@ -103,7 +101,6 @@ export class AgentService implements IAgentService, OnModuleDestroy {
 
       this.activeRuns.set(conversationId, {
         sandboxId,
-        processId,
         abortController,
         query: agentQuery,
         userId,
@@ -232,14 +229,6 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
     }
 
-    try {
-      await this.sandboxService.terminateProcess(activeRun.sandboxId, activeRun.processId);
-    } catch (err) {
-      this.logger.warn(
-        `Failed to terminate process ${activeRun.processId} in sandbox ${activeRun.sandboxId}: ${err}`,
-      );
-    }
-
     this.sessionEvents.emit(conversationId, {
       event: EventType.RUN_FINISHED,
       data: {},
@@ -309,31 +298,17 @@ export class AgentService implements IAgentService, OnModuleDestroy {
 
     activeRun.abortController.abort();
 
-    // Chain terminateProcess AFTER interrupt resolves so the agent run is
-    // cancelled before the sandbox is torn down (test I-3 ordering).
-    // Stays synchronous at the call site so the immediate RUN_ERROR emit
-    // still happens within the same macrotask as the setTimeout callback.
+    // Cancel the in-process agent run. interrupt() may reject asynchronously or
+    // throw synchronously (e.g. if the SDK contract changes and interrupt is no
+    // longer a function); log either without letting it block the RUN_ERROR emit
+    // below. Kept synchronous at the call site so the RUN_ERROR emit still
+    // happens within the same macrotask as the setTimeout callback.
     try {
-      void activeRun.query
-        .interrupt()
-        .catch((err) => {
-          this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
-        })
-        .finally(() => {
-          void this.sandboxService
-            .terminateProcess(activeRun.sandboxId, activeRun.processId)
-            .catch((err) => {
-              this.logger.warn(`Failed to terminate process: ${err}`);
-            });
-        });
+      void activeRun.query.interrupt().catch((err) => {
+        this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
+      });
     } catch (err) {
-      // Sync error path (e.g., interrupt is not a function) — still tear down.
       this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
-      void this.sandboxService
-        .terminateProcess(activeRun.sandboxId, activeRun.processId)
-        .catch((terminateErr) => {
-          this.logger.warn(`Failed to terminate process: ${terminateErr}`);
-        });
     }
 
     const emitRunError = () => {

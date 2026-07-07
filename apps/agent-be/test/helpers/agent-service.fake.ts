@@ -25,7 +25,6 @@ export class AgentServiceFake implements IAgentService {
   private script: SseEvent[] = DEFAULT_SCRIPT;
   private shouldFailNextRun = false;
   private activeRun = false;
-  private readonly runParams = new Map<string, AgentRunParams>();
 
   constructor(
     private readonly sessionEvents: SessionEventsService,
@@ -90,7 +89,6 @@ export class AgentServiceFake implements IAgentService {
   }
 
   async runTurn(params: AgentRunParams): Promise<void> {
-    this.runParams.set(params.conversationId, params);
     this.activeRun = true;
 
     if (this.shouldFailNextRun) {
@@ -163,11 +161,6 @@ export class AgentServiceFake implements IAgentService {
   }
 
   async stop(conversationId: string): Promise<void> {
-    const params = this.runParams.get(conversationId);
-    if (params) {
-      await this.sandboxService.terminateProcess(params.sandboxId, 'agent-process');
-    }
-
     this.sessionEvents.emit(conversationId, {
       event: EventType.RUN_FINISHED,
       data: {},

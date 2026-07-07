@@ -153,15 +153,6 @@ export class SandboxService implements ISandboxService {
     }
   }
 
-  async terminateProcess(sandboxId: string, processId: string): Promise<void> {
-    const sandbox = await this.getSandbox(sandboxId);
-    try {
-      await sandbox.process.killPtySession(processId);
-    } catch (err) {
-      this.logger.warn(`Failed to terminate process ${processId} in sandbox ${sandboxId}: ${err}`);
-    }
-  }
-
   async listSkills(sandboxId: string): Promise<SkillInfo[]> {
     try {
       const sandbox = await this.getSandbox(sandboxId);

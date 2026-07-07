@@ -4,7 +4,8 @@
  * Uses AgentServiceFake (NOT the real AgentService, which requires a real Daytona sandbox).
  *
  * Covers: AC-1 (agent response persisted as Turn on RUN_FINISHED),
- * AC-3 (stop calls terminateProcess), error handling (RUN_ERROR).
+ * AC-3 (stopAgent stops the run — returns stopped:true, emits RUN_FINISHED),
+ * error handling (RUN_ERROR).
  */
 import { Test } from '@nestjs/testing';
 import { ConversationsService } from '../conversations/conversations.service';
@@ -134,22 +135,6 @@ describe('AgentService (via ConversationsService integration)', () => {
 
       expect(assistantTurnCall).toBeDefined();
       expect(assistantTurnCall[0].data.content).toBe('Hello world');
-    });
-  });
-
-  describe('[P0] stop calls terminateProcess', () => {
-    it('calls sandboxService.terminateProcess when stop is invoked', async () => {
-      await provisionAndWait();
-
-      await service.sendTurn('conv-1', 'user-1', 'hello agent');
-
-      await new Promise((r) => setTimeout(r, 50));
-
-      const terminateSpy = jest.spyOn(sandboxFake, 'terminateProcess');
-
-      await service.stopAgent('conv-1', 'user-1');
-
-      expect(terminateSpy).toHaveBeenCalledWith(expect.any(String), expect.any(String));
     });
   });
 

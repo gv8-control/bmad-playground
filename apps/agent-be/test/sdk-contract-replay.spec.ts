@@ -65,7 +65,6 @@ describe('SDK contract replay (real recorded session → AgentService → AG-UI)
       turn: { create: jest.fn().mockResolvedValue({ id: 'turn-1' }) },
     };
     sandboxFake = {
-      terminateProcess: jest.fn().mockResolvedValue(undefined),
       getWorkingTreeStatus: jest.fn().mockResolvedValue({ dirty: false, files: [] }),
     } as unknown as SandboxServiceFake;
     sessionEvents = new SessionEventsService();

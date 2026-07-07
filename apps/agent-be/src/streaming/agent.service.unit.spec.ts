@@ -53,7 +53,6 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     };
 
     sandboxFake = {
-      terminateProcess: jest.fn().mockResolvedValue(undefined),
       getWorkingTreeStatus: jest.fn().mockResolvedValue({ dirty: false, files: [] }),
     } as unknown as SandboxServiceFake;
 
@@ -552,7 +551,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       await runTurnPromise;
     });
 
-    it('calls terminateProcess when circuit breaker fires', async () => {
+    it('calls interrupt() when circuit breaker fires', async () => {
       const stalledGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
         yield* [];
         await new Promise<never>(jest.fn());
@@ -572,85 +571,18 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       jest.advanceTimersByTime(120_000);
       await runTurnPromise;
 
-      // I-3: not just "called" — interrupt() must run BEFORE terminateProcess
-      // so the agent run is cancelled before the sandbox is torn down. Order
-      // matters: terminating the sandbox while interrupt() is still pending
-      // would leave the agent loop running against a dead sandbox.
-      // Note: this assertion verifies invocation order, not resolution order.
-      // The resolution-ordering test below verifies the actual behavior
-      // (that terminateProcess waits for interrupt() to resolve).
+      // The circuit breaker cancels the in-process agent run via interrupt()
+      // (alongside abortController.abort()). There is no sandbox-side process to
+      // tear down.
       const interruptMock = getInterruptMock(mockQuery);
       expect(interruptMock).toHaveBeenCalled();
-      const interruptCallOrder = interruptMock.mock.invocationCallOrder[0];
-      const terminateCallOrder = (sandboxFake.terminateProcess as jest.Mock).mock.invocationCallOrder[0];
-      expect(interruptCallOrder).toBeLessThan(terminateCallOrder);
-      expect(sandboxFake.terminateProcess).toHaveBeenCalledWith('sb-1', expect.any(String));
     });
 
-    it('[P1] terminateProcess waits for interrupt() to resolve before running (not just invocation order)', async () => {
-      // This test directly verifies RESOLUTION order, which the
-      // `invocationCallOrder` assertion above cannot do. interrupt() returns a
-      // promise that resolves only after 50ms of fake time has elapsed; if the
-      // production code used fire-and-forget (old buggy form: terminateProcess
-      // invoked synchronously inside handleCircuitBreaker with no .finally()
-      // chain), terminateProcess would run BEFORE the 50ms timer could fire
-      // and this test would FAIL at the `not.toHaveBeenCalled()` assertion.
-      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
-        yield* [];
-        await new Promise<never>(jest.fn());
-      };
-      const slowInterrupt = jest.fn(
-        () => new Promise<void>((resolve) => setTimeout(resolve, 50)),
-      );
-      const customQuery = Object.assign(stalledGenerator(), {
-        interrupt: slowInterrupt,
-      }) as unknown as Query;
-
-      mockQuery = jest.fn(() => customQuery);
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
-
-      agentService = createAgentService();
-      const runTurnPromise = agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      // Fire the circuit breaker timeout (120s). Microtasks flush: abort fires,
-      // runTurn's loop exits and settles. But interrupt()'s 50ms promise is
-      // still pending — it does not resolve until 50ms of additional fake time.
-      await jest.advanceTimersByTimeAsync(120_000);
-
-      // interrupt() has been invoked; terminateProcess has NOT — the .finally()
-      // chain is gated on interrupt() resolving.
-      expect(slowInterrupt).toHaveBeenCalled();
-      expect(sandboxFake.terminateProcess).not.toHaveBeenCalled();
-
-      // RUN_ERROR is emitted synchronously inside handleCircuitBreaker (it does
-      // not wait for the interrupt/terminate chain).
-      const errorCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-      expect(errorCalls).toHaveLength(1);
-
-      // Advance past the 50ms interrupt timer — interrupt() resolves, .finally()
-      // runs, terminateProcess is called.
-      await jest.advanceTimersByTimeAsync(50);
-
-      expect(sandboxFake.terminateProcess).toHaveBeenCalledWith(
-        'sb-1',
-        expect.any(String),
-      );
-
-      await runTurnPromise.catch(() => undefined);
-    });
-
-    it('[P1] sync error in interrupt() still tears down the process (fallback path)', async () => {
-      // The Finding 8 fix added an outer try/catch around the .interrupt() call
-      // so a synchronous throw (e.g. "interrupt is not a function" when the SDK
-      // contract changes) still tears down the sandbox. This test exercises
-      // that fallback path with an interrupt() that throws synchronously.
+    it('[P1] sync error in interrupt() is caught; RUN_ERROR still emits (fallback path)', async () => {
+      // An outer try/catch around .interrupt() ensures a synchronous throw (e.g.
+      // "interrupt is not a function" if the SDK contract changes) is caught and
+      // logged, and does not prevent the RUN_ERROR emit. This test exercises that
+      // fallback path with an interrupt() that throws synchronously.
       const customQuery = Object.assign(
         (async function* (): AsyncGenerator<SDKMessage, void> { yield* []; })(),
         { interrupt: jest.fn(() => { throw new Error('interrupt is not a function'); }) },
@@ -670,13 +602,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       jest.advanceTimersByTime(120_000);
       await runTurnPromise.catch(() => undefined);
 
-      // Sync-error fallback path still ran terminateProcess.
-      expect(sandboxFake.terminateProcess).toHaveBeenCalledWith(
-        'sb-1',
-        expect.any(String),
-      );
-
-      // The sync error was logged via the outer catch's logger.warn call.
+      // The sync error was caught and logged via the outer catch's logger.warn.
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('interrupt is not a function'),
       );
@@ -711,17 +637,6 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       const interruptMock = getInterruptMock(mockQuery);
       expect(interruptMock).toHaveBeenCalled();
-
-      // I-3: stop() must call interrupt() before terminateProcess, so the agent
-      // loop is cancelled before the sandbox is torn down. Asserting just
-      // `toHaveBeenCalled()` would pass even if terminateProcess ran first.
-      // Note: this assertion verifies invocation order, not resolution order.
-      // The resolution-ordering test in the [P0] AC-5 describe block above
-      // verifies the actual behavior (that terminateProcess waits for
-      // interrupt() to resolve).
-      const interruptCallOrder = interruptMock.mock.invocationCallOrder[0];
-      const terminateCallOrder = (sandboxFake.terminateProcess as jest.Mock).mock.invocationCallOrder[0];
-      expect(interruptCallOrder).toBeLessThan(terminateCallOrder);
 
       const errorBeforeTimeout = emitSpy.mock.calls.filter(
         (c) => c[1]?.event === EventType.RUN_ERROR,
