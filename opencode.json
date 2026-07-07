@@ -30,6 +30,25 @@
     }
   },
   "mcp": {
+    "github": {
+      "type": "local",
+      "command": [
+        "docker",
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e",
+        "GITHUB_TOOLSETS",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "enabled": true,
+      "environment": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "{env:GITHUB_TOKEN}",
+        "GITHUB_TOOLSETS": "default,actions"
+      }
+    },
     "n8n": {
       "type": "remote",
       "url": "http://localhost:5678/mcp-server/http",
