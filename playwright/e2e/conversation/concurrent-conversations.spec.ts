@@ -388,10 +388,12 @@ test.describe('Story 3.11: Concurrent conversations — limit-reached + retry-ca
     await page.goto('/conversations/conv-existing');
     await page.waitForFunction(() => (window as unknown as Record<string, unknown>).__mockEventSource != null);
 
-    const es = (await page.evaluate(() => (window as unknown as Record<string, unknown>).__mockEventSource)) as
-      | { __emit: (type: string, data: unknown) => void }
-      | undefined;
-    es?.__emit('SESSION_TIMEOUT', {});
+    await page.evaluate(() => {
+      const es = (window as unknown as Record<string, unknown>).__mockEventSource as
+        | { __emit: (type: string, data: unknown) => void }
+        | undefined;
+      es?.__emit('SESSION_TIMEOUT', {});
+    });
 
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
     await page.getByRole('button', { name: 'Retry' }).click();

@@ -536,18 +536,16 @@ test.describe('Story 3.3: Streaming Chat', () => {
     await page.goto('/conversations/new');
     await readySession(mocks);
 
-    await sendMessage(page, 'tell me a long story');
-
     await mocks.emit('RUN_STARTED');
     await mocks.emit('TEXT_MESSAGE_START', { messageId: 'msg-1' });
 
-    // Stream enough content to make the container overflow
-    for (let i = 0; i < 30; i++) {
-      await mocks.emit('TEXT_MESSAGE_CONTENT', {
-        messageId: 'msg-1',
-        delta: `Line ${i} of the story. `.repeat(3),
-      });
-    }
+    // Stream enough content to make the container overflow (must exceed the
+    // 50px threshold in handleScroll so scrolling to top is detected as
+    // "not at bottom")
+    await mocks.emit('TEXT_MESSAGE_CONTENT', {
+      messageId: 'msg-1',
+      delta: Array.from({ length: 60 }, (_, i) => `Line ${i} of the story. `.repeat(5)).join(''),
+    });
 
     // Verify we're at the bottom first
     await page.waitForFunction(
@@ -598,18 +596,16 @@ test.describe('Story 3.3: Streaming Chat', () => {
     await page.goto('/conversations/new');
     await readySession(mocks);
 
-    await sendMessage(page, 'tell me a long story');
-
     await mocks.emit('RUN_STARTED');
     await mocks.emit('TEXT_MESSAGE_START', { messageId: 'msg-1' });
 
-    // Stream enough content to make the container overflow
-    for (let i = 0; i < 30; i++) {
-      await mocks.emit('TEXT_MESSAGE_CONTENT', {
-        messageId: 'msg-1',
-        delta: `Line ${i} of the story. `.repeat(3),
-      });
-    }
+    // Stream enough content to make the container overflow (must exceed the
+    // 50px threshold in handleScroll so scrolling to top is detected as
+    // "not at bottom")
+    await mocks.emit('TEXT_MESSAGE_CONTENT', {
+      messageId: 'msg-1',
+      delta: Array.from({ length: 60 }, (_, i) => `Line ${i} of the story. `.repeat(5)).join(''),
+    });
 
     // Scroll up to pause auto-scroll
     await page

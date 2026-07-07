@@ -11,8 +11,13 @@ import { test, expect } from '../../support/merged-fixtures';
 // ─── Unauthenticated access control (AC-4, AC-1a) ────────────────────────────
 
 test.describe('Story 1.2 — unauthenticated access control', () => {
+  // These tests must run without the authenticated storage state that the
+  // chromium project applies by default. Explicitly pass an empty storageState
+  // to browser.newContext() so the user is truly unauthenticated.
+  const noAuth = { storageState: { cookies: [], origins: [] } };
+
   test('[P0] visiting / redirects unauthenticated user to /sign-in', async ({ browser }) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext(noAuth);
     const page = await context.newPage();
     try {
       await page.goto('/');
@@ -23,7 +28,7 @@ test.describe('Story 1.2 — unauthenticated access control', () => {
   });
 
   test('[P0] visiting a protected route redirects with callbackUrl', async ({ browser }) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext(noAuth);
     const page = await context.newPage();
     try {
       await page.goto('/dashboard');
@@ -34,7 +39,7 @@ test.describe('Story 1.2 — unauthenticated access control', () => {
   });
 
   test('[P0] visiting any unauthenticated page never surfaces app content', async ({ browser }) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext(noAuth);
     const page = await context.newPage();
     try {
       for (const path of ['/conversations', '/settings', '/artifacts']) {
@@ -50,8 +55,10 @@ test.describe('Story 1.2 — unauthenticated access control', () => {
 // ─── Sign-in page UI (AC-1b) ──────────────────────────────────────────────────
 
 test.describe('Story 1.2 — sign-in page layout', () => {
+  const noAuth = { storageState: { cookies: [], origins: [] } };
+
   test('[P0] sign-in page renders with "Sign in with GitHub" as sole interactive element', async ({ browser }) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext(noAuth);
     const page = await context.newPage();
     try {
       await page.goto('/sign-in');
@@ -60,8 +67,9 @@ test.describe('Story 1.2 — sign-in page layout', () => {
       await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeEnabled();
 
-      // No other buttons, links, or text inputs on the page
-      await expect(page.getByRole('button')).toHaveCount(1);
+      // No other buttons, links, or text inputs on the page (scope to form to
+      // exclude Next.js dev overlay elements like __next-route-announcer__)
+      await expect(page.locator('form').getByRole('button')).toHaveCount(1);
       await expect(page.getByRole('textbox')).toHaveCount(0);
       await expect(page.getByRole('link')).toHaveCount(0);
     } finally {
@@ -70,11 +78,12 @@ test.describe('Story 1.2 — sign-in page layout', () => {
   });
 
   test('[P1] sign-in page shows no error by default', async ({ browser }) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext(noAuth);
     const page = await context.newPage();
     try {
       await page.goto('/sign-in');
-      await expect(page.getByRole('alert')).not.toBeVisible();
+      // Use p[role="alert"] to avoid matching Next.js __next-route-announcer__ div
+      await expect(page.locator('p[role="alert"]')).not.toBeVisible();
     } finally {
       await context.close();
     }
@@ -84,13 +93,16 @@ test.describe('Story 1.2 — sign-in page layout', () => {
 // ─── OAuth error state (AC-3) ─────────────────────────────────────────────────
 
 test.describe('Story 1.2 — OAuth error state', () => {
+  const noAuth = { storageState: { cookies: [], origins: [] } };
+
   test('[P1] ?error query param shows inline error below re-enabled button', async ({ browser }) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext(noAuth);
     const page = await context.newPage();
     try {
       await page.goto('/sign-in?error=OAuthCallback');
 
-      const errorMessage = page.getByRole('alert');
+      // Use p[role="alert"] to avoid matching Next.js __next-route-announcer__ div
+      const errorMessage = page.locator('p[role="alert"]');
       await expect(errorMessage).toBeVisible();
       await expect(errorMessage).toContainText('Sign-in failed. Try again or contact support.');
 
@@ -102,12 +114,13 @@ test.describe('Story 1.2 — OAuth error state', () => {
   });
 
   test('[P2] any error value triggers the same inline error message', async ({ browser }) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext(noAuth);
     const page = await context.newPage();
     try {
       await page.goto('/sign-in?error=AccessDenied');
-      await expect(page.getByRole('alert')).toBeVisible();
-      await expect(page.getByRole('alert')).toContainText('Sign-in failed.');
+      // Use p[role="alert"] to avoid matching Next.js __next-route-announcer__ div
+      await expect(page.locator('p[role="alert"]')).toBeVisible();
+      await expect(page.locator('p[role="alert"]')).toContainText('Sign-in failed.');
     } finally {
       await context.close();
     }
@@ -125,7 +138,7 @@ test.describe('Story 1.2 — GitHub OAuth initiation', () => {
       !process.env.AUTH_GITHUB_ID,
       'Set AUTH_GITHUB_ID to any non-empty value to enable (a real GitHub OAuth App is not required)',
     );
-    const context = await browser.newContext();
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
     try {
       await page.goto('/sign-in');

@@ -15,7 +15,12 @@
  */
 
 import { test, expect } from '../../support/merged-fixtures';
-import { resetRepoConnection } from '../../support/reset-repo-connection';
+import { resetRepoConnection, seedRepoConnection } from '../../support/reset-repo-connection';
+
+// After all bmad-validation tests finish, restore a repo connection so that
+// subsequent test files (conversation, project-map) which require a
+// connection to exist for seeding are not left without one.
+test.afterAll(seedRepoConnection);
 
 /**
  * Generates a React Flight (RSC) wire-format payload for a Server Action
@@ -30,10 +35,13 @@ function rscActionPayload(result: unknown): string {
 
 const BMAD_DOCS_URL = 'https://docs.bmad-method.org';
 
-// Clear any stale RepoConnection left by prior test runs. All tests in this
-// file use the authenticated `page` fixture and expect the user to have NO
-// connection so the /onboarding form is visible (not redirected to /project-map).
-test.beforeAll(resetRepoConnection);
+// Clear any stale RepoConnection before each test. All tests in this file use
+// the authenticated `page` fixture and expect the user to have NO connection so
+// the /onboarding form is visible (not redirected to /project-map). Using
+// beforeEach (not beforeAll) ensures the connection is cleared before every
+// test and that the file does not leave a deleted connection behind for
+// subsequent test files when running with --workers=1.
+test.beforeEach(resetRepoConnection);
 
 // ─── MISSING_DIRECTORY error (AC-3) ──────────────────────────────────────────
 
