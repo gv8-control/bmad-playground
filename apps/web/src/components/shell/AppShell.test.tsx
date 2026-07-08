@@ -78,6 +78,7 @@ describe('AppShell', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('.bg-overlay')).toHaveLength(1);
     });
+    expect(screen.getByTestId('sheet-content')).toBeVisible();
   });
 
   it('[P0] drawer closes on Escape', async () => {
@@ -95,6 +96,7 @@ describe('AppShell', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('.bg-overlay')).toHaveLength(0);
     });
+    expect(screen.queryByTestId('sheet-content')).not.toBeInTheDocument();
   });
 
   it('[P0] drawer closes on pathname change', async () => {
@@ -115,6 +117,7 @@ describe('AppShell', () => {
 
     const overlays = document.querySelectorAll('.bg-overlay');
     expect(overlays).toHaveLength(0);
+    expect(screen.queryByTestId('sheet-content')).not.toBeInTheDocument();
   });
 
   it('[P0] moves focus to h1 on route change', async () => {

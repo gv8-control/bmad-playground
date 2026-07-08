@@ -63,6 +63,7 @@ export function ChatMessageList({
         onScroll={handleScroll}
         className="h-full overflow-y-auto px-8 pt-6 pb-4"
         aria-live="polite"
+        data-testid="chat-message-list"
       >
         {messages.length === 0 && (
           <p className="text-text-2 text-sm">

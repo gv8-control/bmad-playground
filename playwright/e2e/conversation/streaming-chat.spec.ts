@@ -517,7 +517,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
     // Verify auto-scroll kept the view at the bottom
     await page.waitForFunction(
       () => {
-        const el = document.querySelector('[aria-live="polite"]') as HTMLElement | null;
+        const el = document.querySelector('[data-testid="chat-message-list"]') as HTMLElement | null;
         if (!el) return false;
         return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
       },
@@ -550,7 +550,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
     // Verify we're at the bottom first
     await page.waitForFunction(
       () => {
-        const el = document.querySelector('[aria-live="polite"]') as HTMLElement | null;
+        const el = document.querySelector('[data-testid="chat-message-list"]') as HTMLElement | null;
         if (!el) return false;
         return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
       },
@@ -559,7 +559,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
 
     // Scroll up to pause auto-scroll
     await page
-      .locator('[aria-live="polite"]')
+      .getByTestId('chat-message-list')
       .evaluate((el) => {
         el.scrollTop = 0;
       });
@@ -578,9 +578,14 @@ test.describe('Story 3.3: Streaming Chat', () => {
     // Verify button now shows a new-message count badge
     await expect(page.getByText(/\d+ new messages/i)).toBeVisible();
 
+    // Wait for the new message content to render before checking scroll position
+    await expect(
+      page.getByText('New message after scroll up', { exact: false }).first(),
+    ).toBeVisible();
+
     // Verify scroll position did NOT jump to bottom
     const stillScrolledUp = await page
-      .locator('[aria-live="polite"]')
+      .getByTestId('chat-message-list')
       .evaluate((el) => el.scrollTop < 50);
     expect(stillScrolledUp).toBe(true);
 
@@ -609,7 +614,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
 
     // Scroll up to pause auto-scroll
     await page
-      .locator('[aria-live="polite"]')
+      .getByTestId('chat-message-list')
       .evaluate((el) => {
         el.scrollTop = 0;
       });
@@ -625,13 +630,18 @@ test.describe('Story 3.3: Streaming Chat', () => {
       delta: 'New content after scroll up. '.repeat(10),
     });
 
+    // Wait for the new content to render so scrollHeight is current
+    await expect(
+      page.getByText('New content after scroll up', { exact: false }).first(),
+    ).toBeVisible();
+
     // Click scroll-to-bottom button
     await page.getByRole('button', { name: /scroll to bottom/i }).click();
 
     // Verify scroll position is at the bottom
     await page.waitForFunction(
       () => {
-        const el = document.querySelector('[aria-live="polite"]') as HTMLElement | null;
+        const el = document.querySelector('[data-testid="chat-message-list"]') as HTMLElement | null;
         if (!el) return false;
         return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
       },
@@ -644,10 +654,15 @@ test.describe('Story 3.3: Streaming Chat', () => {
       delta: 'More content after re-enable. '.repeat(10),
     });
 
+    // Wait for the new content to render before verifying auto-scroll
+    await expect(
+      page.getByText('More content after re-enable', { exact: false }).first(),
+    ).toBeVisible();
+
     // Verify auto-scroll is still following
     await page.waitForFunction(
       () => {
-        const el = document.querySelector('[aria-live="polite"]') as HTMLElement | null;
+        const el = document.querySelector('[data-testid="chat-message-list"]') as HTMLElement | null;
         if (!el) return false;
         return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
       },

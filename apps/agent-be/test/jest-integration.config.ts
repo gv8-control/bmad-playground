@@ -5,7 +5,7 @@ const config: Config = {
   rootDir: '.',
   testMatch: ['**/*.integration.spec.ts'],
   transform: {
-    '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: './tsconfig.spec.json' }],
+    '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.spec.json' }],
   },
   transformIgnorePatterns: [
     'node_modules/(?!jose|@ag-ui|@anthropic-ai)',

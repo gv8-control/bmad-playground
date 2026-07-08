@@ -77,6 +77,7 @@ export function AppShell({ user, conversations, children }: AppShellProps) {
             <SheetContent
               side="left"
               className="w-[240px] bg-surface"
+              data-testid="sheet-content"
               onCloseAutoFocus={(e) => {
                 if (isNavigatingRef.current) {
                   isNavigatingRef.current = false;
