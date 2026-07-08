@@ -120,10 +120,14 @@ export class StreamingController {
               if (pendingCount >= 200) {
                 cleanupAll();
                 subscription.unsubscribe();
-                res.write('event: STREAM_ERROR\n');
-                res.write(`data: ${JSON.stringify({ code: 'STREAM_BACK_PRESSURE' })}\n\n`);
-                res.write('data: [DONE]\n\n');
-                res.end();
+                try {
+                  res.write('event: STREAM_ERROR\n');
+                  res.write(`data: ${JSON.stringify({ code: 'STREAM_BACK_PRESSURE' })}\n\n`);
+                  res.write('data: [DONE]\n\n');
+                  res.end();
+                } catch {
+                  // response already closed
+                }
               } else {
                 backPressureTimer = null;
               }

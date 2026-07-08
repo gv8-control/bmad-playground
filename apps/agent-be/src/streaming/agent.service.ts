@@ -162,26 +162,32 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       }
 
       if (!abortController.signal.aborted) {
+        if (accumulatedText.length > 0) {
+          try {
+            await this.prisma.turn.create({
+              data: {
+                conversationId,
+                role: 'assistant',
+                content: accumulatedText,
+              },
+              select: { id: true },
+            });
+            await this.prisma.conversation.update({
+              where: { id: conversationId },
+              data: { lastActiveAt: new Date() },
+              select: { id: true },
+            });
+          } catch (err) {
+            this.logger.error(
+              `Failed to persist assistant turn for conversation ${conversationId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
         this.sessionEvents.emit(conversationId, {
           event: EventType.RUN_FINISHED,
           data: {},
         });
-
-        if (accumulatedText.length > 0) {
-          await this.prisma.turn.create({
-            data: {
-              conversationId,
-              role: 'assistant',
-              content: accumulatedText,
-            },
-            select: { id: true },
-          });
-          await this.prisma.conversation.update({
-            where: { id: conversationId },
-            data: { lastActiveAt: new Date() },
-            select: { id: true },
-          });
-        }
       }
     } catch (err) {
       if (!abortController.signal.aborted) {
