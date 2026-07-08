@@ -5,9 +5,6 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import * as OTPAuth from 'otpauth';
 
-// Suppress unused import warning — kept for real OAuth TOTP path.
-void OTPAuth;
-
 // Create the directory and empty storage state file before any test worker starts.
 authStorageInit();
 
@@ -52,6 +49,29 @@ async function realOAuthFlow({ page }: { page: Page }) {
 
   const storagePath = getStorageStatePath({ environment: 'local', userIdentifier: 'default' });
   await page.context().storageState({ path: storagePath });
+
+  // Seed a RepoConnection so /conversations/new doesn't redirect to /onboarding.
+  // The Auth.js jwt callback (auth.ts:25-81) already upserted the user + stored
+  // the encrypted OAuth access_token during the callback. We just need a
+  // RepoConnection row pointing to a real repo the token can clone.
+  // Uses page.request (shares the page's session cookie) to call the test API,
+  // which requires TEST_ENV on the server.
+  const repoUrl = process.env.TEST_GITHUB_REPO_URL;
+  if (repoUrl) {
+    // /api/auth/session returns { userId } via the session callback (auth.ts:82-87).
+    const sessionRes = await page.request.get(`${BASE_URL}/api/auth/session`);
+    if (sessionRes.ok()) {
+      const session = (await sessionRes.json()) as { userId?: string };
+      if (session.userId) {
+        const connRes = await page.request.post(`${BASE_URL}/api/internal/test/repo-connections`, {
+          data: { userId: session.userId, repoUrl },
+        });
+        if (!connRes.ok()) {
+          throw new Error(`repo-connections seed failed: ${connRes.status()} ${await connRes.text()}`);
+        }
+      }
+    }
+  }
 }
 
 async function syntheticSession({ request }: { request: APIRequestContext }) {

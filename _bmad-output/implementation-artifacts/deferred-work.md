@@ -287,20 +287,31 @@ Four Playwright specs created (uncommitted) for the new real-service / multi-con
 
 2. **Seed real OAuth credential for the E2E test user** (unblocks `happy-path.spec.ts` and `repo-size.spec.ts`) — the synthetic JWT session from `auth.setup.ts` has no stored OAuth token, so `/conversations/new` redirects to `/onboarding` and Daytona can't clone. Either run the real OAuth flow once to seed the `OAuthCredential` row (encrypted), or add a DB-side encrypted-credential seed endpoint. Also requires `TEST_GITHUB_USERNAME` / `TEST_GITHUB_PASSWORD` / `TEST_GITHUB_OTP_SECRET` secrets in CI for `auth.setup.ts` to run the real OAuth flow.
 
+   **Status: code complete, operational setup pending.** `auth.setup.ts` `realOAuthFlow()` now seeds both the OAuth credential (via the Auth.js jwt callback) and a RepoConnection (via `POST /api/internal/test/repo-connections` using `TEST_GITHUB_REPO_URL`). The nightly-real-service CI job now passes `TEST_ENV: ci` + `TEST_GITHUB_*` secrets. Remaining: create the GitHub test account, enable 2FA, set the four CI secrets, and grant the test account clone access to the `gv8-control/bmad-easy-test-sandbox` repo.
+
 3. **Create 5 sized test repos** (unblocks `repo-size.spec.ts`) — reference GitHub repos at 50/100/150/200/250MB don't exist yet. The ~4h QA task flagged in `test-design-qa.md` P1-012. Set their URLs as `SPIKE_REPO_{50,100,150,200,250}MB_URL` env vars in the weekly CI job. The spec skips any size with an unset URL, so partial coverage is fine.
 
 4. **Add `performance-spike` project to `playwright.config.ts`** (unblocks `repo-size.spec.ts` CI wiring) — mirror the `real-service` project: `grep: /@performance-spike/`, `storageState: '.auth/local/default/...'`, `dependencies: ['setup']`, `retries: 3`, gated on `PLAYWRIGHT_REAL_SERVICE==='1'`. Alternatively, document that the weekly job invokes `PLAYWRIGHT_REAL_SERVICE=1 yarn playwright test --grep @performance-spike`.
 
 5. **Validate via `workflow_dispatch`** — once secrets + credentials are in place, manually trigger `nightly-real-service` and `nightly-multi-conn` tiers from the GitHub Actions UI to validate the specs run end-to-end.
 
+6. **Add full-journey E2E specs** (onboarding → conversation → agent run) — the current `happy-path.spec.ts` is a focused smoke test: `auth.setup.ts` seeds the RepoConnection via the test API, so the spec skips onboarding entirely and lands directly on `/conversations/new`. This is the right design for a smoke test (isolates the agent stack, unambiguous failure attribution, minimal API spend). But it leaves the full user journey untested: sign-in → land on `/onboarding` → enter repo URL → `RepoConnection` created via the real UI flow → navigate to `/conversations/new` → provision → message → first token → run finishes. Two specs to add:
+
+   - **`playwright/e2e/real-service/full-journey.spec.ts`** (`@real-service @P1`) — real-service tier, exercises the real onboarding → conversation flow end-to-end against real Daytona + Claude. Uses `realOAuthFlow()` for auth but does NOT seed a RepoConnection in `auth.setup.ts` — instead, the spec drives the onboarding UI to create one. Validates the full integration (onboarding server action → RepoConnection persist → layout guard → provision → clone → agent run) that the smoke test bypasses. Should run after `happy-path.spec.ts` passes to avoid burning API credits on a broken onboarding flow.
+   - **`playwright/e2e/onboarding/onboarding-journey.spec.ts`** (`@P1`, PR tier) — fake-backed, tests the onboarding UI flow (enter repo URL → submit → redirect to conversation) with mocked agent-be responses. No real services needed. Covers the onboarding → conversation transition that the existing `onboarding.spec.ts` tests partially but not as a full journey. This is the PR-tier complement to the real-service full-journey spec.
+
+   The real-service full-journey spec needs a way to run `realOAuthFlow()` WITHOUT seeding a RepoConnection — currently `realOAuthFlow()` always seeds one if `TEST_GITHUB_REPO_URL` is set. Options: (a) add a `SKIP_REPO_CONNECTION_SEED` env var, (b) split into two setup projects, or (c) have the spec delete the seeded RepoConnection before navigating to `/onboarding`. Option (c) is simplest and reuses existing test API (`DELETE /api/internal/test/repo-connections/:id`).
+
 ### Spec inventory (all uncommitted)
 
 | Spec | Path | Tags | Unblocked by |
 |------|------|------|--------------|
-| Happy-path agent run + NFR-P1/P2 timing | `playwright/e2e/real-service/happy-path.spec.ts` | `@real-service @P0` | Action #2 |
+| Happy-path agent run + NFR-P1/P2 timing | `playwright/e2e/real-service/happy-path.spec.ts` | `@real-service @P0` | Action #2 (code complete, operational setup pending) |
 | 10 concurrent SSE without starvation | `playwright/e2e/multi-conn/concurrent-sse.spec.ts` | `@multi-conn @P0` | CI secrets (already configured) — runs today |
 | Repo-size boundary spike | `playwright/e2e/performance-spike/repo-size.spec.ts` | `@performance-spike @P1` | Actions #2, #3, #4 |
 | SSE back-pressure slow-consumer | `playwright/e2e/multi-conn/sse-back-pressure.spec.ts` | `@multi-conn @P1` | Action #1 |
+| Real-service full journey (onboarding → conversation → agent) | `playwright/e2e/real-service/full-journey.spec.ts` (not yet created) | `@real-service @P1` | Action #2 + #5 (validate smoke first) |
+| Onboarding journey (fake-backed, PR tier) | `playwright/e2e/onboarding/onboarding-journey.spec.ts` (not yet created) | `@P1` | None — fake-backed, no real services needed |
 
 ### Pre-existing issues flagged by subagents (separate cleanup)
 

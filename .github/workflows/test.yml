@@ -18,7 +18,13 @@
 #   AUTH_SECRET                  Auth.js session signing key (also signs boundary JWT)
 #   DATABASE_URL                 Postgres connection string (bmad_easy_test DB)
 #   CREDENTIAL_ENCRYPTION_KEK   32-byte hex KEK for OAuth token envelope encryption
+#   TEST_GITHUB_USERNAME         real GitHub test account username (drives browser OAuth flow)
+#   TEST_GITHUB_PASSWORD         real GitHub test account password
+#   TEST_GITHUB_OTP_SECRET       TOTP secret if 2FA enabled on the test account
+#   TEST_GITHUB_REPO_URL         real repo URL the OAuth token can clone (RepoConnection seed)
 # All secret access is via `secrets.*` references; no values are hardcoded.
+# TEST_ENV (non-secret) is set as a plain env var on all Playwright jobs to enable
+# the /api/internal/test/* endpoints (seed-user, repo-connections, etc.).
 
 name: Test Pipeline
 
@@ -194,6 +200,9 @@ jobs:
           PORT: 3000
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+          # Enables /api/internal/test/* endpoints (seed-user, repo-connections)
+          # used by auth.setup.ts syntheticSession() + withRepoConnection fixture.
+          TEST_ENV: ci
 
       - name: Start agent-be
         run: yarn nx run agent-be:serve &
@@ -264,6 +273,7 @@ jobs:
           PORT: 3000
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+          TEST_ENV: ci
 
       - name: Start agent-be
         run: yarn nx run agent-be:serve &
@@ -397,6 +407,8 @@ jobs:
         env:
           CI: true
           BASE_URL: http://localhost:3000
+          # Enables /api/internal/test/* endpoints used by withRepoConnection fixture.
+          TEST_ENV: ci
           # Agent-be env validation requires DATABASE_URL + AUTH_SECRET.
           # CREDENTIAL_ENCRYPTION_KEK is needed because EncryptionService is
           # instantiated eagerly via CredentialsModule. No real Daytona/Claude
@@ -481,10 +493,21 @@ jobs:
         # the real-service branch at line 95. SandboxServiceFake is NEVER
         # injected — `yarn nx run agent-be:serve` always boots the production
         # AppModule (sandbox.module.ts:9 wires useClass: SandboxService).
+        #
+        # TEST_ENV enables the /api/internal/test/* endpoints (repo-connections
+        # seed). TEST_GITHUB_* triggers the real OAuth browser flow in
+        # auth.setup.ts (not the synthetic JWT session). The OAuth callback
+        # (auth.ts jwt callback) stores the encrypted access_token in Postgres,
+        # which Daytona needs to clone. auth.setup.ts also seeds a
+        # RepoConnection with TEST_GITHUB_REPO_URL so /conversations/new does
+        # not redirect to /onboarding.
         env:
           CI: true
           BASE_URL: http://localhost:3000
           PLAYWRIGHT_REAL_SERVICE: '1'
+          # Enables test endpoints (seed-user, repo-connections) on the web server.
+          # Non-secret — just a flag. env-guard.ts blocks it if NODE_ENV=production.
+          TEST_ENV: ci
           # Full secrets list — real Daytona + Claude + GitHub OAuth + Postgres.
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
@@ -494,6 +517,17 @@ jobs:
           DAYTONA_API_URL: ${{ secrets.DAYTONA_API_URL }}
           DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Real GitHub test account — drives the browser OAuth flow in
+          # auth.setup.ts realOAuthFlow(). Without these, auth.setup.ts falls
+          # back to syntheticSession() which creates a JWT with no stored OAuth
+          # token, so Daytona cannot clone.
+          TEST_GITHUB_USERNAME: ${{ secrets.TEST_GITHUB_USERNAME }}
+          TEST_GITHUB_PASSWORD: ${{ secrets.TEST_GITHUB_PASSWORD }}
+          TEST_GITHUB_OTP_SECRET: ${{ secrets.TEST_GITHUB_OTP_SECRET }}
+          # Real repo URL the OAuth token can clone. auth.setup.ts seeds a
+          # RepoConnection pointing here so the happy-path spec lands on
+          # /conversations/new instead of redirecting to /onboarding.
+          TEST_GITHUB_REPO_URL: ${{ secrets.TEST_GITHUB_REPO_URL }}
         run: yarn playwright test --grep @real-service --pass-with-no-tests
 
       - name: Upload real-service results
@@ -557,6 +591,7 @@ jobs:
         env:
           CI: true
           BASE_URL: http://localhost:3000
+          TEST_ENV: ci
           # Tier 4 spikes may or may not need real services — start with the
           # multi-conn secret set (no Daytona/Anthropic); promote to real-service
           # secrets when an actual @performance-spike spec requires them.
