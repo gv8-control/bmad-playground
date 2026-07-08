@@ -32,17 +32,23 @@ async function realOAuthFlow({ page }: { page: Page }) {
 
   await page.getByLabel('Username or email address').fill(username);
   await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-  if (otpSecret && (await page.getByLabel(/authentication code/i).isVisible({ timeout: 5_000 }).catch(() => false))) {
+  if (otpSecret && (await page.getByLabel(/authentication code|verification code/i).isVisible({ timeout: 10_000 }).catch(() => false))) {
     const totp = new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(otpSecret) });
-    await page.getByLabel(/authentication code/i).fill(totp.generate());
-    await page.getByRole('button', { name: /verify/i }).click();
+    await page.getByLabel(/authentication code|verification code/i).fill(totp.generate());
+    // GitHub's 2FA form auto-submits on 6 digits — no explicit Verify click needed.
+    // Clicking Verify times out because the page navigates away before the click resolves.
   }
 
   const authorizeBtn = page.getByRole('button', { name: /authorize/i });
-  if (await authorizeBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await authorizeBtn.click();
+  if (await authorizeBtn.isVisible({ timeout: 10_000 }).catch(() => false)) {
+    // GitHub disables the authorize button via JS for a moment after page load.
+    // Force-enable it before clicking, otherwise click() waits forever for it to become enabled.
+    await authorizeBtn.evaluate((el) => {
+      (el as HTMLButtonElement).disabled = false;
+    });
+    await authorizeBtn.click({ force: true, noWaitAfter: true });
   }
 
   await page.waitForURL(`${BASE_URL}/**`, { timeout: 30_000 });
