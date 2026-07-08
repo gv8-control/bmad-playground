@@ -108,7 +108,7 @@
   .field-group {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
   }
 
   .field-label {
@@ -130,7 +130,7 @@
     background: #0D0D11;
     border: 1px solid #2B2B38;
     border-radius: 8px;
-    padding: 10px 14px;
+    padding: 8px 12px;
     font-size: 0.9375rem;
     color: #EDECF5;
     font-family: inherit;
@@ -139,7 +139,7 @@
   }
   .field-input:focus {
     border-color: #7B6EE8;
-    box-shadow: 0 0 0 2px rgba(123,110,232,0.2);
+    box-shadow: 0 0 0 2px #7B6EE8, 0 0 0 4px #0D0D11;
   }
   .field-input.error {
     border-color: #F06B6B;
@@ -176,7 +176,7 @@
 
   .connect-button {
     width: 100%;
-    padding: 11px 20px;
+    padding: 12px 20px;
     background: #7B6EE8;
     color: #FFFFFF;
     border: none;
@@ -201,8 +201,8 @@
   .spinner {
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: #FFFFFF;
+    border: 2px solid #2B2B38;
+    border-top-color: #7B6EE8;
     border-radius: 9999px;
     animation: spin 0.7s linear infinite;
     flex-shrink: 0;
