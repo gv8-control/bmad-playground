@@ -25,6 +25,7 @@ export class SandboxServiceFake implements ISandboxService {
   private skills: SkillInfo[] = [];
   private sandboxCounter = 0;
   private readonly commitCalls: Array<{ sandboxId: string; message: string; author?: GitUserConfig }> = [];
+  private readonly cloneCalls: Array<{ sandboxId: string; repoUrl: string; credential: string }> = [];
 
   /** Control hook: simulate a slow provision (milliseconds). */
   setProvisionDelay(ms: number): void {
@@ -54,6 +55,11 @@ export class SandboxServiceFake implements ISandboxService {
   /** Inspection: list of commit() calls made. */
   getCommitCalls(): Array<{ sandboxId: string; message: string; author?: GitUserConfig }> {
     return [...this.commitCalls];
+  }
+
+  /** Inspection: list of clone() calls made (repoUrl and credential passed). */
+  getCloneCalls(): Array<{ sandboxId: string; repoUrl: string; credential: string }> {
+    return [...this.cloneCalls];
   }
 
   /** Inspection: the git config last injected for a sandbox. */
@@ -93,12 +99,29 @@ export class SandboxServiceFake implements ISandboxService {
     return sandbox;
   }
 
-  async clone(sandboxId: string, _repoUrl: string, _credential: string): Promise<void> {
+  /**
+   * Models the sandbox.git.clone() boundary (fidelity remediation item 6).
+   *
+   * Tracks call arguments for inspection and models the "already cloned"
+   * failure mode — calling clone() twice on the same sandbox throws, matching
+   * the real `git clone` into a non-empty directory behavior.
+   *
+   * NOTE: this does NOT exercise the real SandboxService.clone() logic. The
+   * real clone logic is tested in sandbox.service.nfr-s1.spec.ts against a
+   * mock Daytona client. Integration tests using this fake verify the
+   * provision pipeline wiring (provision → clone → injectGitConfig → status),
+   * not the clone implementation itself.
+   */
+  async clone(sandboxId: string, repoUrl: string, credential: string): Promise<void> {
     if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
     if (this.shouldFailNextClone) {
       this.shouldFailNextClone = false;
       throw new Error('SandboxServiceFake: simulated clone failure');
     }
+    if (this.clonedSandboxes.has(sandboxId)) {
+      throw new Error(`SandboxServiceFake: sandbox ${sandboxId} already cloned — destination path already exists`);
+    }
+    this.cloneCalls.push({ sandboxId, repoUrl, credential });
     this.clonedSandboxes.add(sandboxId);
   }
 
