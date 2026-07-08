@@ -29,11 +29,20 @@ import type { Page } from '@playwright/test';
  *      must run the real OAuth flow — set TEST_GITHUB_USERNAME,
  *      TEST_GITHUB_PASSWORD, and (if 2FA) TEST_GITHUB_OTP_SECRET. The synthetic
  *      JWT session has no stored OAuth token, so Daytona cannot clone without it.
+ *      The browser OAuth flow is viable in CI because 2FA-enabled accounts skip
+ *      GitHub's device verification challenge (per GitHub's docs: "GitHub will
+ *      not ask you to perform device verification when you have 2FA enabled").
+ *      The TOTP code is generated from TEST_GITHUB_OTP_SECRET, so no email or
+ *      mobile device is needed. If the browser flow proves flaky, the fallback
+ *      is a DB-side credential seed endpoint (inject a PAT directly into
+ *      Postgres via encryptToken()), but the browser flow is tried first.
  *   3. The test user has a RepoConnection pointing to a real, OAuth-accessible
- *      repository (the bmad-easy repo itself in dev). The (app) layout guard
- *      redirects to /onboarding when no RepoConnection exists, so this spec
- *      relies on the dev environment's pre-existing connection. The repoUrl
- *      must point to a real repo the OAuth token can clone.
+ *      repository. auth.setup.ts seeds this via POST /api/internal/test/repo-
+ *      connections using TEST_GITHUB_REPO_URL after the OAuth flow completes.
+ *      The (app) layout guard redirects to /onboarding when no RepoConnection
+ *      exists, so without this seed the spec would land on /onboarding instead
+ *      of /conversations/new. The repoUrl must point to a real repo the OAuth
+ *      token can clone.
  *   4. DAYTONA_API_URL / DAYTONA_API_KEY, AUTH_SECRET, AUTH_GITHUB_ID /
  *      AUTH_GITHUB_SECRET, DATABASE_URL are all real values in .env.local.
  *
