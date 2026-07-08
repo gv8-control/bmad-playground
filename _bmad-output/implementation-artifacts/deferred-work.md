@@ -145,8 +145,6 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 - `provisionQueue.release` runs unconditionally in `finally` — if `acquire` throws, a slot is released that was never acquired, violating the concurrency cap. `ProvisionQueueService.acquire` has no throw path currently, so not reachable today. [`apps/agent-be/src/conversations/conversations.service.ts:143`]
 - `injectCredentialIntoUrl` throws `TypeError` on SSH-style repo URLs (`git@github.com:org/repo.git`) — propagates as opaque `SESSION_ERROR`. No upstream schema enforcement on `repoConnection.repoUrl`. [`apps/agent-be/src/sandbox/sandbox.service.ts`]
 - `isNotFoundError` uses fragile substring matching (`.includes('not found') || .includes('404')`) — breaks if Daytona SDK changes error format; `destroy` re-throws on already-deleted sandboxes, breaking idempotent retry. [`apps/agent-be/src/sandbox/sandbox.service.ts`]
-- `getWorkingTreeStatus` slices renames incorrectly — `line.slice(3)` assumes `XY filename` format; renames (`R  old -> new`) and quoted paths produce wrong filenames. [`apps/agent-be/src/sandbox/sandbox.service.ts`]
-- `getWorkingTreeStatus` doesn't check `exitCode` — git error text on stdout is treated as a file list. [`apps/agent-be/src/sandbox/sandbox.service.ts`]
 - `EventSource.onerror` sets `error` state but never closes the source — `EventSource` auto-reconnects; state diverges from reality if reconnect succeeds. [`apps/web/src/components/conversation/ConversationPane.tsx:146`]
 - Boundary JWT exposed in SSE URL query string — `?token=${boundaryJwt}` logged by proxies/CDNs. SSE doesn't support custom headers via native `EventSource`; short-lived single-use ticket would be the proper fix. [`apps/web/src/components/conversation/ConversationPane.tsx:112`]
 - `createConversation` validates a `CreateConversationDto` body it then discards — the service is called with only `user.id`. Story 3.1 code. [`apps/agent-be/src/conversations/conversations.controller.ts`]
@@ -278,3 +276,38 @@ Findings surfaced by a retrospective check (triggered by the CORS gap) that scan
 ## Deferred from: pre-launch readiness (2026-07-06)
 
 - Validate Daytona usage-policy compliance before public launch — the platform provisions Daytona sandboxes per user per conversation (`apps/agent-be/src/sandbox/sandbox.service.ts`), and a public launch exposes that provisioning path to untrusted users. Current safeguards were built for single-user MVP scale and have known gaps already tracked here: per-user provision slot leaks on hung `daytona.create` (no create-timeout, unlike `clone`'s 30s — §3-1), zombie sandboxes on destroy failure with no reaper (§3-9/3.11/3.12), orphaned Daytona containers when Postgres is updated before `destroy` succeeds (§3-12), and unbounded parallel GitHub API fan-out with no concurrency limiter (§1-4). Before opening to the public, audit the full sandbox lifecycle against Daytona's acceptable-use / quota policy — provisioning rate, concurrent sandbox caps, idle/destroy guarantees, cleanup-on-failure, and abuse-rate controls — and confirm the existing per-user concurrency cap (`active=2`) and idle timeouts are sufficient to stay within policy. Outcome should be either a documented compliance posture or a list of hardening work to block public launch.
+
+## Deferred from: real-service test tier setup (2026-07-08)
+
+Four Playwright specs created (uncommitted) for the new real-service / multi-conn / performance-spike CI tiers. Specs compile cleanly but have prerequisites before they can run in CI.
+
+### Action items (priority order)
+
+1. **Implement agent-be SSE flood test endpoint** (unblocks `sse-back-pressure.spec.ts`) — `apps/agent-be` has zero `internal/test/*` routes. The spec assumes `POST /api/internal/test/sse-flood` with body `{ conversationId, count, token }` that calls `sessionEvents.emit()` N times. Implement as a `SseFloodTestController` guarded by `assertTestEnvNotInProduction()`, wired into `app.module.ts` imports.
+
+2. **Seed real OAuth credential for the E2E test user** (unblocks `happy-path.spec.ts` and `repo-size.spec.ts`) — the synthetic JWT session from `auth.setup.ts` has no stored OAuth token, so `/conversations/new` redirects to `/onboarding` and Daytona can't clone. Either run the real OAuth flow once to seed the `OAuthCredential` row (encrypted), or add a DB-side encrypted-credential seed endpoint. Also requires `TEST_GITHUB_USERNAME` / `TEST_GITHUB_PASSWORD` / `TEST_GITHUB_OTP_SECRET` secrets in CI for `auth.setup.ts` to run the real OAuth flow.
+
+3. **Create 5 sized test repos** (unblocks `repo-size.spec.ts`) — reference GitHub repos at 50/100/150/200/250MB don't exist yet. The ~4h QA task flagged in `test-design-qa.md` P1-012. Set their URLs as `SPIKE_REPO_{50,100,150,200,250}MB_URL` env vars in the weekly CI job. The spec skips any size with an unset URL, so partial coverage is fine.
+
+4. **Add `performance-spike` project to `playwright.config.ts`** (unblocks `repo-size.spec.ts` CI wiring) — mirror the `real-service` project: `grep: /@performance-spike/`, `storageState: '.auth/local/default/...'`, `dependencies: ['setup']`, `retries: 3`, gated on `PLAYWRIGHT_REAL_SERVICE==='1'`. Alternatively, document that the weekly job invokes `PLAYWRIGHT_REAL_SERVICE=1 yarn playwright test --grep @performance-spike`.
+
+5. **Validate via `workflow_dispatch`** — once secrets + credentials are in place, manually trigger `nightly-real-service` and `nightly-multi-conn` tiers from the GitHub Actions UI to validate the specs run end-to-end.
+
+### Spec inventory (all uncommitted)
+
+| Spec | Path | Tags | Unblocked by |
+|------|------|------|--------------|
+| Happy-path agent run + NFR-P1/P2 timing | `playwright/e2e/real-service/happy-path.spec.ts` | `@real-service @P0` | Action #2 |
+| 10 concurrent SSE without starvation | `playwright/e2e/multi-conn/concurrent-sse.spec.ts` | `@multi-conn @P0` | CI secrets (already configured) — runs today |
+| Repo-size boundary spike | `playwright/e2e/performance-spike/repo-size.spec.ts` | `@performance-spike @P1` | Actions #2, #3, #4 |
+| SSE back-pressure slow-consumer | `playwright/e2e/multi-conn/sse-back-pressure.spec.ts` | `@multi-conn @P1` | Action #1 |
+
+### Pre-existing issues flagged by subagents (separate cleanup)
+
+- **TS2305 in sibling specs** — every spec under `playwright/e2e/conversation/*` imports `type Page` from `merged-fixtures` which doesn't re-export it. All four new specs import `Page` from `@playwright/test` directly. Worth a cleanup pass to fix the sibling specs.
+- **Stale page object** — `support/page-objects/conversation-page.ts` references `data-testid` attributes (`session-status`, `chat-input`, `send-button`, `working-tree-indicator`) that don't exist on the production components (only in `*.test.tsx` files). Either add the test IDs to the components or delete the stale page object.
+- **Pre-existing TS error** in `apps/web/src/components/conversation/AgentMessage.tsx:18` (`Object is of type 'unknown'`).
+
+## Deferred from: code review of spec-fix-working-tree-status-porcelain-parse (2026-07-08)
+
+- NUL-byte preservation through the Daytona SDK `executeCommand` boundary is unverified — `getWorkingTreeStatus` now uses `git status --porcelain -z` (NUL-separated output). The parser depends on `response.result` faithfully preserving NUL (`\0`) bytes. JS strings and JSON transport both preserve NUL, so the risk is low, but the real Daytona SDK has not been runtime-verified. If NUL is truncated (e.g. C-string handling in the SDK's transport layer), `split('\0')` returns a single-element array and the parse produces garbage. Verify against a real Daytona sandbox before relying on the `files` array in production. [`apps/agent-be/src/sandbox/sandbox.service.ts`]

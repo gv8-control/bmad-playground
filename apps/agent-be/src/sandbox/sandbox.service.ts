@@ -115,7 +115,7 @@ export class SandboxService implements ISandboxService {
   async getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus> {
     const sandbox = await this.getSandbox(sandboxId);
     const response = await sandbox.process.executeCommand(
-      'git status --porcelain',
+      'git status --porcelain -z',
       REPO_SUBDIRECTORY,
       undefined,
       10,
@@ -123,11 +123,40 @@ export class SandboxService implements ISandboxService {
     if (response.exitCode !== 0) {
       throw new Error(response.result);
     }
-    const output = response.result.trim();
+    const output = response.result;
     if (!output) {
       return { dirty: false, files: [] };
     }
-    const files = output.split('\n').map((line) => line.slice(3));
+    // NUL-separated entries. -z disables quoting and path-encoding, and splits
+    // renames/copies into two fields: "R  old.ts\0new.ts\0". A trailing NUL
+    // produces an empty entry that must be filtered out.
+    const entries = output.split('\0').filter((entry) => entry.length > 0);
+    const files: string[] = [];
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      // XY status occupies the first two characters, then a space, then the path.
+      const x = entry.charAt(0);
+      if (x === 'R' || x === 'C') {
+        // Rename/copy: the new path is the NEXT NUL-separated field.
+        i++;
+        const newPath = entries[i];
+        if (newPath === undefined) {
+          // Truncated output (e.g. timeout mid-stream with exitCode 0) — stop
+          // processing; remaining entries are unreliable.
+          this.logger.warn(
+            'getWorkingTreeStatus: truncated porcelain output — rename entry missing new path',
+          );
+          break;
+        }
+        files.push(newPath);
+      } else {
+        // All other statuses: path is entry.slice(3) ("XY filename").
+        const path = entry.slice(3);
+        if (path) {
+          files.push(path);
+        }
+      }
+    }
     return { dirty: true, files };
   }
 
