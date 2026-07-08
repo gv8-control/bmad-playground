@@ -21,6 +21,7 @@ describe('CredentialsService.markCredentialFailed (agent-be)', () => {
     mockPrisma = {
       repoConnection: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn(),
       },
       oAuthCredential: {
         findUnique: jest.fn(),
@@ -71,5 +72,73 @@ describe('CredentialsService.markCredentialFailed (agent-be)', () => {
     mockPrisma.repoConnection.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(service.markCredentialFailed('user-1')).resolves.toBeUndefined();
+  });
+});
+
+describe('CredentialsService.isCredentialHealthFailed (agent-be)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockPrisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockEncryptionService: any;
+  let service: CredentialsService;
+
+  beforeEach(() => {
+    mockPrisma = {
+      repoConnection: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn(),
+      },
+      oAuthCredential: {
+        findUnique: jest.fn(),
+      },
+    };
+    mockEncryptionService = {
+      decryptToken: jest.fn(),
+    };
+    service = new CredentialsService(mockPrisma, mockEncryptionService);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('[P0] returns true when credentialHealth is "failed"', async () => {
+    mockPrisma.repoConnection.findUnique.mockResolvedValue({ credentialHealth: 'failed' });
+
+    await expect(service.isCredentialHealthFailed('user-1')).resolves.toBe(true);
+  });
+
+  it('[P0] returns false when credentialHealth is "healthy"', async () => {
+    mockPrisma.repoConnection.findUnique.mockResolvedValue({ credentialHealth: 'healthy' });
+
+    await expect(service.isCredentialHealthFailed('user-1')).resolves.toBe(false);
+  });
+
+  it('[P0] returns false when no RepoConnection exists (findUnique returns null)', async () => {
+    mockPrisma.repoConnection.findUnique.mockResolvedValue(null);
+
+    await expect(service.isCredentialHealthFailed('user-1')).resolves.toBe(false);
+  });
+
+  it('[P0] returns false and logs when findUnique throws (DB read failure does not block provisioning)', async () => {
+    mockPrisma.repoConnection.findUnique.mockRejectedValue(new Error('DB connection lost'));
+    const errorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+
+    await expect(service.isCredentialHealthFailed('user-1')).resolves.toBe(false);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to check credential health for userId user-1'),
+    );
+  });
+
+  it('[P0] queries with { where: { userId }, select: { credentialHealth: true } }', async () => {
+    mockPrisma.repoConnection.findUnique.mockResolvedValue({ credentialHealth: 'healthy' });
+
+    await service.isCredentialHealthFailed('user-1');
+
+    expect(mockPrisma.repoConnection.findUnique).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+      select: { credentialHealth: true },
+    });
   });
 });

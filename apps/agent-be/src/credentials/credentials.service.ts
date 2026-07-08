@@ -48,6 +48,21 @@ export class CredentialsService {
     }
   }
 
+  async isCredentialHealthFailed(userId: string): Promise<boolean> {
+    try {
+      const repoConnection = await this.prisma.repoConnection.findUnique({
+        where: { userId },
+        select: { credentialHealth: true },
+      });
+      return repoConnection?.credentialHealth === 'failed';
+    } catch (err) {
+      this.logger.error(
+        `Failed to check credential health for userId ${userId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
+  }
+
   async markCredentialFailed(userId: string, capturedAt?: Date): Promise<void> {
     try {
       await this.prisma.repoConnection.updateMany({
