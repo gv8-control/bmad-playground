@@ -20,12 +20,10 @@ export class SandboxServiceFake implements ISandboxService {
   private readonly clonedSandboxes = new Set<string>();
   private provisionDelay = 0;
   private shouldFailNextProvision = false;
-  private shouldFailNextClone = false;
   private shouldFailNextCommit = false;
   private skills: SkillInfo[] = [];
   private sandboxCounter = 0;
   private readonly commitCalls: Array<{ sandboxId: string; message: string; author?: GitUserConfig }> = [];
-  private readonly cloneCalls: Array<{ sandboxId: string; repoUrl: string; credential: string }> = [];
 
   /** Control hook: simulate a slow provision (milliseconds). */
   setProvisionDelay(ms: number): void {
@@ -42,11 +40,6 @@ export class SandboxServiceFake implements ISandboxService {
     this.skills = skills;
   }
 
-  /** Control hook: cause the next clone() call to throw. */
-  failNextClone(): void {
-    this.shouldFailNextClone = true;
-  }
-
   /** Control hook: cause the next commit() call to throw. */
   failNextCommit(): void {
     this.shouldFailNextCommit = true;
@@ -55,11 +48,6 @@ export class SandboxServiceFake implements ISandboxService {
   /** Inspection: list of commit() calls made. */
   getCommitCalls(): Array<{ sandboxId: string; message: string; author?: GitUserConfig }> {
     return [...this.commitCalls];
-  }
-
-  /** Inspection: list of clone() calls made (repoUrl and credential passed). */
-  getCloneCalls(): Array<{ sandboxId: string; repoUrl: string; credential: string }> {
-    return [...this.cloneCalls];
   }
 
   /** Inspection: the git config last injected for a sandbox. */
@@ -71,11 +59,6 @@ export class SandboxServiceFake implements ISandboxService {
   /** Inspection: whether clone() has succeeded for a sandbox (repo is present). */
   isCloned(sandboxId: string): boolean {
     return this.clonedSandboxes.has(sandboxId);
-  }
-
-  /** Inspection: list of sandbox IDs that have been cloned. */
-  getClonedSandboxes(): string[] {
-    return [...this.clonedSandboxes];
   }
 
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
@@ -100,11 +83,11 @@ export class SandboxServiceFake implements ISandboxService {
   }
 
   /**
-   * Models the sandbox.git.clone() boundary (fidelity remediation item 6).
+   * Models the sandbox.git.clone() boundary.
    *
-   * Tracks call arguments for inspection and models the "already cloned"
-   * failure mode — calling clone() twice on the same sandbox throws, matching
-   * the real `git clone` into a non-empty directory behavior.
+   * Tracks clone state and models the "already cloned" failure mode — calling
+   * clone() twice on the same sandbox throws, matching the real `git clone`
+   * into a non-empty directory behavior.
    *
    * NOTE: this does NOT exercise the real SandboxService.clone() logic. The
    * real clone logic is tested in sandbox.service.nfr-s1.spec.ts against a
@@ -112,16 +95,11 @@ export class SandboxServiceFake implements ISandboxService {
    * provision pipeline wiring (provision → clone → injectGitConfig → status),
    * not the clone implementation itself.
    */
-  async clone(sandboxId: string, repoUrl: string, credential: string): Promise<void> {
+  async clone(sandboxId: string, _repoUrl: string, _credential: string): Promise<void> {
     if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
-    if (this.shouldFailNextClone) {
-      this.shouldFailNextClone = false;
-      throw new Error('SandboxServiceFake: simulated clone failure');
-    }
     if (this.clonedSandboxes.has(sandboxId)) {
       throw new Error(`SandboxServiceFake: sandbox ${sandboxId} already cloned — destination path already exists`);
     }
-    this.cloneCalls.push({ sandboxId, repoUrl, credential });
     this.clonedSandboxes.add(sandboxId);
   }
 
@@ -160,25 +138,6 @@ export class SandboxServiceFake implements ISandboxService {
       this.shouldFailNextCommit = false;
       throw new Error('SandboxServiceFake: simulated commit failure');
     }
-  }
-
-  async terminateProcess(sandboxId: string, _processId: string): Promise<void> {
-    if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
-  }
-
-  async getStatus(sandboxId: string): Promise<SandboxInfo | null> {
-    return this.sandboxes.get(sandboxId) ?? null;
-  }
-
-  async executeCommand(
-    sandboxId: string,
-    command: string,
-  ): Promise<{ exitCode: number; result: string; artifacts?: { stdout: string } }> {
-    if (!this.sandboxes.has(sandboxId)) {
-      throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
-    }
-    const output = `fake output for: ${command}`;
-    return { exitCode: 0, result: output, artifacts: { stdout: output } };
   }
 
   async listSkills(_sandboxId: string): Promise<SkillInfo[]> {
