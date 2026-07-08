@@ -381,6 +381,11 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
@@ -461,6 +466,11 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
@@ -531,6 +541,11 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
+
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
