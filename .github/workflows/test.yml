@@ -8,23 +8,22 @@
 #   Tier 3 — Nightly real-service (03:00 UTC): one happy-path agent run (--grep @real-service)
 #   Tier 4 — Weekly spike (Sundays 04:00 UTC): P1-012 repo-size boundary, future k6/Artillery
 #
-# Required GitHub Actions secrets (Tier 3 only; Tier 2 needs DATABASE_URL + AUTH_SECRET +
-# CREDENTIAL_ENCRYPTION_KEK to satisfy agent-be env validation; Tier 1/4 need none):
-#   DAYTONA_API_KEY              real @daytonaio/sdk provision/clone/git-status
-#   DAYTONA_API_URL              Daytona API endpoint
-#   ANTHROPIC_API_KEY            real Claude Agent SDK streaming (NFR-P1 first-token timing)
-#   AUTH_GITHUB_ID               real GitHub OAuth App client id (NOT the e2e placeholder)
-#   AUTH_GITHUB_SECRET           real GitHub OAuth App client secret
+# Required GitHub Actions secrets:
 #   AUTH_SECRET                  Auth.js session signing key (also signs boundary JWT)
-#   DATABASE_URL                 Postgres connection string (bmad_easy_test DB)
 #   CREDENTIAL_ENCRYPTION_KEK   32-byte hex KEK for OAuth token envelope encryption
-#   TEST_GITHUB_USERNAME         real GitHub test account username (drives browser OAuth flow)
-#   TEST_GITHUB_PASSWORD         real GitHub test account password
-#   TEST_GITHUB_OTP_SECRET       TOTP secret if 2FA enabled on the test account
-#   TEST_GITHUB_REPO_URL         real repo URL the OAuth token can clone (RepoConnection seed)
+#   AUTH_GITHUB_ID               real GitHub OAuth App client id (Tier 3 only)
+#   AUTH_GITHUB_SECRET           real GitHub OAuth App client secret (Tier 3 only)
+#   DAYTONA_API_KEY              real @daytonaio/sdk provision/clone/git-status (Tier 3 only)
+#   DAYTONA_API_URL              Daytona API endpoint (Tier 3 only)
+#   ANTHROPIC_API_KEY            real Claude Agent SDK streaming (Tier 3 only)
+#   TEST_GITHUB_USERNAME         real GitHub test account username (Tier 3 only)
+#   TEST_GITHUB_PASSWORD         real GitHub test account password (Tier 3 only)
+#   TEST_GITHUB_OTP_SECRET       TOTP secret if 2FA enabled on the test account (Tier 3 only)
+#   TEST_GITHUB_REPO_URL         real repo URL the OAuth token can clone (Tier 3 only)
+# Non-secret env vars (hardcoded in the workflow, not secrets):
+#   DATABASE_URL                 Postgres service container (postgres:16-alpine, bmad_easy_test DB)
+#   TEST_ENV                     Set to 'ci' on all Playwright jobs — enables test endpoints
 # All secret access is via `secrets.*` references; no values are hardcoded.
-# TEST_ENV (non-secret) is set as a plain env var on all Playwright jobs to enable
-# the /api/internal/test/* endpoints (seed-user, repo-connections, etc.).
 
 name: Test Pipeline
 
@@ -163,10 +162,28 @@ jobs:
     # PR-tier: push/PR only. (Burn-in covers weekly playwright regression.)
     if: github.event_name == 'push' || github.event_name == 'pull_request'
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
 
     steps:
       - uses: actions/checkout@v4
@@ -191,6 +208,16 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
@@ -198,6 +225,8 @@ jobs:
         run: yarn nx run web:dev &
         env:
           PORT: 3000
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
           # Enables /api/internal/test/* endpoints (seed-user, repo-connections)
@@ -208,6 +237,9 @@ jobs:
         run: yarn nx run agent-be:serve &
         env:
           PORT: 3001
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
 
       - name: Wait for services
         run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
@@ -217,6 +249,8 @@ jobs:
         env:
           CI: true
           BASE_URL: http://localhost:3000
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
 
       - name: Upload E2E results
         if: failure()
@@ -241,6 +275,24 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'schedule' && github.event.schedule == '0 2 * * 0')
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -264,6 +316,16 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
@@ -271,6 +333,8 @@ jobs:
         run: yarn nx run web:dev &
         env:
           PORT: 3000
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
           TEST_ENV: ci
@@ -279,6 +343,9 @@ jobs:
         run: yarn nx run agent-be:serve &
         env:
           PORT: 3001
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
 
       - name: Wait for services
         run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
@@ -287,6 +354,8 @@ jobs:
         env:
           CI: true
           BASE_URL: http://localhost:3000
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           BURN_IN_COUNT: '10'
         run: |
           # Security: inputs passed through env: to prevent script injection
@@ -368,6 +437,24 @@ jobs:
       (github.event_name == 'schedule' && github.event.schedule == '0 3 * * *') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == 'nightly-multi-conn')
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -394,7 +481,12 @@ jobs:
       - name: Generate Prisma client
         run: yarn nx run database-schemas:generate
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
 
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
@@ -413,7 +505,7 @@ jobs:
           # CREDENTIAL_ENCRYPTION_KEK is needed because EncryptionService is
           # instantiated eagerly via CredentialsModule. No real Daytona/Claude
           # calls — the tested code paths never reach agent-run code.
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
           # OAuth placeholders are sufficient — multi-conn specs don't exercise
@@ -455,6 +547,24 @@ jobs:
       (github.event_name == 'schedule' && github.event.schedule == '0 3 * * *') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == 'nightly-real-service')
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -481,7 +591,12 @@ jobs:
       - name: Generate Prisma client
         run: yarn nx run database-schemas:generate
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
 
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
@@ -509,7 +624,7 @@ jobs:
           # Non-secret — just a flag. env-guard.ts blocks it if NODE_ENV=production.
           TEST_ENV: ci
           # Full secrets list — real Daytona + Claude + GitHub OAuth + Postgres.
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
           AUTH_GITHUB_ID: ${{ secrets.AUTH_GITHUB_ID }}
@@ -553,6 +668,24 @@ jobs:
       (github.event_name == 'schedule' && github.event.schedule == '0 4 * * 0') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == 'weekly-spike')
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -579,7 +712,12 @@ jobs:
       - name: Generate Prisma client
         run: yarn nx run database-schemas:generate
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
 
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
@@ -595,7 +733,7 @@ jobs:
           # Tier 4 spikes may or may not need real services — start with the
           # multi-conn secret set (no Daytona/Anthropic); promote to real-service
           # secrets when an actual @performance-spike spec requires them.
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
           AUTH_GITHUB_ID: e2e-placeholder-client-id
