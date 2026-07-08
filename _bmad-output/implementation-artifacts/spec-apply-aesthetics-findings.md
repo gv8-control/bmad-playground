@@ -2,7 +2,7 @@
 title: 'Apply aesthetics review findings to app code'
 type: 'refactor'
 created: '2026-07-08'
-status: 'in-progress'
+status: 'done'
 baseline_commit: 'abe0c2782b6aea4ee910d7edda2202ad46e9ce09'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/ux-designs/ux-bmad-easy-2026-06-15/DESIGN.md'
@@ -55,26 +55,26 @@ context:
 
 **Execution:**
 
-- [ ] `apps/web/tailwind.config.ts` -- change `border-subtle` from `#1E1E26` to `#232330` (visible on both surface and surface-raised); add `spacing` scale matching DESIGN.md (`'1': '4px'` through `'16': '64px'`) -- resolves findings 4 (border invisible on raised surfaces) and 11 (spacing scale not tokenized)
-- [ ] `apps/web/src/__tests__/tailwind-theme.spec.ts` -- update border-subtle assertion to `#232330`; add spacing scale assertions for the new config entries -- keeps token tests aligned with config
-- [ ] `apps/web/src/components/conversation/AgentMessage.tsx` -- `text-text-3`→`text-text-2` on timestamp (L111); snap inline code `px-1.5 py-0.5`→`px-2 py-1` (L54) -- WCAG AA; 4px grid
-- [ ] `apps/web/src/components/conversation/UserMessage.tsx` -- `text-text-3`→`text-text-2` on timestamp (L21) -- WCAG AA
-- [ ] `apps/web/src/components/conversation/ChatMessageList.tsx` -- `text-text-3`→`text-text-2` on system message (L80) -- WCAG AA
-- [ ] `apps/web/src/components/conversation/SlashCommandPicker.tsx` -- `text-text-3`→`text-text-2` on empty-state copy (L24) -- WCAG AA
-- [ ] `apps/web/src/components/conversation/WorkingTreeIndicator.tsx` -- `text-text-3`→`text-text-2` on status indicators (L68 "All saved", L76 "Saving…", L84 "Saving after response…"); snap `px-2.5`→`px-3` (L105), `py-1.5`→`py-2` (L179) -- WCAG AA; 4px grid
-- [ ] `apps/web/src/components/conversation/ToolPill.tsx` -- snap `py-0.5`→`py-1` and `gap-1.5`→`gap-2` (L52, match DESIGN.md 4px 8px) -- 4px grid
-- [ ] `apps/web/src/components/conversation/SemanticPill.tsx` -- snap `px-2.5`→`px-2` and `gap-1.5`→`gap-2` (L38, match DESIGN.md 4px 8px) -- 4px grid
-- [ ] `apps/web/src/components/artifact-browser/ArtifactListEntry.tsx` -- `text-text-3`→`text-text-2` on date (L81); snap `py-0.5`→`py-1` (L27, L29), `gap-0.5`→`gap-1` and `py-2.5`→`py-3` (L69) -- WCAG AA; 4px grid
-- [ ] `apps/web/src/components/artifact-browser/ArtifactViewer.tsx` -- snap `px-1.5 py-0.5`→`px-2 py-1` (L41), `gap-1.5`→`gap-2` (L30, L33), `mb-2.5`→`mb-3` (L19) -- 4px grid
-- [ ] `apps/web/src/components/project-map/ArtifactCard.tsx` -- snap `py-0.5`→`py-1` (L28, L30), `gap-0.5`→`gap-1` (L57); change `hover:border-text-3`→`hover:border-border` (L53, text token misused as border) -- 4px grid; token discipline
-- [ ] `apps/web/src/components/project-map/CredentialErrorBanner.tsx` -- snap `py-2.5`→`py-3` (L37, match DESIGN.md 12px 16px) -- 4px grid
-- [ ] `apps/web/src/components/shell/AppShell.tsx` -- `ring-offset-bg`→`ring-offset-surface` (L72) -- canonical focus ring
-- [ ] `apps/web/src/components/shell/Breadcrumb.tsx` -- `ring-offset-bg`→`ring-offset-surface` (L8) -- canonical focus ring
-- [ ] `apps/web/src/components/project-map/RefreshButton.tsx` -- `ring-offset-bg`→`ring-offset-surface` (L28) -- canonical focus ring
-- [ ] `apps/web/src/app/sign-in/submit-button.tsx` -- `focus-visible:`→`focus:` and `ring-offset-bg`→`ring-offset-surface` (L12) -- canonical focus ring
-- [ ] `apps/web/src/components/onboarding/RepositoryUrlForm.tsx` -- `ring-offset-bg`→`ring-offset-surface` on input (L53); `focus-visible:`→`focus:` and `ring-offset-bg`→`ring-offset-surface` on submit button (L75); snap `gap-1.5`→`gap-2` (L40), `py-2.5`→`py-3` (L53, L75) -- canonical focus ring; 4px grid
-- [ ] `apps/web/src/components/ui/dialog.tsx` -- snap `space-y-1.5`→`space-y-2` (L53) -- 4px grid
-- [ ] `apps/web/src/app/(dashboard)/(app)/artifacts/loading.tsx` -- snap `gap-0.5`→`gap-1` and `py-2.5`→`py-3` (L16) -- 4px grid
+- [x] `apps/web/tailwind.config.ts` -- change `border-subtle` from `#1E1E26` to `#232330` (visible on both surface and surface-raised); add `spacing` scale matching DESIGN.md (`'1': '4px'` through `'16': '64px'`) -- resolves findings 4 (border invisible on raised surfaces) and 11 (spacing scale not tokenized)
+- [x] `apps/web/src/__tests__/tailwind-theme.spec.ts` -- update border-subtle assertion to `#232330`; add spacing scale assertions for the new config entries -- keeps token tests aligned with config
+- [x] `apps/web/src/components/conversation/AgentMessage.tsx` -- `text-text-3`→`text-text-2` on timestamp (L111); snap inline code `px-1.5 py-0.5`→`px-2 py-1` (L54) -- WCAG AA; 4px grid
+- [x] `apps/web/src/components/conversation/UserMessage.tsx` -- `text-text-3`→`text-text-2` on timestamp (L21) -- WCAG AA
+- [x] `apps/web/src/components/conversation/ChatMessageList.tsx` -- `text-text-3`→`text-text-2` on system message (L80) -- WCAG AA
+- [x] `apps/web/src/components/conversation/SlashCommandPicker.tsx` -- `text-text-3`→`text-text-2` on empty-state copy (L24) -- WCAG AA
+- [x] `apps/web/src/components/conversation/WorkingTreeIndicator.tsx` -- `text-text-3`→`text-text-2` on status indicators (L68 "All saved", L76 "Saving…", L84 "Saving after response…"); snap `px-2.5`→`px-3` (L105), `py-1.5`→`py-2` (L179) -- WCAG AA; 4px grid
+- [x] `apps/web/src/components/conversation/ToolPill.tsx` -- snap `py-0.5`→`py-1` and `gap-1.5`→`gap-2` (L52, match DESIGN.md 4px 8px) -- 4px grid
+- [x] `apps/web/src/components/conversation/SemanticPill.tsx` -- snap `px-2.5`→`px-2` and `gap-1.5`→`gap-2` (L38, match DESIGN.md 4px 8px) -- 4px grid
+- [x] `apps/web/src/components/artifact-browser/ArtifactListEntry.tsx` -- `text-text-3`→`text-text-2` on date (L81); snap `py-0.5`→`py-1` (L27, L29), `gap-0.5`→`gap-1` and `py-2.5`→`py-3` (L69) -- WCAG AA; 4px grid
+- [x] `apps/web/src/components/artifact-browser/ArtifactViewer.tsx` -- snap `px-1.5 py-0.5`→`px-2 py-1` (L41), `gap-1.5`→`gap-2` (L30, L33), `mb-2.5`→`mb-3` (L19) -- 4px grid
+- [x] `apps/web/src/components/project-map/ArtifactCard.tsx` -- snap `py-0.5`→`py-1` (L28, L30), `gap-0.5`→`gap-1` (L57); change `hover:border-text-3`→`hover:border-border` (L53, text token misused as border) -- 4px grid; token discipline
+- [x] `apps/web/src/components/project-map/CredentialErrorBanner.tsx` -- snap `py-2.5`→`py-3` (L37, match DESIGN.md 12px 16px) -- 4px grid
+- [x] `apps/web/src/components/shell/AppShell.tsx` -- `ring-offset-bg`→`ring-offset-surface` (L72) -- canonical focus ring
+- [x] `apps/web/src/components/shell/Breadcrumb.tsx` -- `ring-offset-bg`→`ring-offset-surface` (L8) -- canonical focus ring
+- [x] `apps/web/src/components/project-map/RefreshButton.tsx` -- `ring-offset-bg`→`ring-offset-surface` (L28) -- canonical focus ring
+- [x] `apps/web/src/app/sign-in/submit-button.tsx` -- `focus-visible:`→`focus:` and `ring-offset-bg`→`ring-offset-surface` (L12) -- canonical focus ring
+- [x] `apps/web/src/components/onboarding/RepositoryUrlForm.tsx` -- `ring-offset-bg`→`ring-offset-surface` on input (L53); `focus-visible:`→`focus:` and `ring-offset-bg`→`ring-offset-surface` on submit button (L75); snap `gap-1.5`→`gap-2` (L40), `py-2.5`→`py-3` (L53, L75) -- canonical focus ring; 4px grid
+- [x] `apps/web/src/components/ui/dialog.tsx` -- snap `space-y-1.5`→`space-y-2` (L53) -- 4px grid
+- [x] `apps/web/src/app/(dashboard)/(app)/artifacts/loading.tsx` -- snap `gap-0.5`→`gap-1` and `py-2.5`→`py-3` (L16) -- 4px grid
 
 **Acceptance Criteria:**
 - Given the app is rendered, when viewing message timestamps, working-tree status indicators, system messages, and empty-state copy, then all permanent informational text uses `text-2` (passes WCAG AA 4.5:1)
@@ -89,3 +89,43 @@ context:
 - `yarn nx lint web` -- expected: zero lint errors
 - `yarn nx test web` -- expected: all tests pass, including updated tailwind-theme.spec.ts
 - `yarn nx build web` -- expected: successful build, no type errors
+
+## Suggested Review Order
+
+**Token foundation**
+
+- Source of truth for all downstream changes — border-subtle fix + spacing scale
+  [`tailwind.config.ts:13`](../../apps/web/tailwind.config.ts#L13)
+
+- Token assertions aligned with config (border-subtle + spacing scale)
+  [`tailwind-theme.spec.ts:38`](../../apps/web/src/__tests__/tailwind-theme.spec.ts#L38)
+
+**WCAG AA text-3→text-2 migration**
+
+- Timestamps, system messages, status indicators moved to AA-compliant text-2
+  [`AgentMessage.tsx:111`](../../apps/web/src/components/conversation/AgentMessage.tsx#L111)
+
+- Working-tree status indicators ("All saved", "Saving…", "Saving after response…")
+  [`WorkingTreeIndicator.tsx:68`](../../apps/web/src/components/conversation/WorkingTreeIndicator.tsx#L68)
+
+- Artifact list date, empty-state copy, user message timestamp
+  [`ArtifactListEntry.tsx:81`](../../apps/web/src/components/artifact-browser/ArtifactListEntry.tsx#L81)
+
+**4px grid padding snap**
+
+- Pill padding aligned to DESIGN.md 4px 8px spec
+  [`ToolPill.tsx:52`](../../apps/web/src/components/conversation/ToolPill.tsx#L52)
+
+- Card/list padding snapped from 2.5/0.5 to 3/1
+  [`ArtifactCard.tsx:52`](../../apps/web/src/components/project-map/ArtifactCard.tsx#L52)
+
+- Form input/button padding snapped from 2.5 to 3
+  [`RepositoryUrlForm.tsx:53`](../../apps/web/src/components/onboarding/RepositoryUrlForm.tsx#L53)
+
+**Focus ring standardization**
+
+- ring-offset-bg→ring-offset-surface, focus-visible:→focus: canonical pattern
+  [`submit-button.tsx:12`](../../apps/web/src/app/sign-in/submit-button.tsx#L12)
+
+- Same migration on shell, breadcrumb, refresh button, form
+  [`AppShell.tsx:72`](../../apps/web/src/components/shell/AppShell.tsx#L72)

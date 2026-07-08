@@ -34,7 +34,7 @@ export function CredentialErrorBanner({ callbackUrl }: CredentialErrorBannerProp
 
   return (
     <>
-      <div className="bg-negative-bg border-b border-negative px-4 py-2.5 text-sm text-text-1">
+      <div className="bg-negative-bg border-b border-negative px-4 py-3 text-sm text-text-1">
         Your repository connection needs attention.{' '}
         <a
           href="#"

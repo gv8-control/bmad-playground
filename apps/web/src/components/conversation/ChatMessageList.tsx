@@ -77,7 +77,7 @@ export function ChatMessageList({
           if (message.role === 'system') {
             return (
               <div key={message.id} className="flex justify-center py-4">
-                <p className="text-xs text-text-3 text-center max-w-md" role="status">{message.content}</p>
+                <p className="text-xs text-text-2 text-center max-w-md" role="status">{message.content}</p>
               </div>
             );
           }

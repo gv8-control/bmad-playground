@@ -16,7 +16,7 @@ const components: Components = {
   ),
   h2: ({ node: _node, ...props }) => (
     <h2
-      className="text-lg font-semibold text-text-1 mt-7 mb-2.5 pt-5 border-t border-border-subtle"
+      className="text-lg font-semibold text-text-1 mt-7 mb-3 pt-5 border-t border-border-subtle"
       {...props}
     />
   ),
@@ -27,10 +27,10 @@ const components: Components = {
     <p className="text-base leading-6 text-text-1 mb-5" {...props} />
   ),
   ul: ({ node: _node, ...props }) => (
-    <ul className="pl-5 mb-5 flex flex-col gap-1.5" {...props} />
+    <ul className="pl-5 mb-5 flex flex-col gap-2" {...props} />
   ),
   ol: ({ node: _node, ...props }) => (
-    <ol className="pl-5 mb-5 flex flex-col gap-1.5 list-decimal" {...props} />
+    <ol className="pl-5 mb-5 flex flex-col gap-2 list-decimal" {...props} />
   ),
   li: ({ node: _node, ...props }) => (
     <li className="text-base leading-6 text-text-1" {...props} />
@@ -38,7 +38,7 @@ const components: Components = {
   code: ({ node: _node, className, ...props }) => (
     <code
       className={cn(
-        'font-mono text-sm text-text-1 bg-surface-raised rounded px-1.5 py-0.5',
+        'font-mono text-sm text-text-1 bg-surface-raised rounded px-2 py-1',
         className,
       )}
       {...props}

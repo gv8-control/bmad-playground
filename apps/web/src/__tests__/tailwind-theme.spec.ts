@@ -35,8 +35,8 @@ describe('1.1-AC2 — Tailwind theme tokens match DESIGN.md', () => {
       expect(theme.colors?.border).toBe('#2B2B38');
     });
 
-    it('border-subtle matches DESIGN.md (#1E1E26)', () => {
-      expect(theme.colors?.['border-subtle']).toBe('#1E1E26');
+    it('border-subtle matches DESIGN.md (#232330)', () => {
+      expect(theme.colors?.['border-subtle']).toBe('#232330');
     });
   });
 
@@ -89,6 +89,48 @@ describe('1.1-AC2 — Tailwind theme tokens match DESIGN.md', () => {
 
     it('font-mono includes JetBrains Mono as primary', () => {
       expect(theme.fontFamily?.mono?.[0]).toBe('JetBrains Mono');
+    });
+  });
+
+  describe('spacing scale', () => {
+    it('spacing.1 is 4px', () => {
+      expect(theme.spacing?.['1']).toBe('4px');
+    });
+
+    it('spacing.2 is 8px', () => {
+      expect(theme.spacing?.['2']).toBe('8px');
+    });
+
+    it('spacing.3 is 12px', () => {
+      expect(theme.spacing?.['3']).toBe('12px');
+    });
+
+    it('spacing.4 is 16px', () => {
+      expect(theme.spacing?.['4']).toBe('16px');
+    });
+
+    it('spacing.5 is 20px', () => {
+      expect(theme.spacing?.['5']).toBe('20px');
+    });
+
+    it('spacing.6 is 24px', () => {
+      expect(theme.spacing?.['6']).toBe('24px');
+    });
+
+    it('spacing.8 is 32px', () => {
+      expect(theme.spacing?.['8']).toBe('32px');
+    });
+
+    it('spacing.10 is 40px', () => {
+      expect(theme.spacing?.['10']).toBe('40px');
+    });
+
+    it('spacing.12 is 48px', () => {
+      expect(theme.spacing?.['12']).toBe('48px');
+    });
+
+    it('spacing.16 is 64px', () => {
+      expect(theme.spacing?.['16']).toBe('64px');
     });
   });
 });

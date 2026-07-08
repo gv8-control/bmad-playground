@@ -65,7 +65,7 @@ export function WorkingTreeIndicator({ state, onSave }: WorkingTreeIndicatorProp
   if (state === 'clean') {
     return (
       <div aria-live="polite" className="px-1 py-1">
-        <span className="text-sm text-text-3">✓ All saved</span>
+        <span className="text-sm text-text-2">✓ All saved</span>
       </div>
     );
   }
@@ -73,7 +73,7 @@ export function WorkingTreeIndicator({ state, onSave }: WorkingTreeIndicatorProp
   if (state === 'saving') {
     return (
       <div aria-live="polite" className="px-1 py-1">
-        <span className="text-sm text-text-3">Saving…</span>
+        <span className="text-sm text-text-2">Saving…</span>
       </div>
     );
   }
@@ -81,14 +81,14 @@ export function WorkingTreeIndicator({ state, onSave }: WorkingTreeIndicatorProp
   if (state === 'saving-after-response') {
     return (
       <div aria-live="polite" className="px-1 py-1">
-        <span className="text-sm text-text-3">Saving after response…</span>
+        <span className="text-sm text-text-2">Saving after response…</span>
       </div>
     );
   }
 
   return (
     <div aria-live="polite" className="relative px-1 py-1">
-      <div className="inline-flex items-center gap-1.5">
+      <div className="inline-flex items-center gap-2">
         <span
           ref={triggerRef}
           role="button"
@@ -102,7 +102,7 @@ export function WorkingTreeIndicator({ state, onSave }: WorkingTreeIndicatorProp
             }
           }}
           className={cn(
-            'inline-flex items-center gap-1 rounded-sm bg-caution-bg border border-caution px-2.5 py-1 text-sm text-caution cursor-pointer',
+            'inline-flex items-center gap-1 rounded-sm bg-caution-bg border border-caution px-3 py-1 text-sm text-caution cursor-pointer',
             FOCUS_RING,
           )}
         >
@@ -176,7 +176,7 @@ export function WorkingTreeIndicator({ state, onSave }: WorkingTreeIndicatorProp
                 triggerRef.current?.focus();
               }}
               className={cn(
-                'rounded-sm bg-accent px-3 py-1.5 text-sm text-bg font-medium',
+                'rounded-sm bg-accent px-3 py-2 text-sm text-bg font-medium',
                 FOCUS_RING,
               )}
             >

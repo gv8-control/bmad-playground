@@ -25,7 +25,7 @@ export function RefreshButton() {
       aria-label="Refresh Project Map"
       onClick={handleRefresh}
       disabled={isPending}
-      className="p-1 rounded-md text-text-2 hover:text-text-1 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none"
+      className="p-1 rounded-md text-text-2 hover:text-text-1 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50 disabled:pointer-events-none"
     >
       <RefreshCw
         className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`}

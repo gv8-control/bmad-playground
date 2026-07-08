@@ -18,7 +18,7 @@ export function UserMessage({ message }: UserMessageProps) {
     <div className="group mb-4 flex justify-end">
       <div className="relative max-w-[80%]">
         <div className="absolute -top-5 right-0 opacity-0 transition-opacity group-hover:opacity-100 flex items-center gap-2">
-          <span className="text-xs text-text-3">{time}</span>
+          <span className="text-xs text-text-2">{time}</span>
           <CopyButton text={message.content} />
         </div>
         <div className="rounded-lg bg-surface-raised px-4 py-2 text-text-1">
