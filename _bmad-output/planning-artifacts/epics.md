@@ -227,6 +227,10 @@ A user can see what BMAD work the team has produced and what is in progress (Pro
 A user can open a Conversation, invoke BMAD Skills via slash command, converse with the streaming Agent across multiple turns, see Tool Pills and Semantic Pills for agent actions, track the working tree state, and manually save progress — with the Agent's committed output flowing into the Artifact Browser and Project Map built in Epic 2.
 **FRs covered:** FR9, FR10, FR11, FR12, FR13, FR14, FR15
 
+### Epic 5: UX Mockup Fidelity — Close Visual Drift
+A comprehensive audit identified 102 findings of visual drift between the authoritative UX mockups (7 HTML files + DESIGN.md + EXPERIENCE.md) and the implemented application across all 7 surfaces and the shared shell. Token values match exactly (42/42); the drift is structural (missing containers, wrong layouts), token-usage (wrong tokens applied), and copy-level. This epic closes the drift by restoring missing visual containers, fixing structural divergences, correcting token-usage, and addressing token-config gaps. Epic 4 is reserved and intentionally unused.
+**Investigation:** `_bmad-output/implementation-artifacts/investigations/ux-visual-drift-investigation.md`
+
 ## Epic 1: Authentication & Repository Connection
 
 A new user can sign in with GitHub, connect their team's BMAD-enabled repository, and have it validated and ready for use — including the foundational platform scaffold (Nx workspace, Postgres/Prisma, boundary JWT, OAuth envelope encryption, CI/CD) that every later epic builds on.
@@ -921,3 +925,166 @@ So that routine deploys never look like a crash or lose my work.
 **Given** a manual save is pending in `ManualCommitService` when `SIGTERM` is received
 **When** `onModuleDestroy` runs
 **Then** the pending commit is either completed before exit or the client is notified via a `MANUAL_SAVE_FAILED` event on the SSE channel before the process exits — pending saves are never silently dropped during drain
+
+## Epic 5: UX Mockup Fidelity — Close Visual Drift
+
+A comprehensive audit (`_bmad-output/implementation-artifacts/investigations/ux-visual-drift-investigation.md`) identified 102 findings of visual drift between the authoritative UX mockups (7 HTML files + DESIGN.md + EXPERIENCE.md) and the implemented application across all 7 surfaces and the shared shell. Token values match exactly (42/42); the drift is structural (missing containers, wrong layouts), token-usage (wrong tokens applied), and copy-level. This epic closes the drift by restoring missing visual containers, fixing structural divergences, correcting token-usage, and addressing token-config gaps. The mockups are authoritative; the code aligns to them.
+
+### Story 5.1: Restore Missing Visual Containers Across Surfaces
+
+As a user,
+I want each screen to match its designed visual container structure,
+So that the app looks polished and intentional rather than unfinished.
+
+**Acceptance Criteria:**
+
+**Given** the sign-in page
+**When** it renders
+**Then** a bordered auth card (`bg-surface border border-border rounded-xl p-8`) wraps the OAuth button, with a brand logo box above the heading, a heading, and a legal footer — matching the mockup structure (investigation: `apps/web/src/app/sign-in/page.tsx:17-43` vs `ux-designs/.../mockups/key-signin.html:79-91,105-115`)
+**And** the auth card, logo box, heading, and footer are not present in the current implementation and must be added
+
+**Given** the onboarding Repository URL input
+**When** it renders
+**Then** the input and its supporting copy sit inside a form panel (`bg-surface border border-border rounded-xl p-7`) — matching the mockup (investigation: `apps/web/src/components/onboarding/RepositoryUrlForm.tsx:39,55-69` vs `key-onboarding.html:98-106`)
+
+**Given** the onboarding BMAD-initialization-failed / repository-not-found blocking state
+**When** it is shown
+**Then** a styled panel (`bg-negative-bg border border-negative rounded-lg p-4`) renders with the blocking message and documentation link — not a plain inline message (investigation: `RepositoryUrlForm.tsx:55-69` vs `key-onboarding.html:213-233`)
+
+**Given** the Settings page
+**When** it renders
+**Then** the designed "coming soon" empty-state is present (icon, title, body, teaser items) — not a bare placeholder (investigation: `apps/web/src/app/settings/page.tsx:10-12` vs `key-settings.html:184-247,304-332`)
+
+**Given** an artifact selected in the Artifact Browser
+**When** the artifact has frontmatter metadata
+**Then** a frontmatter metadata badge renders in `ArtifactViewer` showing the metadata fields — not absent (investigation: `apps/web/src/components/artifact-browser/ArtifactViewer.tsx:9-11,89-103` vs `key-artifact-browser.html:264-297,446-456`)
+
+**Given** the conversation chat input area
+**When** it renders
+**Then** the textarea, Send button, and WorkingTreeIndicator sit inside a single bordered `chat-input-box` container — not as sibling elements in the input zone (investigation: `apps/web/src/components/conversation/ChatInput.tsx:59-94` vs `key-conversation.html:326-334`)
+
+### Story 5.2: Fix Shared Shell and Page-Header Structural Drift
+
+As a user navigating the platform,
+I want the shell and page headers to match the design,
+So that navigation feels consistent and polished on every page.
+
+**Acceptance Criteria:**
+
+**Given** the side navigation brand mark
+**When** it renders
+**Then** it shows a wordmark `bmad·easy` with an accent-colored interpunct between the words — not `bmad-easy` (investigation: `apps/web/src/components/shell/SideNavigation.tsx:30-31` vs `key-project-map.html:78-79`)
+
+**Given** the bottom-pinned settings entry in the side navigation
+**When** it renders
+**Then** a visible "Settings" text label appears next to the avatar circle — not avatar-only (investigation: `SideNavigation.tsx:88-99` vs `key-project-map.html:300-303`)
+
+**Given** the active nav item
+**When** it renders
+**Then** it uses the inset pill styling from DESIGN.md, not a full-width bar (investigation: Shell Finding, active-state styling)
+
+**Given** navigation items in the side navigation
+**When** they render
+**Then** horizontal padding is not doubled relative to the mockup (investigation: Shell Finding, double horizontal padding)
+**And** item spacing and alignment match the mockup (investigation: Shell Finding, nav item spacing/alignment)
+
+**Given** a depth-1 page header (Conversation, Artifact Browser, Settings, New Conversation)
+**When** it renders
+**Then** the Breadcrumb renders inline beside the page title on a single flex row — not stacked above the title as its own row with `py-4` padding (investigation: Shell Finding 14, breadcrumb stacked vs inline)
+
+**Given** depth-1 page headers (Conversation, Artifact Browser, Settings, New Conversation)
+**When** they render
+**Then** a 1px header bottom divider (`border-b`) is present on each — currently missing on all depth-1 pages (investigation: Shell Finding 15, missing header bottom divider)
+
+**Dev Notes:**
+
+- Two shell findings may be intentional redesigns rather than drift, per the investigation's Missing Evidence: (a) nav links relocated from a top-grouped cluster to bottom-pinned (`SideNavigation.tsx:41-60,87` vs `key-project-map.html:96-100,287-298`), and (b) the "Settings" label removed leaving the avatar only. Confirm with design/PM whether the shell layout was deliberately changed from the mockup before "fixing" the Settings-label or nav-link-placement items.
+
+### Story 5.3: Fix Conversation Stream Structural Drift
+
+As a user in a conversation,
+I want the chat interface to match the design,
+So that messages, tool calls, and input feel integrated and readable.
+
+**Acceptance Criteria:**
+
+**Given** an agent tool call and the resulting Tool Pill or Semantic Pill
+**When** it renders in the message stream
+**Then** the pill renders inline within the agent's markdown stream at the exact position the tool call occurred — not as a standalone row above or below the message (investigation: `apps/web/src/components/conversation/ChatMessageList.tsx:84-103` vs `key-conversation.html:448-451`)
+
+**Given** an active conversation
+**When** the messages and chat input render
+**Then** both are centered in an 824px column (investigation: Conversation Finding, 824px column not centered)
+
+**Given** the new-conversation page with no active conversation
+**When** it renders
+**Then** the rich empty-state (icon, title, and a `<kbd>` keyboard-hint element) is present — not a simplified/bare placeholder (investigation: Conversation Finding, new-conversation empty-state simplified)
+
+**Given** the session-starting state ("Starting session…")
+**When** it renders
+**Then** the `SessionStartSpinner` is centered in the chat-messages panel — not rendered in the input area (investigation: Conversation Finding, SessionStartSpinner in wrong zone)
+
+**Given** a disabled Send button (the agent is responding or the input is empty)
+**When** it renders
+**Then** it uses the muted-surface treatment — not `opacity-50` over the active style (investigation: Conversation Finding, disabled Send button styling)
+
+**Given** conversational micro-drift items
+**When** the conversation renders
+**Then** placeholders match the mockup copy, the inter-message gap matches the mockup, user-bubble padding matches the mockup, the scroll-to-bottom button text color matches the mockup, and the semantic-pill separator uses the mockup's opacity (investigation: Conversation Findings, copy/placeholder drift)
+
+**Dev Notes:**
+
+- The inline tool/semantic pills change (the first AC) is architecturally significant. It requires changing how `TOOL_CALL` and recognition events are stored and rendered — they must interleave within the agent's markdown stream at the position they occurred, rather than being emitted as separate standalone rows keyed off the message boundary. Cross-check against Story 3.4 and UX-DR5 ("inline chip at the exact stream position of the tool call") to confirm the data-model change is consistent with the existing spec before refactoring.
+
+### Story 5.4: Fix Token-Usage Drift and Token-Config Gaps
+
+As a developer maintaining the design system,
+I want tokens used correctly and config gaps closed,
+So that drift doesn't recur and the design system is enforced.
+
+**Acceptance Criteria:**
+
+**Given** project-map artifact cards
+**When** they are hovered
+**Then** the border uses `hover:border-accent` — not `hover:border-text-3` (investigation: Project-Map Finding, token-usage drift)
+
+**Given** the onboarding Repository URL input
+**When** it renders
+**Then** the input background is `bg-bg` (recessed) — not `bg-surface` (raised) — and the label uses `text-text-1` — not `text-text-2` (investigation: `RepositoryUrlForm.tsx:53` vs `key-onboarding.html:128-135`)
+
+**Given** the Retry and Save buttons in the conversation
+**When** they render on an accent surface
+**Then** their text color uses `text-accent-fg` — not `text-bg` (investigation: Conversation Finding, token-usage drift on accent buttons)
+
+**Given** artifact-browser list entries
+**When** they are hovered or display last-modified dates
+**Then** the hover background uses `hover:bg-surface-raised` (no `/60` opacity modifier) and dates use `text-text-3` — not `text-text-2` (investigation: Artifact-Browser Findings, token-usage drift)
+
+**Given** shell hairline dividers
+**When** they render
+**Then** `border-border-subtle` is replaced with `border-surface-raised` — or, if `border-subtle` is the intended token, it is added to DESIGN.md as a documented token before continued use (investigation: Shell Finding, token-usage drift on hairlines)
+
+**Given** scrollable panels on the 3 affected surfaces (shell, conversation, artifact-browser)
+**When** they overflow and scroll
+**Then** scrollbars are hidden via `scrollbar-width: none` and `::-webkit-scrollbar { display: none }` defined in `apps/web/src/app/global.css` or as a reusable utility class (investigation: Finding 5 mechanism 5, missing scrollbar hiding)
+
+**Given** the Tailwind config at `apps/web/tailwind.config.ts`
+**When** it is updated
+**Then** a `boxShadow: { floating: '0 8px 24px rgba(0,0,0,0.4)' }` token is added, matching DESIGN.md line 327 (investigation: Finding 2, gap 2)
+
+**Given** the `WorkingTreeIndicator` component
+**When** it renders as a floating element
+**Then** it uses the new `floating` box-shadow token — not Tailwind's default `shadow-lg`, which has a different value (investigation: Finding 2, gap 2)
+
+**Given** the Tailwind config at `apps/web/tailwind.config.ts`
+**When** it is updated
+**Then** a `fontWeight` override is added enforcing the DESIGN.md constraint `regular=400, medium=500, semibold=600` and blocking weights above 600 (e.g. `font-bold`, `font-extrabold`) (investigation: Finding 2, gap 1; DESIGN.md line 445)
+
+**Given** the Tailwind config's use of `theme.extend`
+**When** the design-system enforcement is evaluated
+**Then** the team considers replacing `extend` for tokenized categories (colors, spacing, radii, font) with full `theme` overrides so non-design-system defaults (`text-red-500`, `bg-gray-400`, `rounded-3xl`, etc.) are no longer available alongside the design system (investigation: Finding 2, gap 3)
+
+**Dev Notes:**
+
+- Replacing `theme.extend` with full `theme` overrides (the final AC) is structural and may surface latent non-design-system usage in existing code. Stage it carefully: grep the codebase for default-palette utilities first, migrate any real uses to design-system tokens, then switch to full overrides so the change is a guardrail, not a regression.
+- The ACs above treat token-correctness as the success bar; a pixel-level screenshot diff is called out as Missing Evidence in the investigation and is out of scope for this story.

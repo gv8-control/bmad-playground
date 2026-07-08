@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-07-06T18:00:00Z
+# last_updated: 2026-07-08T13:00:00Z
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-06T20:00:00Z
+last_updated: 2026-07-08T13:00:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -81,3 +81,11 @@ development_status:
   3-11-run-concurrent-conversations: done
   3-12-drain-conversations-gracefully-on-deploy: done
   epic-3-retrospective: optional
+
+  # ── Epic 5: UX Mockup Fidelity — Close Visual Drift ──
+  epic-5: in-progress
+  5-1-restore-missing-visual-containers: ready-for-dev
+  5-2-fix-shared-shell-and-page-header-structural-drift: ready-for-dev
+  5-3-fix-conversation-stream-structural-drift: ready-for-dev
+  5-4-fix-token-usage-drift-and-token-config-gaps: ready-for-dev
+  epic-5-retrospective: optional
