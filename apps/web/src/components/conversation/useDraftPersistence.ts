@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export function useDraftPersistence(conversationId: string | null) {
   const [draft, setDraft] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const loadedForIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!loaded) {
@@ -20,13 +21,16 @@ export function useDraftPersistence(conversationId: string | null) {
         : 'new-conversation-draft';
       const saved = localStorage.getItem(key);
       if (saved) setDraft(saved);
+      else setDraft('');
     } catch {
       // storage unavailable
     }
+    loadedForIdRef.current = conversationId;
   }, [conversationId, loaded]);
 
   useEffect(() => {
     if (!loaded) return;
+    if (loadedForIdRef.current !== conversationId) return;
     try {
       const key = conversationId
         ? `conversation-${conversationId}-draft`

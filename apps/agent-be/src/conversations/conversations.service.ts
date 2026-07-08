@@ -14,6 +14,7 @@ import { SessionEventsService } from '../streaming/session-events.service';
 import { EventType } from '@ag-ui/core';
 import { ManualCommitService } from './manual-commit.service';
 import { generateSemanticTitle } from './semantic-title';
+import { isCredentialFailureError, sanitizeProvisioningErrorMessage } from './provisioning-error.util';
 
 type SandboxStatus = 'provisioning' | 'ready' | 'failed' | 'idle-timeout';
 
@@ -97,6 +98,11 @@ export class ConversationsService {
 
       const credential = await this.credentialsService.resolveOAuthToken(userId);
 
+      const credentialFailed = await this.credentialsService.isCredentialHealthFailed(userId);
+      if (credentialFailed) {
+        throw new Error('GitHub credential is marked as failed. Please reconnect your GitHub account.');
+      }
+
       const gitConfig = await this.resolveGitIdentity(userId);
 
       const sandbox = await this.sandboxService.provision({
@@ -158,6 +164,11 @@ export class ConversationsService {
         this.logger.log(`Provisioning cancelled for conversation ${conversationId} during pipeline`);
         return;
       }
+      if (isCredentialFailureError(err)) {
+        await this.credentialsService.markCredentialFailed(userId, new Date()).catch((markErr) => {
+          this.logger.error(`Failed to mark credential as failed for user ${userId}: ${markErr}`);
+        });
+      }
       this.logger.error(`provisionSandbox pipeline failed for conversation ${conversationId}: ${err}`);
       if (sandboxId) {
         try {
@@ -169,9 +180,12 @@ export class ConversationsService {
       this.sandboxStatuses.set(conversationId, 'failed');
       this.sandboxIds.delete(conversationId);
       await this.persistSandboxState(conversationId, null, 'failed');
+      const rawMessage = err instanceof Error ? err.message : 'Unknown error';
+      const sanitizedMessage = sanitizeProvisioningErrorMessage(rawMessage);
+
       this.sessionEvents.emit(conversationId, {
         event: 'SESSION_ERROR',
-        data: { message: err instanceof Error ? err.message : 'Unknown error' },
+        data: { message: sanitizedMessage },
       });
       this.sessionEvents.complete(conversationId);
     } finally {
@@ -274,7 +288,13 @@ export class ConversationsService {
       throw new NotFoundException('Conversation not found');
     }
 
-    await this.onFirstMessage(conversationId);
+    const sandboxId = this.sandboxIds.get(conversationId);
+    if (!sandboxId) {
+      throw new ConflictException({
+        code: 'SESSION_NOT_READY',
+        message: 'Session is not ready yet. Please wait a moment and try again.',
+      });
+    }
 
     await this.prisma.turn.create({
       data: { conversationId, role: 'user', content },
@@ -293,6 +313,8 @@ export class ConversationsService {
         data: { lastActiveAt: new Date() },
       });
     }
+
+    await this.onFirstMessage(conversationId);
 
     void this.runAgentTurn(conversationId, userId, content).catch((err) => {
       this.logger.error(`runAgentTurn failed for conversation ${conversationId}: ${err}`);
@@ -450,9 +472,12 @@ export class ConversationsService {
         this.logger.error(`Fast-path resume failed for conversation ${conversationId}: ${err}`);
         this.sandboxStatuses.set(conversationId, 'failed');
         await this.persistSandboxState(conversationId, null, 'failed');
+        const rawMessage = err instanceof Error ? err.message : 'Unknown error';
+        const sanitizedMessage = sanitizeProvisioningErrorMessage(rawMessage);
+
         this.sessionEvents.emit(conversationId, {
           event: 'SESSION_ERROR',
-          data: { message: err instanceof Error ? err.message : 'Unknown error' },
+          data: { message: sanitizedMessage },
         });
         return { conversationId, sandboxStatus: 'failed' };
       }

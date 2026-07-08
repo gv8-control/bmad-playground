@@ -74,7 +74,11 @@ describe('AgentService (via ConversationsService integration)', () => {
       .overrideProvider(DAYTONA_CLIENT)
       .useValue(null)
       .overrideProvider(CredentialsService)
-      .useValue({ resolveOAuthToken: jest.fn().mockResolvedValue('fake-oauth-token') })
+      .useValue({
+        resolveOAuthToken: jest.fn().mockResolvedValue('fake-oauth-token'),
+        isCredentialHealthFailed: jest.fn().mockResolvedValue(false),
+        markCredentialFailed: jest.fn().mockResolvedValue(undefined),
+      })
       .compile();
 
     service = moduleRef.get(ConversationsService);

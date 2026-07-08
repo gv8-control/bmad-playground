@@ -48,7 +48,7 @@ export function ChatInput({
       if (e.defaultPrevented) return;
     }
 
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       if (!disabled && value.trim()) {
         onSubmit();

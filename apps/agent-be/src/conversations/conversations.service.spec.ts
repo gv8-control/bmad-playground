@@ -32,7 +32,6 @@ import { ConversationsModule } from './conversations.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { CredentialsService } from '../credentials/credentials.service';
 import { SessionEventsService } from '../streaming/session-events.service';
-import { EventType } from '@ag-ui/core';
 import { DAYTONA_CLIENT } from '../sandbox/daytona-client.provider';
 import { IdleTimeoutService } from '../sandbox/idle-timeout.service';
 import { AGENT_SERVICE, SANDBOX_SERVICE } from '@bmad-easy/shared-types';
@@ -118,7 +117,11 @@ describe('ConversationsService', () => {
       { provide: DAYTONA_CLIENT, useValue: null },
       {
         provide: CredentialsService,
-        useValue: { resolveOAuthToken: jest.fn().mockResolvedValue('fake-oauth-token') },
+        useValue: {
+          resolveOAuthToken: jest.fn().mockResolvedValue('fake-oauth-token'),
+          isCredentialHealthFailed: jest.fn().mockResolvedValue(false),
+          markCredentialFailed: jest.fn().mockResolvedValue(undefined),
+        },
       },
       { provide: AGENT_SERVICE, useValue: agentFake },
       { provide: SANDBOX_SERVICE, useValue: sandboxFakeInstance },
@@ -331,6 +334,7 @@ describe('ConversationsService', () => {
 
   describe('[P0] sendTurn (AC-3)', () => {
     it('persists a user turn with the correct content', async () => {
+      service['sandboxIds'].set('conv-1', 'sb-1');
       await service.sendTurn('conv-1', 'user-1', '/bmad-prd create a product brief');
 
       expect(mockPrisma.turn.create).toHaveBeenCalledWith({
@@ -351,6 +355,7 @@ describe('ConversationsService', () => {
     });
 
     it('generates and persists a semantic title on first message', async () => {
+      service['sandboxIds'].set('conv-1', 'sb-1');
       mockPrisma.conversation.findFirst.mockResolvedValueOnce({
         id: 'conv-1',
         userId: 'user-1',
@@ -368,6 +373,7 @@ describe('ConversationsService', () => {
     });
 
     it('does not overwrite an existing title on subsequent messages', async () => {
+      service['sandboxIds'].set('conv-1', 'sb-1');
       mockPrisma.conversation.findFirst.mockResolvedValueOnce({
         id: 'conv-1',
         userId: 'user-1',
@@ -384,6 +390,7 @@ describe('ConversationsService', () => {
     });
 
     it('[P1] updates lastActiveAt on subsequent messages', async () => {
+      service['sandboxIds'].set('conv-1', 'sb-1');
       mockPrisma.conversation.findFirst.mockResolvedValueOnce({
         id: 'conv-1',
         userId: 'user-1',
@@ -407,6 +414,7 @@ describe('ConversationsService', () => {
     });
 
     it('[P1] updates lastActiveAt', async () => {
+      service['sandboxIds'].set('conv-1', 'sb-1');
       mockPrisma.conversation.findFirst.mockResolvedValueOnce({
         id: 'conv-1',
         userId: 'user-1',
@@ -454,18 +462,10 @@ describe('ConversationsService', () => {
       expect(elapsed).toBeLessThan(100);
     });
 
-    it('[P1] emits RUN_ERROR if sandbox not ready', async () => {
-      const emitSpy = jest.spyOn(sessionEvents, 'emit');
-
-      await service.sendTurn('conv-1', 'user-1', 'hello agent');
-
-      await new Promise((r) => setTimeout(r, 50));
-
-      const runErrorEmitted = emitSpy.mock.calls.some(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (call: any[]) => call[1]?.event === EventType.RUN_ERROR,
+    it('[P1] throws ConflictException if sandbox not ready', async () => {
+      await expect(service.sendTurn('conv-1', 'user-1', 'hello agent')).rejects.toThrow(
+        ConflictException,
       );
-      expect(runErrorEmitted).toBe(true);
     });
   });
 
@@ -653,7 +653,7 @@ describe('ConversationsService', () => {
       expect(flushSpy).toHaveBeenCalledWith('conv-1', 'sb-1');
     });
 
-    it('runAgentTurn does NOT call flushPendingCommit when sandboxId is missing (early return path)', async () => {
+    it('sendTurn throws ConflictException when sandboxId is missing (no flushPendingCommit)', async () => {
       mockPrisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1', title: null });
 
       const flushSpy = jest.spyOn(
@@ -661,7 +661,9 @@ describe('ConversationsService', () => {
         'flushPendingCommit',
       ).mockResolvedValue(undefined);
 
-      await service.sendTurn('conv-1', 'user-1', 'test message');
+      await expect(service.sendTurn('conv-1', 'user-1', 'test message')).rejects.toThrow(
+        ConflictException,
+      );
 
       await new Promise((r) => setImmediate(r));
 
@@ -1420,6 +1422,161 @@ describe('ConversationsService', () => {
       const result = await service.listSkills('conv-1', 'user-1');
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('[P0] pre-flight credential health check (Issue 6)', () => {
+    it('[P0] throws and does NOT call clone or provision when credentialHealth is "failed"', async () => {
+      jest.spyOn(service['credentialsService'], 'isCredentialHealthFailed').mockResolvedValueOnce(true);
+      const cloneSpy = jest.spyOn(sandboxFake, 'clone');
+      const destroySpy = jest.spyOn(sandboxFake, 'destroy');
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      expect(cloneSpy).not.toHaveBeenCalled();
+      expect(destroySpy).not.toHaveBeenCalled();
+      expect(sandboxFake.activeSandboxCount()).toBe(0);
+
+      const errorCall = emitSpy.mock.calls.find(
+        (c: unknown[]) => (c[1] as { event: string }).event === 'SESSION_ERROR',
+      );
+      expect(errorCall).toBeDefined();
+      expect((errorCall![1] as { data: { message: string } }).data.message).toContain(
+        'GitHub credential is marked as failed',
+      );
+    });
+
+    it('[P0] proceeds normally when credentialHealth is "healthy"', async () => {
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const events = emitSpy.mock.calls.map((c: unknown[]) => (c[1] as { event: string }).event);
+      expect(events).toContain('SESSION_READY');
+    });
+  });
+
+  describe('[P0] credential failure feedback during provisioning (Issue 5)', () => {
+    it('[P0] calls markCredentialFailed when clone throws a credential failure error', async () => {
+      jest
+        .spyOn(sandboxFake, 'clone')
+        .mockRejectedValueOnce(
+          new Error('fatal: Authentication failed for https://github.com/user/repo.git'),
+        );
+      const markCredentialFailedSpy = jest.spyOn(
+        service['credentialsService'],
+        'markCredentialFailed',
+      );
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      expect(markCredentialFailedSpy).toHaveBeenCalledWith('user-1', expect.any(Date));
+
+      const events = emitSpy.mock.calls.map((c: unknown[]) => (c[1] as { event: string }).event);
+      expect(events).toContain('SESSION_ERROR');
+    });
+
+    it('[P0] does NOT call markCredentialFailed when clone throws a non-credential error', async () => {
+      jest
+        .spyOn(sandboxFake, 'clone')
+        .mockRejectedValueOnce(new Error('fatal: repository not found'));
+      const markCredentialFailedSpy = jest.spyOn(
+        service['credentialsService'],
+        'markCredentialFailed',
+      );
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      expect(markCredentialFailedSpy).not.toHaveBeenCalled();
+    });
+
+    it('[P0] markCredentialFailed failure does not crash provisioning', async () => {
+      jest
+        .spyOn(sandboxFake, 'clone')
+        .mockRejectedValueOnce(
+          new Error('fatal: Authentication failed for https://github.com/user/repo.git'),
+        );
+      jest
+        .spyOn(service['credentialsService'], 'markCredentialFailed')
+        .mockRejectedValueOnce(new Error('DB connection lost'));
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const events = emitSpy.mock.calls.map((c: unknown[]) => (c[1] as { event: string }).event);
+      expect(events).toContain('SESSION_ERROR');
+    });
+  });
+
+  describe('[P0] error message sanitization (Issue 7)', () => {
+    it('[P0] sanitizes credential failure error before emitting SESSION_ERROR', async () => {
+      jest
+        .spyOn(sandboxFake, 'clone')
+        .mockRejectedValueOnce(
+          new Error('fatal: Authentication failed for https://github.com/user/repo.git'),
+        );
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const errorCall = emitSpy.mock.calls.find(
+        (c: unknown[]) => (c[1] as { event: string }).event === 'SESSION_ERROR',
+      );
+      expect(errorCall).toBeDefined();
+      const message = (errorCall![1] as { data: { message: string } }).data.message;
+      expect(message).toBe('GitHub authentication failed. Please reconnect your GitHub account.');
+      expect(message).not.toContain('fatal: Authentication failed');
+    });
+
+    it('[P0] sanitizes repository not found error before emitting SESSION_ERROR', async () => {
+      jest
+        .spyOn(sandboxFake, 'clone')
+        .mockRejectedValueOnce(
+          new Error("fatal: repository 'https://github.com/user/repo.git' not found"),
+        );
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const errorCall = emitSpy.mock.calls.find(
+        (c: unknown[]) => (c[1] as { event: string }).event === 'SESSION_ERROR',
+      );
+      expect(errorCall).toBeDefined();
+      expect((errorCall![1] as { data: { message: string } }).data.message).toBe(
+        'Repository not found. Please check your repository connection.',
+      );
+    });
+
+    it('[P0] sanitizes unknown errors with a generic message', async () => {
+      jest.spyOn(sandboxFake, 'clone').mockRejectedValueOnce(new Error('some unexpected error'));
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const errorCall = emitSpy.mock.calls.find(
+        (c: unknown[]) => (c[1] as { event: string }).event === 'SESSION_ERROR',
+      );
+      expect(errorCall).toBeDefined();
+      expect((errorCall![1] as { data: { message: string } }).data.message).toBe(
+        'Failed to set up the sandbox. Please try again or contact support.',
+      );
+    });
+
+    it('[P0] sanitizes "No RepoConnection" error', async () => {
+      mockPrisma.repoConnection.findUnique.mockResolvedValueOnce(null);
+      const emitSpy = jest.spyOn(sessionEvents, 'emit');
+
+      await service.provisionSandbox('conv-1', 'user-1');
+
+      const errorCall = emitSpy.mock.calls.find(
+        (c: unknown[]) => (c[1] as { event: string }).event === 'SESSION_ERROR',
+      );
+      expect(errorCall).toBeDefined();
+      expect((errorCall![1] as { data: { message: string } }).data.message).toBe(
+        'No GitHub repository connected. Please connect a repository first.',
+      );
     });
   });
 });

@@ -34,7 +34,7 @@ export function ChatMessageList({
     if (isAtBottomRef.current && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isThinking]);
 
   function handleScroll() {
     const container = containerRef.current;

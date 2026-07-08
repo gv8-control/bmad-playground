@@ -126,13 +126,21 @@ export class AgentService implements IAgentService, OnModuleDestroy {
             num_turns: number;
             duration_ms: number;
           };
-          if (Number.isFinite(resultMsg.total_cost_usd)) {
+          if (
+            Number.isFinite(resultMsg.total_cost_usd) &&
+            Number.isFinite(resultMsg.num_turns) &&
+            Number.isFinite(resultMsg.duration_ms)
+          ) {
             lastCostData = {
               totalCostUsd: resultMsg.total_cost_usd,
               sessionId: resultMsg.session_id,
               numTurns: resultMsg.num_turns,
               durationMs: resultMsg.duration_ms,
             };
+          } else {
+            this.logger.warn(
+              `Non-finite cost data from SDK for conversation ${conversationId}: total_cost_usd=${resultMsg.total_cost_usd}, num_turns=${resultMsg.num_turns}, duration_ms=${resultMsg.duration_ms}`,
+            );
           }
         }
       }
@@ -233,6 +241,11 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       await activeRun.query.interrupt();
     } catch (err) {
       this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
+    }
+
+    const pendingPromises = this.pendingClassifierPromises.get(conversationId) ?? [];
+    if (pendingPromises.length > 0) {
+      await Promise.allSettled(pendingPromises);
     }
 
     this.sessionEvents.emit(conversationId, {
