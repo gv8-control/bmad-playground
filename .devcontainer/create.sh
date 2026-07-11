@@ -7,8 +7,9 @@ cp --update=none .env.example .env
 sed -i "s|EXTERNAL_HOOK_FILES=.*|EXTERNAL_HOOK_FILES=$PWD/n8n/hooks.js|" .env
 
 corepack enable
+corepack prepare yarn@4.17.0 --activate
 
-yarn install
+YARN_ENABLE_TELEMETRY=0 yarn install
 npm install -g nx pm2 opencode-ai @playwright/cli@latest n8n@2.26.8
 playwright-cli install --skills
 npx playwright install chrome
