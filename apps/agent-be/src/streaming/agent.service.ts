@@ -112,8 +112,13 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         let result: IteratorResult<SDKMessage>;
         try {
           result = await Promise.race([iterator.next(), abortPromise]);
-        } catch {
-          break;
+        } catch (err) {
+          if (abortController.signal.aborted) break;
+          const pendingPromises = this.pendingClassifierPromises.get(conversationId) ?? [];
+          if (pendingPromises.length > 0) {
+            await Promise.allSettled(pendingPromises);
+          }
+          throw err;
         }
         if (result.done) break;
         this.resetCircuitBreakerTimer(conversationId);

@@ -330,3 +330,7 @@ Four Playwright specs created (uncommitted) for the new real-service / multi-con
 ## Deferred from: code review of apply-aesthetics-findings (2026-07-08)
 
 - **ArtifactCard hover uses `text-3` token as border color** — `hover:border-text-3` on `apps/web/src/components/project-map/ArtifactCard.tsx:53` uses a text color token (`text-3`, #56556A) as a border color for the hover effect. This is a semantic token misuse (text token used as border), but reverting to `hover:border-border` creates a no-op (identical to resting state `border`). No lighter border token exists in the palette (`border-subtle` #232330 is darker than `border` #2B2B38, producing a backwards hover effect). Design gap: add a hover border token or redesign the hover affordance (e.g., background change).
+
+## Deferred from: code review of fix-agent-run-error-swallowing (2026-07-11)
+
+- **Cost data not recorded on iterator error path** — When the SDK yields a `result` message (setting `lastCostData`) and then a subsequent `iterator.next()` rejects with a non-abort error, the `throw err` skips the cost-recording block at `agent.service.ts:155-170`. The original `catch { break; }` fell through to cost recording. Narrow edge case (result message followed by iterator error before `done`), and the primary goal of the fix (surfacing errors via RUN_ERROR) is achieved. Pre-existing concern slightly changed in nature. [`apps/agent-be/src/streaming/agent.service.ts:115-122`]
