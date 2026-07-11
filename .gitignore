@@ -9,6 +9,7 @@ out/
 .env
 .env.local
 .env.*.local
+.env.test
 
 # misc
 .DS_Store
@@ -38,6 +39,7 @@ libs/database-schemas/src/generated/
 playwright-report/
 test-results/
 .auth/
+.playwright-mcp/
 
 # Claude Code
 .claude/worktrees

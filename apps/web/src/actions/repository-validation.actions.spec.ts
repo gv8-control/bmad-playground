@@ -39,7 +39,7 @@ let mockFetch: jest.Mock;
 // ─── Subject under test ───────────────────────────────────────────────────────
 
 import { validateRepository } from './repository-validation.actions';
-import { inspectBmadSetup } from '@/lib/repository-validation';
+import { inspectBmadSetup, clearGithubCache } from '@/lib/repository-validation';
 import { BMAD_DOCUMENTATION_LINK } from '@bmad-easy/shared-types';
 import {
   ACCESS_TOKEN, OWNER, REPO, REPO_URL, SESSION,
@@ -51,6 +51,10 @@ import {
   setupFetchWithOverrides, API_BASE,
 } from './repository-validation.test-utils';
 import { RateLimitError } from '@/lib/repository-validation';
+
+beforeEach(() => {
+  clearGithubCache();
+});
 
 // ─── inspectBmadSetup — Success paths (AC-1, AC-2) ────────────────────────────
 

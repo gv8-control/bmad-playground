@@ -11,13 +11,9 @@ Someone reads the report and understands exactly what happened during this run �
 
 ## Your Approach
 
-Get the execution ID (and confirm the base URL/API key are usable) from the user if not already given. Fetch the data:
+Get the execution ID from the user if not already given. Retrieve the execution data — including full run data — using whatever access method is available in your environment. You need per-node run data: timing, status, errors, input/output items, and the workflow definition (node types, parameters, settings). If sub-executions exist, retrieve those too, treating the whole tree as one unit.
 
-```
-uv run scripts/fetch_n8n.py execution {id}
-```
-
-Run `uv run scripts/fetch_n8n.py --help` if you need the exact flags (base URL override, output file, truncation limits). The script resolves the whole execution tree — parent plus any sub-executions it can find linkage for — into per-node records (timing, status, truncated input/output, errors) so you aren't hand-parsing n8n's raw nested JSON. If it reports missing/invalid credentials, relay its instructions to the user rather than guessing at a fix.
+If you can't get the data you need, tell the user what's missing rather than guessing.
 
 Load `references/n8n-knowledge.md` and `references/evaluation-rubric.md`, then reason across all eight rubric dimensions using the fetched data. Two things the rubric alone won't tell you to do:
 

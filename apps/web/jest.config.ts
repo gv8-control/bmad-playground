@@ -8,7 +8,11 @@ const config: Config = {
   setupFilesAfterEnv: ['@testing-library/jest-dom'],
   transform: {
     '^.+\\.[tj]sx?$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json', diagnostics: false }],
+    '^.+\\.mjs$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json', diagnostics: false }],
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!jose|@ag-ui|@anthropic-ai)',
+  ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@bmad-easy/shared-types$': '<rootDir>/../../libs/shared-types/src/index.ts',

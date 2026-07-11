@@ -16,13 +16,17 @@ const mockAuth = jest.fn();
 jest.mock('@/lib/auth', () => ({ auth: (...args: unknown[]) => mockAuth(...args) }));
 
 const mockFindUnique = jest.fn();
+const mockConversationFindMany = jest.fn();
 jest.mock('@/lib/prisma', () => ({
-  getPrisma: () => ({ repoConnection: { findUnique: mockFindUnique } }),
+  getPrisma: () => ({
+    repoConnection: { findUnique: mockFindUnique },
+    conversation: { findMany: mockConversationFindMany },
+  }),
 }));
 
 jest.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ user, children }: { user: { name?: string | null }; children: React.ReactNode }) => (
-    <div data-testid="app-shell" data-user={user.name}>
+  AppShell: ({ user, conversations, children }: { user: { name?: string | null }; conversations: unknown[]; children: React.ReactNode }) => (
+    <div data-testid="app-shell" data-user={user.name} data-conversations={conversations.length}>
       {children}
     </div>
   ),
@@ -72,6 +76,7 @@ describe('AppLayout repo-connection guard', () => {
   it('[P0] renders AppShell with user data when repo connection exists', async () => {
     mockAuth.mockResolvedValue(SESSION);
     mockFindUnique.mockResolvedValue({ id: 'conn_1', repoUrl: 'https://github.com/a/b' });
+    mockConversationFindMany.mockResolvedValue([]);
     const result = (await AppLayout({ children: CHILDREN })) as React.ReactElement;
     expect(mockRedirect).not.toHaveBeenCalled();
     expect(result.props.user).toEqual(SESSION.user);

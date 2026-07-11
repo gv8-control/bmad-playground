@@ -4,7 +4,7 @@ totalSteps: 5
 stepsCompleted: ['step-01-detect-mode', 'step-02-load-context', 'step-03-risk-and-testability', 'step-04-coverage-plan', 'step-05-generate-output']
 lastStep: 'step-05-generate-output'
 nextStep: ''
-lastSaved: '2026-06-16'
+lastSaved: '2026-07-07'
 workflowType: 'testarch-test-design'
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md'
@@ -25,7 +25,7 @@ inputDocuments:
 
 **Date:** 2026-06-16
 **Author:** TEA Master Test Architect (BMad)
-**Status:** Architecture Review Complete (B-02, B-03 resolved 2026-06-17 by Winston; B-01 interface spec provided; B-04 PM guidance added)
+**Status:** Architecture Review Complete — all four pre-implementation blockers (B-01–B-04) resolved or delivered. Revised 2026-07-07 against implementation evidence (Epics 1–3 complete, 28 stories done per sprint-status.yaml; NFR audit 2026-07-07 at CONCERNS; gate decision PASS, 92% coverage).
 **Project:** bmad-easy
 **PRD Reference:** `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md`
 **ADR Reference:** `_bmad-output/planning-artifacts/architecture.md`
@@ -40,11 +40,11 @@ inputDocuments:
 
 - **Revenue/Impact:** Target pricing ~$25–30/seat/month; PRD §10 includes a cost-floor analysis tying Daytona/Claude spend directly to unit economics.
 - **Problem:** Non-dev roles cannot run BMAD methodology skills today because they require a local dev environment, CLI fluency, and direct GitHub repo access.
-- **GA Launch:** Not yet dated; project is pre-implementation (no code, no sprint plan).
+- **GA Launch:** Not yet dated; project is in implementation — Epics 1–3 complete (28 stories done per `sprint-status.yaml`), NFR audit (2026-07-07) at CONCERNS, gate decision PASS (92% overall coverage, P0 100% / P1 ≥95%).
 
 **Architecture** (from architecture.md):
 
-- **Key Decision 1:** Nx monorepo (pnpm) — `apps/web` (Next.js 15, Vercel) + `apps/agent-be` (NestJS, Railway/Docker) + shared `libs/shared-types`, `libs/database-schemas` (single Prisma schema, Postgres on Railway).
+- **Key Decision 1:** Nx 23 monorepo (Yarn Berry 4.17.0 via Corepack) — `apps/web` (Next.js ~16.1.6 App Router, Vercel) + `apps/agent-be` (NestJS ^11, Railway/Docker) + shared `libs/shared-types`, `libs/database-schemas` (single Prisma ^7.8 schema, Postgres on Railway).
 - **Key Decision 2:** One Daytona Cloud sandbox per Conversation; Claude Agent SDK (`claude-sonnet-4-6`, hardcoded) + sandbox-agent (JSONL→AG-UI bridge, pinned exact version) streamed to the browser over SSE (AG-UI protocol).
 - **Key Decision 3:** GitHub OAuth (`repo` scope) via Auth.js v5 beta; boundary JWT between `apps/web` and `apps/agent-be`; OAuth tokens stored with AES-256-GCM envelope encryption (DEK+KEK).
 
@@ -56,7 +56,7 @@ inputDocuments:
 
 - **Total risks**: 10 (R-01–R-10)
 - **High-priority (≥6)**: 4 risks requiring mitigation before their respective implementation milestones (none score 9 / gate-blocking)
-- **Test effort**: ~140–205 hours system-wide (~4–6 sprints for 1 QA/SDET working in parallel with implementation), excluding items currently blocked on open architecture/PM decisions
+- **Test effort**: ~140–205 hours system-wide (~4–6 sprints for 1 QA/SDET working in parallel with implementation), excluding items currently blocked on open architecture/PM decisions. **(2026-07-07: superseded — Epics 1–3 complete; actual effort recorded in per-story test artifacts. Gate decision PASS, 92% coverage, 251/251 tests passing.)**
 
 ---
 
@@ -66,15 +66,15 @@ inputDocuments:
 
 **Pre-Implementation Critical Path** — these must be resolved before QA can write the corresponding tests:
 
-1. **B-01: No `SandboxService` test seam** ~~Architecture must define a fake/test-double interface~~ → **INTERFACE CONTRACT PROVIDED** (2026-06-17). `ISandboxService` is now defined in `libs/shared-types/src/sandbox.interface.ts` (see architecture.md "ISandboxService Contract" section). **Remaining action for Backend lead:** implement `SandboxServiceFake` in `apps/agent-be/src/sandbox/sandbox.service.fake.ts` before `sandbox.service.ts` is written; wire via `SANDBOX_SERVICE` DI token so QA can inject the fake in test modules.
+1. **B-01: No `SandboxService` test seam** ~~Architecture must define a fake/test-double interface~~ → **DELIVERED** (2026-07-07). `ISandboxService` is defined in `libs/shared-types/src/sandbox.interface.ts`; `SandboxServiceFake` (`apps/agent-be/test/helpers/sandbox-service.fake.ts`) and `AgentServiceFake` both implement their interfaces and reproduce production side effects (DB writes, `terminateProcess` calls, SSE event emission). Wired via `SANDBOX_SERVICE` / `AGENT_SERVICE` Symbol DI tokens; injected through `buildTestModule()` from `test-module-builder.ts`. Unblocks P0-006 through P0-011.
 
 2. **B-02: Repo-size performance boundary** ~~NFR-P2's "≤200MB" scope is asserted, not empirically validated~~ → **RESOLVED** (2026-06-17). Architecture now mandates `git clone --depth=1` (shallow clone) for all Conversation provisions, making 200 MB a consistent testable threshold bounded to working-tree size. Empirical validation spike is required as the first action in Implementation Sequence step 7 (target: ≤ 8 s for the full provision+clone+config+status sequence). QA may write P0-006 with a conditional skip pending spike sign-off; once the spike confirms ≤ 8 s, remove the skip.
 
 3. **B-03: SSE back-pressure threshold undefined** ~~"Must not silently drop events" has no numeric definition~~ → **RESOLVED** (2026-06-17). NFR-R3 threshold is now: per-connection queue capped at **200 events**; if not drained within **30 seconds**, emit `STREAM_ERROR { code: 'STREAM_BACK_PRESSURE' }` and close with reconnect-eligible `200 + data: [DONE]`. Silent drops are never acceptable. QA can now write P1-013 against these thresholds.
 
-4. **B-04: Cost-alert threshold undefined (NFR-O1, PRD Q-2)** — **PARTIALLY ADDRESSED** (2026-06-17). Architecture provides a starting recommendation of **$20/user/month** in Claude API spend as the alert threshold (based on typical session cost of $0.40–$1.10/session with extended thinking disabled). **Remaining action for PM:** confirm or revise this threshold; the tracking mechanism itself is fully testable now.
+4. **B-04: Cost-alert threshold undefined (NFR-O1, PRD Q-2)** — ~~PARTIALLY ADDRESSED~~ → **RESOLVED** (2026-07-07). `cost-tracking.service.ts` implements per-turn spend tracking; `SPEND_ALERT_THRESHOLD_USD` is env-configured (module-load IIFE parse with fallback, per the env-configured-numeric-threshold pattern) with a $20/user/month default. NFR-O1 audit (2026-07-07): PASS. Threshold remains PM-tunable via env var without code change.
 
-**Current status:** B-02 and B-03 fully resolved by Winston. B-01 interface contract provided — Backend lead action required. B-04 partially addressed — PM confirmation required.
+**Current status (2026-07-07):** All four blockers resolved. B-01 delivered (`SandboxServiceFake` + `AgentServiceFake` in `apps/agent-be/test/helpers/`). B-02 resolved (shallow clone mandated and in code; empirical spike still pending — see R-03). B-03 resolved and verified PASS (NFR-R3, 200-event queue / 30 s drain / `STREAM_ERROR`). B-04 resolved and verified PASS (NFR-O1, `SPEND_ALERT_THRESHOLD_USD` env-configured).
 
 ---
 
@@ -112,8 +112,8 @@ inputDocuments:
 |---|---|---|---|---|---|---|---|---|
 | **R-01** | **SEC** | Cross-tenant credential leak if any code path resolves an OAuth token without the tenant check (NFR-S2) | 2 | 3 | **6** | Single enforcement point already designed (`active-user.guard.ts` + `credentials.service.ts`); add P0 test asserting every credential-resolving call site is covered, plus negative cross-tenant test | Backend lead | Before `credentials.service.ts` ships |
 | **R-02** | **TECH/OPS** | sandbox-agent crash leaves Claude Code agent running unsupervised, able to keep committing with no SSE listener | 2 | 3 | **6** | Backend-initiated process termination via Daytona process API on bridge death; test must kill the bridge mid-session and assert process termination, not just an error event | Backend lead | AG-UI event proxying implementation step |
-| **R-03** | **PERF** | NFR-P2 (10s chat-ready) threshold validated only by single manual run; repo-size boundary (~200MB) asserted but not empirically tested (PRD Q-1, open) | 3 | 2 | **6** | Architect to resolve Q-1 with empirical Daytona clone-timing test across repo sizes before the boundary is locked in the launch checklist; treat as CONCERNS by default until resolved | Architect / PM | Before Q-1 marked resolved |
-| **R-04** | **PERF/OPS** | NFR-R4 (10 concurrent SSE/session) silently degrades to a 6-connection HTTP/1.1 ceiling if the load balancer isn't HTTP/2-capable at deploy time | 2 | 3 | **6** | Add explicit launch-checklist HTTP/2 verification plus an integration test opening 10 concurrent SSE connections against a local HTTP/2 dev server | DevOps / Backend lead | Launch-checklist verification step |
+| **R-03** | **PERF** | NFR-P2 (10s chat-ready) threshold validated only by single manual run; repo-size boundary (~200MB) asserted but not empirically tested (PRD Q-1, open) | 3 | 2 | **6** | Architect to resolve Q-1 with empirical Daytona clone-timing test across repo sizes before the boundary is locked in the launch checklist; treat as CONCERNS by default until resolved. **(2026-07-07: shallow clone in code; Daytona is provisionable on demand — the spike is a ~4h QA task, not a cross-team dependency. NFR-P2 remains CONCERNS only because the spike has not been run, not because it cannot be.)** | Architect / PM | Before Q-1 marked resolved |
+| **R-04** | **PERF/OPS** | NFR-R4 (10 concurrent SSE/session) silently degrades to a 6-connection HTTP/1.1 ceiling if the load balancer isn't HTTP/2-capable at deploy time | 2 | 3 | **6** | Add explicit launch-checklist HTTP/2 verification plus an integration test opening 10 concurrent SSE connections against a local HTTP/2 dev server. **(2026-07-07: a local dev-server smoke test — 10 Playwright contexts opening SSE connections — catches the HTTP/1.1 ceiling bug without a production proxy. Production HTTP/2 verification remains a launch-checklist item; the code-level regression is testable now.)** | DevOps / Backend lead | Launch-checklist verification step |
 
 #### Medium-Priority Risks (Score 3-5)
 
@@ -149,11 +149,11 @@ inputDocuments:
 | NFR Category | Threshold / Requirement | Current Design Support | Gap / Decision Needed | Planned Evidence |
 |---|---|---|---|---|
 | Security | NFR-S1–S4: sandbox network isolation, tenant-scoped credential resolution, deferred active-termination (S3, post-MVP), AES-256-GCM token encryption at rest | Supported — single enforcement point (`active-user.guard.ts`), encryption pattern already named | None for S1/S2/S4; S3 is an accepted MVP gap, not a decision needed now | Integration tests on `credentials.service.ts`; API response-schema test asserting token absence |
-| Performance | NFR-P1 (≤1500ms first token), P2 (≤10s chat-ready, ≤~200MB repos), P3/P4 (≤2s renders), P5 (≤5s manual commit) | Supported — P2 boundary now resolved: mandatory `--depth=1` shallow clone, 200 MB threshold (≤ 8 s provision+clone+config+status), empirical spike required in step 7 | **Remaining:** select a load-testing tool (k6/Artillery) for automated P1/P2 timing assertions in CI | Timing assertions in CI test run logs; spike report from step 7; k6/Artillery report once tool is chosen |
+| Performance | NFR-P1 (≤1500ms first token), P2 (≤10s chat-ready, ≤~200MB repos), P3/P4 (≤2s renders), P5 (≤5s manual commit) | Supported — P2 boundary now resolved: mandatory `--depth=1` shallow clone, 200 MB threshold (≤ 8 s provision+clone+config+status). **(2026-07-07: dev server + real Daytona + Claude API are accessible; first-pass P1/P2/P5 timing assertions are writable today via Playwright `performance.now()` — no cross-team dependency. k6/Artillery is an enhancement for automated regression at scale, not a prerequisite for first-pass validation.)** | **Remaining:** select k6/Artillery for an automated timing *regression suite* (enhancement, not a blocker for first-pass validation) | Timing assertions in CI test run logs (Playwright); spike report from step 7; k6/Artillery regression report once tool is chosen |
 | Reliability | NFR-R1 (credential-health update within one git-op cycle), R2 (committed artifacts always recoverable), R3 (no silent SSE event drop under back-pressure), R4 (10 concurrent SSE, HTTP/2 required) | Fully supported — R3 threshold now defined: 200-event queue cap, 30 s drain timeout, `STREAM_ERROR { code: 'STREAM_BACK_PRESSURE' }` on breach, no silent drops | None — all four R-NFRs now have testable definitions | Integration test logs; for R4, connection-count log proving no starvation; for R3, slow-consumer test asserting error event arrives within 30 s |
 | Maintainability | Observability NFR-O1: per-user LLM spend tracked from day one, budget alerting operational at launch | Mechanism designed (`cost-tracking.service.ts`); starting alert threshold recommendation: **$20/user/month** (Winston, 2026-06-17) | **Remaining (PM):** confirm or revise $20/user/month threshold once Daytona compute cost (Q-2) is finalized | Per-turn cost-record assertions in test run output; alert-trigger assertion once PM confirms threshold |
 
-**Unknown thresholds:** NFR-P2 repo-size boundary (Q-1), NFR-R3 back-pressure quantification, NFR-O1 alert threshold (Q-2). These are tracked as risk R-03 (NFR-P2) and as open clarification items (NFR-R3, NFR-O1) rather than guessed values.
+**Unknown thresholds:** ~~NFR-P2 repo-size boundary (Q-1), NFR-R3 back-pressure quantification, NFR-O1 alert threshold (Q-2).~~ **(2026-07-07: all three thresholds are now defined — NFR-P2 (200MB / ≤8s, shallow clone in code), NFR-R3 (200-event queue / 30s drain / `STREAM_ERROR`), NFR-O1 ($20/user/month env-configured). These are tracked as risk R-03 (NFR-P2 empirical spike not yet run) and as resolved items (NFR-R3, NFR-O1 both PASS). The remaining gap is execution, not definition.)**
 
 **Assessment boundary:** Final PASS/CONCERNS/FAIL status belongs in `nfr-assess` after implementation evidence exists.
 
@@ -167,10 +167,10 @@ inputDocuments:
 
 | Concern | Impact | What Architecture Must Provide | Owner | Timeline |
 |---|---|---|---|---|
-| **`SandboxService` test seam** ~~No interface defined~~ → **Interface contract provided** (2026-06-17) | Nearly every Conversation-path test (FR-9–FR-15) either hits real Daytona Cloud or stays unwritten | `ISandboxService` is defined in `libs/shared-types/src/sandbox.interface.ts`; `SANDBOX_SERVICE` DI token pattern specified. **Backend lead must implement `SandboxServiceFake`** with controllable failure injection before `sandbox.service.ts` is written. | Backend lead | Pre-implementation, before `sandbox.service.ts` is built |
+| **`SandboxService` test seam** ~~No interface defined~~ → **DELIVERED** (2026-07-07) | Nearly every Conversation-path test (FR-9–FR-15) either hits real Daytona Cloud or stays unwritten | `ISandboxService` defined in `libs/shared-types/src/sandbox.interface.ts`; `SandboxServiceFake` + `AgentServiceFake` in `apps/agent-be/test/helpers/`; `SANDBOX_SERVICE` / `AGENT_SERVICE` DI tokens; `buildTestModule()` wires the fake. Fakes reproduce production side effects (DB writes, `terminateProcess`, SSE events). | Backend lead | **Done** |
 | **No test-data seeding/factory pattern for Postgres** | Conversation, Artifact, RepoConnection, credential-health rows have no repeatable seeding strategy | Factory functions + a transactional-rollback or truncate-between-tests pattern in `libs/database-schemas` | Backend lead | Implementation Sequence step 2 |
-| **No load-testing tool named** | NFR-P1/P2 automated timing assertions cannot exist in CI | Selection of k6/Artillery (or equivalent) wired into CI | Backend/DevOps | Before NFR-P1/P2 automation is required |
-| **No GitHub org/restricted-token fixture** | FR-1/FR-2's org-restriction 403 error path can't be tested repeatably without a real restricted org | A recorded HTTP cassette or fixture simulating a GitHub App-restriction-policy 403 | Backend lead | Before FR-1/FR-2 integration tests are written |
+| **~~No load-testing tool named~~** → **Reframed (2026-07-07)** | ~~NFR-P1/P2 automated timing assertions cannot exist in CI~~ | First-pass P1/P2/P5 timing validation is writable today via Playwright `performance.now()` against the dev server with real Daytona + Claude API (both accessible in `.env.local`). k6/Artillery is an **enhancement** for an automated timing *regression suite* at scale, not a prerequisite for first-pass validation. **Action:** write Playwright timing tests now; select k6/Artillery later for regression hardening. | QA | First-pass: now; k6/Artillery: post-MVP |
+| **No GitHub org/restricted-token fixture** | FR-1/FR-2's org-restriction 403 error path can't be tested repeatably without a real restricted org | A recorded HTTP cassette or fixture simulating a GitHub App-restriction-policy 403. **(2026-07-07: a real GitHub test org with App-restriction policy is cheap to create; alternatively, a single recorded 403 response cassette covers the path. Either is a ~1h task, not a cross-team dependency.)** | Backend lead | Before FR-1/FR-2 integration tests are written |
 
 #### 2. Architectural Improvements Needed (WHAT SHOULD BE CHANGED)
 
@@ -178,12 +178,9 @@ inputDocuments:
    - **Resolution**: Per-connection queue capped at **200 events**; if not drained within **30 seconds**, emit `STREAM_ERROR { code: 'STREAM_BACK_PRESSURE' }` and close connection with reconnect-eligible `200 + data: [DONE]`. Silent drops forbidden. See architecture.md Cross-Cutting Concerns §3.
    - **QA action**: Write P1-013 against these thresholds using a slow-consumer test client.
 
-2. **Provide a deterministic shutdown trigger for graceful-drain testing**
-   - **Current problem**: Verifying "drain SSE connections rather than hard-kill" has no stated test trigger mechanism.
-   - **Required change**: Expose a way to deterministically invoke `onApplicationShutdown` mid-stream in a test environment.
-   - **Impact if not fixed**: R-08 (graceful shutdown) cannot be automated, only manually spot-checked.
-   - **Owner**: Backend lead
-   - **Timeline**: Implementation Sequence step 8
+2. **Provide a deterministic shutdown trigger for graceful-drain testing** → **RESOLVED** (Story 3.12)
+   - **Resolution**: `app.enableShutdownHooks()` in `main.ts`; `OnModuleDestroy` on `IdleTimeoutService`, `ProvisionQueueService`, `SessionEventsService`, `ManualCommitService`. Reverse module registration order guarantees `ManualCommitService` drain notifications emit before `SessionEventsService` subjects complete, before `PrismaService.$disconnect()`. Bounded-parallel drain with shared deadline timer in `ManualCommitService.onModuleDestroy`.
+   - **QA action**: P2-005 can now target `onModuleDestroy` directly.
 
 ---
 
@@ -217,10 +214,10 @@ This is acceptable for Phase 1 (MVP) and should be revisited post-GA, particular
 
 | Risk | Strategy | Owner | Timeline | Status | Verification |
 |---|---|---|---|---|---|
-| **R-01** Cross-tenant credential leak | Confirm `active-user.guard.ts` covers every credential-resolving route; add P0 unit test enumerating call sites + P0 negative integration test resolving a foreign tenant's token | Backend lead | Before `credentials.service.ts` ships | Planned | Negative test fails closed (403/404) on cross-tenant resolution |
-| **R-02** Runaway agent on crash | Confirm Daytona process API can terminate a running agent from `apps/agent-be`; add P0 integration test killing the bridge mid-session and asserting process termination, not just an error event | Backend lead | AG-UI event proxying step | Planned | Process-termination assertion passes in CI |
-| **R-03** NFR-P2 repo-size boundary unresolved | Architecture now mandates `git clone --depth=1`; 200 MB threshold accepted with ≤ 8 s target; empirical spike is first action in Implementation Sequence step 7 | Architect / PM | Step 7 (spike) | **Partially resolved** — architectural decision made; spike pending | Spike run + P0-006 timing assertion passing |
-| **R-04** NFR-R4 silent HTTP/1.1 degradation | Add HTTP/2 capability check to launch checklist; add P0 integration test opening 10 concurrent SSE connections against an HTTP/2 dev server | DevOps / Backend lead | Launch-checklist step | Planned | 10-connection load test passes with no starvation; checklist signed off |
+| **R-01** Cross-tenant credential leak | Confirm `active-user.guard.ts` covers every credential-resolving route; add P0 unit test enumerating call sites + P0 negative integration test resolving a foreign tenant's token | Backend lead | Before `credentials.service.ts` ships | **Implemented & verified** | NFR-S2 PASS (2026-07-07): `findFirst({ where: { id, userId } })` across all queries; `userId` filter IS the tenant authorization check |
+| **R-02** Runaway agent on crash | Confirm Daytona process API can terminate a running agent from `apps/agent-be`; add P0 integration test killing the bridge mid-session and asserting process termination, not just an error event | Backend lead | AG-UI event proxying step | **Implemented** | Circuit breaker / stall-detection timer in `AgentService` (per-active-run timer, resets on every emitted event, `.unref()`'d, `abortController.abort()` + `query.interrupt()` on timeout). NFR audit (2026-07-07): circuit breaker PASS |
+| **R-03** NFR-P2 repo-size boundary unresolved | Architecture now mandates `git clone --depth=1`; 200 MB threshold accepted with ≤ 8 s target; empirical spike is first action in Implementation Sequence step 7 | Architect / PM | Step 7 (spike) | **Architectural decision implemented; empirical spike still pending** | Shallow clone in code; NFR-P2 remains CONCERNS (2026-07-07) until spike runs against real Daytona |
+| **R-04** NFR-R4 silent HTTP/1.1 degradation | Add HTTP/2 capability check to launch checklist; add P0 integration test opening 10 concurrent SSE connections against an HTTP/2 dev server | DevOps / Backend lead | Launch-checklist step | **Planned** (HTTP/2 invariant documented; not verified) | NFR-R4 CONCERNS (2026-07-07): requires real HTTP/2 proxy + 10 real connections; launch checklist item |
 
 ---
 
@@ -228,7 +225,7 @@ This is acceptable for Phase 1 (MVP) and should be revisited post-GA, particular
 
 #### Assumptions
 
-1. The architecture's planned stack (Nx monorepo, Next.js 15 + NestJS, single shared Prisma schema) will not materially change before implementation begins.
+1. ~~The architecture's planned stack (Nx monorepo, Next.js 15 + NestJS, single shared Prisma schema) will not materially change before implementation begins.~~ **Updated (2026-07-07):** Stack evolved during implementation — Next.js 15 → ~16.1.6, pnpm → Yarn Berry 4.17.0, Prisma → ^7.8.0, NestJS → ^11. Core architectural decisions (Nx monorepo, single shared Prisma schema, SSE transport, Auth.js v5 beta) held; the drift is in versions, not structure.
 2. A load-testing tool (k6/Artillery or equivalent) will be selected before NFR-P1/P2 automated assertions are required in CI.
 3. The session-replay fixture referenced in the architecture's Technical Constraints (used for sandbox-agent/AG-UI package upgrade validation) can be reused as the canonical fixture for SSE/Tool-Pill classifier tests.
 
@@ -240,9 +237,9 @@ This is acceptable for Phase 1 (MVP) and should be revisited post-GA, particular
 
 #### Risks to Plan
 
-- **Risk**: Sprint planning has not yet started, so this system-level plan cannot yet be mapped to specific stories/sprints.
-  - **Impact**: Resource estimates remain system-level ranges, not story-level commitments.
-  - **Contingency**: Re-run epic-level test design (`*test-design` Epic-Level Mode) once epics enter sprint planning, using this document and the companion QA doc and handoff doc as inputs.
+- **Risk**: ~~Sprint planning has not yet started, so this system-level plan cannot yet be mapped to specific stories/sprints.~~ **Resolved (2026-07-07):** Epics 1–3 complete (28 stories done per `sprint-status.yaml`). System-level plan is now mapped to per-story ATDD checklists, automate-validation reports, test reviews, and per-story NFR assessments under `_bmad-output/test-artifacts/`.
+  - **Impact**: System-level effort ranges (~140–205 hours) are retained for historical reference; actual effort is tracked in per-story artifacts and the traceability matrix (gate decision: PASS, 2026-07-07, 92% coverage).
+  - **Contingency**: For new epics, re-run epic-level test design (see `test-design-epic-hydration-gap.md` for the post-incident epic-level pattern).
 
 ---
 

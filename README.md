@@ -25,6 +25,16 @@ Set these in `.env` and the matching n8n credential is created (or updated) auto
 
 To add more, edit `n8n/credentials.json`.
 
+## CI Test Tiers
+
+| Tier | When | What it does |
+|------|------|--------------|
+| PR | Every push/PR | Fake-backed functional tests (lint, typecheck, unit, e2e) — fast, free, deterministic |
+| Burn-in | PRs + weekly | Same PR suite × 10 iterations — surfaces flaky tests |
+| Multi-conn | Nightly | Transport-level scenarios (10 concurrent SSE, back-pressure, outage resilience) — fake-backed |
+| Real-service | Nightly | One happy-path agent run against real Daytona + Claude API — catches SDK drift + NFR timing |
+| Spike | Weekly | Performance boundary validation (repo-size clone timing) against real Daytona |
+
 ### Notifications
 
 This project publishes to [ntfy.sh](https://ntfy.sh) on topic `agent-outcome` to notify you when something needs your input. Subscribe to the topic from any ntfy client to get alerted — the `thejenos.ntfysh-vscode` VS Code extension (already recommended in `.vscode/extensions.json`), the ntfy mobile/desktop app, or a browser tab at https://ntfy.sh/agent-outcome.

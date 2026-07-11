@@ -1,0 +1,186 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Inject } from '@nestjs/common';
+import type {
+  ISandboxService,
+  ProvisionParams,
+  SandboxInfo,
+  GitUserConfig,
+  WorkingTreeStatus,
+  SkillInfo,
+} from '@bmad-easy/shared-types';
+import type { Daytona, Sandbox } from '@daytonaio/sdk';
+import { DAYTONA_CLIENT } from './daytona-client.provider';
+
+const REPO_SUBDIRECTORY = 'repo';
+
+@Injectable()
+export class SandboxService implements ISandboxService {
+  private readonly logger = new Logger(SandboxService.name);
+
+  constructor(@Inject(DAYTONA_CLIENT) private readonly daytona: Daytona | null) {}
+
+  async provision(params: ProvisionParams): Promise<SandboxInfo> {
+    if (!this.daytona) {
+      throw new Error('Daytona client is not configured');
+    }
+
+    let sandbox: Sandbox | null = null;
+    try {
+      sandbox = await this.daytona.create({
+        labels: { conversationId: params.conversationId },
+      });
+      return {
+        sandboxId: sandbox.id,
+        conversationId: params.conversationId,
+        status: 'ready',
+        provisionedAt: new Date(),
+      };
+    } catch (err) {
+      if (sandbox) {
+        try {
+          await this.daytona.delete(sandbox);
+        } catch (cleanupErr) {
+          this.logger.error(`Failed to clean up partial sandbox allocation: ${cleanupErr}`);
+        }
+      }
+      throw err;
+    }
+  }
+
+  async clone(sandboxId: string, repoUrl: string, credential: string): Promise<void> {
+    const sandbox = await this.getSandbox(sandboxId);
+    await sandbox.git.clone(
+      repoUrl,
+      REPO_SUBDIRECTORY,
+      undefined,
+      undefined,
+      'x-access-token',
+      credential,
+    );
+  }
+
+  async resume(sandboxId: string): Promise<SandboxInfo> {
+    if (!this.daytona) {
+      throw new Error('Daytona client is not configured');
+    }
+    const sandbox = await this.getSandbox(sandboxId);
+    await this.daytona.start(sandbox);
+    return {
+      sandboxId: sandbox.id,
+      conversationId: sandbox.labels?.conversationId || sandboxId,
+      status: 'ready',
+      provisionedAt: new Date(),
+    };
+  }
+
+  async destroy(sandboxId: string): Promise<void> {
+    if (!this.daytona) {
+      return;
+    }
+    try {
+      const sandbox = await this.daytona.get(sandboxId);
+      await this.daytona.delete(sandbox);
+    } catch (err) {
+      if (this.isNotFoundError(err)) {
+        return;
+      }
+      throw err;
+    }
+  }
+
+  async injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void> {
+    const sandbox = await this.getSandbox(sandboxId);
+    const nameResponse = await sandbox.process.executeCommand(
+      `git config user.name ${this.shellQuote(config.name)}`,
+      REPO_SUBDIRECTORY,
+      undefined,
+      10,
+    );
+    if (nameResponse.exitCode !== 0) {
+      throw new Error(nameResponse.result);
+    }
+    const emailResponse = await sandbox.process.executeCommand(
+      `git config user.email ${this.shellQuote(config.email)}`,
+      REPO_SUBDIRECTORY,
+      undefined,
+      10,
+    );
+    if (emailResponse.exitCode !== 0) {
+      throw new Error(emailResponse.result);
+    }
+  }
+
+  async getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus> {
+    const sandbox = await this.getSandbox(sandboxId);
+    const status = await sandbox.git.status(REPO_SUBDIRECTORY);
+    const files = status.fileStatus
+      .filter((f) => f.staging !== 'Unmodified' || f.worktree !== 'Unmodified')
+      .map((f) => f.name);
+    return { dirty: files.length > 0, files };
+  }
+
+  async commit(sandboxId: string, message: string): Promise<void> {
+    const sandbox = await this.getSandbox(sandboxId);
+    const addResponse = await sandbox.process.executeCommand(
+      'git add -A',
+      REPO_SUBDIRECTORY,
+      undefined,
+      10,
+    );
+    if (addResponse.exitCode !== 0) {
+      throw new Error(addResponse.result);
+    }
+    const response = await sandbox.process.executeCommand(
+      `git commit -m ${this.shellQuote(message)}`,
+      REPO_SUBDIRECTORY,
+      undefined,
+      10,
+    );
+    if (response.exitCode !== 0) {
+      throw new Error(response.result);
+    }
+  }
+
+  async listSkills(sandboxId: string): Promise<SkillInfo[]> {
+    try {
+      const sandbox = await this.getSandbox(sandboxId);
+      const response = await sandbox.process.executeCommand(
+        'ls -1 .claude/skills/',
+        REPO_SUBDIRECTORY,
+        undefined,
+        10,
+      );
+      const output = response.result.trim();
+      if (!output) {
+        return [];
+      }
+      return output
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((name) => ({ name }));
+    } catch (err) {
+      this.logger.warn(`listSkills failed for sandbox ${sandboxId}: ${err}`);
+      return [];
+    }
+  }
+
+  private async getSandbox(sandboxId: string): Promise<Sandbox> {
+    if (!this.daytona) {
+      throw new Error('Daytona client is not configured');
+    }
+    return this.daytona.get(sandboxId);
+  }
+
+  private shellQuote(value: string): string {
+    return `'${value.replace(/'/g, "'\\''")}'`;
+  }
+
+  private isNotFoundError(err: unknown): boolean {
+    if (err instanceof Error) {
+      const message = err.message.toLowerCase();
+      return message.includes('not found') || message.includes('404');
+    }
+    return false;
+  }
+}

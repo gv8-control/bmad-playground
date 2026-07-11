@@ -111,9 +111,8 @@
   }
 
   .nav-item {
-    display: flex;
-    align-items: center;
-    padding: 7px 12px;
+    display: block;
+    padding: 8px 12px;
     font-size: 0.875rem;
     color: #8D8CA0;
     cursor: pointer;
@@ -128,15 +127,15 @@
     background: #1E1E26;
     color: #EDECF5;
     border-radius: 6px;
-    margin: 0 6px;
-    padding: 7px 6px;
+    margin: 0 8px;
+    padding: 8px 8px;
   }
   .nav-item.active-conv {
     background: #1E1E26;
     color: #EDECF5;
     border-radius: 6px;
-    margin: 1px 6px;
-    padding: 7px 6px;
+    margin: 0 8px;
+    padding: 8px 8px;
   }
 
   .nav-separator {
@@ -270,7 +269,7 @@
 
   .msg-timestamp {
     font-size: 0.75rem;
-    color: #56556A;
+    color: #8D8CA0;
     margin-top: 4px;
   }
 
@@ -319,7 +318,7 @@
   /* Chat input area */
   .chat-input-area {
     flex-shrink: 0;
-    padding: 0 32px 20px;
+    padding: 0 32px 24px;
     max-width: 824px;
     width: 100%;
     margin: 0 auto;
@@ -341,7 +340,7 @@
     font-family: 'Inter', system-ui, sans-serif;
     font-size: 1rem;
     line-height: 1.5rem;
-    color: #56556A;
+    color: #EDECF5;
     width: 100%;
     min-height: 28px;
   }
@@ -352,17 +351,17 @@
   }
   .working-tree-clean {
     font-size: 0.875rem;
-    color: #56556A;
+    color: #8D8CA0;
     display: flex;
     align-items: center;
     gap: 4px;
   }
-  .send-btn {
+  .send-button {
     background: #7B6EE8;
     color: #FFFFFF;
     border: none;
     border-radius: 8px;
-    padding: 6px 16px;
+    padding: 8px 16px;
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
@@ -479,7 +478,7 @@
         <textarea class="chat-textarea" rows="1" placeholder="Message…" aria-label="Message input"></textarea>
         <div class="chat-input-footer">
           <span class="working-tree-clean" role="status" aria-live="polite">✓ All saved</span>
-          <button class="send-btn" aria-label="Send message">
+          <button class="send-button" aria-label="Send message">
             Send <span class="send-icon">↑</span>
           </button>
         </div>

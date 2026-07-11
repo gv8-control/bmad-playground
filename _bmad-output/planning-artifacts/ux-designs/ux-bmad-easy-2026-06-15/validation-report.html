@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UX Design Validation: bmad-easy — Aesthetics Review</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+
+  .findings-list { padding: 0 20px 4px; }
+  article.finding {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+  }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+
+  .reviewer-source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div class="container">
+
+    <header class="report-header">
+      <div class="title">
+        <h1>bmad-easy — UX Aesthetics Validation Report</h1>
+        <div class="subtitle">_bmad-output/planning-artifacts/ux-designs/ux-bmad-easy-2026-06-15/</div>
+      </div>
+    </header>
+
+    <div class="synthesis">
+      <p>The aesthetic direction is sound: a coherent blue-violet dark palette, elevation via surface lightness (no shadows), a restrained violet accent reserved for primary actions, and a clear two-typeface typographic ramp. Execution, however, has real gaps that a downstream builder would propagate.</p>
+      <p>A broken color-token reference (<code>{colors.warning}</code> / <code>{colors.warning-bg}</code> — defined nowhere in the frontmatter) was introduced when the Access Notice component was added on 2026-07-02 and was not caught by the prior rubric pass, which ran the same day. The Access Notice also lacks a <code>components:</code> frontmatter entry — it has prose only. The muted text token (<code>text-3</code>, <code>#56556A</code>) fails WCAG AA contrast on every surface (~2.3–2.7:1; AA requires 4.5:1) and is used for permanent informational text (timestamps, "All saved" indicator). The stated 4px spacing grid is violated throughout the mockups and in the spine's own component specs (7px, 10px, 11px, 14px appear routinely; the credential-error-banner spec itself uses 10px). Cross-mock consistency is uneven: the conversation mock diverges from the other four app-shell mocks in nav-item display model, textarea text color, and send-button class naming.</p>
+      <p>None of this is fatal to the aesthetic vision. The palette, elevation system, typography, and shape language are well-conceived. But the three critical findings (broken tokens, inaccessible text, missing component spec) and the six high-severity findings should be resolved before a builder mirrors these artifacts.</p>
+    </div>
+
+    <div class="dimension-summary">
+      <div class="dim-card">
+        <div class="dim-name">Colors</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Margins &amp; Spacing</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Consistency</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+    </div>
+
+    <!-- Colors -->
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Colors</h2>
+          <span class="verdict-pill verdict-thin">thin</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Palette coherence is strong — a blue-violet dark theme with restrained accent use and clear semantic-color discipline. However, a broken token reference, WCAG AA contrast failures on the muted text token, inconsistent primary-action treatment, an invisible border token, ad-hoc colors in mocks, and inconsistent focus-ring/loading-state implementations bring the verdict down to thin.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">Broken color-token references: {colors.warning} / {colors.warning-bg} undefined</h3>
+              <span class="finding-location">DESIGN.md line 381, EXPERIENCE.md line 262</span>
+            </header>
+            <div class="finding-note">The Access Notice component prose references <code>{colors.warning-bg}</code> and <code>{colors.warning}</code> for its background and left border, but the frontmatter <code>colors:</code> block defines no <code>warning</code> or <code>warning-bg</code> token. The semantic palette has <code>positive</code>/<code>caution</code>/<code>negative</code> only. Downstream code mirroring the spine cannot resolve these references. The prior rubric review (§2, "strong") did not catch this because the Access Notice was added as part of applying that review's own findings on the same day.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add <code>warning</code> / <code>warning-bg</code> tokens to the frontmatter, or replace with <code>{colors.caution}</code> / <code>{colors.caution-bg}</code> (the closest existing semantic).</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">text-3 (#56556A) fails WCAG AA contrast on every surface</h3>
+              <span class="finding-location">DESIGN.md line 18</span>
+            </header>
+            <div class="finding-note">Computed ratios: 2.68:1 on <code>bg</code>, 2.49:1 on <code>surface</code>, 2.29:1 on <code>surface-raised</code>. AA requires 4.5:1 for normal text. <code>text-3</code> is used for permanent informational text: agent message timestamps (shown permanently per DESIGN.md line 337), the "All saved" clean-state indicator (line 352), footer links, disabled text. No contrast targets are stated anywhere in DESIGN.md.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Lighten <code>text-3</code> to meet 4.5:1 on all surfaces (~<code>#757488</code> or lighter), or restrict <code>text-3</code> to placeholder/disabled use and move timestamps and "All saved" to <code>text-2</code>. State contrast targets in DESIGN.md §Colors.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Sign-in primary button uses text-1 (#EDECF5) as background instead of accent (#7B6EE8)</h3>
+              <span class="finding-location">key-signin.html line 131</span>
+            </header>
+            <div class="finding-note">DESIGN.md Do's: "Use <code>{colors.accent}</code> for all primary interactive elements." The onboarding "Connect repository" button in the same pre-app-shell context uses <code>accent</code>. Two primary-action treatments with no documented rationale.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use <code>accent</code> for the sign-in button, or document the exception in DESIGN.md.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">border-subtle (#1E1E26) equals surface-raised (#1E1E26) — invisible on raised surfaces</h3>
+              <span class="finding-location">DESIGN.md lines 11, 13</span>
+            </header>
+            <div class="finding-note"><code>border-subtle</code> is for "inner divisions on raised surfaces" but is the same color as the raised surface it sits on. Visible only against <code>surface</code> (#16161C), as in the side-nav right border.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Set <code>border-subtle</code> to a value between <code>surface</code> and <code>border</code> (e.g., <code>#232330</code>).</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Ad-hoc colors not in the palette</h3>
+              <span class="finding-location">key-project-map.html line 218, key-new-conversation.html line 351, key-artifact-browser.html line 209</span>
+            </header>
+            <div class="finding-note">Artifact-card hover border <code>#3b3b4f</code> (no token). Slash-picker item hover bg <code>#2B2B38</code> (border token used as bg; spine says <code>surface-raised</code>). List-entry hover <code>rgba(30,30,38,0.6)</code> (ad-hoc semi-transparent surface-raised).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Replace with nearest token; add a hover-surface token if <code>surface-raised</code> is too subtle.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Focus-ring implementation inconsistent and non-compliant with spine</h3>
+              <span class="finding-location">key-onboarding.html line 142, key-new-conversation.html line 264</span>
+            </header>
+            <div class="finding-note">Spine specifies "2px outline, 2px offset" in accent. Onboarding input uses 20% opacity box-shadow; chat input uses 15% opacity. Different opacities; neither is a 2px outline with 2px offset. Project-context.md canonical: <code>focus:ring-2 focus:ring-accent focus:ring-offset-2</code>.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on the spine's 2px solid accent outline with 2px offset across all mocks.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Loading/disabled button states use ad-hoc colors with no spine tokens</h3>
+              <span class="finding-location">key-onboarding.html line 196, key-new-conversation.html lines 310–318</span>
+            </header>
+            <div class="finding-note"><code>connect-button.loading</code> uses #56556A (text-3) as bg. <code>send-button.disabled</code> uses #1E1E26 (surface-raised) bg + #56556A text. <code>send-button.loading</code> uses #56556A bg. Two different disabled/loading treatments; neither tokenized.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add disabled/loading button-state tokens, or specify as "accent at 40% opacity" with a documented value.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Browser-chrome lock icon uses positive (#3ECF8E) decoratively</h3>
+              <span class="finding-location">all 7 mocks, e.g. key-signin.html line 51</span>
+            </header>
+            <div class="finding-note">DESIGN.md Don'ts: "Never use them [semantic colors] decoratively." Mock furniture only, not product UI.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use a neutral color for mock chrome, or note that browser-chrome furniture is outside the design system scope.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Spinner treatments inconsistent between mocks</h3>
+              <span class="finding-location">key-onboarding.html lines 203–205, key-new-conversation.html lines 225–226</span>
+            </header>
+            <div class="finding-note">Onboarding spinner: white track at 30% opacity, white head. New-conversation spinner: border (#2B2B38) track, accent (#7B6EE8) head. Different visual language for the same loading concept.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on one spinner treatment; document in DESIGN.md.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- Margins & Spacing -->
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Margins &amp; Spacing</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The 4px base unit and Tailwind scale are clearly stated, and many values comply. But the grid rule is widely violated — in the mockups and in the spine's own component specs — and the spacing scale is not tokenized in the frontmatter. Cross-surface padding inconsistencies and undocumented max-widths round out the picture. The direction is right; the discipline is missing.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">4px grid violated throughout mockups and spine specs</h3>
+              <span class="finding-location">DESIGN.md line 266, frontmatter line 186; all app-shell mocks</span>
+            </header>
+            <div class="finding-note">Off-grid values: 7px (nav-item padding, all 5 app-shell mocks), 10px (credential-error-banner in DESIGN.md frontmatter line 186; list-entry; teaser-item; field-group gap), 11px (GitHub button; connect-button), 14px (field-input; teaser-item), 6px (frontmatter-badge; nav active margin). The 10px in the spine's own frontmatter is notable — the grid rule is violated inside the spine itself.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Snap all off-grid values to nearest 4px multiple (7→8, 10→8 or 12, 11→12, 14→12 or 16, 6→4 or 8). Document 2px half-step exception if needed for tight controls.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">spacing frontmatter has only base: 4px — no scale tokens</h3>
+              <span class="finding-location">DESIGN.md lines 61–63</span>
+            </header>
+            <div class="finding-note">Tailwind scale (4, 8, 12, 16, 20, 24, 32, 40, 48, 64) is prose-only. Downstream code can't reference <code>{spacing.4}</code> etc. Contributes to off-grid proliferation.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add scale tokens (<code>'1': 4px</code>, <code>'2': 8px</code>, …) to the <code>spacing</code> frontmatter.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Chat input area bottom padding inconsistent between chat surfaces</h3>
+              <span class="finding-location">key-new-conversation.html line 245, key-conversation.html line 322</span>
+            </header>
+            <div class="finding-note">New-conversation: <code>padding: 0 32px 24px</code>. Conversation: <code>padding: 0 32px 20px</code>. 24px vs 20px for the same component on two surfaces.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on one value; document in the chat-input component spec.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Undocumented max-widths across mocks with no system</h3>
+              <span class="finding-location">key-signin.html line 65, key-onboarding.html line 65, key-project-map.html line 216, key-artifact-browser.html line 301, key-conversation.html line 222</span>
+            </header>
+            <div class="finding-note">Auth card 400px, onboarding card 480px, artifact card 720px, md-content 720px, message row 824px (760 + 64 padding). The 760px chat max-width is documented; the others are not. 400, 480, 720, 760, 824 have no documented relationship.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Document a content-width system in DESIGN.md §Layout &amp; Spacing, or note as per-surface decisions.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Tool-pill padding (2px 8px) vs semantic-pill padding (4px 10px) — different sizing</h3>
+              <span class="finding-location">DESIGN.md frontmatter lines 97, 106</span>
+            </header>
+            <div class="finding-note">Semantic pill is described as "elevated variant of Tool Pill" but has different padding. When both appear in the same message stream, they render at different heights. 2px is also off the 4px grid.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Align semantic-pill padding to match tool-pill, or document the size relationship if intentional.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Status-badge padding (2px 8px) differs from semantic-pill padding (4px 10px)</h3>
+              <span class="finding-location">DESIGN.md frontmatter lines 141, 106</span>
+            </header>
+            <div class="finding-note">Both are pill-shaped badges with inconsistent internal sizing.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize pill-badge padding across tool-pill, semantic-pill, and status-badge variants.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <!-- Consistency -->
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Consistency</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The spines are internally well-structured — section ordering, token cross-references (except the broken warning tokens), and component naming are largely consistent. But the mockups diverge from the spines and from each other in several places: nav-item display model, textarea text color, send-button class naming, active-state margins, shadow discipline, scrollbar behavior, and wordmark presentation. The Access Notice component is the most serious consistency gap — prose without a frontmatter spec, referencing undefined tokens.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">access-notice component has prose but no frontmatter spec</h3>
+              <span class="finding-location">DESIGN.md lines 380–381</span>
+            </header>
+            <div class="finding-note">The <code>components:</code> frontmatter defines 16 components; the Access Notice is described in §Components prose but has no <code>access-notice</code> key. Its prose references non-existent <code>{colors.warning}</code> / <code>{colors.warning-bg}</code> tokens. A downstream builder has no machine-readable spec.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add an <code>access-notice:</code> entry to the frontmatter with resolved token references, or fold into <code>credential-error-banner</code> as a variant.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Nav-item display property inconsistent across mocks</h3>
+              <span class="finding-location">key-conversation.html line 114 vs others line 103</span>
+            </header>
+            <div class="finding-note">Conversation mock uses <code>display: flex</code>; all other app-shell mocks use <code>display: block</code>. Changes vertical alignment and hit-area of nav items.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on one display model across all app-shell mocks.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Conversation mock textarea uses text-3 (#56556A) for entered text instead of text-1</h3>
+              <span class="finding-location">key-conversation.html line 344</span>
+            </header>
+            <div class="finding-note">Entered text renders at 2.29:1 contrast — nearly invisible. The new-conversation mock correctly uses <code>#EDECF5</code> (text-1). If a builder mirrors the mock, typed text would be unreadable.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Set textarea color to <code>#EDECF5</code> (text-1); reserve <code>text-3</code> for <code>::placeholder</code> only.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Send-button class naming inconsistent</h3>
+              <span class="finding-location">key-new-conversation.html line 294 vs key-conversation.html line 360</span>
+            </header>
+            <div class="finding-note"><code>.send-button</code> vs <code>.send-btn</code> — different class names for the same component across mocks.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on one class name.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Nav-item active-state margins inconsistent across mocks</h3>
+              <span class="finding-location">key-project-map.html line 117, key-conversation.html lines 131/138, key-settings.html line 138</span>
+            </header>
+            <div class="finding-note">1px vs 0px top/bottom margin creates subtle vertical position shifts. The conversation mock has two active classes (<code>.active</code> and <code>.active-conv</code>) with different margins.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize active-state margins; use one active class.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Slash picker uses box-shadow, contradicting the no-shadow rule</h3>
+              <span class="finding-location">key-new-conversation.html line 332</span>
+            </header>
+            <div class="finding-note">DESIGN.md Don'ts: "Don't use box shadows to communicate elevation on dark surfaces." The slash picker is a floating dropdown that uses shadow for visual separation. No floating-element exception is documented.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Document a floating-element exception in §Elevation &amp; Depth, or replace shadow with stronger border/contrast.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Scrollbars hidden in multiple mocks, undocumented in spine</h3>
+              <span class="finding-location">key-project-map.html line 204, key-conversation.html line 217, key-artifact-browser.html lines 199/261</span>
+            </header>
+            <div class="finding-note"><code>::-webkit-scrollbar { display: none; }</code> in 4 mocks. Spine doesn't mention scrollbar styling. Hidden scrollbars harm usability and accessibility.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Document the decision in EXPERIENCE.md, or show styled scrollbars.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Wordmark presentation inconsistent between pre-app-shell and app-shell</h3>
+              <span class="finding-location">key-signin.html lines 231–233 vs key-project-map.html line 282</span>
+            </header>
+            <div class="finding-note">Sign-in: logo box ("be" in accent-filled 12px square) + "bmad-easy" name + tagline. App-shell: text "bmad·easy" with middle dot in accent. Different brand presentations with no documented relationship.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Document both wordmark treatments in DESIGN.md §Brand &amp; Style, or standardize.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Dead CSS: .annotation-band defined but unused in 4 mocks</h3>
+              <span class="finding-location">key-project-map.html, key-new-conversation.html, key-conversation.html, key-artifact-browser.html</span>
+            </header>
+            <div class="finding-note">CSS block defined but not rendered in the HTML body. Could confuse a builder reading the mock source.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Remove unused CSS blocks.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">min-width: 1280px on body doesn't match spine's 1024px minimum</h3>
+              <span class="finding-location">all 7 mocks; EXPERIENCE.md line 16</span>
+            </header>
+            <div class="finding-note">Mocks don't demonstrate the 1024px minimum or the tablet (768–1023px) collapsed-nav behavior. A builder wouldn't know what the UI looks like at 1024px.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Render mocks at 1024px, or note that mocks are at 1280px for readability and the 1024px layout is spine-only.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <div class="mechanical">
+      <h3>Mechanical notes</h3>
+      <ul>
+        <li><strong>Broken cross-reference (critical):</strong> <code>{colors.warning}</code> and <code>{colors.warning-bg}</code> referenced in DESIGN.md line 381 and EXPERIENCE.md line 262 — neither exists in the frontmatter. Prior rubric review (§2, "strong") did not include these in its checked-token list.</li>
+        <li><strong>Missing component frontmatter (critical):</strong> <code>access-notice</code> described in DESIGN.md §Components prose (line 380) but absent from the <code>components:</code> frontmatter (16 entries; should be 17).</li>
+        <li><strong>Contrast targets unstated:</strong> DESIGN.md §Colors does not state WCAG contrast targets for any text/surface combination. <code>text-3</code> fails AA everywhere; <code>accent</code> as text on <code>surface</code> is borderline (4.50:1).</li>
+        <li><strong>Spacing scale not tokenized:</strong> <code>spacing</code> frontmatter has <code>base: 4px</code> only; Tailwind scale is prose-only. 6 distinct off-grid values (6, 7, 10, 11, 14, 28) appear across mocks and spine specs.</li>
+        <li><strong>Class naming drift:</strong> <code>.send-button</code> vs <code>.send-btn</code> across two mocks for the same component.</li>
+      </ul>
+    </div>
+
+    <footer class="report-footer">
+      <div class="meta">
+        <span>Review: review-aesthetics.md</span>
+        <span>Generated: 2026-07-08T12:00:00Z</span>
+        <span>Prior: review-rubric.md (2026-07-02), review-implementation-drift.md (2026-07-05)</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

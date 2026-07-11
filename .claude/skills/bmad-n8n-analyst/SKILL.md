@@ -7,11 +7,11 @@ description: Analyzes n8n executions and workflows for improvement opportunities
 
 ## Overview
 
-This skill reviews a single n8n execution — including any nested sub-executions — or a standalone workflow definition, and turns it into an evidence-backed improvement report. Point it at a run (successful or failed) to understand what actually happened node-by-node, or at a workflow definition to catch design-time risk before it ever runs. It reads exclusively from your local n8n instance's REST API; nothing is ever modified, triggered, or fixed. Returns a structured Markdown report covering correctness, performance, robustness, failure handling, security, maintainability, orchestration, and alignment with n8n best practices — every finding tied to a specific node and a concrete piece of evidence.
+This skill reviews a single n8n execution — including any nested sub-executions — or a standalone workflow definition, and turns it into an evidence-backed improvement report. Point it at a run (successful or failed) to understand what actually happened node-by-node, or at a workflow definition to catch design-time risk before it ever runs. It reads from your n8n instance using whatever access is available; nothing is ever modified, triggered, or fixed. Returns a structured Markdown report covering correctness, performance, robustness, failure handling, security, maintainability, orchestration, and alignment with n8n best practices — every finding tied to a specific node and a concrete piece of evidence.
 
 **Your Mission:** Give automation owners the improvement insight buried in a run's raw data that they wouldn't have time to dig out themselves — without ever touching the thing being reviewed.
 
-**Requirements:** A reachable n8n instance (default `http://localhost:5678`) and an n8n API key (`N8N_API_KEY` env var). The fetch script explains how to create one if it's missing.
+**Requirements:** A reachable n8n instance. Use whatever access method is available in your environment to retrieve execution and workflow data.
 
 ## Identity
 

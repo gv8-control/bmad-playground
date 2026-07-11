@@ -882,6 +882,11 @@ As a user juggling multiple BMAD workflows,
 I want to have several Conversations active at once,
 So that I'm not blocked working through one Skill at a time.
 
+**Prerequisites (deferred items absorbed from prior story reviews):**
+
+- **Concurrent-turn guard** (from 3-4 review): `circuitBreakerTimers` orphaned by concurrent `runTurn` calls on same `conversationId` — no guard against concurrent invocation; second call overwrites first's `activeRuns` and `circuitBreakerTimers` entries, orphaning the first run. The 3-4 review explicitly tagged this as "Story 3.11 scope." [`apps/agent-be/src/streaming/agent.service.ts:runTurn`]
+- **handleRetry leak** (from 3-2 review, originally tagged 3-5 scope but unresolved): `handleRetry` mints a new conversation on every click when `initialConversationId` is undefined — previous in-flight provisioning not cancelled; leaks Daytona sandboxes and DB rows. Story 3.5 shipped without resolving this; it lands here. [`apps/web/src/components/conversation/ConversationPane.tsx:275`]
+
 **Acceptance Criteria:**
 
 **Given** a user has fewer than 10 active Conversations
@@ -893,11 +898,25 @@ So that I'm not blocked working through one Skill at a time.
 **When** they attempt to open another
 **Then** they see a "session limit reached" message rather than a silent failure (FR11)
 
+**Given** a second `runTurn` is invoked on a `conversationId` that already has an in-flight agent turn
+**When** the second call arrives
+**Then** it is rejected or queued — not allowed to overwrite the first turn's `activeRuns` and `circuitBreakerTimers` entries — so the first turn is not orphaned mid-execution
+
+**Given** a user clicks retry while in-flight provisioning for a new conversation is already running and `initialConversationId` is undefined
+**When** the retry click fires
+**Then** the previous in-flight provisioning is cancelled (Daytona sandbox torn down, DB row removed) before minting a new conversation, so retry does not leak sandboxes and rows across repeated clicks
+
 ### Story 3.12: Drain Conversations Gracefully on Deploy
 
 As a user with an active Conversation when the platform deploys a new version,
 I want my connection to end cleanly and let me reconnect without losing history,
 So that routine deploys never look like a crash or lose my work.
+
+**Prerequisites (deferred items absorbed from prior story reviews):**
+
+- **In-memory sandbox state, no recovery on restart** (from 3-1/3-3 reviews): `sandboxStatuses` and `sandboxIds` are in-memory `Map`s, never persisted to DB. Server restart loses all sandbox state — `getStatus` reports `'provisioning'` (fallback) for conversations whose sandboxes are ready or dead. Sandboxes orphaned in Daytona with no record to destroy. Graceful drain requires knowing what's running; this must be persisted to Postgres. [`apps/agent-be/src/conversations/conversations.service.ts`]
+- **ManualCommitService.onModuleDestroy drops pending commits** (from 3-6 review): `onModuleDestroy` silently drops pending commits without emitting `MANUAL_SAVE_FAILED`. The 3-6 spec said "clear pending commits on shutdown," but draining must either complete or notify — silent drop loses work. [`apps/agent-be/src/conversations/manual-commit.service.ts:91-93`]
+- **Dependency (confirm resolved, not fixed here):** `SandboxService.resume` returns `conversationId: sandboxId` — conflates sandbox ID with conversation ID (from 3-1/3-2 reviews, tagged 3-5 scope but 3-5 shipped without resolving). This story's "clients can reconnect and resume" AC depends on resume returning the correct conversationId. Verify 3-5 resolved it; if not, resolve as part of this story. [`apps/agent-be/src/sandbox/sandbox.service.ts:64`]
 
 **Acceptance Criteria:**
 
@@ -906,6 +925,14 @@ So that routine deploys never look like a crash or lose my work.
 **Then** shutdown hooks notify all clients with active SSE connections that the connection is draining, before the process exits
 **And** notified clients can reconnect and resume their Conversation without losing chat history, rather than the connection being hard-killed with no notice
 **And** turn/session state is persisted to Postgres on every turn — via the `Turn` model migrated in Story 3.1 — so a restart does not lose Conversation history
+
+**Given** `apps/agent-be` restarts (deploy, crash, or scaling) and a client reconnects to an existing Conversation
+**When** the client calls `getStatus` for that Conversation
+**Then** it reports the correct sandbox status (ready, failed, or not-found) — not a fallback `'provisioning'` — because sandbox state is persisted to Postgres rather than held only in-memory `Map`s that are lost on restart
+
+**Given** a manual save is pending in `ManualCommitService` when `SIGTERM` is received
+**When** `onModuleDestroy` runs
+**Then** the pending commit is either completed before exit or the client is notified via a `MANUAL_SAVE_FAILED` event on the SSE channel before the process exits — pending saves are never silently dropped during drain
 
 ## Epic 4: MVP Cloud Deployment Provisioning
 

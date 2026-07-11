@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-01T11:38:23.078Z",
+  "updatedAt": "2026-07-06T16:45:58.331Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null | tail -n 10"
+        "command": "=err=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ]; then\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $json.conversationTitle }} / initial run\" --argjson rc $rc --arg salvaged \"$([ -n \"$out\" ] && echo yes || echo no)\" --arg stderrTail \"$(tail -c 600 \"$err\")\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail}' >> _bmad-output/pipeline/runner-errors.jsonl\n  tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "command": "=opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null | tail -n 10"
+        "command": "=err=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ]; then\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $('Variables').item.json.conversationTitle }} / follow-up run\" --argjson rc $rc --arg salvaged \"$([ -n \"$out\" ] && echo yes || echo no)\" --arg stderrTail \"$(tail -c 600 \"$err\")\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail}' >> _bmad-output/pipeline/runner-errors.jsonl\n  tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -163,11 +163,24 @@
             {
               "id": "740f3353-2f56-451c-99a6-bfe3b657b647",
               "name": "finalResponse",
-              "value": "={{ $('Parse OpenCode Response').last().json.response }}",
-              "type": "string"
+              "type": "string",
+              "value": "={{ $('Parse OpenCode Response').last().json.response }}"
+            },
+            {
+              "id": "f7a1c2d3-e4b5-6789-abcd-ef0123456789",
+              "name": "questionCount",
+              "type": "number",
+              "value": "={{ $('Run counter').last().json.runIndex }}"
+            },
+            {
+              "id": "a8b9c0d1-e2f3-4a5b-6c7d-8e9f0a1b2c3d",
+              "name": "outcomeHistory",
+              "type": "string",
+              "value": "={{ JSON.stringify($('BMAD Outcome').all().map(r => r.json.outcome)) }}"
             }
           ]
         },
+        "mode": "manual",
         "options": {}
       },
       "type": "n8n-nodes-base.set",
@@ -455,6 +468,20 @@
       ],
       "id": "14e986ff-2d7f-4fa4-8331-b8f446768410",
       "name": "Notify finish"
+    },
+    {
+      "id": "f7a1c2d3-0000-0000-0000-000000000001",
+      "name": "Run counter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { ...$input.first().json, runIndex: $runIndex } }];"
+      }
     }
   ],
   "connections": {
@@ -569,22 +596,33 @@
         ]
       ]
     },
-    "Parse OpenCode Response": {
+    "Extract SessionID": {
       "main": [
         [
           {
-            "node": "BMAD Outcome",
+            "node": "Parse OpenCode Response",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Extract SessionID": {
+    "Parse OpenCode Response": {
       "main": [
         [
           {
-            "node": "Parse OpenCode Response",
+            "node": "Run counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run counter": {
+      "main": [
+        [
+          {
+            "node": "BMAD Outcome",
             "type": "main",
             "index": 0
           }
@@ -619,9 +657,9 @@
       }
     ]
   },
-  "versionId": "2eb21396-fab9-40c7-93c4-02d0bff59110",
-  "activeVersionId": "2eb21396-fab9-40c7-93c4-02d0bff59110",
-  "versionCounter": 163,
+  "versionId": "82946dcf-e3fa-402e-a829-0ebe9d4763a7",
+  "activeVersionId": "81b8bb02-84b0-46ca-a91a-6848d8d6114d",
+  "versionCounter": 168,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
@@ -646,7 +684,7 @@
     }
   ],
   "versionMetadata": {
-    "name": "WIth ntfy.sh",
-    "description": ""
+    "name": null,
+    "description": null
   }
 }

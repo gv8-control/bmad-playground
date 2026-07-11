@@ -2,7 +2,7 @@
 title: "DESIGN: bmad-easy"
 status: final
 created: 2026-06-15
-updated: 2026-07-02
+updated: 2026-07-08
 
 colors:
   # Backgrounds — elevation via lightness, no shadows
@@ -10,12 +10,12 @@ colors:
   surface:         "#16161C"   # sidebar, panels
   surface-raised:  "#1E1E26"   # inputs, cards, hover targets
   border:          "#2B2B38"   # standard dividers
-  border-subtle:   "#1E1E26"   # inner divisions on raised surfaces
+  border-subtle:   "#232330"   # inner divisions on raised surfaces
 
   # Text
   text-1:          "#EDECF5"   # primary — body, headings
   text-2:          "#8D8CA0"   # secondary — labels, timestamps, nav items
-  text-3:          "#56556A"   # muted — placeholders, disabled
+  text-3:          "#56556A"   # muted — placeholders, disabled text only (WCAG-exempt)
 
   # Accent — primary actions, focus rings, links
   accent:          "#7B6EE8"
@@ -61,6 +61,16 @@ rounded:
 spacing:
   base: "4px"
   # Tailwind 4-unit scale: 4 8 12 16 20 24 32 40 48 64
+  '1':  "4px"
+  '2':  "8px"
+  '3':  "12px"
+  '4':  "16px"
+  '5':  "20px"
+  '6':  "24px"
+  '8':  "32px"
+  '10': "40px"
+  '12': "48px"
+  '16': "64px"
 
 components:
   side-nav:
@@ -94,7 +104,7 @@ components:
     background:     "{colors.surface-raised}"
     border:         "1px solid {colors.border}"
     border-radius:  "{rounded.sm}"
-    padding:        "2px 8px"
+    padding:        "4px 8px"
     font-size:      "{typography.scale.xs}"
     color:          "{colors.text-2}"
 
@@ -103,7 +113,7 @@ components:
     background:     "{colors.positive-bg}"
     border:         "1px solid {colors.positive}"
     border-radius:  "{rounded.sm}"
-    padding:        "4px 10px"
+    padding:        "4px 8px"
     font-size:      "{typography.scale.sm}"
     color:          "{colors.positive}"
 
@@ -113,8 +123,11 @@ components:
     dirty-bg:     "{colors.caution-bg}"
     dirty-label:  "● Unsaved changes"
     # Clean state
-    clean-color:  "{colors.text-3}"
+    clean-color:  "{colors.text-2}"
     clean-label:  "✓ All saved"
+    # Info affordance (dirty state only)
+    info-icon-color:       "{colors.text-3}"
+    info-icon-color-hover: "{colors.text-2}"
 
   avatar-circle:
     size:          "32px"
@@ -135,7 +148,7 @@ components:
     background:    "{colors.caution-bg}"
     color:         "{colors.caution}"
     border-radius: "{rounded.full}"
-    padding:       "2px 8px"
+    padding:       "4px 8px"
     font-size:     "{typography.scale.xs}"
 
   status-badge-completed:
@@ -143,7 +156,7 @@ components:
     background:    "transparent"
     color:         "{colors.text-2}"
     border-radius: "{rounded.full}"
-    padding:       "2px 8px"
+    padding:       "4px 8px"
     font-size:     "{typography.scale.xs}"
 
   slash-command-picker:
@@ -159,7 +172,7 @@ components:
     background:    "{colors.surface-raised}"
     border:        "1px solid {colors.border}"
     border-radius: "{rounded.full}"
-    padding:       "6px 12px"
+    padding:       "8px 12px"
     font-size:     "{typography.scale.xs}"
     color:         "{colors.text-2}"
 
@@ -167,7 +180,7 @@ components:
     background:    "transparent"
     border:        "1px solid {colors.border}"
     border-radius: "{rounded.md}"
-    padding:       "6px 16px"
+    padding:       "8px 16px"
     font-size:     "{typography.scale.sm}"
     color:         "{colors.text-1}"
 
@@ -180,10 +193,18 @@ components:
   credential-error-banner:
     background:    "{colors.negative-bg}"
     border-bottom: "1px solid {colors.negative}"
-    padding:       "10px 16px"
+    padding:       "12px 16px"
     font-size:     "{typography.scale.sm}"
     color:         "{colors.text-1}"
     link-color:    "{colors.negative}"
+
+  access-notice:
+    background:    "{colors.caution-bg}"
+    border-left:   "2px solid {colors.caution}"
+    border-radius: "{rounded.sm}"
+    padding:       "8px 12px"
+    font-size:     "{typography.scale.sm}"
+    color:         "{colors.text-1}"
 ---
 
 # DESIGN: bmad-easy
@@ -197,6 +218,8 @@ bmad-easy sits at the intersection of AI chat tools and professional productivit
 **Reference aesthetic:** Claude.ai, Perplexity, Linear — dark surfaces, generous whitespace, restrained use of color, content that earns its place.
 
 **What this is not:** A developer IDE, a productivity dashboard crammed with widgets, a bright consumer app.
+
+**Wordmark treatments:** Two presentations, by context. Pre-app shell (sign-in, onboarding): full lockup — 48px accent-filled square with rounded corners (`{rounded.lg}`) containing the initials "be", the wordmark "bmad-easy" in `xl` semibold, and a tagline in `sm` `text-2`. App shell: compact text mark — "bmad" in `base` semibold `text-1` with middle dot in `{colors.accent}` and "easy" continuing in `text-1`, fitted in the 48px nav header zone. The compact form drops the tagline and logo box to preserve nav height.
 
 **Dark mode:** Primary and only mode for MVP. The palette is designed around a very dark near-black with a hint of blue-violet, harmonizing with the accent color throughout.
 
@@ -214,7 +237,7 @@ The palette is built for dark mode from first principles. Elevation is communica
 | Panel | `surface` | `#16161C` | Sidebar, persistent panels |
 | Raised | `surface-raised` | `#1E1E26` | Inputs, cards, dropdown menus, hover states |
 | Dividers | `border` | `#2B2B38` | Standard separators |
-| Inner | `border-subtle` | `#1E1E26` | Dividers within raised surfaces |
+| Inner | `border-subtle` | `#232330` | Dividers within raised surfaces |
 | Primary text | `text-1` | `#EDECF5` | Body, headings, active items |
 | Secondary text | `text-2` | `#8D8CA0` | Nav labels, timestamps, supporting copy |
 | Muted text | `text-3` | `#56556A` | Placeholders, disabled states |
@@ -227,6 +250,8 @@ The palette is built for dark mode from first principles. Elevation is communica
 | Backdrop | `overlay` | `rgba(0,0,0,0.65)` | Dialog / modal backdrops |
 
 **Semantic color rule:** positive = artifact committed to repo; caution = uncommitted local work exists; negative = something went wrong. These map directly to the working tree states in FR-18.
+
+**Contrast targets:** `text-1` and `text-2` meet WCAG AA (4.5:1) against all three surface tokens. `text-3` does not meet AA and is restricted to WCAG-exempt contexts only: input placeholders (1.4.3 Note 3) and text within inactive/disabled components (1.4.3 Note 2). Informational text that is permanently visible — timestamps, status indicators, the "All saved" clean-state label — uses `text-2`, not `text-3`.
 
 ---
 
@@ -243,7 +268,7 @@ Two typefaces only.
 - Page titles and section headings: `lg` or `xl`, `semibold`.
 - Body and chat messages: `base`, `regular`.
 - All secondary / supporting copy: `sm`, `regular`, `text-2`.
-- Timestamps: `xs`, `regular`, `text-3`.
+- Timestamps: `xs`, `regular`, `text-2`.
 - Markdown rendered in agent responses follows the same scale — headings map down one step relative to their document hierarchy (H1 → `xl`, H2 → `lg`, H3 → `base semibold`).
 
 ---
@@ -266,6 +291,22 @@ Two typefaces only.
 
 **Content breathing room:** The chat content column has `32px` horizontal padding at 1280px+ viewports; `20px` at narrower breakpoints. This is not reduced to maximize visible tokens — readability and message chunking are more important than information density.
 
+**Content-width system:** Named max-widths by surface context:
+
+| Context | Max-width | Token |
+|---|---|---|
+| Auth card (sign-in) | 400px | per-surface |
+| Onboarding card | 480px | per-surface |
+| Empty-state prompt | 480px | per-surface |
+| Artifact card (Project Map) | 720px | per-surface |
+| Rendered Markdown (Artifact Browser) | 720px | per-surface |
+| Chat message column | 760px | documented above |
+| Chat input + message row | 824px | 760 + 64px padding |
+
+These are per-surface decisions, not a shared scale — each is tuned to its content type.
+
+**Scrollbar styling:** Scrollable panels (chat messages, artifact list, artifact content) hide the default scrollbar (`scrollbar-width: none` / `::-webkit-scrollbar { display: none; }`). A custom scrollbar styled with the palette may replace this post-MVP. The hidden scrollbar is a deliberate aesthetic choice for the calm, content-forward posture — scroll position is communicated by content position, not a chrome element.
+
 ---
 
 ## Elevation & Depth
@@ -282,6 +323,8 @@ Dark mode elevation is expressed through surface lightness, not shadow. From dar
 Dialogs themselves sit at L2 brightness against the L3 overlay. No box shadow is used to convey elevation on dark surfaces.
 
 The only exception: focus rings use `{colors.accent}` as an outline, which creates visual separation through color rather than elevation.
+
+**Floating elements:** Dropdowns, popovers, and pickers that overlay content (slash command picker, save-confirmation popover, scroll-to-bottom button) may use a subtle box shadow (`0 8px 24px rgba(0,0,0,0.4)`) for visual separation from the content beneath. This is not elevation — it is overlay depth. The shadow is permitted only for elements that float above the content layer; it is never used on surfaces that are part of the layout (side nav, cards, inputs).
 
 ---
 
@@ -331,7 +374,7 @@ While agent is processing: **Stop** button replaces Send. Stop is outlined (bord
 
 **Copy action on messages:** appears on hover at the top-right corner of the message. Single icon button, `text-3` default, `text-2` on hover.
 
-**Timestamps:** User message timestamps on hover only (`xs`, `text-3`, right-aligned). Agent message timestamps inline below the message (`xs`, `text-3`) — shown permanently but at low prominence.
+**Timestamps:** User message timestamps on hover only (`xs`, `text-2`, right-aligned). Agent message timestamps inline below the message (`xs`, `text-2`) — shown permanently but at low prominence.
 
 ### Tool Pill
 
@@ -345,8 +388,8 @@ While agent is processing: **Stop** button replaces Send. Stop is outlined (bord
 
 Displayed in the chat input area, left-aligned, below the textarea.
 
-- **Dirty:** `● Unsaved changes` — `{colors.caution}` text, `caution-bg` pill background. Clickable — activates the manual save flow (confirmation → platform commit).
-- **Clean:** `✓ All saved` — `{colors.text-3}` text, no background. Not clickable.
+- **Dirty:** `● Unsaved changes` — `{colors.caution}` text, `caution-bg` pill background. Clickable — activates the manual save flow (confirmation → platform commit). A small `ⓘ` icon sits immediately after the label, its own click/focus target: `{colors.text-3}` default, `{colors.text-2}` on hover/focus. 14px, `{typography.scale.xs}`. Opens a disclosure tooltip, distinct from the Save-confirmation popover triggered by the label itself.
+- **Clean:** `✓ All saved` — `{colors.text-2}` text, no background. Not clickable. No info icon (nothing at risk to disclose).
 - **Hidden:** when no working tree exists (new conversation, pre-first-message).
 
 ### Artifact Cards (Project Map)
@@ -375,7 +418,7 @@ Displayed in the chat input area, left-aligned, below the textarea.
 
 ### Access Notice
 
-`{components.access-notice}` — inline notice rendered in the message stream directly below the error-state Tool Pill for a failing git operation that returned a 403. Distinct from the Credential Error Banner: it is scoped to the single failing tool call (not full-width, not pinned to the content area top), dismissible, and never offers a re-auth action — re-authentication resolves none of the three 403 causes. Background `{colors.warning-bg}` (or `{colors.negative-bg}` for `INSUFFICIENT_PERMISSION`), left border `{colors.warning}` / `{colors.negative}`. Copy is derived from the `ACCESS_DENIED` event's `code` field (`RATE_LIMITED` / `ORG_RESTRICTION` / `INSUFFICIENT_PERMISSION`); the raw GitHub error text remains available in the Tool Pill's expanded output. Does not disable the input or halt the agent turn. (Component added 2026-07-02 alongside the architecture.md `ACCESS_DENIED` event contract.)
+`{components.access-notice}` — inline notice rendered in the message stream directly below the error-state Tool Pill for a failing git operation that returned a 403. Distinct from the Credential Error Banner: it is scoped to the single failing tool call (not full-width, not pinned to the content area top), dismissible, and never offers a re-auth action — re-authentication resolves none of the three 403 causes. Background `{colors.caution-bg}` (or `{colors.negative-bg}` for `INSUFFICIENT_PERMISSION`), left border `{colors.caution}` / `{colors.negative}`. Copy is derived from the `ACCESS_DENIED` event's `code` field (`RATE_LIMITED` / `ORG_RESTRICTION` / `INSUFFICIENT_PERMISSION`); the raw GitHub error text remains available in the Tool Pill's expanded output. Does not disable the input or halt the agent turn. (Component added 2026-07-02 alongside the architecture.md `ACCESS_DENIED` event contract; tokens resolved 2026-07-08 — `warning`/`warning-bg` references replaced with `caution`/`caution-bg`.)
 
 ### Avatar Circle
 
@@ -391,6 +434,8 @@ Displayed in the chat input area, left-aligned, below the textarea.
 - Keep the content area uncluttered: one active surface at a time.
 - Let agent message text have generous line height; long unbroken blocks of streamed text are hard to read.
 - Use semantic colors strictly: positive = committed, caution = unsaved, negative = error. Never use them decoratively.
+- Disabled and loading button states: use `{colors.text-3}` as background with `{colors.text-2}` text for disabled; for loading, use `{colors.text-3}` background with a spinner in `{colors.accent-fg}`. Both states reduce the button to a non-interactive visual — the color shift communicates "not available," not a new semantic.
+- Browser-chrome furniture in mockups (address bar, traffic-light dots, lock icon) is illustrative only and outside the product design system's scope.
 
 **Don't:**
 - Don't use box shadows to communicate elevation on dark surfaces.

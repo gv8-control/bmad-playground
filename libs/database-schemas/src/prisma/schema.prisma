@@ -18,6 +18,8 @@ model User {
   updatedAt       DateTime         @updatedAt @map("updated_at")
   oauthCredential OAuthCredential?
   repoConnection  RepoConnection?
+  conversations   Conversation[]
+  costRecords     CostRecord[]
 
   @@map("users")
 }
@@ -39,14 +41,83 @@ model OAuthCredential {
 }
 
 model RepoConnection {
+  id               String    @id @default(cuid())
+  userId           String    @unique @map("user_id")
+  repoUrl          String    @map("repo_url")
+  credentialHealth String    @default("healthy") @map("credential_health")
+  lastSyncedAt     DateTime? @map("last_synced_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  artifacts Artifact[]
+
+  @@map("repo_connections")
+}
+
+model Artifact {
   id               String   @id @default(cuid())
-  userId           String   @unique @map("user_id")
-  repoUrl          String   @map("repo_url")
-  credentialHealth String   @default("healthy") @map("credential_health")
+  repoConnectionId String   @map("repo_connection_id")
+  path             String
+  type             String
+  title            String
+  status           String   @default("completed")
+  lastModifiedAt   DateTime @map("last_modified_at")
+  content          String
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repoConnection RepoConnection @relation(fields: [repoConnectionId], references: [id], onDelete: Cascade)
 
-  @@map("repo_connections")
+  @@unique([repoConnectionId, path])
+  @@index([repoConnectionId, lastModifiedAt])
+  @@map("artifacts")
+}
+
+model Conversation {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  title       String?
+  sandboxId   String?  @map("sandbox_id")
+  sandboxStatus String? @map("sandbox_status")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  turns Turn[]
+  costRecords CostRecord[]
+
+  @@index([userId, lastActiveAt])
+  @@map("conversations")
+}
+
+model Turn {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  role           String
+  content        String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("turns")
+}
+
+model CostRecord {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  conversationId String   @map("conversation_id")
+  costUsd        Float    @map("cost_usd")
+  sessionId      String   @map("session_id")
+  numTurns       Int      @map("num_turns")
+  durationMs     Int      @map("duration_ms")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("cost_records")
 }

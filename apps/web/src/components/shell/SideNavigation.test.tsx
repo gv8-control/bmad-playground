@@ -5,6 +5,11 @@
  * Covers: renders all nav items, active item highlighted based on pathname,
  * avatar shows correct initials, "New Conversation" button links to /conversations/new,
  * conversation list section exists but is empty.
+ * Story 3.2 covers: AC-4 (conversation list renders titles as links, active highlight,
+ * empty state).
+ *
+ * TDD RED PHASE: Story 3.2 tests are skipped (it.skip). Remove skips
+ * one describe-block at a time per task during implementation.
  */
 
 import '@testing-library/jest-dom';
@@ -121,5 +126,38 @@ describe('SideNavigation', () => {
     const conversationSection = screen.getByTestId('conversation-list');
     expect(conversationSection).toBeInTheDocument();
     expect(conversationSection.children).toHaveLength(0);
+  });
+
+  describe('[P0] Story 3.2 — Conversation List (AC-4)', () => {
+    const CONVERSATIONS = [
+      { id: 'conv-1', title: 'PRD Discussion' },
+      { id: 'conv-2', title: 'Architecture Review' },
+    ];
+
+    it('renders conversation titles as links', () => {
+      render(<SideNavigation user={USER} conversations={CONVERSATIONS} />);
+
+      const link1 = screen.getByRole('link', { name: /PRD Discussion/i });
+      const link2 = screen.getByRole('link', { name: /Architecture Review/i });
+
+      expect(link1).toHaveAttribute('href', '/conversations/conv-1');
+      expect(link2).toHaveAttribute('href', '/conversations/conv-2');
+    });
+
+    it('highlights the active conversation', () => {
+      mockUsePathname.mockReturnValue('/conversations/conv-1');
+      render(<SideNavigation user={USER} conversations={CONVERSATIONS} />);
+
+      const activeLink = screen.getByRole('link', { name: /PRD Discussion/i });
+      expect(activeLink.className).toContain('bg-surface-raised');
+      expect(activeLink.className).toContain('text-text-1');
+    });
+
+    it('shows no conversation list items when conversations array is empty', () => {
+      render(<SideNavigation user={USER} conversations={[]} />);
+
+      const conversationSection = screen.getByTestId('conversation-list');
+      expect(conversationSection.children).toHaveLength(0);
+    });
   });
 });

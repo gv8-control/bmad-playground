@@ -26,6 +26,7 @@ jest.mock('@/components/shell/SideNavigation', () => ({
 import { AppShell } from './AppShell';
 
 const USER = { name: 'Alice', email: 'alice@example.com' };
+const CONVERSATIONS: { id: string; title: string | null }[] = [];
 
 describe('AppShell', () => {
   beforeEach(() => {
@@ -35,7 +36,7 @@ describe('AppShell', () => {
 
   it('[P0] renders children in the main content area', () => {
     render(
-      <AppShell user={USER}>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
         <h1>Page Content</h1>
       </AppShell>,
     );
@@ -44,7 +45,7 @@ describe('AppShell', () => {
 
   it('[P0] renders the desktop sidebar with hidden lg:flex class', () => {
     render(
-      <AppShell user={USER}>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
         <h1>Content</h1>
       </AppShell>,
     );
@@ -56,7 +57,7 @@ describe('AppShell', () => {
 
   it('[P0] renders hamburger button visible on mobile (lg:hidden)', () => {
     render(
-      <AppShell user={USER}>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
         <h1>Content</h1>
       </AppShell>,
     );
@@ -67,29 +68,40 @@ describe('AppShell', () => {
 
   it('[P0] drawer opens on hamburger click', async () => {
     render(
-      <AppShell user={USER}>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
         <h1>Content</h1>
       </AppShell>,
     );
     const hamburger = screen.getByRole('button', { name: /open navigation/i });
     expect(screen.queryByTestId('side-navigation')).toBeInTheDocument();
     await userEvent.click(hamburger);
+    await waitFor(() => {
+      expect(document.querySelectorAll('.bg-overlay')).toHaveLength(1);
+    });
+    expect(screen.getByTestId('sheet-content')).toBeVisible();
   });
 
   it('[P0] drawer closes on Escape', async () => {
     render(
-      <AppShell user={USER}>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
         <h1>Content</h1>
       </AppShell>,
     );
     const hamburger = screen.getByRole('button', { name: /open navigation/i });
     await userEvent.click(hamburger);
+    await waitFor(() => {
+      expect(document.querySelectorAll('.bg-overlay')).toHaveLength(1);
+    });
     await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(document.querySelectorAll('.bg-overlay')).toHaveLength(0);
+    });
+    expect(screen.queryByTestId('sheet-content')).not.toBeInTheDocument();
   });
 
   it('[P0] drawer closes on pathname change', async () => {
     const { rerender } = render(
-      <AppShell user={USER}>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
         <h1>Content</h1>
       </AppShell>,
     );
@@ -98,20 +110,21 @@ describe('AppShell', () => {
 
     mockUsePathname.mockReturnValue('/artifacts');
     rerender(
-      <AppShell user={USER}>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
         <h1>Content</h1>
       </AppShell>,
     );
 
     const overlays = document.querySelectorAll('.bg-overlay');
     expect(overlays).toHaveLength(0);
+    expect(screen.queryByTestId('sheet-content')).not.toBeInTheDocument();
   });
 
   it('[P0] moves focus to h1 on route change', async () => {
     mockUsePathname.mockReturnValue('/project-map');
     const { rerender } = render(
-      <AppShell user={USER}>
-        <h1>Project Map</h1>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
+        <h1 tabIndex={-1}>Project Map</h1>
       </AppShell>,
     );
 
@@ -120,8 +133,8 @@ describe('AppShell', () => {
 
     mockUsePathname.mockReturnValue('/artifacts');
     rerender(
-      <AppShell user={USER}>
-        <h1>Artifacts</h1>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
+        <h1 tabIndex={-1}>Artifacts</h1>
       </AppShell>,
     );
 
@@ -143,12 +156,12 @@ describe('AppShell', () => {
       if (!ready) {
         return <button>Loading placeholder</button>;
       }
-      return <h1>Deferred Artifacts</h1>;
+      return <h1 tabIndex={-1}>Deferred Artifacts</h1>;
     }
 
     mockUsePathname.mockReturnValue('/artifacts');
     render(
-      <AppShell user={USER}>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
         <DeferredHeading />
       </AppShell>,
     );
@@ -168,8 +181,8 @@ describe('AppShell', () => {
   it('[P0] does not add delay when the h1 is already present (no regression)', async () => {
     mockUsePathname.mockReturnValue('/project-map');
     render(
-      <AppShell user={USER}>
-        <h1>Immediate Heading</h1>
+      <AppShell user={USER} conversations={CONVERSATIONS}>
+        <h1 tabIndex={-1}>Immediate Heading</h1>
       </AppShell>,
     );
 

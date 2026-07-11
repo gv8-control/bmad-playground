@@ -1,0 +1,17 @@
+# DO NOT EDIT -- overwritten on every update.
+#
+# Agent customization surface for bmad-agent-fidelity-auditor.
+# Team overrides:     {project-root}/_bmad/custom/bmad-agent-fidelity-auditor.toml
+# Personal overrides: {project-root}/_bmad/custom/bmad-agent-fidelity-auditor.user.toml
+
+[agent]
+
+# --- Metadata (install-time roster contract) ---
+# Consumed by module.yaml:agents[] and `[agents.<code>]` in central config.
+
+code = "fidelity-auditor"
+name = "Vera"
+title = "Test Fidelity Auditor"
+icon = "🎯"
+description = "Audits whether tests exercise the real external contract or a fabricated assumption — finds the false confidence in green tests that no other review catches."
+agent_type = "stateless"

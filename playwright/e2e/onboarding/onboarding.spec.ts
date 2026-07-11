@@ -12,6 +12,11 @@
  */
 
 import { test, expect } from '../../support/merged-fixtures';
+import { resetRepoConnection, seedRepoConnection } from '../../support/reset-repo-connection';
+// After all onboarding tests finish, restore a repo connection so that
+// subsequent test files (conversation, project-map) which require a
+// connection to exist for seeding are not left without one.
+test.afterAll(seedRepoConnection);
 
 /**
  * Generates a minimal React Flight (RSC) wire-format payload for a Server Action
@@ -19,14 +24,15 @@ import { test, expect } from '../../support/merged-fixtures';
  * root referencing it via the "a" (action) field.
  */
 function rscActionPayload(result: unknown): string {
-  return `1:${JSON.stringify(result)}\n0:{"a":"$@1","f":"","b":""}`;
+  return `:N${Date.now()}.000\n0:{"a":"$@1","f":"","b":"","q":"","i":false}\n1:${JSON.stringify(result)}\n`;
 }
 
 // ─── Unauthenticated access guard ────────────────────────────────────────────
 
 test.describe('Story 1.3 — unauthenticated access to /onboarding', () => {
   test('[P0] unauthenticated user visiting /onboarding is redirected to /sign-in', async ({ browser }) => {
-    const context = await browser.newContext(); // no stored auth state
+    const context = await browser.newContext();
+    await context.clearCookies(); // ensure no authenticated session
     const page = await context.newPage();
     try {
       await page.goto('/onboarding');
@@ -40,6 +46,8 @@ test.describe('Story 1.3 — unauthenticated access to /onboarding', () => {
 // ─── Onboarding page layout (AC-1, UX-DR14) ──────────────────────────────────
 
 test.describe('Story 1.3 — onboarding page layout', () => {
+  test.beforeEach(resetRepoConnection);
+
   test(
     '[P0] authenticated user with no connected repo sees the Repository URL input as the sole text input (AC-1)',
     async ({ page }) => {
@@ -59,7 +67,8 @@ test.describe('Story 1.3 — onboarding page layout', () => {
     async ({ page }) => {
       await page.goto('/onboarding');
       await expect(page.getByRole('button', { name: /connect repository/i })).toBeVisible();
-      await expect(page.getByRole('button')).toHaveCount(1);
+      // Scope to form to exclude Next.js dev overlay elements
+      await expect(page.locator('form').getByRole('button')).toHaveCount(1);
     },
   );
 
@@ -75,7 +84,7 @@ test.describe('Story 1.3 — onboarding page layout', () => {
     '[P0] page shows no error message on initial load',
     async ({ page }) => {
       await page.goto('/onboarding');
-      await expect(page.getByRole('alert')).not.toBeVisible();
+      await expect(page.locator('#repo-url-error')).not.toBeVisible();
     },
   );
 });
@@ -95,6 +104,8 @@ test.describe('Story 1.3 — skip onboarding when already connected', () => {
 // ─── Root redirect routing (AC-1, Task 6) ─────────────────────────────────────
 
 test.describe('Story 1.3 — root page redirect logic', () => {
+  test.beforeEach(resetRepoConnection);
+
   test(
     '[P0] authenticated user with no RepoConnection visiting / is redirected to /onboarding',
     async ({ page }) => {
@@ -115,6 +126,8 @@ test.describe('Story 1.3 — root page redirect logic', () => {
 // ─── Pending / validating state (UX-DR14) ─────────────────────────────────────
 
 test.describe('Story 1.3 — validating state', () => {
+  test.beforeEach(resetRepoConnection);
+
   test(
     '[P1] "Validating…" appears on the button immediately after form submission',
     async ({ page }) => {
@@ -125,8 +138,8 @@ test.describe('Story 1.3 — validating state', () => {
       // not the initial page load GET.
       let resolveHeld!: () => void;
       const held = new Promise<void>((r) => { resolveHeld = r; });
-      await page.route('**/onboarding', async (route) => {
-        if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
+      await page.route('**', async (route) => {
+        if (route.request().method() === 'POST') {
           await held; // block until the assertion below completes
           await route.fulfill({
             status: 200,
@@ -153,14 +166,18 @@ test.describe('Story 1.3 — validating state', () => {
 // ─── Error states (AC-4) — mocked via page.route() ───────────────────────────
 
 test.describe('Story 1.3 — inline error display (AC-4)', () => {
+  test.beforeEach(resetRepoConnection);
+
   test(
     '[P0] submitting a URL for a non-existent repository shows a "not found" inline error (AC-4)',
     async ({ page }) => {
       await page.goto('/onboarding');
 
-      // Mock Server Action to return a NOT_FOUND error without hitting GitHub API
-      await page.route('**/onboarding', async (route) => {
-        if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
+      // Mock Server Action to return a NOT_FOUND error without hitting GitHub API.
+      // Intercept ALL POSTs — Next.js 16 Server Actions POST from the client
+      // but the header name may vary. The only POST on this page is the form submit.
+      await page.route('**', async (route) => {
+        if (route.request().method() === 'POST') {
           await route.fulfill({
             status: 200,
             contentType: 'text/x-component',
@@ -177,7 +194,7 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
       await page.getByLabel(/repository url/i).fill('https://github.com/nonexistent-org/nonexistent-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
 
-      const alert = page.getByRole('alert');
+      const alert = page.locator('#repo-url-error');
       await expect(alert).toBeVisible({ timeout: 15_000 });
       await expect(alert).toContainText(/not found/i);
     },
@@ -188,8 +205,8 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
     async ({ page }) => {
       await page.goto('/onboarding');
 
-      await page.route('**/onboarding', async (route) => {
-        if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
+      await page.route('**', async (route) => {
+        if (route.request().method() === 'POST') {
           await route.fulfill({
             status: 200,
             contentType: 'text/x-component',
@@ -206,7 +223,7 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
       await page.getByLabel(/repository url/i).fill('https://github.com/some-org/read-only-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
 
-      const alert = page.getByRole('alert');
+      const alert = page.locator('#repo-url-error');
       await expect(alert).toBeVisible({ timeout: 15_000 });
       await expect(alert).toContainText(/write access/i);
     },
@@ -221,7 +238,7 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
       await page.getByLabel(/repository url/i).fill('https://github.com/restricted-org-test/some-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
 
-      const alert = page.getByRole('alert');
+      const alert = page.locator('#repo-url-error');
       await expect(alert).toBeVisible({ timeout: 15_000 });
       await expect(alert).toContainText(/organization/i);
       await expect(alert).not.toContainText(/couldn.t connect|something went wrong/i);
@@ -232,6 +249,8 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
 // ─── Successful connection (AC-3) — mocked via page.route() ──────────────────
 
 test.describe('Story 1.3 — successful repository connection (AC-3)', () => {
+  test.beforeEach(resetRepoConnection);
+
   test(
     '[P0] submitting a valid URL returns success and navigates to /project-map (AC-3)',
     async ({ page }) => {

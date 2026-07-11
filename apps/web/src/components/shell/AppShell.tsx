@@ -8,10 +8,11 @@ import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
 
 interface AppShellProps {
   user: { name?: string | null; email?: string | null };
+  conversations: { id: string; title: string | null }[];
   children: React.ReactNode;
 }
 
-export function AppShell({ user, children }: AppShellProps) {
+export function AppShell({ user, conversations, children }: AppShellProps) {
   const pathname = usePathname();
   const mainRef = useRef<HTMLElement>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -27,7 +28,6 @@ export function AppShell({ user, children }: AppShellProps) {
     if (!main) return;
 
     const focusH1 = (h1: HTMLElement) => {
-      h1.setAttribute('tabindex', '-1');
       h1.focus({ preventScroll: true });
     };
 
@@ -60,7 +60,7 @@ export function AppShell({ user, children }: AppShellProps) {
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
       <aside className="hidden lg:flex w-[240px] flex-shrink-0">
-        <SideNavigation user={user} />
+        <SideNavigation user={user} conversations={conversations} />
       </aside>
 
       <main ref={mainRef} className="flex-1 overflow-hidden flex flex-col">
@@ -69,7 +69,7 @@ export function AppShell({ user, children }: AppShellProps) {
             <SheetTrigger asChild>
               <button
                 aria-label="Open navigation"
-                className="p-2 bg-surface border border-border rounded-md text-text-1 hover:bg-surface-raised transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg lg:hidden"
+                className="p-2 bg-surface border border-border rounded-md text-text-1 hover:bg-surface-raised transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface lg:hidden"
               >
                 <Menu className="h-6 w-6" />
               </button>
@@ -77,6 +77,7 @@ export function AppShell({ user, children }: AppShellProps) {
             <SheetContent
               side="left"
               className="w-[240px] bg-surface"
+              data-testid="sheet-content"
               onCloseAutoFocus={(e) => {
                 if (isNavigatingRef.current) {
                   isNavigatingRef.current = false;
@@ -84,7 +85,7 @@ export function AppShell({ user, children }: AppShellProps) {
                 }
               }}
             >
-              <SideNavigation user={user} />
+              <SideNavigation user={user} conversations={conversations} />
             </SheetContent>
           </Sheet>
         </div>

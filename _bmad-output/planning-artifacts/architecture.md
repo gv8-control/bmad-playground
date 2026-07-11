@@ -430,7 +430,6 @@ export interface ISandboxService {
   destroy(sandboxId: string): Promise<void>;
   injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void>;
   getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus>;
-  terminateProcess(sandboxId: string, processId: string): Promise<void>;
 }
 
 export const SANDBOX_SERVICE = Symbol('ISandboxService');
@@ -500,7 +499,7 @@ bmad-easy/
 │   │   │   │   │   └── RepositoryUrlForm.test.tsx
 │   │   │   │   ├── project-map/
 │   │   │   │   │   ├── ProjectMapTree.tsx
-│   │   │   │   │   └── RefreshButton.tsx        # FR-7 — triggers full browser reload
+│   │   │   │   │   └── RefreshButton.tsx        # FR-7 — in-page sync via syncArtifactsAction() + router.refresh(); spinner during sync (amended Story 2.3 per DP-2; supersedes "full browser reload")
 │   │   │   │   ├── conversation/
 │   │   │   │   │   ├── ConversationPane.tsx      # assistant-ui + direct browser→agent-be AG-UI SSE
 │   │   │   │   │   ├── ToolPill.tsx              # FR-12

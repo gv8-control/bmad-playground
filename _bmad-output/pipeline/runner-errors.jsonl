@@ -1,0 +1,3 @@
+{"ts":"2026-07-03T11:09:21Z","source":"opencode-runner","context":"NFR review (2.3) / initial run","rc":1,"salvagedOutput":"yes","stderrTail":""}
+{"ts":"2026-07-06T05:06:50Z","source":"opencode-runner","context":"Code review (3.9) / initial run","rc":124,"salvagedOutput":"yes","stderrTail":""}
+{"ts":"2026-07-06T11:00:22Z","source":"opencode-runner","context":"Unit tests (3.11) / initial run","rc":124,"salvagedOutput":"yes","stderrTail":""}

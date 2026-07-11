@@ -1,12 +1,14 @@
 # Deferred Work
 
+## Deferred from: code review of credential-health.ts decrypt-failure classification fix (2026-07-04)
+
+- `markCredentialHealthy` has zero call sites anywhere in `apps/web/src` outside of tests — no production code path clears `RepoConnection.credentialHealth` back to `'healthy'` after a failure. Not caused by this change, but this change adds a new trigger (decrypt failure) into the same `'failed'` state with no automatic recovery. [`apps/web/src/lib/credential-health.ts:69`]
+- `CredentialFailureError`'s constructor hardcodes `Credential failure: GitHub API returned ${statusCode}` — inaccurate whenever thrown for a non-GitHub-API cause (missing credential row, or now, a local decrypt failure). Pre-existing (the missing-row case already misused this message); low severity since the message is only used for internal logging/`instanceof` control flow, never shown to users. [`apps/web/src/lib/credential-health.ts:6`]
+
 ## Deferred from: code review of 1-1-scaffold-the-platform-monorepo-and-ci-pipeline (2026-06-18)
 
 - `.claude/settings.json` — leading `*` wildcard in `Bash(python3 *_bmad/scripts/*)` removes the path anchor present in the original rule; any path ending in `_bmad/scripts/` is now accepted, widening attack surface beyond the intended `_bmad/` directory.
-- `ProvisionParams.repoUrl` and `credential` never passed in tests — all test calls use `{ conversationId } as any`, bypassing type safety. Real integration coverage of these fields deferred to the story that implements the real SandboxService.
 - `credential` field flows as a bare string with no format documentation, no logging guard, and no expiry awareness. Mitigate before real credential handling is wired in (Story 1.2 / 3.x range).
-- `SandboxInfo.provisionedAt` is typed `?: Date` but no consumer null-guards it. Any idle-timeout or TTL logic that reads this field will silently skip eviction on undefined, producing zombie sandboxes. Fix when idle-timeout logic is implemented.
-- `sandboxId: fake-sandbox-${Date.now()}` — two provisions in the same millisecond produce the same ID and silently overwrite in the Map. Low risk at `maxWorkers: 1` but will bite if worker count is raised. Switch to `crypto.randomUUID()` or similar before parallelising tests.
 - `overrideProviders` in `test-module-builder.ts` silently drops entries where `useValue` is explicitly `undefined` due to `!== undefined` guard. Fix when a test needs to override a provider to `undefined`.
 
 ## Deferred from: re-review of 1-1-scaffold-the-platform-monorepo-and-ci-pipeline (2026-06-18)
@@ -26,7 +28,6 @@
 ## Deferred from: code review of 1-3-connect-a-repository-by-url (2026-06-20)
 
 - Parallel E2E workers share fixed `E2E_GITHUB_ID` — concurrent `withRepoConnection` fixtures mutate the same DB row; teardown from one test can delete another's fixture. Safe with sequential workers.
-- No unit test for `decryptToken` failure path in `connectRepository` — a KEK-rotated or tampered credential throws as `UNKNOWN`; no test verifies the catch behavior.
 - Middleware permanently exempts `/api/internal/test` from auth — `TEST_ENV` route guard is the sole protection layer; accidental `TEST_ENV=true` in a non-local environment exposes data-mutation endpoints without authentication.
 
 ## Deferred from: code review of 1-3-connect-a-repository-by-url (Review 4 — 2026-06-20)
@@ -46,16 +47,12 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 ## Deferred from: code review of 1-2-sign-in-with-github (2026-06-18)
 
-- No unit/integration test coverage for AC-2 session persistence (8h maxAge) — requires E2E test coverage in a future story.
 - Non-GitHub provider path not handled — if a second OAuth provider is added, `token.userId` is never set for it and `session.userId` will be absent for those users.
 - Prisma singleton never resets on stale DB connection — known limitation of the global singleton pattern in Next.js; mitigate when connection resilience is required.
 - Static assets in `/public/` beyond `favicon.ico` not excluded from middleware matcher — theoretical concern; no non-favicon public assets currently exist.
 
 ## Deferred from: adversarial review of fix-turbopack-build-root (2026-06-30)
 
-- `makeValidationError` has zero direct test coverage — the sole constructor for `ValidationError` had its spread order and parameter type changed in this fix, but no spec verifies the `documentationLink` invariant. [`apps/web/src/actions/repository-validation.actions.ts:138`]
-- `invalidateValidationCache` silently no-ops on URL mismatch — if `repoUrl` fails the GitHub regex, the function returns without deleting, throwing, or logging. Current caller passes pre-validated URLs, but future callers get silently stale cache. [`apps/web/src/actions/repository-validation.actions.ts:255`]
-- Cache-clearing in tests scoped to one `describe` block, not the whole spec file — `validationCache` is module-level, so any other suite calling `validateRepository` leaks cached results across tests. [`apps/web/src/actions/repository-validation.actions.spec.ts:493`]
 - `experimental: {}` is dead config in `next.config.js` — empty object serves no purpose. [`apps/web/next.config.js:7`]
 - CommonJS `next.config.js` inconsistent with TS/ESM codebase — file uses `require`/`module.exports` + `//@ts-check` while Next.js 16 supports `next.config.ts`. Migrating would give real type-checking on `turbopack.root` and `path.resolve`. [`apps/web/next.config.js`]
 
@@ -63,15 +60,6 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 - Empty/whitespace `githubLogin` produces invalid fallback [`apps/web/src/lib/git-identity.ts:11,16`] — `githubLogin` is not validated for emptiness before being used as fallback name and noreply email local-part. GitHub guarantees `login` is non-empty from OAuth. Not reachable through normal flows.
 - `auth()` outside try/catch — rejection unhandled [`apps/web/src/actions/git-identity.actions.ts:13`] — `auth()` call sits outside the try/catch block; if it rejects (JWT decode failure, misconfigured secret), the error escapes as unhandled rejection. Consistent with all sibling Server Actions (`repo-connection.actions.ts:46`, `repository-validation.actions.ts:281`). Codebase-wide pattern, not a Story 1.5 issue.
-
-## Deferred from: adversarial review of git-identity.test.ts comment fix (2026-07-01)
-
-- Test name/body mismatch, pre-existing [`apps/web/src/lib/git-identity.test.ts:124`] — `'function accepts no token parameter in its signature'` describes a signature check, but the body only asserts on the return value; no signature-level check exists. Predates this comment fix.
-- Near-duplicate test coverage, pre-existing [`apps/web/src/lib/git-identity.test.ts:115-137`] — the `'return type contains only name and email keys'` test and the `'function accepts no token parameter'` test both assert the same return shape at runtime. Predates this comment fix.
-
-## Deferred from: code review of 1-6-detect-and-recover-from-credential-failures (2026-07-01)
-
-### Tenant-isolation test is tautological [`apps/web/src/lib/credential-health.test.ts`] — the test asserts the mock was not called with `'usr_other'`, but since the test only invokes `resolveOAuthToken(USER_ID)`, the mock could never have been called with another user's ID. The `expect(callArg).toEqual({ where: { userId: USER_ID } })` assertion is meaningful; the `not.toContain('usr_other')` check is redundant. Implementation is correct (`findUnique({ where: { userId } })`).
 
 ## Deferred from: code review of 1-7-enforce-authenticated-full-access-for-all-mvp-users (2026-07-01)
 
@@ -90,9 +78,6 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 ## Deferred from: code review of 1-4-validate-bmad-initialization-in-the-connected-repository (2026-07-02)
 
-- `validateRepository` is not wired into any UI flow [`apps/web/src/actions/repository-validation.actions.ts`] — the onboarding flow calls `connectRepository`, which invokes `inspectBmadSetup` directly and bypasses the validation cache. `validateRepository` (with its cache) is exercised only by tests. Wiring it into a UI surface (or removing it) is a product decision.
-- In-process validation cache is ineffective on multi-instance/serverless deployments [`apps/web/src/actions/repository-validation.actions.ts`] — the `Map` cache and its invalidation only hold within one process. Accepted MVP limitation; revisit if deployment topology changes.
-- GitHub contents API truncates directory listings at 1000 entries [`apps/web/src/actions/repository-validation.actions.ts`] — a repo whose root or `.claude/skills/` exceeds 1000 entries could produce a false `MISSING_DIRECTORY`/skills undercount. Exotic for MVP; the git trees API would be the fix.
 - Required dirs tracked as submodules/symlinks report as missing [`apps/web/src/actions/repository-validation.actions.ts`] — the `type === 'dir'` filter rejects `submodule`/`symlink` entries even though the directory exists after checkout.
 - `config.yaml` version parsed from a `# Version:` comment [`apps/web/src/actions/repository-validation.actions.ts`] — comment-based format is not guaranteed by BMAD; a regeneration that drops the comment silently downgrades detection to the `package.json` fallback. Works against real BMAD 6.x output today.
 - Story 1.4 integration-test checklist (onboarding flow 1.3→1.4→1.5, retry-after-fix e2e) unchecked [`_bmad-output/implementation-artifacts/1-4-validate-bmad-initialization-in-the-connected-repository.md`] — component-level coverage only; onboarding e2e specs exist but do not cover the BMAD-validation retry path.
@@ -100,6 +85,24 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 ## Deferred from: code review of 1-9-document-and-validate-the-kek-rotation-runbook (2026-07-02)
 
 - `scripts/rotate-kek.ts` operational polish [`scripts/rotate-kek.ts`] — (a) `findMany` loads the whole `oauth_credentials` table into memory with no cursor batching (fine at MVP scale, revisit for large tables); (c) `retry needed` and `failed` share exit code 1, so automation can't distinguish "loop again" from "stop and investigate". All low severity.
+
+## Deferred from: code review of 2-2-view-the-project-map (2026-07-03)
+
+- `syncArtifactsAction` returns `NO_CREDENTIAL` for missing session [`apps/web/src/actions/artifacts.actions.ts:16-18`] — the `!session?.userId` check returns `NO_CREDENTIAL` which the page renders as the credential error banner. Semantically wrong (user needs to sign in, not update token), but the path is unreachable due to the `(dashboard)/layout.tsx` auth guard. Fix is ambiguous (different error code? redirect?).
+- `<a href="#">` for non-navigating action [`apps/web/src/components/project-map/CredentialErrorBanner.tsx:27-37`] — the "Update access token" trigger is an `<a href="#">` with `preventDefault`, but semantically should be a `<button>`. Spec Task 3.1 says "a link styled in `text-negative`". Changing to `<button>` requires spec deviation. Works with `aria-label`; minor a11y concern (right-click "open in new tab" navigates to `#`).
+- `capturedAt` timestamp captured too early [`apps/web/src/actions/artifacts.actions.ts:35`] — `capturedAt = new Date()` is captured at function entry, before `resolveOAuthToken()`. If token resolution is slow, the timestamp predates the actual failure. Used for optimistic-concurrency guard in `markCredentialFailed`. Minor: a concurrent re-auth during the slow call won't be respected. Fix requires restructuring to capture timestamp just before the GitHub API call.
+- `Artifact.content` has no size cap [`libs/database-schemas/src/prisma/schema.prisma`] — every artifact's full markdown body is mirrored into Postgres with no enforced size ceiling. A repo with a 50 MB markdown file writes 50 MB per row. `MAX_CONTENT_ENTRIES` (10k) bounds count but not total bytes. Defer to a hardening story.
+- Session drift between page-level `auth()` and inner `auth()` [`apps/web/src/app/(dashboard)/(app)/project-map/page.tsx:11,31`] — the page calls `auth()` and `getCredentialHealthStatus()` also calls `auth()` internally. If the session expires between the two calls, the health check returns `{ success: false }` and the banner is suppressed. Extremely unlikely timing (both calls within milliseconds).
+- Non-`NO_CREDENTIAL` sync error codes render misleading empty state [`apps/web/src/app/(dashboard)/(app)/project-map/page.tsx:37-47`] — when sync returns `RATE_LIMITED`, `NOT_FOUND`, `NO_REPO_CONNECTION`, or `UNKNOWN`, the page falls through and renders "Start your first conversation to create an artifact." Spec Task 5.6 explicitly mandates this behavior ("proceed with rendering whatever is in Postgres"). Adding a sync-failure indicator is beyond the story's ACs (DP-5: scope temptation).
+- Credential health check failure silently treated as "healthy" [`apps/web/src/app/(dashboard)/(app)/project-map/page.tsx:31-33`] — if `getCredentialHealthStatus()` returns `{ success: false }` (DB error), `credentialFailed` is set to `false`, suppressing the banner. Spec Task 5.4 explicitly specifies `credentialResult.success && credentialResult.status === 'failed'`. Treating health-check failure differently is a UX change with no spec backing (DP-5: scope temptation).
+
+## Deferred from: code review of 2-1-mirror-repository-artifacts-into-postgres (2026-07-03)
+
+- `fetchLastCommitDate` swallows 5xx as `new Date()` instead of propagating [`apps/web/src/lib/artifacts.ts:53-55`] — Non-OK responses (5xx, etc.) on the commits endpoint return `new Date()` (sync time) as `lastModifiedAt`. Spec Task 4.3 sanctions `new Date()` fallback only for 404. Current behavior is defensible (don't abort sync for non-critical metadata field); aborting for transient commits-endpoint 5xx would be worse. Minor spec tension.
+- Unbounded parallel API requests may trigger GitHub secondary rate limits [`apps/web/src/lib/artifacts.ts:225-227`] — All file fetches fire in one `Promise.allSettled` batch (N files × 2 requests), not per directory level as spec Performance Considerations recommends. For MVP repo sizes (20-50 artifacts) within GitHub's 5,000 req/h budget. Spec language is guidance-level, not AC-level.
+- No recursion depth limit in `scanDirectory` [`apps/web/src/lib/artifacts.ts:62-84`] — Pathological repo with deeply nested directories could stack-overflow. `fetchGithubContents` caps entries per directory (10,000); BMAD repos don't have deep nesting. Not a real scenario for MVP.
+- Heading inside a Markdown code block picked up as title [`apps/web/src/lib/artifacts.ts:121-124`] — `parseHeadingTitle` doesn't understand fenced code blocks, so a `#` line inside a code block could be matched as a heading. Proper fix would require a markdown parser, which the spec explicitly prohibits. Regex-based approach is inherently limited.
+- Path components not URL-encoded in `fetchGithubContents` calls [`apps/web/src/lib/artifacts.ts:53-55`] — File/directory names with `#`, `?`, or `%` break the content fetch URL (`fetchGithubContents` doesn't encode the path). `fetchLastCommitDate` does encode via `encodeURIComponent`, creating an inconsistency. Fix requires separating the API path (encoded) from the stored path (raw). Low probability in BMAD repos; non-trivial fix.
 
 ## Deferred from: adversarial review of 1-6-ac1-credential-flip-within-one-cycle (2026-07-02)
 
@@ -122,3 +125,233 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
     - **NFR-O1 spend tracking:** the proxy can set per-request spend metadata using the platform key — Anthropic-native spend accounting without putting any key in the sandbox.
   - **Test cases:** posted at `_bmad-output/test-artifacts/security-test-cases-secrets-sandbox.md` (SEC-001 through SEC-011).
   - **Residual risk (accepted for MVP):** the per-user `GITHUB_TOKEN` is still injected into the sandbox (NFR-S1-compliant — it's the user's own OAuth token). A prompt-injected agent can exfiltrate it via allowed-host egress (GitHub is on the allow-list). Host-mediated git (agent-be executing git via Daytona process API, raw token stays out of sandbox) is the structural fix, deferred to post-MVP. Document this as a known, accepted risk in the architecture doc.
+
+## Deferred from: code review of 2-3-manually-refresh-the-project-map (2026-07-03)
+
+- Silent fallthrough masks sync errors in page.tsx [`apps/web/src/app/(dashboard)/(app)/project-map/page.tsx:231-243`] — pre-existing from Story 2.2. Sync error codes other than `NO_CREDENTIAL` (`RATE_LIMITED`, `NOT_FOUND`, `UNKNOWN`, `NO_REPO_CONNECTION`) fall through to empty state with no error feedback. User sees "Start your first conversation to create an artifact" when sync actually failed.
+- Credential health failure mis-detected when health check itself errors [`apps/web/src/app/(dashboard)/(app)/project-map/page.tsx:226-227`] — pre-existing from Story 2.2. `credentialResult.success && credentialResult.status === 'failed'` treats `success: false` (health check itself failed) as "healthy," suppressing the credential error banner and proceeding to a sync that may fail for the same reason.
+- No pagination — `take: 100` silently truncates [`apps/web/src/app/(dashboard)/(app)/project-map/page.tsx:220,237`] — pre-existing from Story 2.2, beyond Story 2.3 ACs. Users with >100 artifacts see only the newest 100 with no indication of truncation.
+- Unsafe type assertions on DB rows [`apps/web/src/app/(dashboard)/(app)/project-map/page.tsx:267-270`] — pre-existing from Story 2.2. `a.type as ArtifactType` and `a.status as ArtifactStatus` bypass type checking; invalid DB values would pass through with no runtime guard.
+
+## Deferred from: code review of 2-4-browse-and-read-all-committed-artifacts (2026-07-03)
+
+- Redirect paths (no session, no repoConnection) have zero test coverage [`apps/web/src/app/(dashboard)/(app)/artifacts/page.test.tsx`] — the page test suite always mocks `mockAuth` to return a session and `mockFindUnique` to return a repo connection. Two of three control-flow exits (`redirect('/sign-in')`, `redirect('/onboarding')`) are untested. Matches canonical `project-map/page.test.tsx` pattern; spec Task 5.1 does not list redirect tests (DP-5).
+- Empty-string `title` renders empty span and malformed `aria-label` [`apps/web/src/components/artifact-browser/ArtifactListEntry.tsx:164,170`] — schema field is non-nullable but allows empty string. An artifact with `title = ""` produces `aria-label="PRD:  — Completed"` (double space). Defensive guard is scope expansion (DP-5).
+- Unbounded `title` length — no truncation, wrap control, or `max-w` [`apps/web/src/components/artifact-browser/ArtifactListEntry.tsx:165`] — very long titles blow out row width or wrap many times, pushing the status badge out of alignment. Spec and mockup do not specify truncation (DP-5).
+- `syncArtifactsAction()` awaited inline in Server Component with no timeout [`apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx:57`] — pre-existing pattern from Story 2.2. The loading skeleton covers the initial `Promise.all` but the sync path extends TTFB by however long the GitHub sync takes (potentially 10s+). No timeout, no backgrounding.
+
+## Deferred from: code review of 2-5-view-a-single-artifacts-rendered-content (2026-07-03)
+
+- Sync triggered on every render of empty artifacts list [`apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx:71-83`] — pre-existing from Story 2.4. No throttle/cache; every page view with empty Postgres triggers `syncArtifactsAction()`. Story 2.5 Task 4.6 explicitly says keep unchanged.
+- Non-`NO_CREDENTIAL` sync errors silently swallowed [`apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx:80-82`] — pre-existing from Story 2.4. `RATE_LIMITED`/`NOT_FOUND`/`NO_REPO_CONNECTION`/`UNKNOWN` fall through with no banner; `credentialFailed` stays false, `renderArtifacts` stays empty. During 30s sync cooldown, ArtifactLoadError Refresh button is a no-op with no feedback.
+- `role="listitem"` overrides implicit `link` role of `<Link>`/`<a>` [`apps/web/src/components/artifact-browser/ArtifactListEntry.tsx:63-66`] — setting `role="listitem"` on `<a>` replaces its implicit `link` role. Already noted in story spec Deferred Findings; mockup uses `role="listitem"` on the entry element.
+- `stripFrontmatter` regex strips non-frontmatter content starting with `---` [`apps/web/src/components/artifact-browser/ArtifactViewer.tsx:8-10`] — regex `^---\r?\n[\s\S]*?\r?\n---\r?\n?` matches any leading `---\n...\n---\n` block, not just YAML frontmatter. Intentionally copied from `artifacts.ts:121`. Edge case rare for BMAD artifacts (which always have YAML frontmatter).
+- Selected artifact out of top-100 list renders viewer with no selected list entry [`apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx:57-64,85`] — list query has `take: 100` but `findFirst` has no limit. If selected artifact ranks 101st+, it exists in Postgres but not in the list; no entry gets `selected={true}`. `take: 100` is pre-existing pattern from Story 2.2 (DP-5).
+
+## Deferred from: code review of 3-1-provision-a-sandbox-when-opening-a-conversation (2026-07-04)
+
+- `ProvisionQueueService.acquire` queues waiters with no timeout — a hung `daytona.create` (no timeout on the create call, unlike `clone`'s 30s) permanently holds the per-user slot (`active=2`), blocking all subsequent provisions for that user until process restart. Fix involves unspecified design (timeout duration, behavior on expiry — destroy? emit error? release slot?). [`apps/agent-be/src/sandbox/provision-queue.service.ts:14`, `apps/agent-be/src/sandbox/sandbox.service.ts:26`]
+
+## Deferred from: code review of 3-2-invoke-bmad-skills-via-slash-command (2026-07-04)
+
+### Story 3.1 pre-existing code (not caused by Story 3.2 changes)
+
+- `provisionQueue.release` runs unconditionally in `finally` — if `acquire` throws, a slot is released that was never acquired, violating the concurrency cap. `ProvisionQueueService.acquire` has no throw path currently, so not reachable today. [`apps/agent-be/src/conversations/conversations.service.ts:143`]
+- `isNotFoundError` uses fragile substring matching (`.includes('not found') || .includes('404')`) — breaks if Daytona SDK changes error format; `destroy` re-throws on already-deleted sandboxes, breaking idempotent retry. [`apps/agent-be/src/sandbox/sandbox.service.ts`]
+- `EventSource.onerror` sets `error` state but never closes the source — `EventSource` auto-reconnects; state diverges from reality if reconnect succeeds. [`apps/web/src/components/conversation/ConversationPane.tsx:146`]
+- Boundary JWT exposed in SSE URL query string — `?token=${boundaryJwt}` logged by proxies/CDNs. SSE doesn't support custom headers via native `EventSource`; short-lived single-use ticket would be the proper fix. [`apps/web/src/components/conversation/ConversationPane.tsx:112`]
+- `createConversation` validates a `CreateConversationDto` body it then discards — the service is called with only `user.id`. Story 3.1 code. [`apps/agent-be/src/conversations/conversations.controller.ts`]
+- Idle-timeout callback mutates shared `Map` state without coordination — no lock or status-transition guard; a concurrent retry path could leave maps inconsistent. [`apps/agent-be/src/conversations/conversations.service.ts:112`]
+- `getStatus`/`listSkills` conflate authorization failure with provisioning failure — both return `'failed'`/`[]` for not-owned conversations. Spec-mandated for `listSkills` (don't leak existence); `getStatus` is Story 3.1 code. [`apps/agent-be/src/conversations/conversations.service.ts`]
+- Test title contradicts asserted behavior — `calls destroy() on the fake when provision fails` asserts `not.toHaveBeenCalled()`. Story 3.1 test. [`apps/agent-be/src/conversations/conversations.service.spec.ts`]
+- Queue-cap test doesn't actually verify queueing — asserts `provisionSpy.toHaveBeenCalledTimes(3)` which passes whether or not the third was blocked. Story 3.1 test. [`apps/agent-be/src/conversations/conversations.service.spec.ts`]
+- First message + idle timer race — user sends first message just as 60s idle timer fires; message persisted to destroyed sandbox. Complex coordination fix not in ACs. [`apps/agent-be/src/conversations/conversations.service.ts`]
+- Empty/whitespace `API_URL` env var → client fetches relative URLs; session breaks. Env validation not in ACs. [`apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/page.tsx`]
+- Stale-closure `useEffect` with empty deps captures initial props — `startSession` closes over initial `boundaryJwt`/`apiUrl`/`initialConversationId`; effect won't re-run if they change. Story 3.1 code. [`apps/web/src/components/conversation/ConversationPane.tsx:43`]
+
+### Story 3.2 scope but deferred per DP-5
+
+- `sendTurn` does not validate sandbox state before persisting — accepts turns for `failed`/`idle-timeout` conversations. Sandbox state validation for agent execution is Story 3.3 scope. [`apps/agent-be/src/conversations/conversations.service.ts:187`]
+- Semantic title 2-word minimum — AC-3 says "2–5 word" but implementation allows 1-word titles for 1-word messages. Heuristic is an explicit placeholder per story DP-3; LLM-generated title in Story 3.3 will enforce the range. [`apps/agent-be/src/conversations/semantic-title.ts`]
+
+## Deferred from: code review of 2-6-navigate-from-the-project-map-to-an-artifact (2026-07-04)
+
+- Test data over-specified vs. production `select` [`apps/web/src/app/(dashboard)/(app)/project-map/page.test.tsx:71-96`] — pre-existing from Story 2.2. `ARTIFACTS` fixture includes `content`, `createdAt`, `updatedAt`, `repoConnectionId` which the production `select` (id/type/title/status/lastModifiedAt/path) excludes. Tests render with fields production won't return, masking potential field-name mismatches between page and `ArtifactCard`. Minor test quality issue.
+- No negative-constraint tests for "do not" rules [`apps/web/src/components/project-map/ArtifactCard.test.tsx`] — tests don't assert absence of `tabindex="0"` or `'use client'` directive. Implementation is correct (neither present). Per DP-5, not required by story spec tasks. Test coverage gap, not a code defect.
+
+## Deferred from: code review of 3-3-converse-with-the-streaming-agent (2026-07-04)
+
+Chunk 1 of 4 — agent-be backend core. Failed layers: Edge Case Hunter (empty), Acceptance Auditor (empty).
+
+- provisionQueue.release in finally when acquire might throw [`apps/agent-be/src/conversations/conversations.service.ts`] — if `provisionQueue.acquire(userId)` rejects, the `finally` block still calls `release(userId)`, potentially corrupting the queue semaphore (going negative or deadlocking future acquires for that user). Pre-existing Story 3.1 code, not modified by Story 3.3.
+- getStatus returns 'failed' not 404 for missing conversation [`apps/agent-be/src/conversations/conversations.service.ts`] — when conversation doesn't exist (wrong ID or wrong user), `getStatus` returns HTTP 200 with `sandboxStatus: 'failed'` instead of `404 NotFoundException`. Inconsistent with `sendTurn`/`stopAgent` which throw `NotFoundException` for the same check. Pre-existing Story 3.1.
+
+## Deferred from: adversarial review of 2-3-unskip-refresh-e2e-tests (2026-07-04)
+
+- Test 4 is tautological — asserts same text visible before and after refresh click; doesn't verify data actually changed [`playwright/e2e/project-map/project-map-refresh.spec.ts:120-141`] — pre-existing test body issue. Fix requires mocking the second GET to return different rows or asserting on a success indicator.
+- Test 3 overclaims "calls syncArtifactsAction" — mock fires on any POST with `next-action` header, doesn't verify the specific action ID hash [`playwright/e2e/project-map/project-map-refresh.spec.ts:86-116`] — pre-existing. Any unrelated Server Action call would trip the mock.
+- Test 1 is a literal duplicate of `project-map.spec.ts:93-102` — same selector, fixture, assertion [`playwright/e2e/project-map/project-map-refresh.spec.ts:42-49`] — pre-existing. Adds zero isolated coverage.
+- No error path coverage — no tests for 500 response, network error, partial success, double-click during pending sync [`playwright/e2e/project-map/project-map-refresh.spec.ts`] — pre-existing gap. Only `SYNC_SUCCESS` fixture exists; no `SYNC_FAILURE`.
+- Hardcoded RSC wire format — `rscActionPayload` string is Next.js-specific with no version pin [`playwright/e2e/project-map/project-map-refresh.spec.ts:29`] — pre-existing. A Next.js upgrade could silently invalidate the mock.
+- Route over-matches — `'**/project-map'` matches `/anything/project-map` [`playwright/e2e/project-map/project-map-refresh.spec.ts:54,91,121,151`] — pre-existing. Low risk but could match unintended paths.
+- Serial mode unjustified — every test does its own `page.goto` and gets its own `withArtifacts` seed; no inter-test dependency [`playwright/e2e/project-map/project-map-refresh.spec.ts:40`] — pre-existing. Parallel mode would be more honest.
+- Duplicated `page.route` boilerplate across Tests 2-5 [`playwright/e2e/project-map/project-map-refresh.spec.ts:54-68,91-105,121-134,151-164`] — pre-existing. Extract `mockSyncRoute(page, { delayMs })` helper to reduce duplication and make error-path tests trivial to add.
+- `withArtifacts` fixture unused semantically in Test 3 — test only needs the button clickable and POST to fire [`playwright/e2e/project-map/project-map-refresh.spec.ts:88`] — pre-existing. Minor seed cost.
+
+## Deferred from: code review of 3-4-see-tool-calls-and-recognized-actions-inline (2026-07-04)
+
+- Parallel/interleaved tool calls lose index association [`apps/agent-be/src/streaming/agent.service.ts:processStreamEvent`] — `currentToolCallIds`/`currentBlockTypes` are keyed by `conversationId`, not block `index`. Parallel tool calls (multiple `content_block_start` before `content_block_stop`) get their args attributed to the wrong tool. Claude Code agent doesn't make parallel tool calls in practice; fix requires non-trivial refactor of state tracking to key by block index. DP-5: scope temptation.
+- Multi-artifact commits only promote the first artifact [`apps/agent-be/src/streaming/tool-pill-classifier.service.ts:classifyToolResult`] — `const fullPath = bmadPaths[0]` ignores remaining paths. A single `git commit` touching multiple BMAD artifacts (e.g. PRD + architecture) only produces one Semantic Pill. AC-2 only requires "multiple commits each produce a distinct Semantic Pill" — not multiple artifacts per commit. DP-5: scope temptation.
+- AC-2 promotion misses commits that MODIFY existing `_bmad-output/` artifacts [`apps/agent-be/src/streaming/tool-pill-classifier.service.ts:extractBmadArtifactPaths`] — plain `git commit` output (without `--stat`) only lists `create mode` for new files; modified files don't appear. The `diffMatch` regex fix (patched) handles `--stat` output, but the Claude Code agent typically runs `git commit -m "message"` without `--stat`. Running a follow-up `git show --name-only HEAD` would be beyond the spec's "extract from git commit output" approach. DP-5: scope temptation.
+- `onModuleDestroy` doesn't call `terminateProcess` [`apps/agent-be/src/streaming/agent.service.ts:onModuleDestroy`] — only aborts controllers; doesn't call `query.interrupt()` or `sandboxService.terminateProcess()` (unlike `handleCircuitBreaker` and `stop()`). Pre-existing from Story 3.3; Story 3.4 only added circuit breaker timer cleanup. Pending classifier promises are addressed by the fire-and-forget classifier patch.
+- `Date.now()` collisions for fallback IDs cause React key duplication on EventSource reconnect [`apps/agent-be/src/streaming/agent.service.ts`, `apps/web/src/components/conversation/ConversationPane.tsx`] — `ReplaySubject(100)` replays buffered events on reconnect; `TOOL_CALL_START` handler appends without dedup, creating duplicate messages. Pre-existing pattern from Story 3.3 (all event handlers, including `TEXT_MESSAGE_START`, append without dedup). Requires comprehensive fix across all handlers.
+
+## Deferred from: code review of 3-6-track-and-manually-save-working-tree-state (2026-07-04)
+
+- `TOOL_CALL_RESULT` error detection uses brittle string regex on content (`/^error:/im`, `/Command exited with code [1-9]/`, `/failed to push/i`) [`apps/web/src/components/conversation/ConversationPane.tsx:294-298`] — legitimate tool output containing "error:" or "failed to push" in stack traces will be falsely marked as errored. Pre-existing from Story 3.4 (tool pills); not introduced by Story 3.6.
+- `processAssistantMessage` casts `SDKMessage` to hand-rolled shape, silently drops non-text content blocks [`apps/agent-be/src/streaming/agent.service.ts`] — image blocks and non-text content discarded without indication. Pre-existing from Story 3.3/3.4; Story 3.6 only added working-tree emission after tool calls.
+- `AgentService.onModuleDestroy` doesn't await in-flight classifier/working-tree promises [`apps/agent-be/src/streaming/agent.service.ts`] — promises continue running after destroy, may emit to torn-down `SessionEventsService`. Pre-existing from Story 3.4; Story 3.6 didn't modify `onModuleDestroy`.
+- Dual source of truth for `conversationId` (ref + state) can drift [`apps/web/src/components/conversation/ConversationPane.tsx`] — `conversationIdRef` and `conversationId` state updated independently; `setConversationId` not called on resume path. Pre-existing pattern from Story 3.1/3.3; Story 3.6 reuses existing ref pattern.
+- `pendingCommits` keyed only by `conversationId` — multi-session collision risk [`apps/agent-be/src/conversations/manual-commit.service.ts:8`] — if same `conversationId` is used across sandboxes (resume in second tab), queued commit from one context blocks another. Spec explicitly uses `Set<string>` keyed by conversationId (Task 3.1). DP-5: scope temptation.
+- `content_block_stop` for `tool_use` arrives when `currentToolCallIds` has no entry — `TOOL_CALL_END` silently skipped, client tool pill stuck in running state [`apps/agent-be/src/streaming/agent.service.ts:344-355`] — pre-existing from Story 3.3/3.4; Story 3.6 didn't modify content block handling.
+- Fast-path resume re-injects git config while stale idle timer is still ticking down — sandbox may be destroyed mid-active-session [`apps/agent-be/src/conversations/conversations.service.ts:412-447`] — pre-existing from Story 3.5; Story 3.6 didn't modify resume/idle timer code. **Adjudicated 2026-07-06: spec tests now assert "fast-path resume does NOT reset existing mid-session timer" as intentional, but maintainer rejects the spec — this is a real race condition that must be fixed, not spec-blessed. Keep deferred until the race is actually closed; do not treat spec sanction as resolution.**
+
+## Deferred from: code review of 3-7-receive-real-time-credential-failure-alerts-mid-conversation (2026-07-05)
+
+### High/Medium (pre-existing from prior stories)
+
+- `markCredentialFailed` marks ALL of user's connections, not the specific failing one [`apps/agent-be/src/credentials/credentials.service.ts:53-57`] — `where: { userId }` matches every `repoConnection` for the user. Spec'd behavior matching `apps/web` pattern (DP-3). Scoping to specific connection requires threading connection ID through classifier — beyond Story 3.7 scope (DP-5).
+- Race condition emits events after `RUN_ERROR` when circuit breaker fires while message is pending [`apps/agent-be/src/streaming/agent.service.ts:112-122 vs 249-260`] — `handleCircuitBreaker` emits `RUN_ERROR` but loop may still process a resolved result, emitting `TEXT_MESSAGE_END`/`TOOL_CALL_END`/`TOOL_CALL_RESULT` after the error. Pre-existing from Story 3.4.
+- `TOOL_CALL_RESULT` emitted for untracked `tool_use_id`, skipping classification [`apps/agent-be/src/streaming/agent.service.ts:353-371`] — `TOOL_CALL_RESULT` emit happens before `toolCallInfo` lookup; if lookup misses (non-streamed tool_use), classifier is silently skipped, 401 in such a result is never detected. Pre-existing from Story 3.4/3.6.
+- `Promise.race` doesn't release/cancel iterator on abort; pending `iterator.next()` orphaned [`apps/agent-be/src/streaming/agent.service.ts:110-122`] — no `iterator.return?.()` call on abort path; in-flight promise holds resources until `query.interrupt()` is separately invoked. Pre-existing from Story 3.4.
+
+### Low (pre-existing from prior stories)
+
+- `abortPromise` listener never removed after normal completion [`apps/agent-be/src/streaming/agent.service.ts:87-93`] — `{ once: true }` limits damage but promise stays pending forever. Pre-existing from Story 3.4.
+- `resetCircuitBreakerTimer` re-arms new timer for already-aborted run [`apps/agent-be/src/streaming/agent.service.ts:229-239`] — missing `abortController.signal.aborted` guard. Pre-existing from Story 3.4.
+- `isSuccessfulCommit` first regex subsumed by second (dead logic); second regex too permissive [`apps/agent-be/src/streaming/tool-pill-classifier.service.ts:53-58`] — `^\[main\s+\w+\]` is strict subset of `^\[\S+\s+\w+\]`; second matches any `[non-space word]` line. Pre-existing from Story 3.4.
+- `extractBmadArtifactPaths` truncates paths containing whitespace [`apps/agent-be/src/streaming/tool-pill-classifier.service.ts:69,78`] — regex uses `\S+`/`[^\s]+`, paths with spaces are cut. Pre-existing from Story 3.4.
+- `isFailedCommit`/`isSuccessfulCommit` match patterns inside commit messages, not just infrastructure output [`apps/agent-be/src/streaming/tool-pill-classifier.service.ts:46-58`] — commit body containing `error:` or `files? changed` misclassified. Pre-existing from Story 3.4.
+- `deriveTitleFromPath` produces degenerate titles for unusual paths [`apps/agent-be/src/streaming/tool-pill-classifier.service.ts:39-44`] — empty filename or `.md` only returns `'Untitled'`. Pre-existing from Story 3.4.
+- `viewHref` not URL-encoded [`apps/agent-be/src/streaming/tool-pill-classifier.service.ts:191`] — template literal interpolates raw artifact ID. Low severity (IDs are UUIDs in practice). Pre-existing from Story 3.4.
+- `pendingClassifierPromises` race: working-tree promise push misses when array concurrently deleted [`apps/agent-be/src/streaming/agent.service.ts:452-455`] — working-tree promise created but not added to `pendingClassifierPromises` if `stop()` cleaned up between push points. Pre-existing from Story 3.6.
+
+## Deferred from: code review of UX spec drift fixes (2026-07-05)
+
+- `Date.now()`-based message IDs (`msg-${Date.now()}`, `tc-${Date.now()}`, `error-${Date.now()}`, `stream-error-${Date.now()}`, `user-${Date.now()}`, `manual-save-${Date.now()}`) can collide when two SSE events land in the same millisecond, causing duplicate React keys and potential message overwrites. Pre-existing — not caused by this change. [`apps/web/src/components/conversation/ConversationPane.tsx`]
+- `ChatMessage.createdAt` typed as `Date` but may arrive as ISO string from JSON serialization across the server→client boundary, producing "Invalid Date" in `Intl.DateTimeFormat.format()`. Pre-existing — not caused by this change. [`apps/web/src/components/conversation/AgentMessage.tsx`, `UserMessage.tsx`]
+- Multiple system messages in a single render produce multiple `role="status"` live regions, causing repeated screen-reader announcements. Pre-existing — not caused by this change. [`apps/web/src/components/conversation/ChatMessageList.tsx`]
+- Retry button uses `text-bg` (near-black) for text color on `bg-accent` background; DESIGN.md specifies `accent-fg` (white). Pre-existing — not in scope for this fix (spec targeted Send button only). [`apps/web/src/components/conversation/ConversationPane.tsx:853`]
+
+## Deferred from: code review of 3-8-track-per-user-llm-spend (2026-07-06)
+
+- `ON DELETE CASCADE` on `conversation_id` FK destroys cost/audit history when a conversation is deleted — deleting a conversation cascades to delete all its `CostRecord`s, making spend vanish from the budget aggregate. Follows established pattern (Turn model uses same cascade); no conversation deletion feature in MVP. Revisit when conversation deletion is added. [`libs/database-schemas/src/prisma/schema.prisma`]
+- Cost recording placed after `pendingPromises` await — `lastCostData` is in-memory only; if process crashes during the brief `Promise.allSettled` window, cost data is permanently lost. Spec explicitly chose this placement (DP-3); window is narrow (pendingPromises typically already settled by loop end). [`apps/agent-be/src/streaming/agent.service.ts:133-136`]
+- No idempotency key on cost records — no unique constraint on `sessionId`; duplicate `result` messages or retry would double-count spend. SDK contract guarantees one result message per turn; beyond story scope (DP-5). [`libs/database-schemas/src/prisma/schema.prisma`]
+- No timeout on `recordCost` await — slow/hung Postgres blocks the turn indefinitely (circuit breaker already cleared, abort signal doesn't interrupt the DB call). Spec explicitly chose to await for data safety (cost data is one-shot, must not be lost). [`apps/agent-be/src/streaming/agent.service.ts:138-153`]
+- DB-outage on cost writes produces no signal beyond scattered `logger.error` lines — no failure counter, health check, or outbox. Beyond story ACs; no health-check infrastructure in scope (DP-5). [`apps/agent-be/src/cost-tracking/cost-tracking.service.ts:36-40`]
+- TOCTOU race on budget aggregate across concurrent turns for same user — `create` (commit) then `aggregate` (separate autocommit) with no `SELECT FOR UPDATE` or transaction. Cost records always correct (atomic inserts); alert firing is non-deterministic but acceptable for a warn-log alert. [`apps/agent-be/src/cost-tracking/cost-tracking.service.ts:24-35`]
+
+## Deferred from: code review of 3-10-verify-commits-carry-the-users-own-identity (2026-07-06)
+
+- No rollback on partial `injectGitConfig` failure — if `user.email` config fails after `user.name` succeeds, the sandbox is left with name set but no email. The sandbox is destroyed on provision failure, so the partial state is cleaned up, but a rollback (`git config --unset user.name`) would be more defensive. Pre-existing pattern (same as `commit()` which also doesn't rollback `git add` on `git commit` failure). [`apps/agent-be/src/sandbox/sandbox.service.ts:88-108`]
+- Fake's `commit()` skips sandbox-existence check — `SandboxServiceFake.commit()` doesn't verify `this.sandboxes.has(sandboxId)`, while `injectGitConfig` and `destroy` do. The spec's Task 4.4 test relies on this permissive behavior to test "commit with no injected config has `author: undefined`". Test design per spec; the NFR-S1 test covers the production regression. [`apps/agent-be/test/helpers/sandbox-service.fake.ts:104-111`]
+- Tautological regression guard test — "a commit with no prior `injectGitConfig` records `author: undefined`" calls `sandboxFake.commit('sb-x', 'msg')` directly, testing the fake's Map-lookup logic, not production behavior. Same root cause as the sandbox-existence check skip. The NFR-S1 test (Task 6.1, no `--author`) covers the actual production regression. [`apps/agent-be/src/conversations/conversations.service.spec.ts:991-996`]
+- Null `githubLogin` fallback — `resolveGitIdentity` uses `githubLogin` as fallback for both name and email local-part. If `githubLogin` is null, the fallback email is `null@users.noreply.github.com`. GitHub guarantees `login` is non-empty from OAuth; not reachable through normal flows. Already deferred in deferred-work.md:69. [`apps/agent-be/src/conversations/conversations.service.ts:381-399`]
+
+## Deferred from: code review of 3-11-run-concurrent-conversations (2026-07-06)
+
+- `cancelledConversations` Set leak when `abandonConversation` runs without a concurrent `provisionSandbox` — `abandonConversation` adds to the Set but the only `.delete()` site is `provisionSandbox`'s `finally`, which never runs for an already-provisioned conversation. Entry is stale but never read again (no future `provisionSandbox` for a deleted conversation). Spec DP-5 explicitly accepts this; periodic cleanup/TTL is over-engineering for MVP scale. [`apps/agent-be/src/conversations/conversations.service.ts:193`]
+- `createConversation` TOCTOU race in count check — two concurrent `createConversation` calls could both pass the count check (both see 9 active) and both create, resulting in 11. Not worth a DB-level lock or `SELECT FOR UPDATE` for MVP scale (single user, provision queue limits burst to 2). Race window is narrow (between `countActiveConversations` and `conversation.create`). Spec DP-5. [`apps/agent-be/src/conversations/conversations.service.ts:42`]
+- `handleMidSessionIdleTimeout` zombie sandbox on destroy failure — `sandboxIds.delete` runs before `destroy` is attempted, so on destroy failure the in-memory record of the live sandbox is gone with no retry path; the Daytona-side container keeps running. Story 3.9 code (appears in this diff only because 3.9 is uncommitted), not introduced by 3.11. [`apps/agent-be/src/conversations/conversations.service.ts:343`]
+- `abandonConversation` doesn't coordinate with in-flight `handleMidSessionIdleTimeout` — if abandon runs during the mid-session timeout handler's awaits, the handler resumes and unconditionally sets `sandboxStatuses[id] = 'idle-timeout'` and emits `SESSION_TIMEOUT` on a conversation whose row was just deleted, leaving an inert stale entry. Fix requires adding a `cancelledConversations` checkpoint in `handleMidSessionIdleTimeout` (3.9 code); beyond 3.11 scope. Impact is an inert stale entry (row deleted, not counted). DP-5. [`apps/agent-be/src/conversations/conversations.service.ts:181`]
+
+## Deferred from: code review of 3-12-drain-conversations-gracefully-on-deploy (2026-07-06)
+
+- Persist-before-destroy orphans sandboxes if destroy fails — Postgres updated to `sandboxId: null` before `sandboxService.destroy()` call; if destroy fails, sandbox is orphaned in Daytona with no Postgres record to clean up on restart. Pre-existing (in-memory Map had same gap — `sandboxIds.delete()` was called before `destroy()` before this story). Spec says "clear sandboxId in the same write"; fixing requires a cleanup mechanism (retaining sandboxId on destroy failure for a reaper job) beyond story scope. DP-5. [`apps/agent-be/src/conversations/conversations.service.ts:143-149, 342-346`]
+
+## Deferred from: code review of agent-be-cors-support (2026-07-06)
+
+- Case-insensitive origin matching not implemented — browsers always send lowercase scheme/host in the Origin header, but `resolveCorsOptions()` does not normalize case. A mixed-case config like `CORS_ALLOWED_ORIGINS=HTTPS://APP.EXAMPLE.COM` would silently fail to match. Lower-impact than trailing-slash (most operators use lowercase). Fix: lowercase the origin string after normalization (origins are `scheme://host[:port]`, all case-insensitive or numeric). [`apps/agent-be/src/config/cors-options.ts`]
+- Literal `"undefined"`/`"null"` strings treated as real origins — if `CORS_ALLOWED_ORIGINS` is set to the literal text `undefined` or `null` (e.g. from `export CORS_ALLOWED_ORIGINS=$UNSET_VAR` in some shells), the string is truthy and passes through as a non-matching origin entry, silently blocking all traffic. Extremely unlikely in practice. Fix: validate origins with `new URL()` and reject non-URL entries. [`apps/agent-be/src/config/cors-options.ts`]
+
+## Deferred from: architecture-completeness check (2026-07-06)
+
+Findings surfaced by a retrospective check (triggered by the CORS gap) that scans the architecture doc's stated decisions for implied requirements it does not explicitly address.
+
+- Boundary JWT signing key management undocumented — the architecture doc (line 253) specifies a "separate, purpose-built boundary JWT, decoupled from Auth.js's internal JWE" and details KEK rotation runbook for OAuth token encryption (line 255), but says nothing about the JWT signing key. Code confirms `AUTH_SECRET` (shared with Auth.js) is used directly as the HMAC signing key in all three sites: minting, REST guard, and SSE guard. No rotation procedure, no compromise response, no documentation that `AUTH_SECRET` is the signing key. Same class as the CORS gap: a security-relevant requirement implied by a stated architecture decision, not documented. [`apps/web/src/lib/boundary-jwt.ts:4`, `apps/agent-be/src/common/guards/boundary-jwt.guard.ts:53`, `apps/agent-be/src/streaming/streaming.controller.ts:37`]
+- Boundary JWT TTL not documented in architecture — architecture says "Long-lived, re-minted per page load" (line 253) without specifying a duration. Code sets `.setExpirationTime('8h')` and `jwtVerify` enforces the `exp` claim, so the TTL is implemented and enforced — the gap is documentation only, not a security gap. Low severity. [`apps/web/src/lib/boundary-jwt.ts:13`]
+
+## Deferred from: pre-launch readiness (2026-07-06)
+
+- Validate Daytona usage-policy compliance before public launch — the platform provisions Daytona sandboxes per user per conversation (`apps/agent-be/src/sandbox/sandbox.service.ts`), and a public launch exposes that provisioning path to untrusted users. Current safeguards were built for single-user MVP scale and have known gaps already tracked here: per-user provision slot leaks on hung `daytona.create` (no create-timeout, unlike `clone`'s 30s — §3-1), zombie sandboxes on destroy failure with no reaper (§3-9/3.11/3.12), orphaned Daytona containers when Postgres is updated before `destroy` succeeds (§3-12), and unbounded parallel GitHub API fan-out with no concurrency limiter (§1-4). Before opening to the public, audit the full sandbox lifecycle against Daytona's acceptable-use / quota policy — provisioning rate, concurrent sandbox caps, idle/destroy guarantees, cleanup-on-failure, and abuse-rate controls — and confirm the existing per-user concurrency cap (`active=2`) and idle timeouts are sufficient to stay within policy. Outcome should be either a documented compliance posture or a list of hardening work to block public launch.
+
+## Deferred from: real-service test tier setup (2026-07-08)
+
+Four Playwright specs created (uncommitted) for the new real-service / multi-conn / performance-spike CI tiers. Specs compile cleanly but have prerequisites before they can run in CI.
+
+### Action items (priority order)
+
+1. **Implement agent-be SSE flood test endpoint** (unblocks `sse-back-pressure.spec.ts`) — `apps/agent-be` has zero `internal/test/*` routes. The spec assumes `POST /api/internal/test/sse-flood` with body `{ conversationId, count, token }` that calls `sessionEvents.emit()` N times. Implement as a `SseFloodTestController` guarded by `assertTestEnvNotInProduction()`, wired into `app.module.ts` imports.
+
+2. **Seed real OAuth credential for the E2E test user** (unblocks `happy-path.spec.ts` and `repo-size.spec.ts`) — the synthetic JWT session from `auth.setup.ts` has no stored OAuth token, so `/conversations/new` redirects to `/onboarding` and Daytona can't clone. Either run the real OAuth flow once to seed the `OAuthCredential` row (encrypted), or add a DB-side encrypted-credential seed endpoint. Also requires `TEST_GITHUB_USERNAME` / `TEST_GITHUB_PASSWORD` / `TEST_GITHUB_OTP_SECRET` secrets in CI for `auth.setup.ts` to run the real OAuth flow.
+
+   **Status: code complete, operational setup pending.** `auth.setup.ts` `realOAuthFlow()` now seeds both the OAuth credential (via the Auth.js jwt callback) and a RepoConnection (via `POST /api/internal/test/repo-connections` using `TEST_GITHUB_REPO_URL`). The nightly-real-service CI job now passes `TEST_ENV: ci` + `TEST_GITHUB_*` secrets. Remaining: create the GitHub test account, enable 2FA, set the four CI secrets, and grant the test account clone access to the `gv8-control/bmad-easy-test-sandbox` repo.
+
+3. **Create 5 sized test repos** (unblocks `repo-size.spec.ts`) — reference GitHub repos at 50/100/150/200/250MB don't exist yet. The ~4h QA task flagged in `test-design-qa.md` P1-012. Set their URLs as `SPIKE_REPO_{50,100,150,200,250}MB_URL` env vars in the weekly CI job. The spec skips any size with an unset URL, so partial coverage is fine.
+
+4. **Add `performance-spike` project to `playwright.config.ts`** (unblocks `repo-size.spec.ts` CI wiring) — mirror the `real-service` project: `grep: /@performance-spike/`, `storageState: '.auth/local/default/...'`, `dependencies: ['setup']`, `retries: 3`, gated on `PLAYWRIGHT_REAL_SERVICE==='1'`. Alternatively, document that the weekly job invokes `PLAYWRIGHT_REAL_SERVICE=1 yarn playwright test --grep @performance-spike`.
+
+5. **Validate via `workflow_dispatch`** — once secrets + credentials are in place, manually trigger `nightly-real-service` and `nightly-multi-conn` tiers from the GitHub Actions UI to validate the specs run end-to-end.
+
+6. **Add full-journey E2E specs** (onboarding → conversation → agent run) — the current `happy-path.spec.ts` is a focused smoke test: `auth.setup.ts` seeds the RepoConnection via the test API, so the spec skips onboarding entirely and lands directly on `/conversations/new`. This is the right design for a smoke test (isolates the agent stack, unambiguous failure attribution, minimal API spend). But it leaves the full user journey untested: sign-in → land on `/onboarding` → enter repo URL → `RepoConnection` created via the real UI flow → navigate to `/conversations/new` → provision → message → first token → run finishes. Two specs to add:
+
+   - **`playwright/e2e/real-service/full-journey.spec.ts`** (`@real-service @P1`) — real-service tier, exercises the real onboarding → conversation flow end-to-end against real Daytona + Claude. Uses `realOAuthFlow()` for auth but does NOT seed a RepoConnection in `auth.setup.ts` — instead, the spec drives the onboarding UI to create one. Validates the full integration (onboarding server action → RepoConnection persist → layout guard → provision → clone → agent run) that the smoke test bypasses. Should run after `happy-path.spec.ts` passes to avoid burning API credits on a broken onboarding flow.
+   - **`playwright/e2e/onboarding/onboarding-journey.spec.ts`** (`@P1`, PR tier) — fake-backed, tests the onboarding UI flow (enter repo URL → submit → redirect to conversation) with mocked agent-be responses. No real services needed. Covers the onboarding → conversation transition that the existing `onboarding.spec.ts` tests partially but not as a full journey. This is the PR-tier complement to the real-service full-journey spec.
+
+   The real-service full-journey spec needs a way to run `realOAuthFlow()` WITHOUT seeding a RepoConnection — currently `realOAuthFlow()` always seeds one if `TEST_GITHUB_REPO_URL` is set. Options: (a) add a `SKIP_REPO_CONNECTION_SEED` env var, (b) split into two setup projects, or (c) have the spec delete the seeded RepoConnection before navigating to `/onboarding`. Option (c) is simplest and reuses existing test API (`DELETE /api/internal/test/repo-connections/:id`).
+
+### Spec inventory (all uncommitted)
+
+| Spec | Path | Tags | Unblocked by |
+|------|------|------|--------------|
+| Happy-path agent run + NFR-P1/P2 timing | `playwright/e2e/real-service/happy-path.spec.ts` | `@real-service @P0` | Action #2 (code complete, operational setup pending) |
+| 10 concurrent SSE without starvation | `playwright/e2e/multi-conn/concurrent-sse.spec.ts` | `@multi-conn @P0` | CI secrets (already configured) — runs today |
+| Repo-size boundary spike | `playwright/e2e/performance-spike/repo-size.spec.ts` | `@performance-spike @P1` | Actions #2, #3, #4 |
+| SSE back-pressure slow-consumer | `playwright/e2e/multi-conn/sse-back-pressure.spec.ts` | `@multi-conn @P1` | Action #1 |
+| Real-service full journey (onboarding → conversation → agent) | `playwright/e2e/real-service/full-journey.spec.ts` (not yet created) | `@real-service @P1` | Action #2 + #5 (validate smoke first) |
+| Onboarding journey (fake-backed, PR tier) | `playwright/e2e/onboarding/onboarding-journey.spec.ts` (not yet created) | `@P1` | None — fake-backed, no real services needed |
+
+### Pre-existing issues flagged by subagents (separate cleanup)
+
+- **TS2305 in sibling specs** — every spec under `playwright/e2e/conversation/*` imports `type Page` from `merged-fixtures` which doesn't re-export it. All four new specs import `Page` from `@playwright/test` directly. Worth a cleanup pass to fix the sibling specs.
+- **Stale page object** — `support/page-objects/conversation-page.ts` references `data-testid` attributes (`session-status`, `chat-input`, `send-button`, `working-tree-indicator`) that don't exist on the production components (only in `*.test.tsx` files). Either add the test IDs to the components or delete the stale page object.
+- **Pre-existing TS error** in `apps/web/src/components/conversation/AgentMessage.tsx:18` (`Object is of type 'unknown'`).
+
+## Deferred from: QA enhancement exploration (2026-07-08)
+
+- **Install Gyre (convoke-agents) for production readiness gap analysis** — Gyre is a BMAD-compatible module (`amalik/convoke-agents`) with a 4-agent team (Scout → Atlas → Lens → Coach) that scans the filesystem to classify the tech stack, builds a capabilities manifest using industry standards (DORA, OpenTelemetry, Google PRR), and surfaces capability absences with severity-prioritized findings. Not a bug-finder — finds what's missing for consistent production readiness (observability, deployment strategy, reliability, SLOs). Complements NFR Evidence Audit: NFR asks "do you have evidence?", Gyre asks "do you have the capabilities at all?". Not in the official BMad marketplace; separate install via `npm install convoke-agents && npx convoke-install-gyre`. Writes to `.gyre/`. Defer to post-MVP when production readiness becomes the focus.
+
+## Deferred from: code review of apply-aesthetics-findings (2026-07-08)
+
+- **ArtifactCard hover uses `text-3` token as border color** — `hover:border-text-3` on `apps/web/src/components/project-map/ArtifactCard.tsx:53` uses a text color token (`text-3`, #56556A) as a border color for the hover effect. This is a semantic token misuse (text token used as border), but reverting to `hover:border-border` creates a no-op (identical to resting state `border`). No lighter border token exists in the palette (`border-subtle` #232330 is darker than `border` #2B2B38, producing a backwards hover effect). Design gap: add a hover border token or redesign the hover affordance (e.g., background change).
+
+## Deferred from: code review of fix-agent-run-error-swallowing (2026-07-11)
+
+- **Cost data not recorded on iterator error path** — When the SDK yields a `result` message (setting `lastCostData`) and then a subsequent `iterator.next()` rejects with a non-abort error, the `throw err` skips the cost-recording block at `agent.service.ts:155-170`. The original `catch { break; }` fell through to cost recording. Narrow edge case (result message followed by iterator error before `done`), and the primary goal of the fix (surfacing errors via RUN_ERROR) is achieved. Pre-existing concern slightly changed in nature. [`apps/agent-be/src/streaming/agent.service.ts:115-122`]
+
+## Deferred from: code review of fix-claude-binary-cwd-fallback (2026-07-11)
+
+- **No test coverage for the `cwd` option** — `query()` is fully mocked via `jest.doMock` in all test suites; the mock factory never inspects the `options` argument. No regression test asserts that `cwd` receives `tmpdir()` when `AGENT_WORKDIR` is unset, or the env value when set. A future change could revert to a non-existent path with no test failure. [`apps/agent-be/test/helpers/mock-query.ts:18-28`]
+- **`AGENT_WORKDIR` and `ANTHROPIC_API_KEY` not in env validation** — `env.validation.ts` Zod schema validates only `DATABASE_URL`, `DAYTONA_API_URL`, `DAYTONA_API_KEY`, `AUTH_SECRET`. A missing `ANTHROPIC_API_KEY` silently becomes `''` at the call site, failing at first agent run rather than at boot. `AGENT_WORKDIR` silently falls back to `tmpdir()` with no log. [`apps/agent-be/src/config/env.validation.ts`]
+- **`env` option passes only `ANTHROPIC_API_KEY`** — `agent.service.ts:95-97` passes `env: { ANTHROPIC_API_KEY: ... }`, which replaces the entire process environment. The spawned Claude Code process has no `HOME`, `PATH`, `USER`, etc. Doesn't prevent launch but may cause runtime issues inside the binary (config file resolution, session persistence). Consider `{ ...process.env, ANTHROPIC_API_KEY: ... }`. [`apps/agent-be/src/streaming/agent.service.ts:95-97`]
+- **Architecture reconciliation: agent runs in host process, not sandbox** — DP-2 (story 3.3) documents that the agent runs in the host Node.js process via SDK `query()`, not inside the Daytona sandbox per `architecture.md`. The `cwd` fallback (`tmpdir()`) is a neutral directory with no user repository. For real-service deployment, `AGENT_WORKDIR` must be set to a local checkout of the user's repository, or the architecture must be reconciled to run the agent inside the sandbox. [`_bmad-output/implementation-artifacts/3-3-converse-with-the-streaming-agent.md:625`]
+
+## Deferred from: code review of split-real-service-happy-path-specs (2026-07-11)
+
+- **NFR-P1 timing includes fill time and echo wait** — `tokenStart` is captured before `sendMessage()` which includes `input.fill()` and the user-echo `toBeVisible()` assertion. The fill time is negligible (~1ms), but the echo wait adds ~100ms of polling overhead. Conservative (more likely to fail than false green). Fix would require splitting `sendMessage` to capture `tokenStart` just before the click. [`playwright/e2e/real-service/nfr-performance.spec.ts:117-122`]
+- **`waitForFunction` could match pre-existing DOM content** — No baseline snapshot of `<p>` elements before sending the message. In a fresh `/conversations/new` navigation, the only pre-existing `<p>` is the intro prompt (skipped via text match). Low risk, but no guard against future page chrome adding `<p>` elements inside `[aria-live="polite"]`. [`playwright/e2e/real-service/nfr-performance.spec.ts:131-147`, `playwright/e2e/real-service/functional-smoke.spec.ts:107-123`]
+- **Non-paragraph agent responses would time out** — `querySelectorAll('p')` misses responses rendered as code blocks (`<pre><code>`), headings (`<h1>`), or lists (`<ul><li>`). The prompt "Reply with the single word: hello" makes non-paragraph responses unlikely but not impossible (LLM non-determinism). Fix: fall back to `stream.textContent` matching. [`playwright/e2e/real-service/functional-smoke.spec.ts:111`, `playwright/e2e/real-service/nfr-performance.spec.ts:135`]
+- **"browse available skills" skip relies on unstable UI copy** — The intro prompt is excluded by matching the substring `'browse available skills'`. If the copy is reworded, the skip breaks and the intro prompt's `<p>` would satisfy the first-token check. The intro prompt is removed when `messages.length > 0` (after user echo), but there's a race window between echo and React removing the prompt. [`playwright/e2e/real-service/functional-smoke.spec.ts:116`, `playwright/e2e/real-service/nfr-performance.spec.ts:140`]
+- **Run error before first token causes 60s hang** — If `RUN_ERROR` or `STREAM_ERROR` fires before any `TEXT_MESSAGE_CONTENT`, the `waitForFunction` polls for 60s before timing out. The error is correctly excluded by `closest('[role="status"]')`, but there's no fast-fail path. The post-hoc "hello" validation would catch it, but only after the 60s timeout. [`playwright/e2e/real-service/nfr-performance.spec.ts:131-147`]
+  - **`waitForSessionReady` hangs if backend omits WORKING_TREE_* before SESSION_READY** — Readiness is detected by the WorkingTreeIndicator text appearing. If the backend emits `SESSION_READY` without first emitting a `WORKING_TREE_*` event, `workingTreeState` stays `'hidden'` and the indicator never renders. The test hangs for 60s before failing. A secondary readiness signal (e.g., message input enabled) would be more robust. [`playwright/e2e/real-service/functional-smoke.spec.ts:49-53`, `playwright/e2e/real-service/nfr-performance.spec.ts:64-68`]
