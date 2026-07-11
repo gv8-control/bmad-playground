@@ -979,6 +979,10 @@ So that navigation feels consistent and polished on every page.
 **When** it renders
 **Then** a visible "Settings" text label appears next to the avatar circle — not avatar-only (investigation: `SideNavigation.tsx:88-99` vs `key-project-map.html:300-303`)
 
+**Given** the Project Map and Artifact Browser links in the side navigation
+**When** the conversation list has fewer than 5 entries
+**Then** the separator and nav links remain grouped with the conversation list (top-clustered), not pushed toward the bottom of the nav by a flex-grown conversation container — matching the mockup's layout where the separator and nav links sit inside the same flex container as conversations (investigation: `SideNavigation.tsx:41-60` vs `key-project-map.html:96-100,287-298`)
+
 **Given** the active nav item
 **When** it renders
 **Then** it uses the inset pill styling from DESIGN.md, not a full-width bar (investigation: Shell Finding, active-state styling)
@@ -998,19 +1002,15 @@ So that navigation feels consistent and polished on every page.
 
 **Dev Notes:**
 
-- Two shell findings may be intentional redesigns rather than drift, per the investigation's Missing Evidence: (a) nav links relocated from a top-grouped cluster to bottom-pinned (`SideNavigation.tsx:41-60,87` vs `key-project-map.html:96-100,287-298`), and (b) the "Settings" label removed leaving the avatar only. Confirm with design/PM whether the shell layout was deliberately changed from the mockup before "fixing" the Settings-label or nav-link-placement items.
+- The two shell findings flagged by the investigation's Missing Evidence have been resolved: both are confirmed drift, not intentional redesigns. (a) Nav links relocated from a top-grouped cluster to bottom-pinned — DESIGN.md (§Side Navigation, items 5–6) and EXPERIENCE.md (§Side Navigation, items 5–7) both specify Project Map and Artifact Browser links in the main navigation flow after the separator, not bottom-pinned; the mockup (`key-project-map.html:287-298`) groups them inside `.nav-conversations` (flex:1) with the conversation list. The implementation's separate `flex-1` conversation container (present since the first commit, `659258e`, 2026-07-01) was never a deliberate relocation — no commit, proposal, or decision logs a layout change. (b) "Settings" label removed — DESIGN.md (§Side Navigation, item 6) states "Settings label appears as tooltip or beside it"; the mockup (`key-project-map.html:302`) renders a visible `<span class="nav-bottom-label">Settings</span>`. The label was never present in the code (absent since first commit) — an oversight, not a removal. Per the Epic 5 principle (line 931: "The mockups are authoritative; the code aligns to them"), all ACs in this story should be implemented as written.
 
 ### Story 5.3: Fix Conversation Stream Structural Drift
 
 As a user in a conversation,
 I want the chat interface to match the design,
-So that messages, tool calls, and input feel integrated and readable.
+So that messages, input, and session states feel integrated and readable.
 
 **Acceptance Criteria:**
-
-**Given** an agent tool call and the resulting Tool Pill or Semantic Pill
-**When** it renders in the message stream
-**Then** the pill renders inline within the agent's markdown stream at the exact position the tool call occurred — not as a standalone row above or below the message (investigation: `apps/web/src/components/conversation/ChatMessageList.tsx:84-103` vs `key-conversation.html:448-451`)
 
 **Given** an active conversation
 **When** the messages and chat input render
@@ -1034,7 +1034,7 @@ So that messages, tool calls, and input feel integrated and readable.
 
 **Dev Notes:**
 
-- The inline tool/semantic pills change (the first AC) is architecturally significant. It requires changing how `TOOL_CALL` and recognition events are stored and rendered — they must interleave within the agent's markdown stream at the position they occurred, rather than being emitted as separate standalone rows keyed off the message boundary. Cross-check against Story 3.4 and UX-DR5 ("inline chip at the exact stream position of the tool call") to confirm the data-model change is consistent with the existing spec before refactoring.
+- The inline tool/semantic pills AC was originally part of this story but has been split into Story 5.5 ("Interleave Tool and Semantic Pills Within the Agent Markdown Stream") because it requires a data model refactor, not just a visual fix. Implement Story 5.5 before or independently of this story — the remaining ACs here (column centering, empty-state, spinner placement, button styling, micro-drift) are genuine visual drift fixes with no architectural impact.
 
 ### Story 5.4: Fix Token-Usage Drift and Token-Config Gaps
 
@@ -1088,3 +1088,77 @@ So that drift doesn't recur and the design system is enforced.
 
 - Replacing `theme.extend` with full `theme` overrides (the final AC) is structural and may surface latent non-design-system usage in existing code. Stage it carefully: grep the codebase for default-palette utilities first, migrate any real uses to design-system tokens, then switch to full overrides so the change is a guardrail, not a regression.
 - The ACs above treat token-correctness as the success bar; a pixel-level screenshot diff is called out as Missing Evidence in the investigation and is out of scope for this story.
+
+### Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream
+
+As a user watching the Agent work,
+I want tool calls and recognized actions to appear inline within the agent's response at the exact position they occurred,
+So that I can follow the Agent's reasoning and actions as a single continuous narrative, not as disconnected events above or below the message.
+
+> ⚠️ **ARCHITECTURAL SCOPE WARNING:** This story is NOT a visual/CSS fix. It requires changing the `ChatMessage` data model, SSE event handlers, the agent message rendering pipeline, and the `Turn` persistence format. It was split out of Story 5.3 because its scope is architectural, not visual drift. Cross-reference: Story 3.4 (tool pill ACs), UX-DR5 ("inline chip at the exact stream position of the tool call"), FR-12, DESIGN.md Tool Pill spec, EXPERIENCE.md Tool Pills and Semantic Pills pattern.
+
+**Prerequisites:**
+
+- **Spec cross-references (all already require inline positioning):**
+  - FR-12 (epics.md): "Every agent tool call produces an inline Tool Pill at the point of occurrence"
+  - UX-DR5 (epics.md): "inline chip at the exact stream position of the tool call"
+  - Story 3.4 AC1 (epics.md): "an inline 'Running… [tool name]' label appears in the chat stream at that exact position" + "replaced in place — at the same stream position, with no layout shift"
+  - EXPERIENCE.md (line 141): "Tool Pills appear inline in the message stream at the position where the agent tool call occurred"
+  - DESIGN.md (line 381): "inline chip in the agent message stream at the exact position the tool call occurred"
+- **Investigation reference:** `_bmad-output/implementation-artifacts/investigations/ux-visual-drift-investigation.md` — Conversation Finding: inline pills rendered as standalone rows
+- **Current implementation analysis:**
+  - `ChatMessage` type (`apps/web/src/components/conversation/types.ts`): has `toolCall?: ToolCallData` — tool calls are separate flat entries with empty `content`, not interleaved within an agent message's text
+  - `ConversationPane.tsx` (lines 314-329): `TOOL_CALL_START` handler pushes a new entry to the `messages` array instead of inserting into the streaming agent message at the current stream position
+  - `ChatMessageList.tsx` (lines 84-103): renders tool calls as standalone `<div>` blocks between messages, not inline within markdown
+  - `agent.service.ts` (lines 178-188): persists only `accumulatedText` (flat string) to `Turn.content` — tool call positions are not persisted, meaning resumed conversations lose tool pills entirely
+
+**Acceptance Criteria:**
+
+**Given** an agent is streaming a response and makes a tool call mid-stream
+**When** the `TOOL_CALL_START` event arrives
+**Then** a "Running… [tool name]" indicator renders inline within the agent's markdown stream at the exact position the tool call occurred — not as a standalone row above or below the message
+
+**Given** a tool call completes during an agent's streaming response
+**When** the `TOOL_CALL_RESULT` event arrives
+**Then** the "Running…" indicator is replaced in place — at the same stream position, with no layout shift to surrounding content — by the completed Tool Pill showing the tool name and short status
+
+**Given** the Agent performs a `git commit` that is confirmed successful
+**When** the commit is recognized
+**Then** its Tool Pill is promoted in place to a Semantic Pill ("Progress saved" with artifact type, title, and "View" link) at the same stream position where the tool call occurred
+
+**Given** a tool call fails during an agent's streaming response
+**When** the failure is received
+**Then** an error-state Tool Pill renders inline at the position where the tool call occurred — not as a standalone row — and the FR-14 working-tree indicator remains dirty if applicable
+
+**Given** an `ACCESS_DENIED` event is received for a failing git operation mid-conversation
+**When** the frontend processes it
+**Then** the Access Notice renders inline directly below the error-state Tool Pill within the agent's markdown stream — not as a standalone row
+
+**Given** a manual save (Story 3.6) completes during or after an agent's response
+**When** the Semantic Pill for the manual save is emitted
+**Then** it renders inline at the position in the stream where the save event occurred
+
+**Given** the `ChatMessage` data model
+**When** it is updated to support interleaved tool calls
+**Then** tool calls are stored as position-marked elements within an agent message's content (not as separate flat array entries with empty `content`), preserving the order they occurred relative to the surrounding text
+
+**Given** the `ConversationPane.tsx` SSE event handlers for `TOOL_CALL_START`, `TOOL_CALL_RESULT`, `TOOL_CALL_PROMOTED`, `CREDENTIAL_FAILURE`, and `ACCESS_DENIED`
+**When** they process events
+**Then** they insert/update tool call elements within the currently-streaming agent message at the current stream position, not as new entries in the `messages` array
+
+**Given** a conversation is resumed (Story 3.5) after being persisted
+**When** the chat history loads from Postgres
+**Then** tool pills and semantic pills are restored at their original positions within the agent's messages — not lost or rendered as standalone rows — because the `Turn` persistence format captures tool call positions relative to the message text
+
+**Given** the `AgentMessage` rendering component
+**When** it renders an agent message containing interleaved tool calls
+**Then** tool pills, semantic pills, and access notices render at their correct positions within the rendered markdown, with no layout shift when expanding/collapsing a pill
+
+**Dev Notes:**
+
+- **Current data model:** `ChatMessage` has `toolCall?: ToolCallData` as an optional property on a flat message entry. Tool calls are stored as separate entries in the `messages` array with empty `content` fields. The fix requires either (a) a `segments` array on agent messages containing `{ type: 'text' | 'tool_call', content, position }` entries, or (b) a position-marked inline format within the message text. Approach (a) is recommended — it's cleaner to render and persists naturally.
+- **Backend persistence gap:** `agent.service.ts` currently persists only `accumulatedText` (a flat string) to `Turn.content`. Tool call metadata is not persisted positionally. The developer must determine whether the `Turn` model needs a schema migration (changing `content: String` to a structured format like `Json`) or whether tool call positions can be reconstructed from the SSE event log. If tool calls are not persisted, conversation resume will show text-only messages without pills — a regression from the current behavior (which at least shows them as standalone rows).
+- **Event ordering:** Tool call events (`TOOL_CALL_START`, `TOOL_CALL_RESULT`, `TOOL_CALL_PROMOTED`) arrive interleaved with text token events. The current handler treats them as separate message entries. The new handler must insert them into the currently-streaming agent message at the position corresponding to the current text cursor — the point in `accumulatedText` where the tool call interrupted the stream.
+- **Scope boundary:** This story does NOT change the SSE event contract, the backend event emission logic, or the `tool-pill-classifier.service.ts` classification logic. It changes only how the frontend stores and renders the events it receives, and how the backend persists turn content for resume.
+- **Test coverage impact:** `ConversationPane.test.tsx` has extensive `TOOL_CALL_*` tests (lines 642-940+) that assert pills appear as entries in the `messages` array. These must be updated to assert inline positioning within agent messages instead. Budget time for significant test refactoring.
+- **Cross-epic risk:** Stories 3.7 (credential failure), 3.9 (sandbox teardown), and 3.12 (graceful drain) have event handlers that update tool call state by matching `toolCallId` in the flat `messages` array. These update patterns (`m.toolCall && m.toolCall.toolCallId === toolCallId`) must be adapted to work with the new interleaved data model — the `toolCallId` lookup now traverses segments within agent messages, not top-level message entries.
