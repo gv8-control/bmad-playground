@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-08T13:00:00Z
+last_updated: 2026-07-11T17:00:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -67,7 +67,7 @@ development_status:
   epic-2-retrospective: done
 
   # ── Epic 3: Conversations — Running BMAD Skills with the Agent ──
-  epic-3: in-progress
+  epic-3: done
   3-1-provision-a-sandbox-when-opening-a-conversation: done
   3-2-invoke-bmad-skills-via-slash-command: done
   3-3-converse-with-the-streaming-agent: done
@@ -80,7 +80,7 @@ development_status:
   3-10-verify-commits-carry-the-users-own-identity: done
   3-11-run-concurrent-conversations: done
   3-12-drain-conversations-gracefully-on-deploy: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # ── Epic 5: UX Mockup Fidelity — Close Visual Drift ──
   epic-5: in-progress
@@ -89,3 +89,14 @@ development_status:
   5-3-fix-conversation-stream-structural-drift: ready-for-dev
   5-4-fix-token-usage-drift-and-token-config-gaps: ready-for-dev
   epic-5-retrospective: optional
+
+  # ── Epic 6: Sandbox-Based Agent Execution ──
+  # Migrates agent execution from host-based (SDK query()) to sandbox-based
+  # per PRD §3 (lines 100, 105) and architecture.md data flow (line 668).
+  # See: sprint-change-proposal-2026-07-11.md
+  epic-6: backlog
+  6-1-install-claude-code-binary-in-sandbox-during-provision: backlog
+  6-2-implement-jsonl-to-agui-event-bridge: backlog
+  6-3-migrate-agentservice-to-sandbox-execution: backlog
+  6-4-verify-working-tree-commit-and-credential-flows: backlog
+  6-5-real-service-e2e-verification: backlog

@@ -1256,4 +1256,37 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       );
     });
   });
+
+  describe('[P0] regression — SDK iterator non-abort error emits RUN_ERROR (not RUN_FINISHED)', () => {
+    it('emits RUN_ERROR with the error message and does NOT emit RUN_FINISHED when iterator.next() rejects with a non-abort error', async () => {
+      async function* throwingGenerator(): AsyncGenerator<SDKMessage, void> {
+        throw new Error('spawn failed: ENOENT');
+      }
+      mockQuery = jest.fn(() => makeQueryFromGenerator(throwingGenerator()));
+      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+
+      agentService = createAgentService();
+      const errorSpy = jest.spyOn(agentService['logger'], 'error');
+
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedEvents).toContain(EventType.RUN_ERROR);
+      expect(emittedEvents).not.toContain(EventType.RUN_FINISHED);
+
+      const errorCalls = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === EventType.RUN_ERROR,
+      );
+      expect(errorCalls[0][1].data.message).toBe('spawn failed: ENOENT');
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('spawn failed: ENOENT'),
+      );
+    });
+  });
 });

@@ -6,6 +6,11 @@ import { config as loadDotenv } from 'dotenv';
 // NOT automatically visible to the server — the server reads .env.local itself at startup.
 loadDotenv({ path: '.env.local', override: false });
 
+// The storageState path is overridden by @seontechnologies/playwright-utils
+// fixtures (which use process.env.TEST_ENV || 'local'), but we set it here
+// for consistency and for projects that don't use the fixtures.
+const storageStatePath = `.auth/${process.env.TEST_ENV || 'local'}/default/storage-state.json`;
+
 // Tier selector — when '1', the runner targets the real-service nightly tier
 // (real Daytona + real Claude Agent SDK + real GitHub OAuth). PR tier is the
 // default (fake-by-omission: tested paths never trigger agent-run code, so the
@@ -62,7 +67,7 @@ export default defineConfig({
       grepInvert: /@real-service|@multi-conn|@performance-spike/,
       use: {
         ...devices['Desktop Chrome'],
-        storageState: '.auth/local/default/storage-state.json',
+        storageState: storageStatePath,
       },
       dependencies: ['setup'],
     },
@@ -82,7 +87,7 @@ export default defineConfig({
             retries: 3,
             use: {
               ...devices['Desktop Chrome'],
-              storageState: '.auth/local/default/storage-state.json',
+              storageState: storageStatePath,
             },
             dependencies: ['setup'],
           },

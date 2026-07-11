@@ -37,6 +37,7 @@ const mockTransaction = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearGithubCache();
   mockArtifactUpsert.mockResolvedValue({ id: 'art_1' });
   mockArtifactDeleteMany.mockResolvedValue({ count: 0 });
   const prismaClient = {
@@ -145,7 +146,7 @@ function githubCommit(dateStr: string) {
 // ─── Subject under test ───────────────────────────────────────────────────────
 
 import { syncArtifacts } from './artifacts';
-import { RateLimitError } from './repository-validation';
+import { RateLimitError, clearGithubCache } from './repository-validation';
 
 // ─── AC-1: Happy path (Task 6.2) ─────────────────────────────────────────────
 

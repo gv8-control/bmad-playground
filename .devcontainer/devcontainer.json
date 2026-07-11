@@ -2,8 +2,7 @@
   "name": "BMad Easy Dev",
   "image": "mcr.microsoft.com/devcontainers/universal:5",
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers-extra/features/n8n:1": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
   "forwardPorts": [
     3000,

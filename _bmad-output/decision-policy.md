@@ -17,7 +17,7 @@ Autonomy here means deciding **and taking responsibility for the record**. An un
 | ID | Situation | Decision |
 | --- | --- | --- |
 | DP-1 | **Ambiguous failure signal.** An error or state could mean several things (e.g. 403 vs 404, timeout vs rejection) and one interpretation leads to deleting or overwriting data. | Never take the destructive path on ambiguity. Surface an explicit error over reporting false success. |
-| DP-2 | **Spec contradicts itself** (task text vs acceptance criteria, two artifacts disagree, etc.). | Follow the semantic intent over the literal text, then amend the spec artifact so the contradiction is resolved on record. |
+| DP-2 | **Spec contradicts itself or the architecture** (task text vs acceptance criteria, story spec vs architecture.md, two artifacts disagree, etc.). | The higher-authority artifact wins — architecture over story spec, semantic intent over literal text. Amend the lower-authority artifact to match. |
 | DP-3 | **All options are reversible, architecture-consistent, and functionally equivalent.** | Pick the simplest one (fewest moving parts, least new surface). Do not build flexibility for needs that don't exist yet. |
 | DP-4 | **Test-only or artifact-only changes** (test structure, fixtures, doc wording, formatting) with no production behavior change. | Decide autonomously; record only if the choice constrains future work. |
 | DP-5 | **Scope temptation.** A finding suggests work beyond the current task's acceptance criteria. | Defer, don't expand. Record it as a deferred finding in the work record, not as new scope. |

@@ -23,6 +23,13 @@
       "headers": {
         "Authorization": "Bearer ${N8N_MCP_TOKEN}"
       }
+    },
+    "daytona": {
+      "command": "daytona",
+      "args": ["mcp", "start"],
+      "env": {
+        "HOME": "${HOME}"
+      }
     }
   }
 }

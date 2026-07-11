@@ -57,6 +57,24 @@
       "headers": {
         "Authorization": "Bearer {env:N8N_MCP_TOKEN}"
       }
+    },
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "@playwright/mcp@latest"],
+      "enabled": true
+    },
+    "playwright-test": {
+      "type": "local",
+      "command": ["npx", "playwright", "run-test-mcp-server"],
+      "enabled": true
+    },
+    "daytona": {
+      "type": "local",
+      "command": ["daytona", "mcp", "start"],
+      "enabled": true,
+      "environment": {
+        "HOME": "{env:HOME}"
+      }
     }
   },
   "tools": {

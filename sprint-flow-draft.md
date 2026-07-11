@@ -10,4 +10,4 @@ After all Epic sprints done (my decision):
 - by the way: agent tells me I shouldn't be doing any code changes to implement deferred work IN BETWEEN epics. If everything went correctly, there should be no deferred work that is orphaned (without story).
 - /bmad-retrospective Target: Epic X
 - /bmad-testarch-test-design run in Edit mode - revise the project's test plan to fit current reality.
-- /bmad-agent-architect Cleanup @_bmad-output/implementation-artifacts/deferred-work.md; throw out items that are redundant and no longer serve the codebase. You are also permitted to consolidate multiple items.
+- /bmad-agent-architect Cleanup @_bmad-output/project-context.md; throw out items that are redundant and no longer serve the codebase. You are also permitted to consolidate multiple items.

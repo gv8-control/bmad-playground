@@ -71,11 +71,18 @@ const CONVERSATION = {
   title: 'PRD Discussion',
 };
 const BOUNDARY_JWT = 'boundary-jwt-token';
-const API_URL = 'http://localhost:3001';
+const API_URL = 'http://test-agent-be:3001';
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  process.env.API_URL = API_URL;
+});
+
+afterEach(() => {
+  delete process.env.API_URL;
+});
 
 describe('ConversationPage — auth and redirect (AC-4)', () => {
-  beforeEach(() => jest.clearAllMocks());
-
   it('[P0] redirects to /sign-in when no session', async () => {
     mockAuth.mockResolvedValue(null);
 
@@ -114,7 +121,6 @@ describe('ConversationPage — auth and redirect (AC-4)', () => {
 
 describe('ConversationPage — conversation rendering (AC-4)', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
     mockAuth.mockResolvedValue(SESSION);
     mockConversationFindFirst.mockResolvedValue(CONVERSATION);
     mockTurnFindMany.mockResolvedValue([]);

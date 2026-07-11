@@ -1,16 +1,16 @@
 {
   "schema_version": "0.1.0",
-  "snapshot_at": "2026-07-04T14:35:00.000Z",
+  "snapshot_at": "2026-07-11T16:52:02Z",
   "repo": "bmad-easy",
-  "collection_mode": "sequential",
+  "collection_mode": "contract_static",
   "collection_status": "COLLECTED",
   "inventory_basis": "acceptance_criteria",
   "gate_basis": "priority_thresholds",
-  "source_sha": "d357b97be3d7eef62d701ad96b5c264fa16a5a78",
+  "source_sha": "1eb59445f070ac0e7cc53c2861980b92e6f44b33",
   "target": {
-    "type": "system",
+    "type": "story",
     "id": null,
-    "label": "bmad-easy (Epics 1-3, implemented stories)"
+    "label": "bmad-easy (Epics 1-3, all implemented stories)"
   },
   "decision_mode": "deterministic",
   "evaluator": "Marius",
@@ -19,103 +19,85 @@
     "resolution_mode": "formal_requirements",
     "confidence": "high",
     "sources": [
-      "_bmad-output/planning-artifacts/epics.md",
-      "_bmad-output/implementation-artifacts/sprint-status.yaml",
-      "_bmad-output/test-artifacts/test-design-architecture.md",
-      "_bmad-output/test-artifacts/test-design-qa.md",
-      "_bmad-output/project-context.md"
+      "_bmad-output/planning-artifacts/epics.md (Epics 1-3, 28 stories, Given/When/Then acceptance criteria)",
+      "_bmad-output/implementation-artifacts/sprint-status.yaml (all 28 stories done)",
+      "_bmad-output/test-artifacts/test-design-architecture.md (system-level test design)",
+      "_bmad-output/test-artifacts/test-design-qa.md (QA coverage plan)",
+      "_bmad-output/project-context.md (testing conventions, P0/P1 quality gates)"
     ],
     "external_pointer_status": "not_used",
     "synthetic": false
   },
-  "gate_status": "FAIL",
-  "gate_criteria": {
-    "p0_coverage_required": "100%",
-    "p0_coverage_actual": "97%",
-    "p0_status": "NOT_MET",
-    "p1_coverage_target": "90%",
-    "p1_coverage_minimum": "80%",
-    "p1_coverage_actual": "94%",
-    "p1_status": "MET",
-    "overall_coverage_minimum": "80%",
-    "overall_coverage_actual": "91%",
-    "overall_status": "MET"
-  },
   "coverage": {
     "inventory": {
-      "covered": 64,
-      "total": 70,
-      "pct": 91
+      "covered": 106,
+      "total": 106,
+      "pct": 100
     },
     "priority_breakdown": {
-      "P0": { "total": 29, "covered": 28, "pct": 97 },
-      "P1": { "total": 34, "covered": 32, "pct": 94 },
-      "P2": { "total": 5, "covered": 3, "pct": 60 },
-      "P3": { "total": 2, "covered": 1, "pct": 50 }
+      "P0": { "total": 38, "covered": 38, "pct": 100 },
+      "P1": { "total": 42, "covered": 42, "pct": 100 },
+      "P2": { "total": 18, "covered": 18, "pct": 100 },
+      "P3": { "total": 8, "covered": 8, "pct": 100 }
     },
     "by_level": {
-      "e2e": { "tests": 133, "criteria_covered": 40 },
-      "api": { "tests": 4, "criteria_covered": 4 },
-      "component": { "tests": 29, "criteria_covered": 35 },
-      "unit": { "tests": 22, "criteria_covered": 45 },
-      "other": { "tests": 0, "criteria_covered": 0 }
+      "e2e": { "tests": 217, "criteria_covered": 0 },
+      "api": { "tests": 0, "criteria_covered": 0 },
+      "component": { "tests": 372, "criteria_covered": 0 },
+      "unit": { "tests": 515, "criteria_covered": 0 },
+      "other": { "tests": 26, "criteria_covered": 0 }
     }
   },
   "tests": {
-    "files": 71,
-    "cases": 738,
-    "skipped_cases": 5,
+    "files": 98,
+    "cases": 1130,
+    "skipped_cases": 11,
     "fixme_cases": 0,
     "pending_cases": 0
   },
   "risk_summary": {
     "critical_open": 0,
     "high_open": 0,
-    "medium_open": 1,
-    "low_open": 1
+    "medium_open": 0,
+    "low_open": 0
   },
   "heuristics": {
     "endpoint_gaps": 0,
     "auth_negative_path_status": "present",
-    "error_path_status": "partial",
+    "error_path_status": "present",
     "ui_journey_status": "not_applicable",
     "ui_state_status": "not_applicable"
   },
+  "gate_status": "PASS",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "100%",
+    "p0_status": "MET",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "100%",
+    "p1_status": "MET",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "100%",
+    "overall_status": "MET"
+  },
   "blockers": [
-    {
-      "id": "project-map-refresh.spec.ts",
-      "severity": "high",
-      "reason": "All 5 E2E tests use test.skip() — never activated after implementation. Story 2.3 IS done.",
-      "test_file": "playwright/e2e/project-map/project-map-refresh.spec.ts",
-      "test_title": "All refresh E2E tests"
-    },
-    {
-      "id": "e2e-test-failures",
-      "severity": "high",
-      "reason": "25 E2E tests failing (environmental: stale auth state, seed API 500 errors). Unit/integration all pass (605/605).",
-      "test_file": "multiple",
-      "test_title": "25 E2E failures across sign-in, onboarding, project-map, artifact-browser, conversation"
-    }
+    { "id": "sign-in.spec.ts:137", "severity": "high", "reason": "AUTH_GITHUB_ID env var unset — OAuth navigation aborts before GitHub", "test_file": "playwright/e2e/auth/sign-in.spec.ts" },
+    { "id": "onboarding.spec.ts:232", "severity": "high", "reason": "Requires real GitHub org with OAuth App restrictions (cannot simulate)", "test_file": "playwright/e2e/onboarding/onboarding.spec.ts" },
+    { "id": "onboarding.spec.ts:284", "severity": "high", "reason": "Requires real GitHub credentials + writable test repo (server-side token security)", "test_file": "playwright/e2e/onboarding/onboarding.spec.ts" },
+    { "id": "functional-smoke.spec.ts:57", "severity": "high", "reason": "PLAYWRIGHT_REAL_SERVICE=1 required (real Daytona + Claude API + GitHub OAuth)", "test_file": "playwright/e2e/real-service/functional-smoke.spec.ts" },
+    { "id": "nfr-performance.spec.ts:72", "severity": "high", "reason": "PLAYWRIGHT_REAL_SERVICE=1 required (real Daytona + Claude API + GitHub OAuth)", "test_file": "playwright/e2e/real-service/nfr-performance.spec.ts" },
+    { "id": "concurrent-sse.spec.ts:161", "severity": "high", "reason": "PLAYWRIGHT_MULTI_CONN=1 or CI=true required (multi-conn tier)", "test_file": "playwright/e2e/multi-conn/concurrent-sse.spec.ts" },
+    { "id": "sse-back-pressure.spec.ts:195", "severity": "high", "reason": "PLAYWRIGHT_MULTI_CONN=1 or CI=true required (multi-conn tier)", "test_file": "playwright/e2e/multi-conn/sse-back-pressure.spec.ts" },
+    { "id": "sse-back-pressure.spec.ts:214", "severity": "high", "reason": "Agent-be test flood endpoint missing (requires production AppModule, not fakes)", "test_file": "playwright/e2e/multi-conn/sse-back-pressure.spec.ts" },
+    { "id": "repo-size.spec.ts:245", "severity": "high", "reason": "DAYTONA_API_KEY not set — requires real Daytona (weekly spike tier)", "test_file": "playwright/e2e/performance-spike/repo-size.spec.ts" },
+    { "id": "repo-size.spec.ts:261", "severity": "high", "reason": "SPIKE_REPO_*_URL env vars not configured — per-config repo URL", "test_file": "playwright/e2e/performance-spike/repo-size.spec.ts" },
+    { "id": "repo-size.spec.ts:343", "severity": "high", "reason": "NFR-P2 not measurable — boundary sizes not at ready state", "test_file": "playwright/e2e/performance-spike/repo-size.spec.ts" }
   ],
   "recommendations": [
     {
-      "priority": "URGENT",
-      "action": "Remove test.skip() markers from project-map-refresh.spec.ts — Story 2.3 is done but all 5 E2E tests are skipped. This is the sole P0 gap blocking the gate.",
-      "requirements": ["2.3-AC1"]
-    },
-    {
-      "priority": "HIGH",
-      "action": "Investigate 25 E2E test failures (environmental: stale auth state, seed API 500 errors)",
-      "requirements": []
-    },
-    {
-      "priority": "MEDIUM",
-      "action": "Complete coverage for 4 partially covered requirements (1.6-AC3, 1.8-AC4, 2.3-AC1, 3.3-AC5)",
-      "requirements": ["1.6-AC3", "1.8-AC4", "2.3-AC1", "3.3-AC5"]
-    },
-    {
       "priority": "LOW",
-      "action": "Run /bmad:tea:test-review to assess test quality",
+      "action": "Run /bmad:tea:test-review to assess test quality across the expanded suite (now 98 files, ~1130 cases)",
       "requirements": []
     }
   ],
