@@ -80,7 +80,7 @@ development_status:
   3-10-verify-commits-carry-the-users-own-identity: done
   3-11-run-concurrent-conversations: done
   3-12-drain-conversations-gracefully-on-deploy: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # ── Epic 4: MVP Cloud Deployment Provisioning ──
   epic-4: backlog
@@ -97,3 +97,14 @@ development_status:
   4-11-configure-launch-window-monitoring-and-alerting: backlog
   4-12-secret-rotation-reminder-mechanism: backlog
   epic-4-retrospective: backlog
+
+  # ── Epic 6: Sandbox-Based Agent Execution ──
+  # Migrates agent execution from host-based (SDK query()) to sandbox-based
+  # per PRD §3 (lines 100, 105) and architecture.md data flow (line 668).
+  # See: sprint-change-proposal-2026-07-11.md
+  epic-6: backlog
+  6-1-install-claude-code-binary-in-sandbox-during-provision: backlog
+  6-2-implement-jsonl-to-agui-event-bridge: backlog
+  6-3-migrate-agentservice-to-sandbox-execution: backlog
+  6-4-verify-working-tree-commit-and-credential-flows: backlog
+  6-5-real-service-e2e-verification: backlog
