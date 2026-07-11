@@ -1,12 +1,16 @@
 import { test as setup, type Page, type APIRequestContext } from '@playwright/test';
 import { authStorageInit, getStorageStatePath } from '@seontechnologies/playwright-utils/auth-session';
 import { encode } from 'next-auth/jwt';
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { dirname } from 'path';
 import * as OTPAuth from 'otpauth';
 
 // Create the directory and empty storage state file before any test worker starts.
-authStorageInit();
+// Must use environment: 'local' explicitly — authStorageInit() defaults to
+// process.env.TEST_ENV ('ci' in CI), which would create .auth/ci/default/
+// instead of .auth/local/default/ where playwright.config.ts reads storageState
+// from. The setup test and config both use 'local', so the init must match.
+authStorageInit({ environment: 'local', userIdentifier: 'default' });
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 
@@ -89,19 +93,34 @@ async function realOAuthFlow({ page }: { page: Page }) {
   const storagePath = getStorageStatePath({ environment: 'local', userIdentifier: 'default' });
   await page.context().storageState({ path: storagePath });
 
-  // Verify the storage state actually contains the session cookie. This
-  // catches edge cases where the cookie was set but not captured (e.g.,
-  // domain mismatch, HttpOnly restrictions).
-  const state = await page.context().storageState();
-  const hasSessionCookie = state.cookies.some(
+  // Read the file back from disk and verify it contains the session cookie.
+  // The browser context check above verifies the cookie exists in memory;
+  // this check verifies it was actually persisted to the file that the test
+  // project will load. Catches file system issues (wrong path, permissions,
+  // race conditions) that would silently produce an empty or stale file.
+  const fileContent = readFileSync(storagePath, 'utf8');
+  const parsedState = JSON.parse(fileContent) as { cookies?: { name: string }[] };
+  const fileHasSessionCookie = parsedState.cookies?.some(
     (c) => c.name === 'authjs.session-token',
   );
-  if (!hasSessionCookie) {
+  if (!fileHasSessionCookie) {
     throw new Error(
-      'Storage state does not contain authjs.session-token cookie — ' +
-      'the test project will not be authenticated.',
+      `Storage state file at ${storagePath} does not contain authjs.session-token cookie. ` +
+      `File has ${parsedState.cookies?.length ?? 0} cookies. ` +
+      `Cookie names: ${parsedState.cookies?.map((c) => c.name).join(', ') ?? 'none'}`,
     );
   }
+
+  // Log cookie details for diagnostics — if the test project still can't
+  // authenticate, the domain/sameSite/secure attributes are likely the cause.
+  const sessionCookie = (JSON.parse(fileContent) as { cookies: Record<string, unknown>[] }).cookies.find(
+    (c) => c.name === 'authjs.session-token',
+  );
+  console.log(
+    `[auth.setup] Session cookie saved: domain=${sessionCookie?.domain} path=${sessionCookie?.path} ` +
+    `secure=${sessionCookie?.secure} sameSite=${sessionCookie?.sameSite} ` +
+    `httpOnly=${sessionCookie?.httpOnly} expires=${sessionCookie?.expires}`,
+  );
 
   // Seed a RepoConnection so /conversations/new doesn't redirect to /onboarding.
   // The Auth.js jwt callback (auth.ts:25-81) already upserted the user + stored
