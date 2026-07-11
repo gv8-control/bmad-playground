@@ -23,6 +23,8 @@ so that every subsequent feature has a consistent, deployable foundation to buil
 
 **AC-4:** GitHub Actions CI (`.github/workflows/test.yml`) runs lint and all available test suites (unit/integration/E2E) as a merge gate on push/PR to `main`/`develop`, using Yarn (Corepack-based setup, `yarn install --immutable`). Deploy for both Vercel (`apps/web`) and Railway (`apps/agent-be`) is a manual trigger, not automatic on merge.
 
+> *Scope note (2026-07-03): the "manual trigger" clause states the CI/CD policy decided at scaffold time (no automatic deploy). The actual deploy mechanism — Vercel/Railway projects, Dockerfile, and the `workflow_dispatch` CI job — is delivered by Epic 4 (Stories 4.1–4.6), not by this story. Status unchanged.*
+
 **AC-5:** `yarn.lock` is committed to the repository, with no `pnpm-lock.yaml` or `.pnpm-store/` remaining tracked or untracked; `package.json` pins the package manager via a `packageManager` field; `.yarnrc.yml` sets `nodeLinker: node-modules`.
 
 ## Tasks / Subtasks
@@ -577,3 +579,4 @@ claude-sonnet-4-6
 - 2026-06-18: Re-review by claude-sonnet-4-6 — 0 decision-needed, 2 patches applied, 5 deferred, 2 dismissed
 - 2026-07-01: Story reopened (done → review) via `sprint-change-proposal-2026-07-01.md` — approved pnpm→Yarn package manager switch
 - 2026-07-01: AC-1/AC-4 amended and AC-5 added for Yarn; Task 6 (pnpm→Yarn migration) added and implemented by claude-sonnet-5 — package.json, yarn.lock, .yarnrc.yml, CI workflow, scripts, docs, launch config, and project.json all migrated; `nx build`/lint/test verified green on Yarn
+- 2026-07-03: AC-4 scope note added — manual-trigger deploy mechanism (Vercel/Railway projects, Dockerfile, CI deploy job) delegated to new Epic 4 (MVP Cloud Deployment Provisioning) per Sprint Change Proposal 2026-07-03; no status change, no code rollback
