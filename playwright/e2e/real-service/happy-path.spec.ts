@@ -102,6 +102,10 @@ test.describe('Real-service happy-path agent run', () => {
   test('@real-service @P0 happy-path: provision, message, first token, run finishes, working tree', async ({
     page,
   }) => {
+    // Real-service test needs a longer timeout than the config default (60s)
+    // because provisioning + agent tool calls + streaming can take 2-3 min.
+    test.setTimeout(180_000);
+
     // ─── 1. Provision → SESSION_READY + NFR-P2 (chat ready ≤10s) ───────────
     const provisionStart = performance.now();
     await page.goto('/conversations/new');
@@ -145,6 +149,12 @@ test.describe('Real-service happy-path agent run', () => {
     // only at TEXT_MESSAGE_CONTENT (the first streamed token). This isolates
     // the first token from the user echo, the sr-only "Agent is thinking"
     // label, and the always-present timestamp spans.
+    //
+    // The timeout is 60s (not 30s) because the Claude Agent SDK may execute
+    // tool calls (Bash, Read, etc.) before producing the first text token.
+    // The NFR-P1 assertion below will still report the actual latency even
+    // if it exceeds the 1500ms budget — the timeout just prevents the test
+    // from hanging indefinitely.
     await page.waitForFunction(
       () => {
         const stream = document.querySelector('[aria-live="polite"]');
@@ -162,7 +172,7 @@ test.describe('Real-service happy-path agent run', () => {
         return false;
       },
       undefined,
-      { timeout: 30_000 },
+      { timeout: 60_000 },
     );
     const tokenElapsed = performance.now() - tokenStart;
 
