@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { tmpdir } from 'os';
 import type { IAgentService, AgentRunParams } from '@bmad-easy/shared-types';
 import { query, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { EventType } from '@ag-ui/core';
@@ -90,7 +91,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       const agentQuery = query({
         prompt: message,
         options: {
-          cwd: process.env.AGENT_WORKDIR ?? '/workspace',
+          cwd: process.env.AGENT_WORKDIR ?? tmpdir(),
           abortController,
           env: {
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
