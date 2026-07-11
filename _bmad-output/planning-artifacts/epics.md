@@ -209,7 +209,9 @@ NFR-R3: Epic 3 - SSE back-pressure
 NFR-R4: Epic 3 - SSE concurrent connection capacity
 NFR-O1: Epic 3 - Per-user LLM spend monitoring
 
-Additional Requirements: Epic 1 - Nx/pnpm scaffold, Postgres/Prisma schema, boundary JWT, OAuth envelope encryption (including GCM nonce-uniqueness enforcement, Story 1.3), KEK rotation runbook (Story 1.9), CI/CD, deployment infra, GitHub org OAuth-restriction dry-run check; Epic 2 - artifacts.service.ts Postgres mirror of `_bmad-output/`; Epic 3 - sandbox lifecycle (provisioning, pre-first-message idle timeout, mid-session idle timeout (Story 3.9), init sequence, circuit breaker, heartbeat, provision queue, failure cleanup), sandbox-agent/AG-UI version pinning (enforced via PR-review checklist, not a story AC), credential-failure SSE propagation, Conversation history persistence-on-every-turn, `last_active_at` schema field, commit author identity verification (Story 3.10). UX/PRD reconciliation (URL-only onboarding, no PAT field) applies to Epic 1.
+Additional Requirements: Epic 1 - Nx/pnpm scaffold, Postgres/Prisma schema, boundary JWT, OAuth envelope encryption (including GCM nonce-uniqueness enforcement, Story 1.3), KEK rotation runbook (Story 1.9), GitHub org OAuth-restriction dry-run check; Epic 2 - artifacts.service.ts Postgres mirror of `_bmad-output/`; Epic 3 - sandbox lifecycle (provisioning, pre-first-message idle timeout, mid-session idle timeout (Story 3.9), init sequence, circuit breaker, heartbeat, provision queue, failure cleanup), sandbox-agent/AG-UI version pinning (enforced via PR-review checklist, not a story AC), credential-failure SSE propagation, Conversation history persistence-on-every-turn, `last_active_at` schema field, commit author identity verification (Story 3.10); Epic 4 - CI/CD manual deploy trigger, deployment infra (Vercel/Railway provisioning, Dockerfile, HTTP/2 proxy confirmation — see Epic 4 section). UX/PRD reconciliation (URL-only onboarding, no PAT field) applies to Epic 1.
+
+> *Correction (2026-07-03): "CI/CD, deployment infra" was previously listed under Epic 1 here; it is delivered by Epic 4 (Stories 4.1–4.7), added via Sprint Change Proposal 2026-07-03. Epic 1's own delivered scope (scaffold, schema, JWT, encryption, KEK runbook) is unaffected — see also the scope note on Story 1.1's AC-4.*
 
 UX Design Requirements: Epic 1 - UX-DR1 (design tokens), UX-DR2 (side navigation), UX-DR13 (three-zone scroll shell), UX-DR14, UX-DR15, UX-DR16 (accessibility floor), UX-DR17 (responsive behavior), UX-DR20 (breadcrumb nav) — all delivered once, as the persistent app shell (Story 1.8), and inherited by every later epic's pages; Epic 2 - UX-DR10, UX-DR11, UX-DR12, UX-DR19 (Project Map/Artifact Browser states); Epic 3 - UX-DR3 through UX-DR9, UX-DR18, UX-DR19 (Conversation states).
 
@@ -226,6 +228,10 @@ A user can see what BMAD work the team has produced and what is in progress (Pro
 ### Epic 3: Conversations — Running BMAD Skills with the Agent
 A user can open a Conversation, invoke BMAD Skills via slash command, converse with the streaming Agent across multiple turns, see Tool Pills and Semantic Pills for agent actions, track the working tree state, and manually save progress — with the Agent's committed output flowing into the Artifact Browser and Project Map built in Epic 2.
 **FRs covered:** FR9, FR10, FR11, FR12, FR13, FR14, FR15
+
+### Epic 4: MVP Cloud Deployment Provisioning
+Provision the platform's single production environment (per architecture's "production only, no staging" constraint): `apps/web` on Vercel, `apps/agent-be` (Docker) and Postgres on Railway, secrets wired on both platforms, migrations applied, and CI able to trigger a deploy manually. Added via Sprint Change Proposal 2026-07-03 — independent of Epic 2/3 sequencing; owns provisioning mechanics only, not the SSE-drain (Story 3.12) or spend-monitoring (Story 3.8) verification that depend on Epic 3 code.
+**Additional Requirements covered:** deployment infra, CI/CD manual deploy trigger
 
 ## Epic 1: Authentication & Repository Connection
 
@@ -253,6 +259,8 @@ So that every subsequent feature has a consistent, deployable foundation to buil
 **When** a commit is pushed
 **Then** GitHub Actions CI runs lint and all available test suites as a merge gate
 **And** deploy is a manual trigger (not automatic) for both Vercel (`apps/web`) and Railway (`apps/agent-be`)
+
+> *Scope note (2026-07-03): the "manual trigger" clause above states the CI/CD policy decided at scaffold time (no automatic deploy). The actual deploy mechanism — Vercel/Railway projects, Dockerfile, and the `workflow_dispatch` CI job — is delivered by Epic 4 (Stories 4.1–4.6), not by this story. Story 1.1's own delivered scope (Nx scaffold, Tailwind tokens, CI lint/test gate) remains complete; status unchanged.*
 
 ### Story 1.2: Sign In with GitHub
 
@@ -592,7 +600,7 @@ So that the chat is ready almost immediately instead of waiting on a cold start.
 **Given** a user opens a new Conversation page
 **When** the page loads
 **Then** a Sandbox is provisioned and the Repository is cloned inside it as a background operation, while the chat interface is visible immediately (FR9)
-**And** the sandbox initialization sequence runs in order: provision → clone (or restore on resume) → inject the Story 1.5 git identity into git config → run `git status --porcelain` → emit a working-tree event → emit session-ready
+**And** the sandbox initialization sequence runs in order: provision (with `ANTHROPIC_API_KEY` and the per-user `GITHUB_TOKEN` injected as sandbox env vars, and a `networkAllowList` egress restriction applied — scoped to GitHub, the Anthropic API, and required package registries only — to mitigate exfiltration of these sandbox-resident secrets) → clone (or restore on resume) → inject the Story 1.5 git identity into git config → run `git status --porcelain` → emit a working-tree event → emit session-ready
 **And** while provisioning, a spinner and "Starting session…" label are shown in the chat area with the input disabled
 **And** the chat is ready for input within 10 seconds of page open for repositories under ~200MB (NFR-P2)
 
@@ -619,6 +627,10 @@ So that the chat is ready almost immediately instead of waiting on a cold start.
 **Given** no `Conversation` or `Turn` tables exist yet
 **When** this story is implemented
 **Then** the Prisma schema (`libs/database-schemas`) is extended with `Conversation` (owning user, stable URL id, semantic title, `last_active_at`) and `Turn` (conversation id, role, content, timestamp) models, and a migration is generated and committed — this is the schema dependency Story 3.5 (resume) and Story 3.12 (turn persistence on every turn) read and write against
+
+**Given** a sandbox with `networkAllowList` applied
+**When** the agent process inside it attempts to reach a host outside the allow-list
+**Then** the connection is rejected — verified by a negative test asserting egress to an arbitrary non-allow-listed host fails
 
 ### Story 3.2: Invoke BMAD Skills via Slash Command
 
@@ -894,3 +906,281 @@ So that routine deploys never look like a crash or lose my work.
 **Then** shutdown hooks notify all clients with active SSE connections that the connection is draining, before the process exits
 **And** notified clients can reconnect and resume their Conversation without losing chat history, rather than the connection being hard-killed with no notice
 **And** turn/session state is persisted to Postgres on every turn — via the `Turn` model migrated in Story 3.1 — so a restart does not lose Conversation history
+
+## Epic 4: MVP Cloud Deployment Provisioning
+
+Provision the platform's single production environment: `apps/web` on Vercel, `apps/agent-be` (Docker) and Postgres on Railway, secrets wired on both platforms, migrations applied, and CI able to trigger a deploy manually. Added via Sprint Change Proposal 2026-07-03, independent of Epic 2/3 sequencing. Out of scope: verifying SSE graceful drain (Epic 3, Story 3.12) and NFR-O1 spend monitoring (Epic 3, Story 3.8) — both require Epic 3 code that doesn't exist yet; this epic confirms platform-level capability only (Story 4.7).
+
+### Story 4.1: Provision the Vercel Project for `apps/web`
+
+As the platform operator,
+I want a Vercel project configured for `apps/web` in this Nx monorepo,
+So that the frontend has a deployable production target.
+
+**Acceptance Criteria:**
+
+**Given** the Nx monorepo with `apps/web` at its current path
+**When** the Vercel project is created
+**Then** its root directory is set to `apps/web`, the framework preset is Next.js, and a production build succeeds against the monorepo (Turbopack root resolves to the workspace root per the existing `next.config.js`)
+**And** the Vercel project's install command runs at the workspace root (`yarn install --immutable`) and the build command includes a `prisma generate` step (from `libs/database-schemas`) before `nx build web`, so the shared Prisma client is available to `apps/web` at build time against the production `DATABASE_URL`
+
+**Given** the project is created
+**When** deploys are configured
+**Then** automatic deploy-on-push is disabled (deploy stays manual, per architecture) — either by not connecting a GitHub integration or by setting `git.deploymentEnabled: false` in `vercel.json`
+
+**Given** the project needs a reachable URL before the GitHub OAuth App can be registered (Story 4.5 dependency)
+**When** this story completes
+**Then** at least a placeholder `*.vercel.app` production URL exists
+
+**Given** this story's scope
+**When** considering execution
+**Then** this story is executed manually via the Vercel dashboard/CLI using the operator's own account credentials — a coding agent cannot provision a Vercel project autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.
+
+> *Note (2026-07-03): this story is executed manually via the Vercel dashboard/CLI using the operator's own account credentials — a coding agent cannot provision a Vercel project autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.*
+
+### Story 4.2: Provision the Railway Project with Postgres for `apps/agent-be`
+
+As the platform operator,
+I want a single Railway project containing both the `apps/agent-be` service and a Postgres instance,
+So that the backend and its database share operational lifecycle per architecture.
+
+**Acceptance Criteria:**
+
+**Given** a Railway account
+**When** the project is created
+**Then** it contains a Postgres addon/service and a service shell for `apps/agent-be` (Docker-based, pending Story 4.3's Dockerfile)
+
+**Given** the Postgres service
+**When** it is provisioned
+**Then** a `DATABASE_URL` connection string is available for Story 4.4 and Story 4.5
+
+**Given** this story's scope
+**When** considering execution
+**Then** this story is executed manually via the Railway dashboard/CLI using the operator's own account credentials — a coding agent cannot provision a Railway project autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.
+
+> *Note (2026-07-03): this story is executed manually via the Railway dashboard/CLI using the operator's own account credentials — a coding agent cannot provision a Railway project autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.*
+
+### Story 4.3: Add a Dockerfile for `apps/agent-be`
+
+As a developer,
+I want a production Dockerfile for `apps/agent-be`,
+So that Railway can build and run it as a container.
+
+**Acceptance Criteria:**
+
+**Given** the Nx monorepo
+**When** the Dockerfile is authored
+**Then** it performs a multi-stage build (install → `nx build agent-be` → slim runtime image) and exposes the port `apps/agent-be` listens on (`process.env.PORT`, defaulting to 3001 per current `main.ts`)
+**And** the install stage activates Corepack and uses the Yarn version pinned in the root `package.json`'s `packageManager` field, with `.yarnrc.yml` (`nodeLinker: node-modules`) respected — matching the local development environment exactly to avoid divergent or broken builds
+
+**Given** the built image
+**When** it runs locally against a local Postgres
+**Then** `GET /health` responds successfully
+
+**Given** the built Docker image
+**When** it runs on Railway
+**Then** a `HEALTHCHECK` instruction (or Railway health-probe configuration) polls `GET /health` on a defined interval (default 30s) so Railway can detect and restart an unhealthy container automatically
+
+### Story 4.4: Run Prisma Migrations Against the Railway Postgres Instance
+
+As the platform operator,
+I want the existing `libs/database-schemas` migrations applied to the Railway Postgres instance,
+So that the production database schema matches what both apps expect.
+
+**Acceptance Criteria:**
+
+**Given** the Railway `DATABASE_URL` from Story 4.2
+**When** `prisma migrate deploy` is run from `libs/database-schemas`
+**Then** all three existing migrations (`20260618192551_init_users`, `20260619000000_add_oauth_credential_and_repo_connection`, `20260702000000_backlog_hardening_aad_kekid_constraints`) apply cleanly with no manual schema edits
+
+**Given** the migration run
+**When** it completes
+**Then** the target database is confirmed (host:port/dbname only, no credentials logged) before and after, mirroring the safety pattern already used in `scripts/rotate-kek.ts`'s `describeDatabase()`
+
+### Story 4.5: Wire Environment Variables and Secrets on Both Platforms
+
+As the platform operator,
+I want all required secrets set on Vercel and Railway,
+So that both services run with the correct production configuration.
+
+**Acceptance Criteria:**
+
+**Given** `apps/web` on Vercel
+**When** environment variables are set
+**Then** `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, `AUTH_URL`, `DATABASE_URL`, and `AGENT_BACKEND_JWT_SECRET` (shared symmetric key for signing boundary JWTs minted by `apps/web` and validated by `apps/agent-be`, per architecture's boundary-JWT design) are present
+
+**Given** `apps/agent-be` on Railway
+**When** environment variables are set
+**Then** `DATABASE_URL`, `CREDENTIAL_ENCRYPTION_KEK` (generated via `openssl rand -hex 32`), `DAYTONA_API_URL`, `DAYTONA_API_KEY`, `ANTHROPIC_API_KEY` (Claude Agent SDK credential, required per PRD §8 Assumption A-3 — injected into each Daytona sandbox at provision time per Epic 3 Story 3.1, not consumed directly by `apps/agent-be` itself), and `AGENT_BACKEND_JWT_SECRET` (same shared key as on Vercel, used by `boundary-jwt.guard.ts` to validate incoming JWTs) are present
+
+**Given** either platform
+**When** variables are reviewed
+**Then** `TEST_ENV` is confirmed absent — on `apps/web`, the existing `assertTestEnvNotInProduction()` guard (in `apps/web/src/lib/env-guard.ts`, invoked from `apps/web/src/instrumentation.ts`) must not fail startup; on `apps/agent-be`, an equivalent check (or documented manual verification) confirms `TEST_ENV` is not set in the Railway environment
+
+**Given** the GitHub OAuth App requirement
+**When** `AUTH_GITHUB_ID`/`AUTH_GITHUB_SECRET` are needed
+**Then** the OAuth App itself is registered manually by the user at `github.com/settings/developers` (no API exists for this) using the Story 4.1 Vercel domain as the callback URL — this sub-step is manual, not attempted by the agent
+
+### Story 4.6: Add the Manual-Trigger Deploy Step to CI
+
+As a developer,
+I want a manually-triggered deploy job in CI,
+So that shipping to production is deliberate, per Story 1.1 AC-4's original policy intent.
+
+**Acceptance Criteria:**
+
+**Given** `.github/workflows/test.yml` (or a new `deploy.yml`)
+**When** a maintainer runs it via `workflow_dispatch`
+**Then** it deploys `apps/web` to Vercel and `apps/agent-be` to Railway, and it never runs on `push`/`pull_request`
+
+**Given** the deploy job
+**When** it runs
+**Then** it depends on the existing lint/test jobs having passed (does not bypass the quality gate)
+
+**Given** the deploy job targets production
+**When** it is configured
+**Then** it uses a GitHub Environment (e.g. `production`) with required reviewers enabled, a required reviewer count of at least 1, and a branch restriction pinning deploys to the default branch (e.g. `main`) — so that no maintainer can trigger a production deploy without human approval and no deploy originates from an unmerged branch
+
+### Story 4.7: Confirm HTTP/2-Capable Reverse Proxy in Front of `apps/agent-be`
+
+As the platform operator,
+I want confirmation that the deployment path to `apps/agent-be` supports HTTP/2,
+So that NFR-R4's 10-concurrent-SSE-connection requirement is satisfiable once Epic 3 builds the streaming transport.
+
+**Acceptance Criteria:**
+
+**Given** `apps/agent-be` deployed on Railway with its public URL
+**When** HTTP/2 support is verified
+**Then** a concrete check confirms ALPN HTTP/2 negotiation — e.g. `curl -v --http2 https://<agent-be-url>/health` returns response with `< HTTP/2 200` (or equivalent protocol inspection tool) — and the result is recorded; if the check fails, an additional HTTP/2-capable reverse proxy or sidecar is introduced and the check is re-run until it passes
+
+**Given** this story's scope
+**When** considering SSE behavior
+**Then** actually exercising 10 concurrent SSE connections is Epic 3 Story 3.11's responsibility once the streaming transport exists — this story confirms only the platform-level transport capability
+
+### Story 4.8: Deploy Failure Recovery and Rollback
+
+As the platform operator,
+I want a documented recovery path for failed deploys, partial migrations, and misconfigured secrets,
+So that a production incident doesn't become a prolonged outage because no one knows how to roll back.
+
+**Acceptance Criteria:**
+
+**Given** a Vercel deploy of `apps/web` that fails mid-flight
+**When** the failure is detected
+**Then** Vercel's automatic rollback to the previous successful deployment is confirmed enabled, and the operator can trigger `vercel rollback` (or equivalent dashboard action) to restore the last known-good version without a full redeploy
+
+**Given** a Railway deploy of `apps/agent-be` that fails or produces an unhealthy container
+**When** the failure is detected
+**Then** Railway's automatic redeploy of the previous revision is confirmed enabled, and the operator can manually trigger a redeploy of the last successful image via the Railway dashboard or CLI
+
+**Given** `prisma migrate deploy` fails partway through the migration set
+**When** the partial state is detected
+**Then** the operator follows a documented recovery procedure (`docs/runbooks/deploy-failure-recovery.md`) covering: inspecting `_prisma_migrations` table for partially-applied state, marking or rolling back the failed migration, and re-running `prisma migrate deploy` — the procedure is validated at least once against a non-production database
+
+**Given** a misconfigured secret causes `apps/agent-be` or `apps/web` to fail startup
+**When** the health check fails post-deploy
+**Then** the deploy is blocked from receiving traffic (Vercel build-step failure or Railway health-check failure prevents promotion), and the previous working deployment continues serving until the secret is corrected and a new deploy succeeds
+
+**Given** this story's scope
+**When** considering execution
+**Then** this story is executed manually via the Vercel/Railway dashboards and CLI — a coding agent cannot validate rollback behavior autonomously. Treat completion as a human-executed verification step, not a code-and-test implementation loop.
+
+### Story 4.9: Configure Custom Domain and Stable Production URL
+
+As the platform operator,
+I want a custom domain configured for the production deployment,
+So that the GitHub OAuth callback URL and `AUTH_URL` env var point at a stable domain that doesn't change between deploys.
+
+**Acceptance Criteria:**
+
+**Given** the placeholder `*.vercel.app` URL from Story 4.1
+**When** a custom domain is provisioned
+**Then** DNS records are configured (A or CNAME pointing to Vercel), the domain is added and verified in the Vercel project settings, and TLS is provisioned automatically by Vercel
+
+**Given** the custom domain is live
+**When** environment variables are updated
+**Then** `AUTH_URL` on Vercel is updated to the custom domain (e.g., `https://app.bmad-easy.com`) so Auth.js redirects and session callbacks use the stable URL
+
+**Given** the GitHub OAuth App registered in Story 4.5
+**When** the callback URL needs updating
+**Then** the OAuth App's callback URL is updated at `github.com/settings/developers` to use the custom domain — this sub-step is manual, not attempted by the agent
+
+**Given** the custom domain and updated OAuth configuration
+**When** a user signs in
+**Then** the full OAuth flow (sign-in → callback → session establishment) works end-to-end against the custom domain, verified by a manual sign-in test
+
+**Given** this story's scope
+**When** considering execution
+**Then** this story is executed manually via the Vercel dashboard, DNS provider, and GitHub OAuth App settings — a coding agent cannot provision DNS or OAuth App configuration autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.
+
+### Story 4.10: Configure Database Backups and Verify Restore
+
+As the platform operator,
+I want automated backups and a tested restore procedure for the Railway Postgres instance,
+So that a data loss event is recoverable rather than catastrophic.
+
+**Acceptance Criteria:**
+
+**Given** the Railway Postgres instance provisioned in Story 4.2
+**When** backups are configured
+**Then** Railway's built-in Postgres backup feature is enabled with a retention policy of at least daily backups retained for 7 days and weekly backups retained for 4 weeks
+
+**Given** backups are running
+**When** a restore is tested
+**Then** a backup is restored to a temporary Postgres instance (local or Railway), and data integrity is confirmed by comparing row counts and a sample of records against the production database
+
+**Given** the restore procedure
+**When** it is documented
+**Then** a runbook is committed to the repository at `docs/runbooks/db-restore.md` covering: how to trigger a restore from Railway, how to point `apps/agent-be` at the restored instance, and the steps to verify integrity post-restore
+
+**Given** this story's scope
+**When** considering execution
+**Then** this story is executed manually via the Railway dashboard and CLI — a coding agent cannot provision or restore backups autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.
+
+### Story 4.11: Configure Launch-Window Monitoring and Alerting
+
+As the platform operator,
+I want minimal monitoring and alerting on the production deployment,
+So that I know the platform is broken before a user reports it.
+
+**Acceptance Criteria:**
+
+**Given** both `apps/web` (Vercel) and `apps/agent-be` (Railway) deployed to production
+**When** uptime monitoring is configured
+**Then** an external uptime check polls `GET /health` on `apps/agent-be` and the homepage of `apps/web` at a regular interval (default 5 minutes), and alerts the operator within 5 minutes of a failure (e.g., via email, Slack webhook, or a monitoring service's free tier)
+
+**Given** the production deployment
+**When** errors occur
+**Then** platform-native logs (Vercel deployment logs, Railway service logs) are confirmed accessible and retained for at least 7 days, and the operator knows how to access them without additional setup
+
+**Given** a deploy failure (Story 4.6's `workflow_dispatch` job fails)
+**When** the failure occurs
+**Then** the GitHub Actions failure notification reaches the operator (via GitHub's default email notification or a configured webhook), so a failed deploy does not go unnoticed
+
+**Given** this story's scope
+**When** considering what is out of scope
+**Then** NFR-O1 per-user LLM spend monitoring (Epic 3 Story 3.8), distributed tracing, and APM tools are explicitly out of scope — this story covers only the minimal observability needed to detect and respond to platform-level outages during the MVP launch window
+
+### Story 4.12: Secret Rotation Reminder Mechanism
+
+As the platform operator,
+I want automated reminders for rotating production secrets that require manual action,
+So that rotations are not forgotten and secrets do not exceed their safe lifetime.
+
+**Acceptance Criteria:**
+
+**Given** the production secrets wired in Story 4.5 (`DAYTONA_API_KEY`, `ANTHROPIC_API_KEY`, `AUTH_GITHUB_SECRET`, `AGENT_BACKEND_JWT_SECRET`) and the KEK runbook from Story 1.9
+**When** the rotation schedule is authored
+**Then** a runbook is committed to `docs/runbooks/secret-rotation-schedule.md` listing each secret, its rotation interval (90 days for API keys, 180 days for OAuth secrets), the manual steps to rotate each, and a reference to the KEK rotation runbook for `CREDENTIAL_ENCRYPTION_KEK`
+
+**Given** the rotation schedule
+**When** a secret approaches or passes its rotation due date
+**Then** a GitHub Actions cron job (running weekly) creates a GitHub issue in the repository titled "Rotate `<secret-name>` — due `<date>`" with a link to the rotation runbook, so the rotation is tracked as actionable work rather than relying on memory
+
+**Given** the initial production launch
+**When** the reminder mechanism is first activated
+**Then** each secret's initial rotation due date is set based on the production launch date (launch date + rotation interval), and the cron job is confirmed to have created its first check issue without error
+
+**Given** this story's scope
+**When** considering what is out of scope
+**Then** automated secret rotation (no human in the loop) is explicitly out of scope — this story delivers reminders only, not rotation automation

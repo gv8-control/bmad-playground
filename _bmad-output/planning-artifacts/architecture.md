@@ -13,6 +13,7 @@ inputDocuments:
   - '_bmad-output/planning-artifacts/research/technical-claude-agent-sdk-sandboxed-tool-execution-research-2026-06-12.md'
   - '_bmad-output/planning-artifacts/research/technical-bmad-session-token-consumption-and-cost-claude-sonnet-4-6-research-2026-06-14.md'
   - '_bmad-output/planning-artifacts/research/technical-docker-per-session-daytona-ai-agent-isolation-research-2026-06-12.md'
+  - '_bmad-output/planning-artifacts/research/technical-network-security-between-agent-be-and-daytona-sandbox-research-2026-06-16.md'
 workflowType: 'architecture'
 project_name: 'bmad-easy'
 user_name: 'Marius'
@@ -76,7 +77,7 @@ Architecturally significant FRs:
 - **UX/PRD reconciliation required:** EXPERIENCE.md onboarding Flow 1 references a PAT input field (pre-DL-7). The correct onboarding model per PRD DL-7: sign-in with GitHub OAuth obtains the `repo`-scoped token; onboarding only requires a Repository URL input field. The architecture specifies the DL-7 model; EXPERIENCE.md requires a corresponding update.
 - **HTTP/2 deployment invariant:** The NestJS agent backend must be fronted by an HTTP/2-capable reverse proxy at the load balancer level. HTTP/1.1 anywhere in the browser→NestJS path caps concurrent SSE connections at 6, breaking NFR-R4. This is a deployment configuration requirement verified in the launch checklist, not a code requirement.
 - **Sandbox idle timeout:** A sandbox provisioned on page open (FR-9) that receives no first message within a configurable timeout (default 60s, read from `SandboxService` config) must be torn down. This prevents wasted allocations from users who navigate away before sending a message. The 60-second default is not empirically validated; treat as a tunable parameter.
-- **Sandbox initialization sequence (ordered):** provision → clone (or restore on resume) → inject per-user git config → run `git status --porcelain` → emit `WORKING_TREE_*` event → emit `SESSION_READY`. Git config injection must occur at every provision **and** every resume, not only at initial provision.
+- **Sandbox initialization sequence (ordered):** provision (env vars `ANTHROPIC_API_KEY`/`GITHUB_TOKEN` injected, `networkAllowList` egress restriction applied) → clone (or restore on resume) → inject per-user git config → run `git status --porcelain` → emit `WORKING_TREE_*` event → emit `SESSION_READY`. Git config injection must occur at every provision **and** every resume, not only at initial provision. `networkAllowList` mitigates the credential-exfiltration risk documented for sandbox-resident secrets (see Authentication & Security item 6).
 - **sandbox-agent version policy:** Pin to an exact binary version in the Dockerfile (no floating tags). Before any upgrade: diff the JSONL→AG-UI event mapping in the release changelog; run the new version against a recorded BMAD session replay and validate the expected AG-UI event sequence matches. Upgrade only when a specific bug fix or capability drives it. Monitor upstream for abandonment signals.
 - **AG-UI package version policy:** Pin `@assistant-ui/react-ag-ui`, `@ag-ui/client`, and `@ag-ui/core` to exact versions in `package.json` (no `^` or `~`). Before any upgrade: check changelog for `IAgentHarness` interface changes and `EventType` enum changes; validate against a recorded session replay in isolation. Upgrade only when needed. Same discipline as sandbox-agent.
 - **Client-side session-start timeout:** If `SESSION_READY` never arrives (e.g., Daytona 503 on provision), the "Starting session…" state must have a client-side timeout (distinct from the server-side idle timeout) with a retry affordance.
@@ -227,7 +228,7 @@ Migrations run from this library against the shared Railway Postgres instance.
 
 **Deferred Decisions (Post-MVP):**
 
-- KEK management migrates from a Railway env var to a third-party KMS.
+- KEK management migrates from a Railway env var to a centralized secrets manager (third-party KMS or a tool like Vault/Doppler) — covers the KEK and the Daytona API key as one future migration, not two separate ones. Trigger: multiple platform operators needing scoped access, or rotation needs growing beyond the existing manual `scripts/rotate-kek.ts` runbook. Not warranted for MVP's single-operator, single-environment footprint (plain, platform-encrypted env vars on Vercel/Railway are sufficient).
 - Daytona sandbox orphan cleanup: no enforced TTL/backstop; the system operator handles orphaned sandboxes manually for MVP.
 - Postgres role separation: `apps/web` and `apps/agent-be` share one permissive DB role/credential; least-privilege role separation deferred.
 - SSE/Conversation state durability across an `apps/agent-be` restart: in-memory Conversation→sandbox mapping loss on restart is acceptable degradation for MVP.
@@ -255,9 +256,10 @@ Migrations run from this library against the shared Railway Postgres instance.
 3. **OAuth token at rest:** per-user DEK encrypts the GitHub OAuth token; a platform KEK wraps each DEK (envelope encryption), AES-256-GCM (NFR-S4). KEK stored as a Railway env var for MVP, migrating to a third-party KMS post-MVP. KEK rotation runbook documented; GCM nonce-uniqueness enforced.
 4. **`apps/agent-be` ↔ Daytona/sandbox-agent transport:** no additional credential is needed beyond the Daytona API key `apps/agent-be` already holds. `apps/agent-be` is the sole initiating/active party — Daytona's proxy and control-plane authenticate and broker every interaction (process exec, log streaming) before it reaches a sandbox; sandbox-agent never opens an outbound connection back to `apps/agent-be`. The only implementation requirement is call correctness: every session/log-streaming call must be scoped to the sandboxId tied to the correct Conversation.
 5. **Daytona API key:** stored as a plain Railway environment secret, no rotation mechanism for MVP.
-6. **DB unavailability:** no fail-open/fail-closed logic; if Postgres is unreachable, the operation simply fails and the frontend surfaces an error.
-7. **Daytona sandbox orphan cleanup:** not enforced for MVP; the system operator handles orphaned sandboxes manually. Post-MVP concern.
-8. **Postgres role separation:** not enforced for MVP; `apps/web` and `apps/agent-be` share one permissive DB role/credential. Post-MVP concern.
+6. **Anthropic/Claude Agent SDK API key:** `ANTHROPIC_API_KEY` is injected into each Daytona sandbox as an environment variable at `daytona.create()` time, sourced from `apps/agent-be`'s own Railway environment — the same mechanism already used for the per-user `GITHUB_TOKEN`. Per Daytona's own Security Exhibit, any secret injected into a sandbox's environment is readable and exfiltratable by the agent process running there; this applies equally to `ANTHROPIC_API_KEY` and `GITHUB_TOKEN`. Mitigation: `networkAllowList` egress restriction on every sandbox (GitHub, the Anthropic API, and required package registries only; `networkBlockAll` for everything else) — a low-effort, concrete implementation of NFR-S1/S2's network-isolation intent, added to the sandbox initialization sequence (see Technical Constraints). Host-mediated git operations (agent-be executing git via the Daytona process API instead of handing the sandbox a raw token) is a higher-effort structural alternative, deferred to the post-MVP risk register rather than required for MVP.
+7. **DB unavailability:** no fail-open/fail-closed logic; if Postgres is unreachable, the operation simply fails and the frontend surfaces an error.
+8. **Daytona sandbox orphan cleanup:** not enforced for MVP; the system operator handles orphaned sandboxes manually. Post-MVP concern.
+9. **Postgres role separation:** not enforced for MVP; `apps/web` and `apps/agent-be` share one permissive DB role/credential. Post-MVP concern.
 
 ### API & Communication Patterns
 
@@ -285,7 +287,7 @@ Migrations run from this library against the shared Railway Postgres instance.
 - **Environments:** production only for MVP, no separate staging.
 - **Monitoring & logging:** platform-native logging (Railway/Vercel) for MVP, plus the already-mandated NFR-O1 per-user LLM spend monitoring with budget alerting wired in from day one. Log consolidation onto a single platform is a post-MVP consideration.
 - **Scaling:** single-container ceiling for `apps/agent-be` is accepted for MVP (no horizontal scaling, no distributed session registry); reaching the ceiling requires horizontal scaling work that is explicitly out of scope until needed.
-- **Deployment invariants already locked:** `apps/agent-be` must be fronted by an HTTP/2-capable reverse proxy (NFR-R4); NestJS shutdown hooks must drain SSE connections on deploy rather than hard-killing them (single-container constraint).
+- **Deployment invariants already locked:** `apps/agent-be` must be fronted by an HTTP/2-capable reverse proxy (NFR-R4); NestJS shutdown hooks must drain SSE connections on deploy rather than hard-killing them (single-container constraint); every Daytona sandbox must have `networkAllowList` egress restriction applied at provision time to mitigate exfiltration of sandbox-resident secrets (`ANTHROPIC_API_KEY`, per-user `GITHUB_TOKEN`) — see Authentication & Security item 6.
 
 ### Decision Impact Analysis
 
@@ -303,6 +305,8 @@ Migrations run from this library against the shared Railway Postgres instance.
 10. Add `@nestjs/throttler` rate limiting to `apps/agent-be`'s REST endpoints.
 11. Configure GitHub Actions CI (lint + test gates) and the manual deploy process for both services.
 12. Verify launch-checklist deployment invariants (HTTP/2 proxy in front of `apps/agent-be`, NFR-O1 cost monitoring and budget alerts live).
+
+*Note (2026-07-03): Steps 11 (manual deploy process) and 12 (launch-checklist invariant verification) are tracked as Epic 4 (deploy mechanics) and Epic 3 Stories 3.8/3.11/3.12 (invariant verification, once the underlying features exist) rather than as part of Epic 1's delivered scope.*
 
 **Cross-Component Dependencies:**
 
