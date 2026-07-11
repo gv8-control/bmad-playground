@@ -1000,6 +1000,10 @@ So that Railway can build and run it as a container.
 **When** it runs on Railway
 **Then** a `HEALTHCHECK` instruction (or Railway health-probe configuration) polls `GET /health` on a defined interval (default 30s) so Railway can detect and restart an unhealthy container automatically
 
+**Given** the Dockerfile's build stage
+**When** `nx build agent-be` is run
+**Then** a `prisma generate` step (from `libs/database-schemas`) runs before the build, so the shared Prisma client is available at build time — matching the `apps/web` build command in Story 4.1
+
 ### Story 4.4: Run Prisma Migrations Against the Railway Postgres Instance
 
 As the platform operator,
@@ -1026,11 +1030,11 @@ So that both services run with the correct production configuration.
 
 **Given** `apps/web` on Vercel
 **When** environment variables are set
-**Then** `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, `AUTH_URL`, `DATABASE_URL`, and `AGENT_BACKEND_JWT_SECRET` (shared symmetric key for signing boundary JWTs minted by `apps/web` and validated by `apps/agent-be`, per architecture's boundary-JWT design) are present
+**Then** `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, `AUTH_URL`, and `DATABASE_URL` are present
 
 **Given** `apps/agent-be` on Railway
 **When** environment variables are set
-**Then** `DATABASE_URL`, `CREDENTIAL_ENCRYPTION_KEK` (generated via `openssl rand -hex 32`), `DAYTONA_API_URL`, `DAYTONA_API_KEY`, `ANTHROPIC_API_KEY` (Claude Agent SDK credential, required per PRD §8 Assumption A-3 — consumed by the agent-be Anthropic proxy endpoint that sandboxes reach via `ANTHROPIC_BASE_URL`; never injected into a Daytona sandbox, per NFR-S1), and `AGENT_BACKEND_JWT_SECRET` (same shared key as on Vercel, used by `boundary-jwt.guard.ts` to validate incoming JWTs) are present
+**Then** `DATABASE_URL`, `CREDENTIAL_ENCRYPTION_KEK` (generated via `openssl rand -hex 32`), `DAYTONA_API_URL`, `DAYTONA_API_KEY`, `ANTHROPIC_API_KEY` (Claude Agent SDK credential, required per PRD §8 Assumption A-3 — consumed by the agent-be Anthropic proxy endpoint that sandboxes reach via `ANTHROPIC_BASE_URL`; never injected into a Daytona sandbox, per NFR-S1) are present
 
 **Given** either platform
 **When** variables are reviewed
@@ -1049,7 +1053,7 @@ So that both services run with the correct production configuration.
 
 As a developer,
 I want a manually-triggered deploy job in CI,
-So that shipping to production is deliberate, per Story 1.1 AC-4's original policy intent.
+So that shipping to production is deliberate, per Story 1.1's manual-trigger deploy policy.
 
 **Acceptance Criteria:**
 
