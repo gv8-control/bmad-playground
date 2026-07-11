@@ -67,6 +67,14 @@
       "type": "local",
       "command": ["npx", "playwright", "run-test-mcp-server"],
       "enabled": true
+    },
+    "daytona": {
+      "type": "local",
+      "command": ["daytona", "mcp", "start"],
+      "enabled": true,
+      "environment": {
+        "HOME": "{env:HOME}"
+      }
     }
   },
   "tools": {
