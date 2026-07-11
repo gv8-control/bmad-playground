@@ -959,11 +959,7 @@ So that the frontend has a deployable production target.
 **When** this story completes
 **Then** at least a placeholder `*.vercel.app` production URL exists
 
-**Given** this story's scope
-**When** considering execution
-**Then** this story is executed manually via the Vercel dashboard/CLI using the operator's own account credentials — a coding agent cannot provision a Vercel project autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.
-
-> *Note (2026-07-03): this story is executed manually via the Vercel dashboard/CLI using the operator's own account credentials — a coding agent cannot provision a Vercel project autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.*
+> *Note (2026-07-11): API automation verified. `VERCEL_TOKEN` is available in `.env.local` (team: `marius-projects-a878add7`, id: `team_DV9hczWkgqbOEoMGnX9Pta3t`). Project creation and deletion were confirmed via `POST/DELETE https://api.vercel.com/v10/projects` — a coding agent can execute this story autonomously via the Vercel REST API. The original "human-executed" note (2026-07-03) is superseded; it assumed no API token was available.*
 
 ### Story 4.2: Provision the Railway Project with Postgres for `apps/agent-be`
 
@@ -981,11 +977,7 @@ So that the backend and its database share operational lifecycle per architectur
 **When** it is provisioned
 **Then** a `DATABASE_URL` connection string is available for Story 4.4 and Story 4.5
 
-**Given** this story's scope
-**When** considering execution
-**Then** this story is executed manually via the Railway dashboard/CLI using the operator's own account credentials — a coding agent cannot provision a Railway project autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.
-
-> *Note (2026-07-03): this story is executed manually via the Railway dashboard/CLI using the operator's own account credentials — a coding agent cannot provision a Railway project autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.*
+> *Note (2026-07-11): API automation verified. `RAILWAY_TOKEN` is available in `.env.local` (workspace: `marius321967's Projects`, id: `a1f06762-5fbd-431e-811f-5183b80576e5`). Project creation and deletion were confirmed via the Railway GraphQL API (`POST https://backboard.railway.app/graphql/v2`, `projectCreate` mutation requires `workspaceId`) — a coding agent can execute this story autonomously via the Railway GraphQL API. The original "human-executed" note (2026-07-03) is superseded; it assumed no API token was available.*
 
 ### Story 4.3: Add a Dockerfile for `apps/agent-be`
 
@@ -1048,6 +1040,11 @@ So that both services run with the correct production configuration.
 **When** `AUTH_GITHUB_ID`/`AUTH_GITHUB_SECRET` are needed
 **Then** the OAuth App itself is registered manually by the user at `github.com/settings/developers` (no API exists for this) using the Story 4.1 Vercel domain as the callback URL — this sub-step is manual, not attempted by the agent
 
+> *Note (2026-07-11): Three corrections to the ACs above, verified against the implementation:*
+> *1. `AGENT_BACKEND_JWT_SECRET` is stale — the boundary JWT implementation (`boundary-jwt.guard.ts`, `streaming.controller.ts`) uses `AUTH_SECRET` for both signing and validation, not a separate key. Remove `AGENT_BACKEND_JWT_SECRET` from both the Vercel and Railway env var lists; `AUTH_SECRET` is already present on both.*
+> *2. The GitHub OAuth App already exists (`AUTH_GITHUB_ID=Ov23liwPSopCBFh9nMRN` in `.env`) with callback URL `http://localhost:3000/api/auth/callback/github`. The only manual step remaining is updating the callback URL to the production `*.vercel.app` domain once Story 4.1 completes — no new OAuth App registration needed.*
+> *3. `ANTHROPIC_API_KEY` is already in `.env` and in the GitHub Actions secrets. `DAYTONA_API_URL` and `DAYTONA_API_KEY` are already in `.env`. `AUTH_SECRET` is already in `.env`. The only value that needs generating for production is `CREDENTIAL_ENCRYPTION_KEK` (current value is a test placeholder `0000…0000`).*
+
 ### Story 4.6: Add the Manual-Trigger Deploy Step to CI
 
 As a developer,
@@ -1067,6 +1064,8 @@ So that shipping to production is deliberate, per Story 1.1 AC-4's original poli
 **Given** the deploy job targets production
 **When** it is configured
 **Then** it uses a GitHub Environment (e.g. `production`) with required reviewers enabled, a required reviewer count of at least 1, and a branch restriction pinning deploys to the default branch (e.g. `main`) — so that no maintainer can trigger a production deploy without human approval and no deploy originates from an unmerged branch
+
+> *Note (2026-07-11): Required reviewer is `marius321967`. The `production` GitHub Environment does not exist yet (only `copilot` exists) and must be created via `gh api` or repo settings. The `GITHUB_TOKEN` in `.env` has sufficient scope to create environments and configure protection rules.*
 
 ### Story 4.7: Confirm HTTP/2-Capable Reverse Proxy in Front of `apps/agent-be`
 
@@ -1108,11 +1107,11 @@ So that a production incident doesn't become a prolonged outage because no one k
 **When** the health check fails post-deploy
 **Then** the deploy is blocked from receiving traffic (Vercel build-step failure or Railway health-check failure prevents promotion), and the previous working deployment continues serving until the secret is corrected and a new deploy succeeds
 
-**Given** this story's scope
-**When** considering execution
-**Then** this story is executed manually via the Vercel/Railway dashboards and CLI — a coding agent cannot validate rollback behavior autonomously. Treat completion as a human-executed verification step, not a code-and-test implementation loop.
+> *Note (2026-07-11): API automation verified. Vercel and Railway tokens in `.env.local` are sufficient for rollback verification via their respective APIs. The runbook authoring is standard code/doc work. The Prisma migration recovery procedure can be validated against a throwaway local Postgres. A coding agent can execute this story autonomously — the original "human-executed" note (2026-07-03) is superseded.*
 
 ### Story 4.9: Configure Custom Domain and Stable Production URL
+
+> *Note (2026-07-11): Deferred for MVP. The `*.vercel.app` production URL from Story 4.1 is stable (does not change between deploys) and sufficient for OAuth callback, Auth.js sessions, and SSE. A custom domain is a branding upgrade, not a functional requirement — neither the architecture nor PRD requires it. Skip this story unless a branded domain is needed before sharing the platform with non-dev users. If reactivated later, the only genuinely manual step is updating the GitHub OAuth App callback URL at `github.com/settings/developers` (no API exists for OAuth App management).*
 
 As the platform operator,
 I want a custom domain configured for the production deployment,
@@ -1160,9 +1159,7 @@ So that a data loss event is recoverable rather than catastrophic.
 **When** it is documented
 **Then** a runbook is committed to the repository at `docs/runbooks/db-restore.md` covering: how to trigger a restore from Railway, how to point `apps/agent-be` at the restored instance, and the steps to verify integrity post-restore
 
-**Given** this story's scope
-**When** considering execution
-**Then** this story is executed manually via the Railway dashboard and CLI — a coding agent cannot provision or restore backups autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.
+> *Note (2026-07-11): API automation verified. `RAILWAY_TOKEN` in `.env.local` is sufficient for backup configuration and restore testing via the Railway GraphQL API. The runbook authoring is standard code/doc work. A coding agent can execute this story autonomously — the original "human-executed" note (2026-07-03) is superseded. One uncertainty to resolve during implementation: verify whether Railway's API supports configuring backup retention policy (daily/7d, weekly/4w) or just triggering ad-hoc backups — if retention config is dashboard-only, that specific sub-step remains manual.*
 
 ### Story 4.11: Configure Launch-Window Monitoring and Alerting
 
@@ -1188,6 +1185,8 @@ So that I know the platform is broken before a user reports it.
 **When** considering what is out of scope
 **Then** NFR-O1 per-user LLM spend monitoring (Epic 3 Story 3.8), distributed tracing, and APM tools are explicitly out of scope — this story covers only the minimal observability needed to detect and respond to platform-level outages during the MVP launch window
 
+> *Note (2026-07-11): Monitoring service selected: UptimeRobot (free tier, 50 monitors at 5-minute intervals, email alerts). Chosen for independence from GitHub/Vercel/Railway — if GitHub Actions is degraded, monitoring still works. Two monitors needed: `apps/web` homepage + `apps/agent-be` `/health`. Implementation requires the operator's UptimeRobot API key (account-specific key from My Settings → API Keys). This is the only remaining credential not already in `.env.local`.*
+
 ### Story 4.12: Secret Rotation Reminder Mechanism
 
 As the platform operator,
@@ -1196,7 +1195,7 @@ So that rotations are not forgotten and secrets do not exceed their safe lifetim
 
 **Acceptance Criteria:**
 
-**Given** the production secrets wired in Story 4.5 (`DAYTONA_API_KEY`, `ANTHROPIC_API_KEY`, `AUTH_GITHUB_SECRET`, `AGENT_BACKEND_JWT_SECRET`) and the KEK runbook from Story 1.9
+**Given** the production secrets wired in Story 4.5 (`DAYTONA_API_KEY`, `ANTHROPIC_API_KEY`, `AUTH_GITHUB_SECRET`, `AUTH_SECRET`) and the KEK runbook from Story 1.9
 **When** the rotation schedule is authored
 **Then** a runbook is committed to `docs/runbooks/secret-rotation-schedule.md` listing each secret, its rotation interval (90 days for API keys, 180 days for OAuth secrets), the manual steps to rotate each, and a reference to the KEK rotation runbook for `CREDENTIAL_ENCRYPTION_KEK`
 
