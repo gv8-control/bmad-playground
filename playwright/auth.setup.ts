@@ -6,11 +6,13 @@ import { dirname } from 'path';
 import * as OTPAuth from 'otpauth';
 
 // Create the directory and empty storage state file before any test worker starts.
-// Must use environment: 'local' explicitly — authStorageInit() defaults to
-// process.env.TEST_ENV ('ci' in CI), which would create .auth/ci/default/
-// instead of .auth/local/default/ where playwright.config.ts reads storageState
-// from. The setup test and config both use 'local', so the init must match.
-authStorageInit({ environment: 'local', userIdentifier: 'default' });
+// No explicit environment — defaults to process.env.TEST_ENV || 'local', which
+// matches the @seontechnologies/playwright-utils fixtures that override
+// storageState in the browser context. In CI (TEST_ENV=ci), this creates
+// .auth/ci/default/storage-state.json; locally it creates
+// .auth/local/default/storage-state.json. Both the setup test and the fixtures
+// must use the same path, which requires using the same environment resolution.
+authStorageInit();
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 
@@ -90,7 +92,9 @@ async function realOAuthFlow({ page }: { page: Page }) {
 
   // Save storage state only after confirming the session is valid, so the
   // file always contains the authjs.session-token cookie.
-  const storagePath = getStorageStatePath({ environment: 'local', userIdentifier: 'default' });
+  // No explicit environment — defaults to process.env.TEST_ENV || 'local',
+  // matching the fixtures that load this file in the test project.
+  const storagePath = getStorageStatePath();
   await page.context().storageState({ path: storagePath });
 
   // Read the file back from disk and verify it contains the session cookie.
@@ -173,7 +177,9 @@ async function syntheticSession({ request }: { request: APIRequestContext }) {
   });
 
   // Write the storage state so the chromium project can pick it up.
-  const storagePath = getStorageStatePath({ environment: 'local', userIdentifier: 'default' });
+  // No explicit environment — defaults to process.env.TEST_ENV || 'local',
+  // matching the fixtures that load this file in the test project.
+  const storagePath = getStorageStatePath();
   mkdirSync(dirname(storagePath), { recursive: true });
   writeFileSync(
     storagePath,
