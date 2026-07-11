@@ -211,7 +211,7 @@ NFR-O1: Epic 3 - Per-user LLM spend monitoring
 
 Additional Requirements: Epic 1 - Nx/pnpm scaffold, Postgres/Prisma schema, boundary JWT, OAuth envelope encryption (including GCM nonce-uniqueness enforcement, Story 1.3), KEK rotation runbook (Story 1.9), GitHub org OAuth-restriction dry-run check; Epic 2 - artifacts.service.ts Postgres mirror of `_bmad-output/`; Epic 3 - sandbox lifecycle (provisioning, pre-first-message idle timeout, mid-session idle timeout (Story 3.9), init sequence, circuit breaker, heartbeat, provision queue, failure cleanup), sandbox-agent/AG-UI version pinning (enforced via PR-review checklist, not a story AC), credential-failure SSE propagation, Conversation history persistence-on-every-turn, `last_active_at` schema field, commit author identity verification (Story 3.10); Epic 4 - CI/CD manual deploy trigger, deployment infra (Vercel/Railway provisioning, Dockerfile, HTTP/2 proxy confirmation — see Epic 4 section). UX/PRD reconciliation (URL-only onboarding, no PAT field) applies to Epic 1.
 
-> *Correction (2026-07-03): "CI/CD, deployment infra" was previously listed under Epic 1 here; it is delivered by Epic 4 (Stories 4.1–4.7), added via Sprint Change Proposal 2026-07-03. Epic 1's own delivered scope (scaffold, schema, JWT, encryption, KEK runbook) is unaffected — see also the scope note on Story 1.1's AC-4.*
+> *Correction (2026-07-03): "CI/CD, deployment infra" was previously listed under Epic 1 here; it is delivered by Epic 4 (Stories 4.1–4.12), added via Sprint Change Proposal 2026-07-03. Epic 1's own delivered scope (scaffold, schema, JWT, encryption, KEK runbook) is unaffected — see also the scope note on Story 1.1's AC-4.*
 
 UX Design Requirements: Epic 1 - UX-DR1 (design tokens), UX-DR2 (side navigation), UX-DR13 (three-zone scroll shell), UX-DR14, UX-DR15, UX-DR16 (accessibility floor), UX-DR17 (responsive behavior), UX-DR20 (breadcrumb nav) — all delivered once, as the persistent app shell (Story 1.8), and inherited by every later epic's pages; Epic 2 - UX-DR10, UX-DR11, UX-DR12, UX-DR19 (Project Map/Artifact Browser states); Epic 3 - UX-DR3 through UX-DR9, UX-DR18, UX-DR19 (Conversation states).
 
@@ -600,7 +600,7 @@ So that the chat is ready almost immediately instead of waiting on a cold start.
 **Given** a user opens a new Conversation page
 **When** the page loads
 **Then** a Sandbox is provisioned and the Repository is cloned inside it as a background operation, while the chat interface is visible immediately (FR9)
-**And** the sandbox initialization sequence runs in order: provision (with `ANTHROPIC_API_KEY` and the per-user `GITHUB_TOKEN` injected as sandbox env vars, and a `networkAllowList` egress restriction applied — scoped to GitHub, the Anthropic API, and required package registries only — to mitigate exfiltration of these sandbox-resident secrets) → clone (or restore on resume) → inject the Story 1.5 git identity into git config → run `git status --porcelain` → emit a working-tree event → emit session-ready
+**And** the sandbox initialization sequence runs in order: provision (with `ANTHROPIC_BASE_URL` pointing at the agent-be proxy endpoint — not `ANTHROPIC_API_KEY` — and the per-user `GITHUB_TOKEN` injected as a sandbox env var, and a `networkAllowList` egress restriction applied — scoped to GitHub, the agent-be proxy, and required package registries only — so that no platform-internal credential enters the sandbox, per NFR-S1) → clone (or restore on resume) → inject the Story 1.5 git identity into git config → run `git status --porcelain` → emit a working-tree event → emit session-ready
 **And** while provisioning, a spinner and "Starting session…" label are shown in the chat area with the input disabled
 **And** the chat is ready for input within 10 seconds of page open for repositories under ~200MB (NFR-P2)
 
@@ -1038,7 +1038,7 @@ So that both services run with the correct production configuration.
 
 **Given** `apps/agent-be` on Railway
 **When** environment variables are set
-**Then** `DATABASE_URL`, `CREDENTIAL_ENCRYPTION_KEK` (generated via `openssl rand -hex 32`), `DAYTONA_API_URL`, `DAYTONA_API_KEY`, `ANTHROPIC_API_KEY` (Claude Agent SDK credential, required per PRD §8 Assumption A-3 — injected into each Daytona sandbox at provision time per Epic 3 Story 3.1, not consumed directly by `apps/agent-be` itself), and `AGENT_BACKEND_JWT_SECRET` (same shared key as on Vercel, used by `boundary-jwt.guard.ts` to validate incoming JWTs) are present
+**Then** `DATABASE_URL`, `CREDENTIAL_ENCRYPTION_KEK` (generated via `openssl rand -hex 32`), `DAYTONA_API_URL`, `DAYTONA_API_KEY`, `ANTHROPIC_API_KEY` (Claude Agent SDK credential, required per PRD §8 Assumption A-3 — consumed by the agent-be Anthropic proxy endpoint that sandboxes reach via `ANTHROPIC_BASE_URL`; never injected into a Daytona sandbox, per NFR-S1), and `AGENT_BACKEND_JWT_SECRET` (same shared key as on Vercel, used by `boundary-jwt.guard.ts` to validate incoming JWTs) are present
 
 **Given** either platform
 **When** variables are reviewed
