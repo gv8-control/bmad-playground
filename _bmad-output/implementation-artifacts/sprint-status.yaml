@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-06T20:00:00Z
+last_updated: 2026-07-11T17:00:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -67,7 +67,7 @@ development_status:
   epic-2-retrospective: done
 
   # ── Epic 3: Conversations — Running BMAD Skills with the Agent ──
-  epic-3: in-progress
+  epic-3: done
   3-1-provision-a-sandbox-when-opening-a-conversation: done
   3-2-invoke-bmad-skills-via-slash-command: done
   3-3-converse-with-the-streaming-agent: done
