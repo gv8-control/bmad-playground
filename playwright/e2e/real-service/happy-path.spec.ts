@@ -131,7 +131,11 @@ test.describe('Real-service happy-path agent run', () => {
     await sendMessage(page, TEST_MESSAGE);
 
     // Assert the user's message appears in the conversation (optimistic echo).
-    await expect(page.getByText(TEST_MESSAGE)).toBeVisible();
+    // Scope to the chat message list to avoid matching the textarea, which
+    // retains the filled text after sendMessage().
+    await expect(
+      page.getByTestId('chat-message-list').getByText(TEST_MESSAGE),
+    ).toBeVisible();
 
     // ─── 3. First streamed token + NFR-P1 (first token ≤1500ms) ───────────
     // The agent message is rendered via react-markdown (wraps content in <p>),
@@ -157,6 +161,7 @@ test.describe('Real-service happy-path agent run', () => {
         }
         return false;
       },
+      undefined,
       { timeout: 30_000 },
     );
     const tokenElapsed = performance.now() - tokenStart;
