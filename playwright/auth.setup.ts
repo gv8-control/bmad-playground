@@ -51,10 +51,57 @@ async function realOAuthFlow({ page }: { page: Page }) {
     await authorizeBtn.click({ force: true, noWaitAfter: true });
   }
 
-  await page.waitForURL(`${BASE_URL}/**`, { timeout: 30_000 });
+  // Wait for redirect back to the app — but NOT to /sign-in (which would
+  // indicate an OAuth callback failure). A function predicate excludes the
+  // sign-in page so a silent OAuth error causes a timeout instead of a false
+  // pass. Without this, waitForURL(`${BASE_URL}/**`) matches /sign-in?error=...
+  // immediately (the callback already redirected there), storageState saves
+  // no session cookie, and the setup test passes without ever detecting the
+  // failure.
+  await page.waitForURL(
+    (url) => url.origin === BASE_URL && !url.pathname.startsWith('/sign-in'),
+    { timeout: 30_000 },
+  );
 
+  // Verify the OAuth flow actually produced a valid session. If the jwt
+  // callback in auth.ts threw (e.g., CREDENTIAL_ENCRYPTION_KEK missing,
+  // Prisma error), Auth.js redirects to /sign-in?error=... with no session
+  // cookie. The waitForURL predicate above prevents that redirect from
+  // matching, so reaching this line means we're on a real app page. But
+  // we still verify the session explicitly to catch any edge case where
+  // the cookie is present but invalid.
+  const sessionRes = await page.request.get(`${BASE_URL}/api/auth/session`);
+  if (!sessionRes.ok()) {
+    throw new Error(
+      `session check failed: ${sessionRes.status()} ${await sessionRes.text()}`,
+    );
+  }
+  const session = (await sessionRes.json()) as { userId?: string };
+  if (!session.userId) {
+    throw new Error(
+      'OAuth flow completed but session has no userId — the jwt callback may have failed. ' +
+      'Check that CREDENTIAL_ENCRYPTION_KEK is set and the database is accessible.',
+    );
+  }
+
+  // Save storage state only after confirming the session is valid, so the
+  // file always contains the authjs.session-token cookie.
   const storagePath = getStorageStatePath({ environment: 'local', userIdentifier: 'default' });
   await page.context().storageState({ path: storagePath });
+
+  // Verify the storage state actually contains the session cookie. This
+  // catches edge cases where the cookie was set but not captured (e.g.,
+  // domain mismatch, HttpOnly restrictions).
+  const state = await page.context().storageState();
+  const hasSessionCookie = state.cookies.some(
+    (c) => c.name === 'authjs.session-token',
+  );
+  if (!hasSessionCookie) {
+    throw new Error(
+      'Storage state does not contain authjs.session-token cookie — ' +
+      'the test project will not be authenticated.',
+    );
+  }
 
   // Seed a RepoConnection so /conversations/new doesn't redirect to /onboarding.
   // The Auth.js jwt callback (auth.ts:25-81) already upserted the user + stored
@@ -64,18 +111,14 @@ async function realOAuthFlow({ page }: { page: Page }) {
   // which requires TEST_ENV on the server.
   const repoUrl = process.env.TEST_GITHUB_REPO_URL;
   if (repoUrl) {
-    // /api/auth/session returns { userId } via the session callback (auth.ts:82-87).
-    const sessionRes = await page.request.get(`${BASE_URL}/api/auth/session`);
-    if (sessionRes.ok()) {
-      const session = (await sessionRes.json()) as { userId?: string };
-      if (session.userId) {
-        const connRes = await page.request.post(`${BASE_URL}/api/internal/test/repo-connections`, {
-          data: { userId: session.userId, repoUrl },
-        });
-        if (!connRes.ok()) {
-          throw new Error(`repo-connections seed failed: ${connRes.status()} ${await connRes.text()}`);
-        }
-      }
+    const connRes = await page.request.post(
+      `${BASE_URL}/api/internal/test/repo-connections`,
+      { data: { userId: session.userId, repoUrl } },
+    );
+    if (!connRes.ok()) {
+      throw new Error(
+        `repo-connections seed failed: ${connRes.status()} ${await connRes.text()}`,
+      );
     }
   }
 }
