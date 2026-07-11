@@ -37,6 +37,44 @@ export interface GithubFileContent {
 export const MAX_CONTENT_PAGES = 10;
 export const MAX_CONTENT_ENTRIES = 10_000;
 
+/** Bounded in-memory cache for GitHub Contents API responses. */
+const GITHUB_CACHE_MAX_ENTRIES = 500;
+const GITHUB_CACHE_TTL_MS = 120_000;
+
+interface CacheEntry {
+  value: GithubContentEntry[] | GithubFileContent | null;
+  expiresAt: number;
+}
+
+const githubApiCache = new Map<string, CacheEntry>();
+
+function githubCacheKey(owner: string, repo: string, path: string): string {
+  return `${owner}/${repo}/${path}`;
+}
+
+function getCached(key: string): GithubContentEntry[] | GithubFileContent | null | undefined {
+  const entry = githubApiCache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() > entry.expiresAt) {
+    githubApiCache.delete(key);
+    return undefined;
+  }
+  return entry.value;
+}
+
+function setCached(key: string, value: GithubContentEntry[] | GithubFileContent | null): void {
+  if (githubApiCache.size >= GITHUB_CACHE_MAX_ENTRIES) {
+    const oldestKey = githubApiCache.keys().next().value;
+    if (oldestKey !== undefined) githubApiCache.delete(oldestKey);
+  }
+  githubApiCache.set(key, { value, expiresAt: Date.now() + GITHUB_CACHE_TTL_MS });
+}
+
+/** Clears all cached GitHub Contents API responses. Intended for test isolation. */
+export function clearGithubCache(): void {
+  githubApiCache.clear();
+}
+
 /**
  * Thrown when a 403 is a GitHub rate limit (primary or secondary), not a
  * credential failure. Callers must NOT call markCredentialFailed for this.
@@ -131,6 +169,10 @@ export async function fetchGithubContents(
   repo: string,
   path: string,
 ): Promise<GithubContentEntry[] | GithubFileContent | null> {
+  const cacheKey = githubCacheKey(owner, repo, path);
+  const cached = getCached(cacheKey);
+  if (cached !== undefined) return cached;
+
   const response = await fetch(githubApiUrl(owner, repo, path), {
     signal: AbortSignal.timeout(10_000),
     headers: githubHeaders(accessToken),
@@ -151,7 +193,10 @@ export async function fetchGithubContents(
     return null;
   }
 
-  if (response.status === 404) return null;
+  if (response.status === 404) {
+    setCached(cacheKey, null);
+    return null;
+  }
 
   if (!response.ok) {
     throw new Error(`GitHub API error ${response.status} for path: ${path}`);
@@ -160,6 +205,7 @@ export async function fetchGithubContents(
   const data = (await response.json()) as GithubContentEntry[] | GithubFileContent;
 
   if (!Array.isArray(data)) {
+    setCached(cacheKey, data);
     return data;
   }
 
@@ -196,6 +242,7 @@ export async function fetchGithubContents(
     nextUrl = parseNextLink(nextResponse.headers?.get('Link'));
   }
 
+  setCached(cacheKey, entries);
   return entries;
 }
 

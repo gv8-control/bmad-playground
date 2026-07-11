@@ -3989,6 +3989,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@nestjs/throttler@npm:^6.5.0":
+  version: 6.5.0
+  resolution: "@nestjs/throttler@npm:6.5.0"
+  peerDependencies:
+    "@nestjs/common": ^7.0.0 || ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0
+    "@nestjs/core": ^7.0.0 || ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0
+    reflect-metadata: ^0.1.13 || ^0.2.0
+  checksum: 10c0/bd755e765d020189b24fd8cb8a5989b47d7856abdc8efc881d73dd76e71b8e6e4466e532464434fd1199a106bf4752bda3d0036ef4aa13aa61e9317f60658da8
+  languageName: node
+  linkType: hard
+
 "@next/env@npm:16.1.7":
   version: 16.1.7
   resolution: "@next/env@npm:16.1.7"
@@ -9168,6 +9179,7 @@ __metadata:
     "@nestjs/platform-express": "npm:^11.0.0"
     "@nestjs/schematics": "npm:^11.0.0"
     "@nestjs/testing": "npm:^11.0.0"
+    "@nestjs/throttler": "npm:^6.5.0"
     "@nx/eslint": "npm:23.0.0"
     "@nx/eslint-plugin": "npm:23.0.0"
     "@nx/jest": "npm:23.0.0"
@@ -9203,6 +9215,7 @@ __metadata:
     dotenv-cli: "npm:^11.0.0"
     eslint: "npm:^9.8.0"
     eslint-config-prettier: "npm:^10.0.0"
+    helmet: "npm:^8.2.0"
     jest: "npm:~30.3.0"
     jest-environment-jsdom: "npm:~30.3.0"
     jest-environment-node: "npm:~30.3.0"
@@ -12678,6 +12691,13 @@ __metadata:
   bin:
     he: bin/he
   checksum: 10c0/a27d478befe3c8192f006cdd0639a66798979dfa6e2125c6ac582a19a5ebfec62ad83e8382e6036170d873f46e4536a7e795bf8b95bf7c247f4cc0825ccc8c17
+  languageName: node
+  linkType: hard
+
+"helmet@npm:^8.2.0":
+  version: 8.2.0
+  resolution: "helmet@npm:8.2.0"
+  checksum: 10c0/3aff1bb04123866a573eaafd7df4a5dc21b649c8fe6b39e1fb0e586f7be35709bf6003d72eed35c8deefd74573dff47d19409943cf2816125cc9597a8205a882
   languageName: node
   linkType: hard
 

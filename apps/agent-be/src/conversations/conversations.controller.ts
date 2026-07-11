@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { ConversationsService } from './conversations.service';
 import { User } from '../common/decorators/user.decorator';
@@ -14,6 +15,7 @@ export class ConversationsController {
   constructor(private readonly conversationsService: ConversationsService) {}
 
   @Post()
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   async createConversation(
     @User() user: UserContext,
     @Body(new ZodValidationPipe()) _body: CreateConversationDto,
@@ -41,6 +43,7 @@ export class ConversationsController {
   }
 
   @Post(':id/turns')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   async sendTurn(
     @Param('id') id: string,
     @User() user: UserContext,

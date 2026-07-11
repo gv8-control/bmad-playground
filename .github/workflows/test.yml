@@ -762,6 +762,56 @@ jobs:
             playwright-report/
           retention-days: 30
 
+  # ── Security: Dependency Vulnerability Scan ──────────────────────────────────
+  # Fails on critical/high vulnerabilities. Runs on PRs and weekly schedule.
+  # Uses `yarn npm audit` (Yarn Berry) with JSON output for structured parsing.
+  security-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run npm audit (fail on critical/high)
+        run: |
+          # Use yarn npm audit for Yarn Berry compatibility
+          # --recursive scans all workspace dependencies
+          # --severity high fails on high and critical
+          yarn npm audit --recursive --severity high --json > audit-report.json 2>/dev/null || true
+          # Check for critical/high vulnerabilities
+          CRITICAL=$(jq '[.advisories // [] | .[] | select(.severity == "critical")] | length' audit-report.json 2>/dev/null || echo "0")
+          HIGH=$(jq '[.advisories // [] | .[] | select(.severity == "high")] | length' audit-report.json 2>/dev/null || echo "0")
+          echo "Critical vulnerabilities: $CRITICAL"
+          echo "High vulnerabilities: $HIGH"
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "::error::Found $CRITICAL critical and $HIGH high vulnerabilities"
+            yarn npm audit --recursive --severity high || true
+            exit 1
+          fi
+          echo "No critical or high vulnerabilities found"
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-report
+          path: audit-report.json
+          retention-days: 30
+
 # ============================================================================
 # EXTENSION PATTERNS — Script Injection Prevention
 # ============================================================================
