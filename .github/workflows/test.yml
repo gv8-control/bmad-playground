@@ -601,6 +601,15 @@ jobs:
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
+      - name: Clean up stale Daytona sandboxes
+        # Failed test runs can leave orphaned sandboxes that accumulate
+        # against the 30GiB account disk quota. This step deletes all
+        # existing sandboxes before the test to ensure a clean slate.
+        env:
+          DAYTONA_API_URL: ${{ secrets.DAYTONA_API_URL }}
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+        run: npx tsx scripts/cleanup-daytona-sandboxes.ts
+
       - name: Run real-service smoke (--grep @real-service)
         # The webServer block in playwright.config.ts starts both dev servers
         # (`yarn nx run web:dev` + `yarn nx run agent-be:serve`) with
