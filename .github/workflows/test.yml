@@ -57,6 +57,9 @@ concurrency:
 
 env:
   NODE_VERSION: '24'
+  # URL of the agent-be backend, consumed by the web app's env-guard at startup.
+  # Both dev servers run on localhost in every job; this is not a secret.
+  API_URL: http://localhost:3001
 
 jobs:
   # ── Lint ──────────────────────────────────────────────────────────────────────
