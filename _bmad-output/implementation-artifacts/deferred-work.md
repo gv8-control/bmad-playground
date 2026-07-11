@@ -78,7 +78,6 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 ## Deferred from: code review of 1-4-validate-bmad-initialization-in-the-connected-repository (2026-07-02)
 
-- `validateRepository` is not wired into any UI flow [`apps/web/src/actions/repository-validation.actions.ts`] — the onboarding flow calls `connectRepository`, which invokes `inspectBmadSetup` directly and bypasses the validation cache. `validateRepository` (with its cache) is exercised only by tests. Wiring it into a UI surface (or removing it) is a product decision.
 - Required dirs tracked as submodules/symlinks report as missing [`apps/web/src/actions/repository-validation.actions.ts`] — the `type === 'dir'` filter rejects `submodule`/`symlink` entries even though the directory exists after checkout.
 - `config.yaml` version parsed from a `# Version:` comment [`apps/web/src/actions/repository-validation.actions.ts`] — comment-based format is not guaranteed by BMAD; a regeneration that drops the comment silently downgrades detection to the `package.json` fallback. Works against real BMAD 6.x output today.
 - Story 1.4 integration-test checklist (onboarding flow 1.3→1.4→1.5, retry-after-fix e2e) unchecked [`_bmad-output/implementation-artifacts/1-4-validate-bmad-initialization-in-the-connected-repository.md`] — component-level coverage only; onboarding e2e specs exist but do not cover the BMAD-validation retry path.
@@ -134,16 +133,12 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 ## Deferred from: code review of 3-1-provision-a-sandbox-when-opening-a-conversation (2026-07-04)
 
 - `ProvisionQueueService.acquire` queues waiters with no timeout — a hung `daytona.create` (no timeout on the create call, unlike `clone`'s 30s) permanently holds the per-user slot (`active=2`), blocking all subsequent provisions for that user until process restart. Fix involves unspecified design (timeout duration, behavior on expiry — destroy? emit error? release slot?). [`apps/agent-be/src/sandbox/provision-queue.service.ts:14`, `apps/agent-be/src/sandbox/sandbox.service.ts:26`]
-- OAuth token persisted in plaintext in sandbox `remote.origin.url` after clone — `injectCredentialIntoUrl` embeds `x-access-token:<token>@` in the clone URL, which git stores verbatim in `.git/config`. Spec explicitly specifies the URL-embedding approach; rewriting the remote URL post-clone (or using a credential helper) is hardening beyond spec. Ephemeral per-user sandbox limits exposure. [`apps/agent-be/src/sandbox/sandbox.service.ts:124`]
-- Server idle-timeout (`SESSION_TIMEOUT`) reuses the session-start-timeout UI message ("Starting your session is taking longer than expected.") — the two mechanisms are distinct (30s client-side vs 60s server-side) per AC-5, only the displayed message is shared. Semantically wrong for a post-`SESSION_READY` teardown, but Story 3.2/3.3 reworks the conversation UI. [`apps/web/src/components/conversation/ConversationPane.tsx`]
 
 ## Deferred from: code review of 3-2-invoke-bmad-skills-via-slash-command (2026-07-04)
 
 ### Story 3.1 pre-existing code (not caused by Story 3.2 changes)
 
-- OAuth token embedded in `git clone` URL — persisted in `.git/config` and visible in process listings during clone; also exfiltrated via error messages if clone fails. Spec explicitly specifies the URL-embedding approach; ephemeral per-user sandbox limits exposure. [`apps/agent-be/src/sandbox/sandbox.service.ts`]
 - `provisionQueue.release` runs unconditionally in `finally` — if `acquire` throws, a slot is released that was never acquired, violating the concurrency cap. `ProvisionQueueService.acquire` has no throw path currently, so not reachable today. [`apps/agent-be/src/conversations/conversations.service.ts:143`]
-- `injectCredentialIntoUrl` throws `TypeError` on SSH-style repo URLs (`git@github.com:org/repo.git`) — propagates as opaque `SESSION_ERROR`. No upstream schema enforcement on `repoConnection.repoUrl`. [`apps/agent-be/src/sandbox/sandbox.service.ts`]
 - `isNotFoundError` uses fragile substring matching (`.includes('not found') || .includes('404')`) — breaks if Daytona SDK changes error format; `destroy` re-throws on already-deleted sandboxes, breaking idempotent retry. [`apps/agent-be/src/sandbox/sandbox.service.ts`]
 - `EventSource.onerror` sets `error` state but never closes the source — `EventSource` auto-reconnects; state diverges from reality if reconnect succeeds. [`apps/web/src/components/conversation/ConversationPane.tsx:146`]
 - Boundary JWT exposed in SSE URL query string — `?token=${boundaryJwt}` logged by proxies/CDNs. SSE doesn't support custom headers via native `EventSource`; short-lived single-use ticket would be the proper fix. [`apps/web/src/components/conversation/ConversationPane.tsx:112`]
@@ -170,7 +165,6 @@ _Edge Case Hunter layer failed (process exited); findings from Blind Hunter and 
 
 Chunk 1 of 4 — agent-be backend core. Failed layers: Edge Case Hunter (empty), Acceptance Auditor (empty).
 
-- processId is fake / agent runs in host not sandbox [`apps/agent-be/src/streaming/agent.service.ts:29,117`] — Agent runs in host via SDK `query()` (cwd: `AGENT_WORKDIR ?? '/workspace'`), not inside the Daytona sandbox per architecture.md data flow. `@anthropic-ai/claude-agent-sdk` API runs the agent in the host Node.js process. DP-2: SDK API semantics take precedence over architecture description. `terminateProcess(sandboxId, 'agent-${conversationId}')` kept for `IAgentService` test compliance but is effectively a no-op — agent stopped via `query.interrupt()` + `abortController.abort()`. Architecture reconciliation deferred to architect.
 - provisionQueue.release in finally when acquire might throw [`apps/agent-be/src/conversations/conversations.service.ts`] — if `provisionQueue.acquire(userId)` rejects, the `finally` block still calls `release(userId)`, potentially corrupting the queue semaphore (going negative or deadlocking future acquires for that user). Pre-existing Story 3.1 code, not modified by Story 3.3.
 - getStatus returns 'failed' not 404 for missing conversation [`apps/agent-be/src/conversations/conversations.service.ts`] — when conversation doesn't exist (wrong ID or wrong user), `getStatus` returns HTTP 200 with `sandboxStatus: 'failed'` instead of `404 NotFoundException`. Inconsistent with `sendTurn`/`stopAgent` which throw `NotFoundException` for the same check. Pre-existing Story 3.1.
 
@@ -196,13 +190,11 @@ Chunk 1 of 4 — agent-be backend core. Failed layers: Edge Case Hunter (empty),
 
 ## Deferred from: code review of 3-6-track-and-manually-save-working-tree-state (2026-07-04)
 
-- Circuit breaker `abortPromise` listener + orphan `iterator.next()` never cleaned up on abort [`apps/agent-be/src/streaming/agent.service.ts:325-360`] — in-flight iterator promise abandoned, `iterator.return()` never called. Pre-existing from Story 3.4; Story 3.6 didn't modify circuit breaker code.
 - `TOOL_CALL_RESULT` error detection uses brittle string regex on content (`/^error:/im`, `/Command exited with code [1-9]/`, `/failed to push/i`) [`apps/web/src/components/conversation/ConversationPane.tsx:294-298`] — legitimate tool output containing "error:" or "failed to push" in stack traces will be falsely marked as errored. Pre-existing from Story 3.4 (tool pills); not introduced by Story 3.6.
 - `processAssistantMessage` casts `SDKMessage` to hand-rolled shape, silently drops non-text content blocks [`apps/agent-be/src/streaming/agent.service.ts`] — image blocks and non-text content discarded without indication. Pre-existing from Story 3.3/3.4; Story 3.6 only added working-tree emission after tool calls.
 - `AgentService.onModuleDestroy` doesn't await in-flight classifier/working-tree promises [`apps/agent-be/src/streaming/agent.service.ts`] — promises continue running after destroy, may emit to torn-down `SessionEventsService`. Pre-existing from Story 3.4; Story 3.6 didn't modify `onModuleDestroy`.
 - Dual source of truth for `conversationId` (ref + state) can drift [`apps/web/src/components/conversation/ConversationPane.tsx`] — `conversationIdRef` and `conversationId` state updated independently; `setConversationId` not called on resume path. Pre-existing pattern from Story 3.1/3.3; Story 3.6 reuses existing ref pattern.
 - `pendingCommits` keyed only by `conversationId` — multi-session collision risk [`apps/agent-be/src/conversations/manual-commit.service.ts:8`] — if same `conversationId` is used across sandboxes (resume in second tab), queued commit from one context blocks another. Spec explicitly uses `Set<string>` keyed by conversationId (Task 3.1). DP-5: scope temptation.
-- SDK `iterator.next()` rejects with non-abort error mid-run — error swallowed, `RUN_FINISHED` emitted, partial turn persisted as success [`apps/agent-be/src/streaming/agent.service.ts:98-102`] — pre-existing from Story 3.3/3.4; Story 3.6 didn't modify iterator error handling.
 - `content_block_stop` for `tool_use` arrives when `currentToolCallIds` has no entry — `TOOL_CALL_END` silently skipped, client tool pill stuck in running state [`apps/agent-be/src/streaming/agent.service.ts:344-355`] — pre-existing from Story 3.3/3.4; Story 3.6 didn't modify content block handling.
 - Fast-path resume re-injects git config while stale idle timer is still ticking down — sandbox may be destroyed mid-active-session [`apps/agent-be/src/conversations/conversations.service.ts:412-447`] — pre-existing from Story 3.5; Story 3.6 didn't modify resume/idle timer code. **Adjudicated 2026-07-06: spec tests now assert "fast-path resume does NOT reset existing mid-session timer" as intentional, but maintainer rejects the spec — this is a real race condition that must be fixed, not spec-blessed. Keep deferred until the race is actually closed; do not treat spec sanction as resolution.**
 
@@ -214,7 +206,6 @@ Chunk 1 of 4 — agent-be backend core. Failed layers: Edge Case Hunter (empty),
 - Race condition emits events after `RUN_ERROR` when circuit breaker fires while message is pending [`apps/agent-be/src/streaming/agent.service.ts:112-122 vs 249-260`] — `handleCircuitBreaker` emits `RUN_ERROR` but loop may still process a resolved result, emitting `TEXT_MESSAGE_END`/`TOOL_CALL_END`/`TOOL_CALL_RESULT` after the error. Pre-existing from Story 3.4.
 - `TOOL_CALL_RESULT` emitted for untracked `tool_use_id`, skipping classification [`apps/agent-be/src/streaming/agent.service.ts:353-371`] — `TOOL_CALL_RESULT` emit happens before `toolCallInfo` lookup; if lookup misses (non-streamed tool_use), classifier is silently skipped, 401 in such a result is never detected. Pre-existing from Story 3.4/3.6.
 - `Promise.race` doesn't release/cancel iterator on abort; pending `iterator.next()` orphaned [`apps/agent-be/src/streaming/agent.service.ts:110-122`] — no `iterator.return?.()` call on abort path; in-flight promise holds resources until `query.interrupt()` is separately invoked. Pre-existing from Story 3.4.
-- `processAssistantMessage` double-processes duplicate `tool_use_id` blocks in one message [`apps/agent-be/src/streaming/agent.service.ts:383-459`] — no "seen" guard; two `TOOL_CALL_RESULT` events emitted, classifier runs twice, `markCredentialFailed` called twice. Pre-existing from Story 3.4/3.6.
 
 ### Low (pre-existing from prior stories)
 
@@ -318,10 +309,6 @@ Four Playwright specs created (uncommitted) for the new real-service / multi-con
 - **TS2305 in sibling specs** — every spec under `playwright/e2e/conversation/*` imports `type Page` from `merged-fixtures` which doesn't re-export it. All four new specs import `Page` from `@playwright/test` directly. Worth a cleanup pass to fix the sibling specs.
 - **Stale page object** — `support/page-objects/conversation-page.ts` references `data-testid` attributes (`session-status`, `chat-input`, `send-button`, `working-tree-indicator`) that don't exist on the production components (only in `*.test.tsx` files). Either add the test IDs to the components or delete the stale page object.
 - **Pre-existing TS error** in `apps/web/src/components/conversation/AgentMessage.tsx:18` (`Object is of type 'unknown'`).
-
-## Deferred from: code review of spec-fix-working-tree-status-porcelain-parse (2026-07-08)
-
-- NUL-byte preservation through the Daytona SDK `executeCommand` boundary is unverified — `getWorkingTreeStatus` now uses `git status --porcelain -z` (NUL-separated output). The parser depends on `response.result` faithfully preserving NUL (`\0`) bytes. JS strings and JSON transport both preserve NUL, so the risk is low, but the real Daytona SDK has not been runtime-verified. If NUL is truncated (e.g. C-string handling in the SDK's transport layer), `split('\0')` returns a single-element array and the parse produces garbage. Verify against a real Daytona sandbox before relying on the `files` array in production. [`apps/agent-be/src/sandbox/sandbox.service.ts`]
 
 ## Deferred from: QA enhancement exploration (2026-07-08)
 
