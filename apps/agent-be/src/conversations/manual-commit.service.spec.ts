@@ -15,14 +15,12 @@
  *
  * TDD GREEN PHASE — all tests un-skipped and passing.
  */
-import { Test } from '@nestjs/testing';
 import { ManualCommitService } from './manual-commit.service';
 import { ConversationsModule } from './conversations.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { CredentialsService } from '../credentials/credentials.service';
 import { SessionEventsService } from '../streaming/session-events.service';
 import { DAYTONA_CLIENT } from '../sandbox/daytona-client.provider';
-import { IdleTimeoutService } from '../sandbox/idle-timeout.service';
 import { AGENT_SERVICE, SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { buildTestModule } from '../../test/helpers/test-module-builder';
 import { SandboxServiceFake } from '../../test/helpers/sandbox-service.fake';
@@ -73,7 +71,7 @@ describe('ManualCommitService', () => {
     const sessionEventsInstance = new SessionEventsService();
     agentFake = new AgentServiceFake(sessionEventsInstance, mockPrisma, sandboxFakeInstance);
 
-    const { module, sandboxFake: sf } = await buildTestModule([ConversationsModule], [
+    const { module } = await buildTestModule([ConversationsModule], [
       { provide: PrismaService, useValue: mockPrisma },
       { provide: DAYTONA_CLIENT, useValue: null },
       {

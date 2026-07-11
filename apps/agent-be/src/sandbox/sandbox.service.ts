@@ -11,6 +11,8 @@ import type {
 import type { Daytona, Sandbox } from '@daytonaio/sdk';
 import { DAYTONA_CLIENT } from './daytona-client.provider';
 
+const REPO_SUBDIRECTORY = 'repo';
+
 @Injectable()
 export class SandboxService implements ISandboxService {
   private readonly logger = new Logger(SandboxService.name);
@@ -47,12 +49,13 @@ export class SandboxService implements ISandboxService {
 
   async clone(sandboxId: string, repoUrl: string, credential: string): Promise<void> {
     const sandbox = await this.getSandbox(sandboxId);
-    const repoWithToken = this.injectCredentialIntoUrl(repoUrl, credential);
-    await sandbox.process.executeCommand(
-      `git clone --depth=1 ${this.shellQuote(repoWithToken)} .`,
+    await sandbox.git.clone(
+      repoUrl,
+      REPO_SUBDIRECTORY,
       undefined,
       undefined,
-      30,
+      'x-access-token',
+      credential,
     );
   }
 
@@ -89,7 +92,7 @@ export class SandboxService implements ISandboxService {
     const sandbox = await this.getSandbox(sandboxId);
     const nameResponse = await sandbox.process.executeCommand(
       `git config user.name ${this.shellQuote(config.name)}`,
-      undefined,
+      REPO_SUBDIRECTORY,
       undefined,
       10,
     );
@@ -98,7 +101,7 @@ export class SandboxService implements ISandboxService {
     }
     const emailResponse = await sandbox.process.executeCommand(
       `git config user.email ${this.shellQuote(config.email)}`,
-      undefined,
+      REPO_SUBDIRECTORY,
       undefined,
       10,
     );
@@ -109,25 +112,18 @@ export class SandboxService implements ISandboxService {
 
   async getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus> {
     const sandbox = await this.getSandbox(sandboxId);
-    const response = await sandbox.process.executeCommand(
-      'git status --porcelain',
-      undefined,
-      undefined,
-      10,
-    );
-    const output = response.result.trim();
-    if (!output) {
-      return { dirty: false, files: [] };
-    }
-    const files = output.split('\n').map((line) => line.slice(3));
-    return { dirty: true, files };
+    const status = await sandbox.git.status(REPO_SUBDIRECTORY);
+    const files = status.fileStatus
+      .filter((f) => f.staging !== 'Unmodified' || f.worktree !== 'Unmodified')
+      .map((f) => f.name);
+    return { dirty: files.length > 0, files };
   }
 
   async commit(sandboxId: string, message: string): Promise<void> {
     const sandbox = await this.getSandbox(sandboxId);
     const addResponse = await sandbox.process.executeCommand(
       'git add -A',
-      undefined,
+      REPO_SUBDIRECTORY,
       undefined,
       10,
     );
@@ -136,7 +132,7 @@ export class SandboxService implements ISandboxService {
     }
     const response = await sandbox.process.executeCommand(
       `git commit -m ${this.shellQuote(message)}`,
-      undefined,
+      REPO_SUBDIRECTORY,
       undefined,
       10,
     );
@@ -145,21 +141,12 @@ export class SandboxService implements ISandboxService {
     }
   }
 
-  async terminateProcess(sandboxId: string, processId: string): Promise<void> {
-    const sandbox = await this.getSandbox(sandboxId);
-    try {
-      await sandbox.process.killPtySession(processId);
-    } catch (err) {
-      this.logger.warn(`Failed to terminate process ${processId} in sandbox ${sandboxId}: ${err}`);
-    }
-  }
-
   async listSkills(sandboxId: string): Promise<SkillInfo[]> {
     try {
       const sandbox = await this.getSandbox(sandboxId);
       const response = await sandbox.process.executeCommand(
         'ls -1 .claude/skills/',
-        undefined,
+        REPO_SUBDIRECTORY,
         undefined,
         10,
       );
@@ -183,13 +170,6 @@ export class SandboxService implements ISandboxService {
       throw new Error('Daytona client is not configured');
     }
     return this.daytona.get(sandboxId);
-  }
-
-  private injectCredentialIntoUrl(repoUrl: string, credential: string): string {
-    const url = new URL(repoUrl);
-    url.username = 'x-access-token';
-    url.password = credential;
-    return url.toString();
   }
 
   private shellQuote(value: string): string {

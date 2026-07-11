@@ -49,7 +49,7 @@ export function ToolPill({ toolCall }: ToolPillProps) {
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         className={cn(
-          'inline-flex items-center gap-1.5 bg-surface-raised border border-border rounded-sm px-2 py-0.5 text-xs text-text-2 cursor-pointer',
+          'inline-flex items-center gap-2 bg-surface-raised border border-border rounded-sm px-2 py-1 text-xs text-text-2 cursor-pointer',
           'focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
           isError && 'border-negative text-negative',
         )}

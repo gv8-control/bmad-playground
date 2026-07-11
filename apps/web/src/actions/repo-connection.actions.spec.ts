@@ -48,6 +48,7 @@ let mockFetch: jest.Mock;
 beforeEach(() => {
   mockFetch = jest.fn();
   jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
+  clearGithubCache();
 });
 
 afterEach(() => {
@@ -59,6 +60,7 @@ afterEach(() => {
 import { connectRepository } from './repo-connection.actions';
 import { getCredentialHealth } from '@/lib/credential-health';
 import { BMAD_DOCUMENTATION_LINK, type CredentialHealthStatus } from '@bmad-easy/shared-types';
+import { clearGithubCache } from '@/lib/repository-validation';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 

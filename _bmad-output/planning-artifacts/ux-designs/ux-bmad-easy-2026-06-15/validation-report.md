@@ -2,113 +2,114 @@
 
 - **DESIGN.md:** `_bmad-output/planning-artifacts/ux-designs/ux-bmad-easy-2026-06-15/DESIGN.md`
 - **EXPERIENCE.md:** `_bmad-output/planning-artifacts/ux-designs/ux-bmad-easy-2026-06-15/EXPERIENCE.md`
-- **Run at:** 2026-07-05T18:30:00Z
-- **Lens run:** Implementation drift only (rubric walker skipped — 2026-07-02 pass is recent and all findings applied; forward-looking coverage for backlog stories 3.8–3.12 is a separate lens, not run here)
+- **Run at:** 2026-07-08T12:00:00Z
+- **Lens run:** Aesthetics (colors, margins, consistency) — focused review per user request. Prior rubric (2026-07-02) and implementation-drift (2026-07-05) reviews exist and are not re-run; their findings are referenced where relevant.
 
 ## Overall verdict
 
-The built UX is broadly faithful to the spines for the happy paths — streaming, tool pills, semantic pills, working-tree indicator, manual-save flow, credential/403 split, and the three audited 2026-07-04 spine sections (session-start timeout, working-tree `ⓘ` disclosure, circuit-breaker system message) all match. Risk concentrates in two areas: **client-side SSE/streaming resilience** (duplicate messages on reconnect, lost events, dead-end error states) and **the classifier's promotion contract** (modify-commits and multi-artifact-per-commit don't produce the Semantic Pill the spine states unconditionally).
+The aesthetic direction is sound: a coherent blue-violet dark palette, elevation via surface lightness (no shadows), a restrained violet accent reserved for primary actions, and a clear two-typeface typographic ramp. Execution, however, has real gaps that a downstream builder would propagate.
 
-One critical gap is a fully missing component — the scroll-to-bottom button — which the code wires up but never actually shows, contradicting the spine and Story 3.3 AC (UX-DR9) in normal use. The high-severity items (reconnect duplication, modify-commit promotion) are reachable on common BMAD iteration patterns and warrant fixes before Epic 3 closes.
+A broken color-token reference (`{colors.warning}` / `{colors.warning-bg}` — defined nowhere in the frontmatter) was introduced when the Access Notice component was added on 2026-07-02 and was not caught by the prior rubric pass, which ran the same day. The Access Notice also lacks a `components:` frontmatter entry — it has prose only. The muted text token (`text-3`, `#56556A`) fails WCAG AA contrast on every surface (~2.3–2.7:1; AA requires 4.5:1) and is used for permanent informational text (timestamps, "All saved" indicator). The stated 4px spacing grid is violated throughout the mockups and in the spine's own component specs (7px, 10px, 11px, 14px appear routinely; the credential-error-banner spec itself uses 10px). Cross-mock consistency is uneven: the conversation mock diverges from the other four app-shell mocks in nav-item display model, textarea text color, and send-button class naming.
 
-## Lens verdict
+None of this is fatal to the aesthetic vision. The palette, elevation system, typography, and shape language are well-conceived. But the three critical findings (broken tokens, inaccessible text, missing component spec) and the six high-severity findings (grid violations, border-subtle invisibility, primary-action color inconsistency, nav display drift, textarea color bug, class naming drift) should be resolved before a builder mirrors these artifacts.
 
-- Implementation drift — **thin** (1 critical, 2 high, 7 medium, 12 low; happy paths faithful, drift concentrated in SSE resilience and classifier promotion)
+## Category verdicts
+
+- Colors — thin
+- Margins & Spacing — adequate
+- Consistency — adequate
 
 ## Findings by severity
 
-### Critical (1)
+### Critical (3)
 
-**Implementation drift** — Scroll-to-bottom button never appears; new-message count never increments (EXPERIENCE.md › Scroll Behavior + `{components.scroll-to-bottom-button}`; Story 3.3 AC, UX-DR9)
-`showScrollToBottom` is initialized `false` and `setShowScrollToBottom` is called in exactly one place — `handleScrollToBottom`, where it is set to `false`. It is never set `true`. `ChatMessageList` updates a local `isAtBottomRef` on scroll and auto-scrolls while at bottom, so auto-scroll *pause* works, but the list never notifies the parent that the user has scrolled away, so the button never shows and `newMessageCount` never increments. The `ScrollToBottomButton` is rendered but always receives `showScrollToBottom={false}`. A user who scrolls up during a long streaming response has no jump-back affordance and no "N new" count — directly contradicting the spine component and the Story 3.3 AC in normal use.
-Fix: Code — call a parent callback from `ChatMessageList`'s scroll handler to set `showScrollToBottom` when not at bottom, and a `useEffect` on `messages` to increment `newMessageCount` while scrolled away. Spine: contradicted.
+**Colors** — Broken color-token references: `{colors.warning}` / `{colors.warning-bg}` undefined (DESIGN.md line 381, EXPERIENCE.md line 262)
+The Access Notice component prose references `{colors.warning-bg}` and `{colors.warning}` for its background and left border, but the frontmatter `colors:` block defines no `warning` or `warning-bg` token. The semantic palette has `positive`/`caution`/`negative` only. Downstream code mirroring the spine cannot resolve these references. The prior rubric review (§2, "strong") did not catch this because the Access Notice was added as part of applying that review's own findings on the same day.
+Fix: Add `warning` / `warning-bg` tokens to the frontmatter, or replace with `{colors.caution}` / `{colors.caution-bg}` (the closest existing semantic).
 
-### High (2)
+**Colors** — `text-3` (#56556A) fails WCAG AA contrast on every surface (DESIGN.md line 18)
+Computed ratios: 2.68:1 on `bg`, 2.49:1 on `surface`, 2.29:1 on `surface-raised`. AA requires 4.5:1 for normal text. `text-3` is used for permanent informational text: agent message timestamps (shown permanently per DESIGN.md line 337), the "All saved" clean-state indicator (line 352), footer links, disabled text. No contrast targets are stated anywhere in DESIGN.md.
+Fix: Lighten `text-3` to meet 4.5:1 on all surfaces (~`#757488` or lighter), or restrict `text-3` to placeholder/disabled use and move timestamps and "All saved" to `text-2`. State contrast targets in DESIGN.md §Colors.
 
-**Implementation drift** — Duplicate messages and tool pills on transient SSE reconnect (EXPERIENCE.md › Conversation Loading (Returning) + Component Patterns › Streaming Chat Messages)
-`SessionEventsService.getEventStream` returns a `ReplaySubject(100)` keyed by `conversationId`. On a transient `EventSource` drop, the browser auto-reconnects (the `onerror` handler does not close the source), the SSE endpoint returns the same subject, and the last 100 buffered events replay. Every client handler appends to `messages` with no dedup, so replayed events render as duplicate messages/tokens/pills. Fallback IDs (`msg-${Date.now()}`) collide or regenerate across replays, compounding dupes.
-Fix: Code — dedup by a stable event/message id in the client handlers, or clear the replay buffer once a stable connection is established. Spine: silent (coverage gap — "Reconnecting…" is about sandbox re-init, not SSE-transport reconnect event dedup).
+**Consistency** — `access-notice` component has prose but no frontmatter spec (DESIGN.md lines 380–381)
+The `components:` frontmatter defines 16 components; the Access Notice is described in §Components prose but has no `access-notice` key. Its prose references non-existent `{colors.warning}` / `{colors.warning-bg}` tokens. A downstream builder has no machine-readable spec.
+Fix: Add an `access-notice:` entry to the frontmatter with resolved token references, or fold into `credential-error-banner` as a variant.
 
-**Implementation drift** — Agent `git commit` that modifies an existing `_bmad-output/` artifact produces no Semantic Pill (EXPERIENCE.md › Tool Pills and Semantic Pills + Story 3.4 AC-2)
-`classifyToolResult` only promotes when `extractBmadArtifactPaths` returns ≥1 path. That extractor matches `create mode` lines and a diffMatch regex, but a plain `git commit -m "msg"` (the Claude Code agent's typical invocation) only lists `create mode` for *new* files — modified-but-existing files are not named in the commit stdout, so `bmadPaths` is empty and the call returns `null` (no promotion). The successful commit renders as a plain completed Tool Pill, never as "Progress saved · {type} · {title} · View". This contradicts the spine's unconditional wording on iteration commits — a core BMAD pattern (the agent writes to the same PRD/architecture file across multiple turns), so the first commit shows a Semantic Pill and every subsequent one does not. Borderline critical. The working-tree-clean signal still fires, so the user sees "All saved" — the missing piece is the Semantic Pill + its "View" link.
-Fix: Code — run `git show --name-only HEAD` (or `git diff-tree --no-commit-id --name-only -r HEAD`) after a detected successful commit to enumerate changed BMAD paths, then promote. Spine: contradicted (for modify-commits).
+### High (6)
 
-### Medium (7)
+**Colors** — Sign-in primary button uses `text-1` (#EDECF5) as background instead of `accent` (#7B6EE8) (key-signin.html line 131)
+DESIGN.md Do's: "Use `{colors.accent}` for all primary interactive elements." The onboarding "Connect repository" button in the same pre-app-shell context uses `accent`. Two primary-action treatments with no documented rationale.
+Fix: Use `accent` for the sign-in button, or document the exception.
 
-**Implementation drift** — Working-tree indicator stuck in "Saving…" if `MANUAL_SAVE_SUCCEEDED` SSE event never arrives (EXPERIENCE.md › Working Tree Indicator › Save confirmation flow, step 3)
-`handleSave` sets `saving`, and on `data.committed === true` does nothing client-side, leaving the transition to the SSE event. If that event is lost (dropped-events race, or a connection drop in the window between the save POST response and the event), the indicator stays on "Saving…" indefinitely.
-Fix: Code — client-side timeout fallback re-querying working-tree state, or set `clean` after a grace period on `committed=true`. Spine: silent (no lost-event failure mode specified).
+**Colors** — `border-subtle` (#1E1E26) equals `surface-raised` (#1E1E26) — invisible on raised surfaces (DESIGN.md lines 11, 13)
+`border-subtle` is for "inner divisions on raised surfaces" but is the same color as the raised surface it sits on. Visible only against `surface` (#16161C).
+Fix: Set `border-subtle` to a value between `surface` and `border` (e.g., `#232330`).
 
-**Implementation drift** — `POST /resume` non-2xx not detected → UI stuck in "Reconnecting…" for full 30s (EXPERIENCE.md › Conversation Loading (Returning), step 3)
-The `/resume` fetch in `startSession` has no `response.ok` check — only `.catch` for network errors. A 5xx resolves without throwing, so `state` stays `reconnecting` until the 30s client timeout fires the (false) "Starting your session is taking longer than expected." + Retry.
-Fix: Code — check `response.ok` on `/resume` and surface an error state immediately. Spine: silent on resume HTTP errors.
+**Margins & Spacing** — 4px grid violated throughout mockups and spine specs (DESIGN.md line 266: "All internal spacing is a multiple of 4")
+Off-grid values: 7px (nav-item padding, all app-shell mocks), 10px (credential-error-banner in DESIGN.md frontmatter line 186; list-entry; teaser-item; field-group gap), 11px (GitHub button; connect-button), 14px (field-input; teaser-item), 6px (frontmatter-badge; nav active margin). The 10px in the spine's own frontmatter is notable.
+Fix: Snap all off-grid values to nearest 4px multiple. Document 2px half-step exception if needed for tight controls.
 
-**Implementation drift** — The "error" session state is a dead-end: input disabled, no action button (EXPERIENCE.md › Conversation Surface States — every error row pairs text with a button)
-`inputDisabled` includes `state === 'error'`, but the Retry button renders only for `state === 'timeout'`. A `SESSION_ERROR`, a failed conversation-create POST, or a `/resume` network failure lands in `error` with an `errorMessage` paragraph but no Retry/Refresh affordance. The spine's established shape everywhere else is "error text + single action button."
-Fix: Code — render the Retry button for `state === 'error'` as well, or add a Refresh action. Spine: silent on a terminal session-error distinct from the timeout.
+**Consistency** — Nav-item `display` property inconsistent across mocks (key-conversation.html line 114: `flex`; others: `block`)
+The conversation mock uses flex; all other app-shell mocks use block. Changes vertical alignment and hit-area.
+Fix: Standardize on one display model across all app-shell mocks.
 
-**Implementation drift** — Circuit-breaker race: events emit after `RUN_ERROR`, so the system message is no longer at the stream-stop point (EXPERIENCE.md › Conversation Surface States › "Agent process terminated (circuit breaker)")
-`handleCircuitBreaker` emits `RUN_ERROR` first, but pending classifier and working-tree promises and one more in-flight `iterator.next()` result can settle and emit `TOOL_CALL_PROMOTED` / `WORKING_TREE_DIRTY` / `TEXT_MESSAGE_*` *after* the system message. The client renders those after "The agent stopped unexpectedly," so the apparent stop point drifts downward and the working-tree indicator can flip after the termination notice.
-Fix: Code — await/drop pending promises before emitting `RUN_ERROR`, or have the client ignore stream events after `RUN_ERROR`. Spine: contradicted (the stop point is not the stop point).
+**Consistency** — Conversation mock textarea uses `text-3` (#56556A) for entered text instead of `text-1` (#EDECF5) (key-conversation.html line 344)
+Entered text renders at 2.29:1 contrast — nearly invisible. The new-conversation mock correctly uses `text-1`. If a builder mirrors the mock, typed text would be unreadable.
+Fix: Set textarea color to `#EDECF5` (text-1); reserve `text-3` for `::placeholder` only.
 
-**Implementation drift** — False error-state Tool Pills: client-side string-regex error detection on tool output (EXPERIENCE.md › Tool Pills and Semantic Pills)
-`TOOL_CALL_RESULT` marks a pill errored when `content` matches `/^error:/im`, `/Command exited with code [1-9]/`, or `/failed to push/i`. Legitimate tool output that *contains* those substrings — e.g. a successful `read` of a file mentioning "error:", or a code-review comment containing "failed to push" — renders as a red "✕ {toolName} failed" pill for a call that actually succeeded. Plausible in BMAD workflows that read logs/code.
-Fix: Code — rely on the backend's tool_result error flag / classifier rather than client-side string matching on output content. Spine: contradicted (error styling for non-errors).
+**Consistency** — Send-button class naming inconsistent (key-new-conversation.html: `.send-button`; key-conversation.html: `.send-btn`)
+Different class names for the same component across mocks.
+Fix: Standardize on one class name.
 
-**Implementation drift** — Dropped SSE events before subscription can cause a false session-start timeout (EXPERIENCE.md › New Conversation / Session start timeout)
-`emit()` silently no-ops when no `ReplaySubject` exists for the conversation; the subject is created lazily in `getEventStream`, which only runs when the SSE GET reaches the controller. `provisionSandbox` is fire-and-forgotten and emits `SESSION_READY`; `resumeConversation`'s fast path emits `SESSION_READY` synchronously-ish. If either fires before the client's `EventSource` GET is processed (narrow on a fast connection, realistic on a slow proxy), `SESSION_READY` is lost, state stays `provisioning`/`reconnecting`, and the user hits the 30s false "Starting your session is taking longer than expected." + Retry.
-Fix: Code — create the `ReplaySubject` eagerly in `createConversation`/`resumeConversation` before firing the provisioner, or create-on-first-emit. Spine: silent (no dropped-event race specified).
+### Medium (10)
 
-**Implementation drift** — `TOOL_CALL_RESULT` for an untracked `tool_use_id` skips classification → 401/403 never detected (EXPERIENCE.md › Conversation Surface States › Credential failed / Access denied; Story 3.7 AC-1/AC-2)
-In `processAssistantMessage`, `TOOL_CALL_RESULT` is emitted *before* the `toolCallInfo` lookup; if the lookup misses (a non-streamed `tool_use`), the classifier block is skipped entirely — so a 401/403 pattern sitting in such an untracked result never triggers `CREDENTIAL_FAILURE`/`ACCESS_DENIED`, defeating the whole point of Story 3.7's real-time alert.
-Fix: Code — track `tool_use_id` on `content_block_start` before results arrive, or run a defensive classification pass on `TOOL_CALL_RESULT` when `toolCallInfo` is missing. Spine: contradicted (the alert contract is silently skipped for untracked tool_use).
+**Colors** — Ad-hoc colors not in the palette (key-project-map.html line 218: `#3b3b4f` hover border; key-new-conversation.html line 351: `#2B2B38` as hover bg, spine says `surface-raised`; key-artifact-browser.html line 209: `rgba(30,30,38,0.6)` hover)
+Fix: Replace with nearest token; add a hover-surface token if needed.
 
-### Low (12)
+**Colors** — Focus-ring implementation inconsistent and non-compliant with spine (key-onboarding.html line 142: 20% opacity; key-new-conversation.html line 264: 15% opacity; spine says 2px solid outline, 2px offset)
+Fix: Standardize on the spine's 2px solid accent outline with 2px offset.
 
-**Implementation drift** — `EventSource.onerror` doesn't close the source; state may diverge from auto-reconnecting stream (`ConversationPane.tsx:504-506`). Pre-`ready` an error flips to the dead-end `error` state; post-`ready` errors silently swallowed. Narrow window; 30s timeout recovers. Fix: manage EventSource lifecycle explicitly, or document reconnect semantics. Spine: silent.
+**Colors** — Loading/disabled button states use ad-hoc colors with no spine tokens (connect-button.loading: #56556A bg; send-button.disabled: #1E1E26 bg + #56556A text; send-button.loading: #56556A bg)
+Fix: Add disabled/loading button-state tokens, or specify as "accent at 40% opacity."
 
-**Implementation drift** — Multi-artifact single commit only promotes the first artifact (`tool-pill-classifier.service.ts:170`). A single `git commit` touching PRD + architecture yields one Semantic Pill; second artifact's "View" missing. Fix: product decision — emit one promotion per BMAD path, or accept first-wins. Spine: silent.
+**Margins & Spacing** — `spacing` frontmatter has only `base: 4px` — no scale tokens (DESIGN.md lines 61–63)
+Tailwind scale is prose-only. Downstream code can't reference `{spacing.4}` etc. Contributes to off-grid proliferation.
+Fix: Add scale tokens to the frontmatter.
 
-**Implementation drift** — Semantic title allows 1-word titles for 1-word messages (`semantic-title.ts:10`). LLM-generated title promised in Story 3.2 deferral never implemented in 3.3. Side nav can show "Hello" / "Test". Fix: enforce 2-word min, or implement LLM titles. Spine: contradicted ("2–5 word semantic title").
+**Margins & Spacing** — Chat input area bottom padding inconsistent between chat surfaces (key-new-conversation.html: 24px; key-conversation.html: 20px)
+Fix: Standardize on one value; document in chat-input component spec.
 
-**Implementation drift** — `getWorkingTreeStatus` mis-parses renames and ignores git exit code (`sandbox.service.ts`). `line.slice(3)` mishandles `R  old -> new` and quoted paths; git error text on stdout treated as file list. Could yield false dirty/clean — the latter risks misleading "All saved". Fix: `--porcelain` -z-aware parsing + exitCode check. Spine: contradicted on edge.
+**Margins & Spacing** — Undocumented max-widths across mocks (400px, 480px, 720px, 760px, 824px — no system, no tokens)
+Fix: Document a content-width system in DESIGN.md §Layout & Spacing, or note as per-surface decisions.
 
-**Implementation drift** — Concurrent `runTurn` state corruption + orphaned/stale circuit-breaker timers (`agent.service.ts:52-92, 221-239`). Second `runTurn` overwrites first's maps; `startCircuitBreakerTimer` doesn't clear pre-existing entry. UI disables input during processing, so trigger is UI-prevented in normal use. Fix: per-run timer scoping + concurrent-turn guard (Story 3.11 scope). Spine: silent.
+**Consistency** — Nav-item active-state margins inconsistent across mocks (1px vs 0px top/bottom; conversation mock has two active classes)
+Fix: Standardize active-state margins; use one active class.
 
-**Implementation drift** — First-message + idle-timer race persists a message to a destroyed sandbox (`conversations.service.ts`). Edge at 60s boundary. Fix: coordinate the boundary. Spine: silent.
+**Consistency** — Slash picker uses `box-shadow`, contradicting the no-shadow rule (key-new-conversation.html line 332; DESIGN.md Don'ts line 399)
+Fix: Document a floating-element exception in §Elevation & Depth, or replace shadow with stronger border/contrast.
 
-**Implementation drift** — `isSuccessfulCommit` / `isFailedCommit` match keywords inside commit messages (`tool-pill-classifier.service.ts:46-58`). Commit-body text containing "error:" or "files changed" misclassified → false Semantic Pill or missed promotion. Fix: parse only git infrastructure output, not message body. Spine: contradicted on edge.
+**Consistency** — Scrollbars hidden in multiple mocks, undocumented in spine (`::-webkit-scrollbar { display: none; }` in 4 mocks)
+Fix: Document the decision in EXPERIENCE.md, or show styled scrollbars.
 
-**Implementation drift** — `extractBmadArtifactPaths` truncates paths with whitespace; `deriveTitleFromPath` yields "Untitled" (`tool-pill-classifier.service.ts:69, 78, 41-44`). BMAD paths rarely contain spaces. Fix: whitespace-aware parsing. Spine: contradicted on edge.
+**Consistency** — Wordmark presentation inconsistent between pre-app-shell and app-shell (logo box + name + tagline vs compact text mark)
+Fix: Document both treatments in DESIGN.md §Brand & Style, or standardize.
 
-**Implementation drift** — `processAssistantMessage` double-processes duplicate `tool_use_id` blocks (`agent.service.ts:383-459`). No "seen" guard. Emits two `TOOL_CALL_RESULT`s, runs classifier twice, calls `markCredentialFailed` twice. Client overwrites same id (idempotent); mostly internal. Fix: add "seen" guard. Spine: silent.
+### Low (6)
 
-**Implementation drift** — `processAssistantMessage` silently drops non-text content blocks (images) (`agent.service.ts:369-463`). BMAD agent output is text/code. Fix: handle non-text blocks or document constraint. Spine: silent.
+**Colors** — Browser-chrome lock icon uses `positive` (#3ECF8E) decoratively (all mocks; DESIGN.md Don'ts line 396). Mock furniture only. Fix: Use a neutral color for mock chrome, or note that browser-chrome furniture is outside the design system scope.
 
-**Implementation drift** — Stale-closure `useEffect` + dual `conversationId` ref/state can drift (`ConversationPane.tsx:43, 54-55`). Empty-deps effect captures initial props; `setConversationId` not called on resume path. Props don't change per mount in practice. Fix: refactor to dependent effect or document mount-once contract. Spine: silent.
+**Colors** — Spinner treatments inconsistent between mocks (onboarding: white-on-white-translucent; new-conversation: accent-on-border). Fix: Standardize on one spinner treatment; document in DESIGN.md.
 
-**Implementation drift** — Deploy-time `onModuleDestroy` drops pending manual commits without `MANUAL_SAVE_FAILED`; in-flight promises emit to torn-down `SessionEventsService` (`manual-commit.service.ts:110-113`, `agent.service.ts:204-219`). Deploy/drain UX is Story 3.12 (backlog). Fix: Story 3.12 scope. Spine: silent (forward-looking).
+**Margins & Spacing** — Tool-pill padding (2px 8px) vs semantic-pill padding (4px 10px) — visually related components with different sizing. Fix: Align padding; document the relationship if the size difference is intentional.
 
-## Not UX-relevant (excluded)
+**Margins & Spacing** — Status-badge padding (2px 8px) differs from semantic-pill padding (4px 10px). Fix: Standardize pill-badge padding across variants.
 
-Considered and excluded — purely backend/internal, no user-visible surface in MVP for stories 3.1–3.7:
+**Consistency** — Dead CSS: `.annotation-band` defined but unused in 4 mocks. Fix: Remove unused CSS blocks.
 
-- OAuth token embedded in `git clone` URL / `.git/config` — security hardening.
-- `SandboxService.resume` returns `conversationId: sandboxId` — latent internal contract, no caller.
-- `provisionQueue.release` in `finally` when `acquire` might throw — internal semaphore; `acquire` has no throw path today.
-- SSH-style repo URL → `TypeError` → opaque `SESSION_ERROR` — onboarding validates HTTPS.
-- Idle timeout cleared on first message, never restarted — resource/cost; Story 3.9 scope.
-- In-memory sandbox state lost on restart — resume flow re-provisions per spec.
-- `getStatus` returns `'failed'` not 404 for missing conversation — internal API contract.
-- `sendTurn` doesn't validate sandbox state before persisting — `RUN_ERROR` surfaces anyway.
-- `SendMessageDto` no `max()` on content — input validation.
-- `createConversation` validates a `CreateConversationDto` body it discards — internal.
-- `markCredentialFailed` marks all of the user's connections — MVP has a single connection per user.
-- `viewHref` not URL-encoded — artifact IDs are UUIDs in practice.
-- `pendingClassifierPromises` race — latent.
-- `abortPromise` listener never removed / `iterator.return()` not called / `resetCircuitBreakerTimer` re-arms for aborted runs — resource cleanup.
-- Several test-only issues — not production code.
+**Consistency** — `min-width: 1280px` on body doesn't match spine's 1024px minimum (all mocks). Fix: Render at 1024px or note that mocks are at 1280px for readability.
 
 ## Reviewer files
 
-- `review-implementation-drift.md`
+- `review-aesthetics.md`
+- `review-rubric.md` (prior, 2026-07-02 — not re-run)
+- `review-implementation-drift.md` (prior, 2026-07-05 — not re-run)

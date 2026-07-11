@@ -24,9 +24,9 @@ const STATUS_LABELS: Record<ArtifactStatus, string> = {
 
 const STATUS_BADGE_CLASSES: Record<ArtifactStatus, string> = {
   completed:
-    'border border-border bg-transparent text-text-2 rounded-full px-2 py-0.5 text-xs',
+    'border border-border bg-transparent text-text-2 rounded-full px-2 py-1 text-xs',
   'in-progress':
-    'border border-caution bg-caution-bg text-caution rounded-full px-2 py-0.5 text-xs',
+    'border border-caution bg-caution-bg text-caution rounded-full px-2 py-1 text-xs',
 };
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -66,7 +66,7 @@ export function ArtifactListEntry({
       aria-label={`${typeLabel}: ${title} — ${statusLabel}`}
       aria-current={selected ? 'true' : undefined}
       className={cn(
-        'py-2.5 px-4 flex flex-col gap-0.5',
+        'py-3 px-4 flex flex-col gap-1',
         'focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
         selected
           ? 'bg-surface-raised border-l-2 border-accent'
@@ -78,7 +78,7 @@ export function ArtifactListEntry({
       </span>
       <span className="text-sm font-semibold text-text-1">{title}</span>
       <div className="flex items-center justify-between mt-1">
-        <span className="text-xs text-text-3">
+        <span className="text-xs text-text-2">
           {formatDate(lastModifiedAt)}
         </span>
         <span

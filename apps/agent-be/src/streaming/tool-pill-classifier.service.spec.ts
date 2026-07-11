@@ -112,7 +112,7 @@ describe('ToolPillClassifierService', () => {
         successOutput,
         'user-1',
       );
-      expect(result?.artifactType).toBe('prd');
+      expect(result).toMatchObject({ artifactType: 'prd' });
     });
 
     it('uses Postgres title and type when artifact is found', async () => {
@@ -131,8 +131,8 @@ describe('ToolPillClassifierService', () => {
  create mode 100644 _bmad-output/planning-artifacts/prds/prd-1.md`,
         'user-1',
       );
-      expect(result?.artifactType).toBe('architecture');
-      expect(result?.artifactTitle).toBe('Authoritative Title');
+      expect(result).toMatchObject({ artifactType: 'architecture' });
+      expect(result).toMatchObject({ artifactTitle: 'Authoritative Title' });
     });
 
     it('returns viewHref with id when artifact in Postgres', async () => {
@@ -151,7 +151,7 @@ describe('ToolPillClassifierService', () => {
  create mode 100644 _bmad-output/planning-artifacts/prds/prd-1.md`,
         'user-1',
       );
-      expect(result?.viewHref).toBe('/artifacts?id=art-42');
+      expect(result).toMatchObject({ viewHref: '/artifacts?id=art-42' });
     });
 
     it('returns viewHref without id when artifact not in Postgres', async () => {
@@ -166,7 +166,7 @@ describe('ToolPillClassifierService', () => {
  create mode 100644 _bmad-output/planning-artifacts/prds/prd-1.md`,
         'user-1',
       );
-      expect(result?.viewHref).toBe('/artifacts');
+      expect(result).toMatchObject({ viewHref: '/artifacts' });
     });
   });
 
@@ -198,7 +198,7 @@ describe('ToolPillClassifierService', () => {
         'user-1',
       );
       expect(warnSpy).toHaveBeenCalled();
-      expect(result?.viewHref).toBe('/artifacts');
+      expect(result).toMatchObject({ viewHref: '/artifacts' });
     });
   });
 
@@ -252,7 +252,7 @@ describe('ToolPillClassifierService', () => {
         'user-1',
       );
       expect(result?.type).toBe('ACCESS_DENIED');
-      expect(result?.code).toBe('RATE_LIMITED');
+      expect(result).toMatchObject({ code: 'RATE_LIMITED' });
     });
 
     it('returns AccessDeniedEvent with code ORG_RESTRICTION when output contains "Resource not accessible by integration"', async () => {
@@ -264,7 +264,7 @@ describe('ToolPillClassifierService', () => {
         'user-1',
       );
       expect(result?.type).toBe('ACCESS_DENIED');
-      expect(result?.code).toBe('ORG_RESTRICTION');
+      expect(result).toMatchObject({ code: 'ORG_RESTRICTION' });
     });
 
     it('returns AccessDeniedEvent with code INSUFFICIENT_PERMISSION when output contains "Permission denied"', async () => {
@@ -276,7 +276,7 @@ describe('ToolPillClassifierService', () => {
         'user-1',
       );
       expect(result?.type).toBe('ACCESS_DENIED');
-      expect(result?.code).toBe('INSUFFICIENT_PERMISSION');
+      expect(result).toMatchObject({ code: 'INSUFFICIENT_PERMISSION' });
     });
 
     it('does NOT call markCredentialFailed on 403 detection (FINDING-12)', async () => {
@@ -363,8 +363,8 @@ describe('ToolPillClassifierService', () => {
         'user-1',
       );
       expect(result?.type).toBe('ACCESS_DENIED');
-      expect(result?.code).toBe('RATE_LIMITED');
-      expect(result?.retryAfter).toBe(60);
+      expect(result).toMatchObject({ code: 'RATE_LIMITED' });
+      expect(result).toMatchObject({ retryAfter: 60 });
     });
   });
 
@@ -438,7 +438,7 @@ describe('ToolPillClassifierService', () => {
         'user-1',
       );
       expect(result?.type).toBe('ACCESS_DENIED');
-      expect(result?.code).toBe('RATE_LIMITED');
+      expect(result).toMatchObject({ code: 'RATE_LIMITED' });
     });
 
     it('returns ACCESS_DENIED with RATE_LIMITED for "abuse detection" pattern', async () => {
@@ -450,7 +450,7 @@ describe('ToolPillClassifierService', () => {
         'user-1',
       );
       expect(result?.type).toBe('ACCESS_DENIED');
-      expect(result?.code).toBe('RATE_LIMITED');
+      expect(result).toMatchObject({ code: 'RATE_LIMITED' });
     });
 
     it('returns ACCESS_DENIED with ORG_RESTRICTION for "org policy" pattern', async () => {
@@ -462,7 +462,7 @@ describe('ToolPillClassifierService', () => {
         'user-1',
       );
       expect(result?.type).toBe('ACCESS_DENIED');
-      expect(result?.code).toBe('ORG_RESTRICTION');
+      expect(result).toMatchObject({ code: 'ORG_RESTRICTION' });
     });
 
     it('returns ACCESS_DENIED with INSUFFICIENT_PERMISSION for bare "403" pattern', async () => {
@@ -474,7 +474,7 @@ describe('ToolPillClassifierService', () => {
         'user-1',
       );
       expect(result?.type).toBe('ACCESS_DENIED');
-      expect(result?.code).toBe('INSUFFICIENT_PERMISSION');
+      expect(result).toMatchObject({ code: 'INSUFFICIENT_PERMISSION' });
     });
   });
 
@@ -526,7 +526,7 @@ describe('ToolPillClassifierService', () => {
       );
       const elapsed = Date.now() - start;
       expect(result?.type).toBe('ACCESS_DENIED');
-      expect(result?.code).toBe('RATE_LIMITED');
+      expect(result).toMatchObject({ code: 'RATE_LIMITED' });
       expect(elapsed).toBeLessThan(100);
     });
   });

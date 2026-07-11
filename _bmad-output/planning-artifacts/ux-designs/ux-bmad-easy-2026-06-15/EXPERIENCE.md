@@ -2,7 +2,7 @@
 title: "EXPERIENCE: bmad-easy"
 status: final
 created: 2026-06-15
-updated: 2026-07-04
+updated: 2026-07-08
 sources:
   - _bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md
   - _bmad-output/planning-artifacts/briefs/brief-bmad-easy-2026-06-12/brief.md
@@ -23,7 +23,7 @@ sources:
 
 **DESIGN.md reference:** Visual identity (color tokens, typography, radii, component specifications) is fully defined in DESIGN.md. This document specifies behavior, information architecture, states, and interactions only. DESIGN.md tokens are referenced as `{colors.*}`, `{typography.*}`, etc.
 
-**Mockups:** Key-screen HTML mockups for all seven surfaces live in [mockups/](mockups/), linked from each surface's State Patterns section. Mockups show one representative state per surface; the full state inventory lives in the tables here. On any conflict, DESIGN.md and EXPERIENCE.md win over the mockups.
+**Mockups:** Key-screen HTML mockups for all seven surfaces live in [mockups/](mockups/), linked from each surface's State Patterns section. Mockups show one representative state per surface; the full state inventory lives in the tables here. On any conflict, DESIGN.md and EXPERIENCE.md win over the mockups. Mocks are rendered at 1280px viewport width for readability; the 1024px minimum layout and the 768–1023px tablet collapsed-nav behavior are spine-only.
 
 ---
 
@@ -164,7 +164,7 @@ Displayed in the chat input area, left-aligned below the textarea. Two states:
 
 **Clean (no uncommitted changes):**
 - Label: `✓ All saved`
-- Color: `{colors.text-3}`
+- Color: `{colors.text-2}`
 - Not interactive
 
 **Hidden:** when no session is active (New Conversation before first message sent).
@@ -181,7 +181,7 @@ Flat list, no grouping. Each entry:
 - Artifact type label (e.g. "PRD", "Brainstorming") — `{typography.scale.xs}`, `{colors.text-2}`, uppercase
 - Artifact title — `{typography.scale.sm}`, semibold, `{colors.text-1}`
 - Status badge — in-progress or completed per DESIGN.md component specs
-- Last modified timestamp — `{typography.scale.xs}`, `{colors.text-3}`
+- Last modified timestamp — `{typography.scale.xs}`, `{colors.text-2}`
 
 Clicking an entry: applies the two-column layout (list at 280px, artifact content in remaining area). The selected entry gets `{colors.surface-raised}` background and a left accent border in `{colors.accent}`.
 
@@ -259,7 +259,7 @@ Mockup: [mockups/key-conversation.html](mockups/key-conversation.html)
 | Reconnecting (sandbox re-init) | Full history visible; input disabled with "Reconnecting…" label in the input area |
 | Active / idle | Full history; input enabled; working tree indicator visible |
 | Credential failed (mid-Conversation) | The failing git operation renders as an error-state Tool Pill in the stream; simultaneously, the Credential Error Banner appears above the message panel — same component and inline re-auth flow as Project Map and Artifact Browser — in real time, without requiring navigation or a page reload. The banner clears once credentials are updated. (Banner reuse confirmed by Marius, 2026-07-02.) |
-| Access denied (mid-Conversation) | A 403 is not a credential failure (per FINDING-12) — the Credential Error Banner does NOT appear and no re-auth prompt is shown, because re-authentication resolves none of the three 403 causes. Instead the failing git operation renders as an error-state Tool Pill (same as the credential-failed state), with an Access Notice inline in the message stream directly below the failing pill. The notice copy is derived from the `ACCESS_DENIED` event's `code`: `RATE_LIMITED` → "GitHub is rate-limiting this request. Wait a moment and try again." (with a retry hint when `retryAfter` is present); `ORG_RESTRICTION` → "Your organization hasn't approved this app. Ask an org admin to grant access."; `INSUFFICIENT_PERMISSION` → "Your account doesn't have access to this resource." The raw GitHub error text remains available in the Tool Pill's expanded output. The notice is dismissible (unlike the Credential Error Banner) and does not block the input — the agent turn continues; the tool call's error result is returned to the agent, which adapts. (Event contract defined in architecture.md; parallels the credential-failed row added 2026-07-02.) |
+| Access denied (mid-Conversation) | A 403 is not a credential failure (per FINDING-12) — the Credential Error Banner does NOT appear and no re-auth prompt is shown, because re-authentication resolves none of the three 403 causes. Instead the failing git operation renders as an error-state Tool Pill (same as the credential-failed state), with an Access Notice (`{components.access-notice}`, background `{colors.caution-bg}` or `{colors.negative-bg}` for `INSUFFICIENT_PERMISSION`, left border `{colors.caution}` / `{colors.negative}`) inline in the message stream directly below the failing pill. The notice copy is derived from the `ACCESS_DENIED` event's `code`: `RATE_LIMITED` → "GitHub is rate-limiting this request. Wait a moment and try again." (with a retry hint when `retryAfter` is present); `ORG_RESTRICTION` → "Your organization hasn't approved this app. Ask an org admin to grant access."; `INSUFFICIENT_PERMISSION` → "Your account doesn't have access to this resource." The raw GitHub error text remains available in the Tool Pill's expanded output. The notice is dismissible (unlike the Credential Error Banner) and does not block the input — the agent turn continues; the tool call's error result is returned to the agent, which adapts. (Event contract defined in architecture.md; parallels the credential-failed row added 2026-07-02; tokens resolved 2026-07-08.) |
 | Agent process terminated (circuit breaker) | Distinct from a single failed tool call (which produces only an error-state Tool Pill and lets the agent keep working, per the Tool Pills and Semantic Pills pattern): when `sandbox-agent` crashes or stalls and the backend's circuit breaker terminates the whole Claude Code agent process, the entire in-flight turn ends. A system message (platform copy, not an agent message, same visual treatment as the "Couldn't load…" error copy elsewhere) appears at the point the stream stopped: "The agent stopped unexpectedly. Send a new message to try again." Any partial streamed response already rendered stays visible above it — it is not retracted. Input re-enables (Agent Processing state returns to Idle); no automatic retry. |
 
 ### Agent Processing States

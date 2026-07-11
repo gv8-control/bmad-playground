@@ -44,7 +44,7 @@ export default async function ConversationPage({
   }));
 
   const boundaryJwt = await mintBoundaryJwt(userId);
-  const apiUrl = process.env.API_URL ?? 'http://localhost:3001';
+  const apiUrl = process.env.API_URL!;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

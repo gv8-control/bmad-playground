@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { tmpdir } from 'os';
 import type { IAgentService, AgentRunParams } from '@bmad-easy/shared-types';
 import { query, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { EventType } from '@ag-ui/core';
 import type { ISandboxService } from '@bmad-easy/shared-types';
 import { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,7 +12,6 @@ import { CostTrackingService } from '../cost-tracking/cost-tracking.service';
 
 interface ActiveRun {
   sandboxId: string;
-  processId: string;
   abortController: AbortController;
   query: Query;
   userId: string;
@@ -61,11 +62,10 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       return;
     }
 
-    const processId = `agent-${conversationId}`;
     const abortController = new AbortController();
 
     this.sessionEvents.emit(conversationId, {
-      event: 'RUN_STARTED',
+      event: EventType.RUN_STARTED,
       data: { threadId: conversationId },
     });
 
@@ -91,17 +91,17 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       const agentQuery = query({
         prompt: message,
         options: {
-          cwd: process.env.AGENT_WORKDIR ?? '/workspace',
+          cwd: process.env.AGENT_WORKDIR ?? tmpdir(),
           abortController,
           env: {
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
           },
+          includePartialMessages: true,
         },
       });
 
       this.activeRuns.set(conversationId, {
         sandboxId,
-        processId,
         abortController,
         query: agentQuery,
         userId,
@@ -113,8 +113,13 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         let result: IteratorResult<SDKMessage>;
         try {
           result = await Promise.race([iterator.next(), abortPromise]);
-        } catch {
-          break;
+        } catch (err) {
+          if (abortController.signal.aborted) break;
+          const pendingPromises = this.pendingClassifierPromises.get(conversationId) ?? [];
+          if (pendingPromises.length > 0) {
+            await Promise.allSettled(pendingPromises);
+          }
+          throw err;
         }
         if (result.done) break;
         this.resetCircuitBreakerTimer(conversationId);
@@ -127,13 +132,21 @@ export class AgentService implements IAgentService, OnModuleDestroy {
             num_turns: number;
             duration_ms: number;
           };
-          if (Number.isFinite(resultMsg.total_cost_usd)) {
+          if (
+            Number.isFinite(resultMsg.total_cost_usd) &&
+            Number.isFinite(resultMsg.num_turns) &&
+            Number.isFinite(resultMsg.duration_ms)
+          ) {
             lastCostData = {
               totalCostUsd: resultMsg.total_cost_usd,
               sessionId: resultMsg.session_id,
               numTurns: resultMsg.num_turns,
               durationMs: resultMsg.duration_ms,
             };
+          } else {
+            this.logger.warn(
+              `Non-finite cost data from SDK for conversation ${conversationId}: total_cost_usd=${resultMsg.total_cost_usd}, num_turns=${resultMsg.num_turns}, duration_ms=${resultMsg.duration_ms}`,
+            );
           }
         }
       }
@@ -163,33 +176,39 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       }
 
       if (!abortController.signal.aborted) {
+        if (accumulatedText.length > 0) {
+          try {
+            await this.prisma.turn.create({
+              data: {
+                conversationId,
+                role: 'assistant',
+                content: accumulatedText,
+              },
+              select: { id: true },
+            });
+            await this.prisma.conversation.update({
+              where: { id: conversationId },
+              data: { lastActiveAt: new Date() },
+              select: { id: true },
+            });
+          } catch (err) {
+            this.logger.error(
+              `Failed to persist assistant turn for conversation ${conversationId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
         this.sessionEvents.emit(conversationId, {
-          event: 'RUN_FINISHED',
+          event: EventType.RUN_FINISHED,
           data: {},
         });
-
-        if (accumulatedText.length > 0) {
-          await this.prisma.turn.create({
-            data: {
-              conversationId,
-              role: 'assistant',
-              content: accumulatedText,
-            },
-            select: { id: true },
-          });
-          await this.prisma.conversation.update({
-            where: { id: conversationId },
-            data: { lastActiveAt: new Date() },
-            select: { id: true },
-          });
-        }
       }
     } catch (err) {
       if (!abortController.signal.aborted) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown agent error';
         this.logger.error(`Agent run failed for conversation ${conversationId}: ${errorMessage}`);
         this.sessionEvents.emit(conversationId, {
-          event: 'RUN_ERROR',
+          event: EventType.RUN_ERROR,
           data: { message: errorMessage },
         });
       }
@@ -230,16 +249,13 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
     }
 
-    try {
-      await this.sandboxService.terminateProcess(activeRun.sandboxId, activeRun.processId);
-    } catch (err) {
-      this.logger.warn(
-        `Failed to terminate process ${activeRun.processId} in sandbox ${activeRun.sandboxId}: ${err}`,
-      );
+    const pendingPromises = this.pendingClassifierPromises.get(conversationId) ?? [];
+    if (pendingPromises.length > 0) {
+      await Promise.allSettled(pendingPromises);
     }
 
     this.sessionEvents.emit(conversationId, {
-      event: 'RUN_FINISHED',
+      event: EventType.RUN_FINISHED,
       data: {},
     });
 
@@ -307,21 +323,22 @@ export class AgentService implements IAgentService, OnModuleDestroy {
 
     activeRun.abortController.abort();
 
+    // Cancel the in-process agent run. interrupt() may reject asynchronously or
+    // throw synchronously (e.g. if the SDK contract changes and interrupt is no
+    // longer a function); log either without letting it block the RUN_ERROR emit
+    // below. Kept synchronous at the call site so the RUN_ERROR emit still
+    // happens within the same macrotask as the setTimeout callback.
     try {
-      activeRun.query.interrupt();
+      void activeRun.query.interrupt().catch((err) => {
+        this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
+      });
     } catch (err) {
       this.logger.warn(`Failed to interrupt agent query for conversation ${conversationId}: ${err}`);
     }
 
-    void this.sandboxService
-      .terminateProcess(activeRun.sandboxId, activeRun.processId)
-      .catch((err) => {
-        this.logger.warn(`Failed to terminate process: ${err}`);
-      });
-
     const emitRunError = () => {
       this.sessionEvents.emit(conversationId, {
-        event: 'RUN_ERROR',
+        event: EventType.RUN_ERROR,
         data: { message: CIRCUIT_BREAKER_MESSAGE },
       });
     };
@@ -343,7 +360,10 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       return '';
     }
     if (sdkMessage.type === 'assistant') {
-      return this.processAssistantMessage(sdkMessage, conversationId, userId);
+      return this.processAssistantMessage(sdkMessage, conversationId);
+    }
+    if (sdkMessage.type === 'user') {
+      return this.processUserMessage(sdkMessage, conversationId, userId);
     }
     return '';
   }
@@ -357,7 +377,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         this.currentMessageIds.set(conversationId, messageId);
         this.currentBlockTypes.set(conversationId, 'text');
         this.sessionEvents.emit(conversationId, {
-          event: 'TEXT_MESSAGE_START',
+          event: EventType.TEXT_MESSAGE_START,
           data: { messageId, role: 'assistant' },
         });
       } else if (contentBlock.type === 'tool_use') {
@@ -374,7 +394,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
           input: '',
         });
         this.sessionEvents.emit(conversationId, {
-          event: 'TOOL_CALL_START',
+          event: EventType.TOOL_CALL_START,
           data: { toolCallId, toolCallName, parentMessageId: null },
         });
       }
@@ -383,7 +403,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       if (delta.type === 'text_delta' && delta.text) {
         const messageId = this.currentMessageIds.get(conversationId) ?? `msg-${Date.now()}`;
         this.sessionEvents.emit(conversationId, {
-          event: 'TEXT_MESSAGE_CONTENT',
+          event: EventType.TEXT_MESSAGE_CONTENT,
           data: { messageId, delta: delta.text },
         });
         return delta.text;
@@ -397,7 +417,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
             toolCallInfo.input += delta.partial_json;
           }
           this.sessionEvents.emit(conversationId, {
-            event: 'TOOL_CALL_ARGS',
+            event: EventType.TOOL_CALL_ARGS,
             data: { toolCallId, delta: delta.partial_json },
           });
         }
@@ -408,7 +428,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         const toolCallId = this.currentToolCallIds.get(conversationId);
         if (toolCallId) {
           this.sessionEvents.emit(conversationId, {
-            event: 'TOOL_CALL_END',
+            event: EventType.TOOL_CALL_END,
             data: { toolCallId },
           });
         }
@@ -417,7 +437,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       } else {
         const messageId = this.currentMessageIds.get(conversationId) ?? `msg-${Date.now()}`;
         this.sessionEvents.emit(conversationId, {
-          event: 'TEXT_MESSAGE_END',
+          event: EventType.TEXT_MESSAGE_END,
           data: { messageId },
         });
         this.currentMessageIds.delete(conversationId);
@@ -427,25 +447,25 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     return '';
   }
 
-  private processAssistantMessage(message: SDKMessage, conversationId: string, userId: string): string {
+  private processAssistantMessage(message: SDKMessage, conversationId: string): string {
     const msg = message as {
       type: string;
-      content?: Array<{
-        type: string;
-        id?: string;
-        name?: string;
-        input?: unknown;
-        tool_use_id?: string;
-        content?: unknown;
-        is_error?: boolean;
-      }>;
+      message?: {
+        content?: Array<{
+          type: string;
+          id?: string;
+          name?: string;
+          input?: unknown;
+        }>;
+      };
     };
 
-    if (!msg.content || !Array.isArray(msg.content)) {
+    const content = msg.message?.content;
+    if (!content || !Array.isArray(content)) {
       return '';
     }
 
-    for (const block of msg.content) {
+    for (const block of content) {
       if (block.type === 'tool_use' && block.id) {
         if (!this.activeToolCalls.has(conversationId)) {
           this.activeToolCalls.set(conversationId, new Map());
@@ -460,81 +480,105 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       }
     }
 
-    for (const block of msg.content) {
-      if (block.type === 'tool_result' && block.tool_use_id) {
-        const toolCallId = block.tool_use_id;
-        const rawContent = block.content;
-        const resultContent =
-          typeof rawContent === 'string'
-            ? rawContent
-            : Array.isArray(rawContent)
-              ? rawContent.map((b: { text?: string }) => b.text ?? '').join('\n')
-              : rawContent != null ? String(rawContent) : '';
+    return '';
+  }
 
-        this.sessionEvents.emit(conversationId, {
-          event: 'TOOL_CALL_RESULT',
-          data: {
-            messageId: toolCallId,
-            toolCallId,
-            content: resultContent,
-            role: 'tool',
-            isError: block.is_error === true,
-          },
+  private processUserMessage(message: SDKMessage, conversationId: string, userId: string): string {
+    const msg = message as {
+      type: string;
+      message?: {
+        content?: string | Array<{
+          type: string;
+          tool_use_id?: string;
+          content?: unknown;
+          is_error?: boolean;
+        }>;
+      };
+    };
+
+    const content = msg.message?.content;
+    if (!content || typeof content === 'string' || !Array.isArray(content)) {
+      return '';
+    }
+
+    for (const block of content) {
+      if (block.type !== 'tool_result' || !block.tool_use_id) {
+        continue;
+      }
+      const toolCallId = block.tool_use_id;
+      const rawContent = block.content;
+      const resultContent =
+        typeof rawContent === 'string'
+          ? rawContent
+          : Array.isArray(rawContent)
+            ? rawContent.map((b: { text?: string }) => b.text ?? '').join('\n')
+            : rawContent != null ? String(rawContent) : '';
+
+      this.sessionEvents.emit(conversationId, {
+        event: EventType.TOOL_CALL_RESULT,
+        data: {
+          messageId: toolCallId,
+          toolCallId,
+          content: resultContent,
+          role: 'tool',
+          isError: block.is_error === true,
+        },
+      });
+
+      const toolCalls = this.activeToolCalls.get(conversationId);
+      const toolCallInfo = toolCalls?.get(toolCallId);
+      if (!toolCallInfo) {
+        continue;
+      }
+
+      const classifierPromise = this.classifier
+        .classifyToolResult(
+          toolCallId,
+          toolCallInfo.toolName,
+          toolCallInfo.input,
+          resultContent,
+          userId,
+        )
+        .then((result) => {
+          if (!result) return;
+          this.sessionEvents.emit(conversationId, {
+            event: result.type,
+            data: result,
+          });
+        })
+        .catch((err) => {
+          this.logger.error(`Classifier failed for tool call ${toolCallId}: ${err}`);
         });
 
-        const toolCalls = this.activeToolCalls.get(conversationId);
-        const toolCallInfo = toolCalls?.get(toolCallId);
-        if (toolCallInfo) {
-          const classifierPromise = this.classifier
-            .classifyToolResult(
-              toolCallId,
-              toolCallInfo.toolName,
-              toolCallInfo.input,
-              resultContent,
-              userId,
-            )
-            .then((result) => {
-              if (!result) return;
-              this.sessionEvents.emit(conversationId, {
-                event: result.type,
-                data: result,
-              });
+      if (!this.pendingClassifierPromises.has(conversationId)) {
+        this.pendingClassifierPromises.set(conversationId, []);
+      }
+      this.pendingClassifierPromises.get(conversationId)!.push(classifierPromise);
+
+      if (FILE_MODIFYING_TOOLS.has(toolCallInfo.toolName)) {
+        const activeRun = this.activeRuns.get(conversationId);
+        if (activeRun) {
+          const workingTreePromise = this.sandboxService
+            .getWorkingTreeStatus(activeRun.sandboxId)
+            .then((status) => {
+              if (status.dirty) {
+                this.sessionEvents.emit(conversationId, {
+                  event: 'WORKING_TREE_DIRTY',
+                  data: { files: status.files },
+                });
+              } else {
+                this.sessionEvents.emit(conversationId, {
+                  event: 'WORKING_TREE_CLEAN',
+                  data: {},
+                });
+              }
             })
             .catch((err) => {
-              this.logger.error(`Classifier failed for tool call ${toolCallId}: ${err}`);
+              this.logger.warn(`Working tree check failed for conversation ${conversationId}: ${err}`);
             });
-
-          if (!this.pendingClassifierPromises.has(conversationId)) {
-            this.pendingClassifierPromises.set(conversationId, []);
-          }
-          this.pendingClassifierPromises.get(conversationId)!.push(classifierPromise);
-
-          if (FILE_MODIFYING_TOOLS.has(toolCallInfo.toolName)) {
-            const activeRun = this.activeRuns.get(conversationId);
-            if (activeRun) {
-              const workingTreePromise = this.sandboxService
-                .getWorkingTreeStatus(activeRun.sandboxId)
-                .then((status) => {
-                  if (status.dirty) {
-                    this.sessionEvents.emit(conversationId, {
-                      event: 'WORKING_TREE_DIRTY',
-                      data: { files: status.files },
-                    });
-                  } else {
-                    this.sessionEvents.emit(conversationId, {
-                      event: 'WORKING_TREE_CLEAN',
-                      data: {},
-                    });
-                  }
-                })
-                .catch((err) => {
-                  this.logger.warn(`Working tree check failed for conversation ${conversationId}: ${err}`);
-                });
-              const pending = this.pendingClassifierPromises.get(conversationId);
-              if (pending) {
-                pending.push(workingTreePromise);
-              }
-            }
+          const pending = this.pendingClassifierPromises.get(conversationId);
+          if (pending) {
+            pending.push(workingTreePromise);
           }
         }
       }

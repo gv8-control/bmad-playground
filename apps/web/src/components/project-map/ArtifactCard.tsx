@@ -25,9 +25,9 @@ const STATUS_LABELS: Record<ArtifactStatus, string> = {
 
 const STATUS_BADGE_CLASSES: Record<ArtifactStatus, string> = {
   completed:
-    'border border-border bg-transparent text-text-2 rounded-full px-2 py-0.5 text-xs',
+    'border border-border bg-transparent text-text-2 rounded-full px-2 py-1 text-xs',
   'in-progress':
-    'border border-caution bg-caution-bg text-caution rounded-full px-2 py-0.5 text-xs',
+    'border border-caution bg-caution-bg text-caution rounded-full px-2 py-1 text-xs',
 };
 
 export interface ArtifactCardProps {
@@ -54,7 +54,7 @@ export function ArtifactCard({ type, title, status, href, onClick }: ArtifactCar
         'focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
       )}
     >
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-1">
         <span className="text-xs text-text-2 uppercase tracking-wide font-medium">
           {typeLabel}
         </span>

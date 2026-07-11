@@ -24,10 +24,15 @@
  */
 import { SessionEventsService } from './session-events.service';
 import { AgentService } from './agent.service';
-import type { ToolPillClassifierService } from './tool-pill-classifier.service';
 import type { SandboxServiceFake } from '../../test/helpers/sandbox-service.fake';
 
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import {
+  createMockQuery,
+  makeQueryFromGenerator,
+  getInterruptMock,
+} from '../../test/helpers/mock-query';
+import { EventType } from '@ag-ui/core';
 
 describe('AgentService (real — tool call lifecycle + circuit breaker)', () => {
   let sessionEvents: SessionEventsService;
@@ -48,7 +53,6 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     };
 
     sandboxFake = {
-      terminateProcess: jest.fn().mockResolvedValue(undefined),
       getWorkingTreeStatus: jest.fn().mockResolvedValue({ dirty: false, files: [] }),
     } as unknown as SandboxServiceFake;
 
@@ -90,42 +94,224 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     return service!;
   }
 
-  function makeSdkMessage(partial: Partial<SDKMessage>): SDKMessage {
-    return partial as SDKMessage;
-  }
+  // --- Type-checked SDKMessage fixture builders ---
+  // The builders below use no `as SDKMessage` / `as unknown as SDKMessage` /
+  // `as never` assertions: each returns a full object literal that the compiler
+  // checks against the real @anthropic-ai/claude-agent-sdk type declarations (via
+  // the `SDKMessage` return type, which narrows to the matching union member on
+  // the `type` field). A shape mismatch between the fixture and the real SDK
+  // contract now surfaces as a compile error here, not as false-green runtime
+  // silence (audit finding #2).
+  //
+  // Type-checking is enforced by the `agent-be:typecheck` target (runs
+  // `tsc --noEmit -p apps/agent-be/tsconfig.spec.json`), which CI runs before
+  // the ts-jest test step. ts-jest operates in transpile-only mode
+  // (`isolatedModules: true`), so without this gate the builders below would
+  // NOT actually be verified (audit finding C-1).
+  const STREAM_UUID = '00000000-0000-0000-0000-000000000001';
+  const ASSISTANT_UUID = '00000000-0000-0000-0000-000000000002';
+  const RESULT_UUID = '00000000-0000-0000-0000-000000000003';
+  const STREAM_SESSION_ID = 'sess-1';
 
-  function makeStreamEvent(eventType: string, data: Record<string, unknown>): SDKMessage {
-    return makeSdkMessage({
+  function makeToolUseBlockStart(
+    toolCallId: string,
+    toolName: string,
+    input: Record<string, unknown> = {},
+  ): SDKMessage {
+    return {
       type: 'stream_event',
-      event: { type: eventType, ...data },
-    });
+      event: {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'tool_use', id: toolCallId, name: toolName, input },
+      },
+      parent_tool_use_id: null,
+      uuid: STREAM_UUID,
+      session_id: STREAM_SESSION_ID,
+    };
   }
 
-  function makeResultMessage(costUsd = 0.42, subtype = 'success'): SDKMessage {
-    return makeSdkMessage({
+  function makeTextBlockStart(): SDKMessage {
+    // BetaTextBlock has only { type, text, citations } — NO `id` field. The
+    // production path at agent.service.ts:360 falls back to `msg-${Date.now()}`
+    // for text blocks, so we omit `id` here to exercise the real code path
+    // (audit finding C-2). For tool_use blocks, `BetaToolUseBlock.id` exists
+    // and is set in `makeToolUseBlockStart`.
+    return {
+      type: 'stream_event',
+      event: {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '', citations: null },
+      },
+      parent_tool_use_id: null,
+      uuid: STREAM_UUID,
+      session_id: STREAM_SESSION_ID,
+    };
+  }
+
+  function makeTextDeltaEvent(text: string): SDKMessage {
+    return {
+      type: 'stream_event',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text },
+      },
+      parent_tool_use_id: null,
+      uuid: STREAM_UUID,
+      session_id: STREAM_SESSION_ID,
+    };
+  }
+
+  function makeInputJsonDeltaEvent(partialJson: string): SDKMessage {
+    return {
+      type: 'stream_event',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: partialJson },
+      },
+      parent_tool_use_id: null,
+      uuid: STREAM_UUID,
+      session_id: STREAM_SESSION_ID,
+    };
+  }
+
+  function makeContentBlockStop(index = 0): SDKMessage {
+    return {
+      type: 'stream_event',
+      event: { type: 'content_block_stop', index },
+      parent_tool_use_id: null,
+      uuid: STREAM_UUID,
+      session_id: STREAM_SESSION_ID,
+    };
+  }
+
+  function makeToolResultUserMessage(toolCallId: string, content: string): SDKMessage {
+    return {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: toolCallId, content }],
+      },
+      parent_tool_use_id: null,
+    };
+  }
+
+  function makeAssistantToolUseMessage(
+    toolCallId: string,
+    toolName: string,
+    input: Record<string, unknown> = {},
+  ): SDKMessage {
+    // An SDKAssistantMessage: message is a BetaMessage whose content carries the
+    // finalized tool_use block. processAssistantMessage reads msg.message.content
+    // — the exact code path the audit found with ZERO coverage (finding #1).
+    return {
+      type: 'assistant',
+      message: {
+        id: 'msg-assistant',
+        container: null,
+        content: [{ type: 'tool_use', id: toolCallId, name: toolName, input }],
+        context_management: null,
+        diagnostics: null,
+        model: 'claude-sonnet-4-6',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        usage: {
+          input_tokens: 0,
+          cache_creation_input_tokens: null,
+          cache_read_input_tokens: null,
+          inference_geo: null,
+          iterations: null,
+          output_tokens: 0,
+          output_tokens_details: null,
+          server_tool_use: null,
+          service_tier: null,
+          speed: null,
+          cache_creation: null,
+        },
+      },
+      parent_tool_use_id: null,
+      uuid: ASSISTANT_UUID,
+      session_id: 'sess-1',
+    };
+  }
+
+  function makeResultMessage(
+    costUsd = 0.42,
+    subtype:
+      | 'success'
+      | 'error_during_execution'
+      | 'error_max_turns'
+      | 'error_max_budget_usd'
+      | 'error_max_structured_output_retries' = 'success',
+  ): SDKMessage {
+    if (subtype === 'success') {
+      return {
+        type: 'result',
+        subtype: 'success',
+        duration_ms: 5000,
+        duration_api_ms: 4000,
+        is_error: false,
+        num_turns: 3,
+        stop_reason: null,
+        total_cost_usd: costUsd,
+        usage: {
+          input_tokens: 10,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          output_tokens: 20,
+          server_tool_use: { web_fetch_requests: 0, web_search_requests: 0 },
+          service_tier: 'standard',
+          cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 },
+          inference_geo: 'global',
+          iterations: [],
+          output_tokens_details: { thinking_tokens: 0 },
+          speed: 'standard',
+        },
+        modelUsage: {},
+        permission_denials: [],
+        uuid: RESULT_UUID,
+        session_id: 'sess-1',
+        result: '',
+      };
+    }
+    return {
       type: 'result',
       subtype,
-      total_cost_usd: costUsd,
-      session_id: 'sess-1',
-      num_turns: 3,
       duration_ms: 5000,
+      duration_api_ms: 4000,
       is_error: false,
-      result: '',
-      usage: {},
+      num_turns: 3,
+      stop_reason: null,
+      total_cost_usd: costUsd,
+      usage: {
+        input_tokens: 10,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        output_tokens: 20,
+        server_tool_use: { web_fetch_requests: 0, web_search_requests: 0 },
+        service_tier: 'standard',
+        cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 },
+        inference_geo: 'global',
+        iterations: [],
+        output_tokens_details: { thinking_tokens: 0 },
+        speed: 'standard',
+      },
       modelUsage: {},
       permission_denials: [],
-      uuid: 'uuid-1',
-    } as unknown as SDKMessage);
-  }
-
-  async function* yieldMessages(messages: SDKMessage[]): AsyncGenerator<SDKMessage> {
-    for (const msg of messages) {
-      yield msg;
-    }
+      errors: [],
+      uuid: RESULT_UUID,
+      session_id: 'sess-1',
+    };
   }
 
   function setupMockQuery(messages: SDKMessage[]): void {
-    mockQuery = jest.fn(() => yieldMessages(messages));
+    mockQuery = jest.fn(() => createMockQuery(messages));
     jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({
       query: mockQuery,
     }));
@@ -134,9 +320,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
   describe('[P0] AC-1 — Tool call lifecycle emission', () => {
     it('emits TOOL_CALL_START with toolCallName (not toolName)', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
       ]);
 
       agentService = createAgentService();
@@ -148,7 +332,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const startCall = emitSpy.mock.calls.find(
-        (c) => c[1]?.event === 'TOOL_CALL_START',
+        (c) => c[1]?.event === EventType.TOOL_CALL_START,
       );
       expect(startCall).toBeDefined();
       expect(startCall[1].data).toHaveProperty('toolCallName', 'Bash');
@@ -157,15 +341,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     it('emits TOOL_CALL_ARGS on input_json_delta', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_delta', {
-          delta: { type: 'input_json_delta', partial_json: '{"command":"git status"' },
-        }),
-        makeStreamEvent('content_block_delta', {
-          delta: { type: 'input_json_delta', partial_json: '}' },
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeInputJsonDeltaEvent('{"command":"git status"'),
+        makeInputJsonDeltaEvent('}'),
       ]);
 
       agentService = createAgentService();
@@ -177,7 +355,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const argsCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'TOOL_CALL_ARGS',
+        (c) => c[1]?.event === EventType.TOOL_CALL_ARGS,
       );
       expect(argsCalls.length).toBeGreaterThanOrEqual(2);
       expect(argsCalls[0][1].data).toHaveProperty('toolCallId', 'tc-1');
@@ -186,12 +364,8 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     it('emits TOOL_CALL_END (not TEXT_MESSAGE_END) on content_block_stop for tool_use', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', {
-          index: 0,
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
       ]);
 
       agentService = createAgentService();
@@ -203,29 +377,22 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const endCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'TOOL_CALL_END',
+        (c) => c[1]?.event === EventType.TOOL_CALL_END,
       );
       expect(endCalls).toHaveLength(1);
       expect(endCalls[0][1].data).toHaveProperty('toolCallId', 'tc-1');
 
       const textEndCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'TEXT_MESSAGE_END',
+        (c) => c[1]?.event === EventType.TEXT_MESSAGE_END,
       );
       expect(textEndCalls).toHaveLength(0);
     });
 
     it('emits TOOL_CALL_RESULT on tool result message', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'nothing to commit' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'nothing to commit'),
       ]);
 
       agentService = createAgentService();
@@ -237,7 +404,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const resultCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'TOOL_CALL_RESULT',
+        (c) => c[1]?.event === EventType.TOOL_CALL_RESULT,
       );
       expect(resultCalls).toHaveLength(1);
       expect(resultCalls[0][1].data).toHaveProperty('toolCallId', 'tc-1');
@@ -248,16 +415,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
   describe('[P0] AC-2 — Classifier integration', () => {
     it('calls classifier on TOOL_CALL_RESULT', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: '1 file changed' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', '1 file changed'),
       ]);
 
       agentService = createAgentService();
@@ -288,16 +448,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: '1 file changed' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', '1 file changed'),
       ]);
 
       agentService = createAgentService();
@@ -318,12 +471,12 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
   describe('[P0] AC-5 — Circuit breaker', () => {
     it('fires after 120s timeout with no events', async () => {
-      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage> {
+      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
         yield* [];
         await new Promise<never>(jest.fn());
       };
 
-      mockQuery = jest.fn(() => stalledGenerator());
+      mockQuery = jest.fn(() => makeQueryFromGenerator(stalledGenerator()));
       jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
       agentService = createAgentService();
@@ -338,8 +491,10 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       await runTurnPromise;
 
+      expect(getInterruptMock(mockQuery)).toHaveBeenCalled();
+
       const errorCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
       expect(errorCalls).toHaveLength(1);
       expect(errorCalls[0][1].data.message).toBe(
@@ -349,22 +504,25 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     it('resets on each emitted event', async () => {
       const messages: SDKMessage[] = [
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'text', id: 'msg-1' },
-        }),
+        makeTextBlockStart(),
       ];
 
-      let yieldMore: (() => void) | null = null;
-      const slowGenerator = async function* (): AsyncGenerator<SDKMessage> {
+      // Wrapper ref so TS control-flow analysis on the closure-captured `let`
+      // doesn't narrow it to `never` at the call site below. Direct `let`
+      // assignment inside an async generator's Promise executor is treated as
+      // "may or may not have run" — TS narrows to the post-init type `null`,
+      // and `if (yieldMore)` then narrows to `never`.
+      const yieldMoreRef: { current: (() => void) | null } = { current: null };
+      const slowGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
         for (const msg of messages) {
           yield msg;
         }
         await new Promise<void>((resolve) => {
-          yieldMore = resolve;
+          yieldMoreRef.current = resolve;
         });
       };
 
-      mockQuery = jest.fn(() => slowGenerator());
+      mockQuery = jest.fn(() => makeQueryFromGenerator(slowGenerator()));
       jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
       agentService = createAgentService();
@@ -378,28 +536,28 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       jest.advanceTimersByTime(100_000);
 
       const errorBefore100s = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
       expect(errorBefore100s).toHaveLength(0);
 
       jest.advanceTimersByTime(30_000);
 
       const errorAfter130s = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
       expect(errorAfter130s).toHaveLength(1);
 
-      if (yieldMore) yieldMore();
+      if (yieldMoreRef.current) yieldMoreRef.current();
       await runTurnPromise;
     });
 
-    it('calls terminateProcess when circuit breaker fires', async () => {
-      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage> {
+    it('calls interrupt() when circuit breaker fires', async () => {
+      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
         yield* [];
         await new Promise<never>(jest.fn());
       };
 
-      mockQuery = jest.fn(() => stalledGenerator());
+      mockQuery = jest.fn(() => makeQueryFromGenerator(stalledGenerator()));
       jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
       agentService = createAgentService();
@@ -413,18 +571,58 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       jest.advanceTimersByTime(120_000);
       await runTurnPromise;
 
-      expect(sandboxFake.terminateProcess).toHaveBeenCalledWith('sb-1', expect.any(String));
+      // The circuit breaker cancels the in-process agent run via interrupt()
+      // (alongside abortController.abort()). There is no sandbox-side process to
+      // tear down.
+      const interruptMock = getInterruptMock(mockQuery);
+      expect(interruptMock).toHaveBeenCalled();
+    });
+
+    it('[P1] sync error in interrupt() is caught; RUN_ERROR still emits (fallback path)', async () => {
+      // An outer try/catch around .interrupt() ensures a synchronous throw (e.g.
+      // "interrupt is not a function" if the SDK contract changes) is caught and
+      // logged, and does not prevent the RUN_ERROR emit. This test exercises that
+      // fallback path with an interrupt() that throws synchronously.
+      const customQuery = Object.assign(
+        (async function* (): AsyncGenerator<SDKMessage, void> { yield* []; })(),
+        { interrupt: jest.fn(() => { throw new Error('interrupt is not a function'); }) },
+      ) as unknown as Query;
+      mockQuery = jest.fn(() => customQuery);
+      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+
+      agentService = createAgentService();
+      const warnSpy = jest.spyOn(agentService['logger'], 'warn');
+      const runTurnPromise = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      jest.advanceTimersByTime(120_000);
+      await runTurnPromise.catch(() => undefined);
+
+      // The sync error was caught and logged via the outer catch's logger.warn.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('interrupt is not a function'),
+      );
+
+      // RUN_ERROR SSE event was still emitted.
+      const errorCalls = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === EventType.RUN_ERROR,
+      );
+      expect(errorCalls).toHaveLength(1);
     });
   });
 
   describe('[P1] AC-5 — Circuit breaker timer cleanup', () => {
     it('timer cleared on stop()', async () => {
-      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage> {
+      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
         yield* [];
         await new Promise<never>(jest.fn());
       };
 
-      mockQuery = jest.fn(() => stalledGenerator());
+      mockQuery = jest.fn(() => makeQueryFromGenerator(stalledGenerator()));
       jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
       agentService = createAgentService();
@@ -437,14 +635,17 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       await agentService.stop('conv-1');
 
+      const interruptMock = getInterruptMock(mockQuery);
+      expect(interruptMock).toHaveBeenCalled();
+
       const errorBeforeTimeout = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
 
       jest.advanceTimersByTime(120_000);
 
       const errorAfterTimeout = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
 
       expect(errorBeforeTimeout).toHaveLength(0);
@@ -455,13 +656,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     it('timer cleared on normal completion', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'text', id: 'msg-1' },
-        }),
-        makeStreamEvent('content_block_delta', {
-          delta: { type: 'text_delta', text: 'Hello' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeTextBlockStart(),
+        makeTextDeltaEvent('Hello'),
+        makeContentBlockStop(),
       ]);
 
       agentService = createAgentService();
@@ -473,13 +670,13 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const errorBefore = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
 
       jest.advanceTimersByTime(120_000);
 
       const errorAfter = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_ERROR',
+        (c) => c[1]?.event === EventType.RUN_ERROR,
       );
 
       expect(errorBefore).toHaveLength(0);
@@ -495,16 +692,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Write' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File written' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Write'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'File written'),
       ]);
 
       agentService = createAgentService();
@@ -529,16 +719,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Write' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File written' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Write'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'File written'),
       ]);
 
       agentService = createAgentService();
@@ -557,16 +740,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     it('does NOT emit working tree events after non-file-modifying tool calls (e.g. Read)', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Read' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File contents' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Read'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'File contents'),
       ]);
 
       agentService = createAgentService();
@@ -593,16 +769,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       );
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Write' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File written' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Write'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'File written'),
       ]);
 
       agentService = createAgentService();
@@ -616,7 +785,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const finishedEvents = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_FINISHED',
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
       );
       expect(finishedEvents).toHaveLength(1);
       expect(warnSpy).toHaveBeenCalledWith(
@@ -631,16 +800,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Write' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'File written' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Write'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'File written'),
       ]);
 
       agentService = createAgentService();
@@ -653,7 +815,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       const events = emitSpy.mock.calls.map((c) => c[1].event);
       const dirtyIndex = events.indexOf('WORKING_TREE_DIRTY');
-      const finishedIndex = events.indexOf('RUN_FINISHED');
+      const finishedIndex = events.indexOf(EventType.RUN_FINISHED);
 
       expect(dirtyIndex).toBeGreaterThan(-1);
       expect(finishedIndex).toBeGreaterThan(-1);
@@ -669,16 +831,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'remote: Invalid username or token.' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'remote: Invalid username or token.'),
       ]);
 
       agentService = createAgentService();
@@ -701,16 +856,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'Rate limit exceeded' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'Rate limit exceeded'),
       ]);
 
       agentService = createAgentService();
@@ -732,16 +880,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'remote: Invalid username or token.' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'remote: Invalid username or token.'),
       ]);
 
       agentService = createAgentService();
@@ -754,7 +895,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       const events = emitSpy.mock.calls.map((c) => c[1].event);
       const credentialIndex = events.indexOf('CREDENTIAL_FAILURE');
-      const finishedIndex = events.indexOf('RUN_FINISHED');
+      const finishedIndex = events.indexOf(EventType.RUN_FINISHED);
 
       expect(credentialIndex).toBeGreaterThan(-1);
       expect(finishedIndex).toBeGreaterThan(-1);
@@ -769,16 +910,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'Rate limit exceeded' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'Rate limit exceeded'),
       ]);
 
       agentService = createAgentService();
@@ -791,7 +925,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       const events = emitSpy.mock.calls.map((c) => c[1].event);
       const deniedIndex = events.indexOf('ACCESS_DENIED');
-      const finishedIndex = events.indexOf('RUN_FINISHED');
+      const finishedIndex = events.indexOf(EventType.RUN_FINISHED);
 
       expect(deniedIndex).toBeGreaterThan(-1);
       expect(finishedIndex).toBeGreaterThan(-1);
@@ -802,16 +936,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       mockClassifier.classifyToolResult.mockRejectedValue(new Error('classifier crashed'));
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'output' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'output'),
       ]);
 
       agentService = createAgentService();
@@ -825,7 +952,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const finishedEvents = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_FINISHED',
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
       );
       expect(finishedEvents).toHaveLength(1);
       expect(errorSpy).toHaveBeenCalledWith(
@@ -837,13 +964,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
   describe('[P0] Story 3.8 AC-1 — cost recording from SDK result message', () => {
     it('recordCost is called with correct cost data when a result message is in the stream', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'text', id: 'msg-1' },
-        }),
-        makeStreamEvent('content_block_delta', {
-          delta: { type: 'text_delta', text: 'Hello' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeTextBlockStart(),
+        makeTextDeltaEvent('Hello'),
+        makeContentBlockStop(),
         makeResultMessage(0.42),
       ]);
 
@@ -867,10 +990,8 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     it('recordCost is called BEFORE RUN_FINISHED is emitted (event ordering)', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'text', id: 'msg-1' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeTextBlockStart(),
+        makeContentBlockStop(),
         makeResultMessage(0.42),
       ]);
 
@@ -884,7 +1005,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
       const recordCostCallOrder = mockCostTracking.recordCost.mock.invocationCallOrder[0];
       const finishedEmitCall = emitSpy.mock.calls.find(
-        (c) => c[1]?.event === 'RUN_FINISHED',
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
       );
       expect(finishedEmitCall).toBeDefined();
       const finishedEmitOrder = emitSpy.mock.invocationCallOrder[
@@ -895,9 +1016,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     it('recordCost is NOT called when no result message is in the stream (e.g. circuit breaker fires before result)', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'text', id: 'msg-1' },
-        }),
+        makeTextBlockStart(),
       ]);
 
       agentService = createAgentService();
@@ -915,10 +1034,8 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       mockCostTracking.recordCost.mockRejectedValue(new Error('cost DB write failed'));
 
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'text', id: 'msg-1' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeTextBlockStart(),
+        makeContentBlockStop(),
         makeResultMessage(0.42),
       ]);
 
@@ -932,7 +1049,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const finishedEvents = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === 'RUN_FINISHED',
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
       );
       expect(finishedEvents).toHaveLength(1);
       expect(loggerErrorSpy).toHaveBeenCalledWith(
@@ -943,10 +1060,8 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     it('cost is recorded from SDKResultError (subtype error_max_turns) as well as SDKResultSuccess', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'text', id: 'msg-1' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
+        makeTextBlockStart(),
+        makeContentBlockStop(),
         makeResultMessage(1.5, 'error_max_turns'),
       ]);
 
@@ -970,16 +1085,9 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
     it('[P1] cost is recorded when the result message arrives after tool calls', async () => {
       setupMockQuery([
-        makeStreamEvent('content_block_start', {
-          content_block: { type: 'tool_use', id: 'tc-1', name: 'Bash' },
-        }),
-        makeStreamEvent('content_block_stop', { index: 0 }),
-        makeSdkMessage({
-          type: 'assistant',
-          content: [
-            { type: 'tool_result', tool_use_id: 'tc-1', content: 'done' },
-          ],
-        }),
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'done'),
         makeResultMessage(0.77),
       ]);
 
@@ -1003,7 +1111,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
   });
 
   describe('[P0] Story 3.11 — concurrent-turn guard (AC: 3)', () => {
-    async function* yieldThenHang(messages: SDKMessage[]): AsyncGenerator<SDKMessage> {
+    async function* yieldThenHang(messages: SDKMessage[]): AsyncGenerator<SDKMessage, void> {
       for (const msg of messages) {
         yield msg;
       }
@@ -1011,7 +1119,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     }
 
     it('[P0] second runTurn on an in-flight conversationId is rejected (returns without overwriting)', async () => {
-      mockQuery = jest.fn(() => yieldThenHang([makeStreamEvent('text', {})]));
+      mockQuery = jest.fn(() => makeQueryFromGenerator(yieldThenHang([makeContentBlockStop()])));
       jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
       agentService = createAgentService();
@@ -1037,7 +1145,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     });
 
     it('[P0] the rejected second turn does NOT emit RUN_STARTED or RUN_ERROR', async () => {
-      mockQuery = jest.fn(() => yieldThenHang([makeStreamEvent('text', {})]));
+      mockQuery = jest.fn(() => makeQueryFromGenerator(yieldThenHang([makeContentBlockStop()])));
       jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
       agentService = createAgentService();
@@ -1058,15 +1166,15 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
-      expect(emittedEvents).not.toContain('RUN_STARTED');
-      expect(emittedEvents).not.toContain('RUN_ERROR');
+      expect(emittedEvents).not.toContain(EventType.RUN_STARTED);
+      expect(emittedEvents).not.toContain(EventType.RUN_ERROR);
 
       await jest.advanceTimersByTimeAsync(120_000);
       await firstRun.catch(() => undefined);
     });
 
     it('[P0] the rejected second turn does NOT overwrite circuitBreakerTimers', async () => {
-      mockQuery = jest.fn(() => yieldThenHang([makeStreamEvent('text', {})]));
+      mockQuery = jest.fn(() => makeQueryFromGenerator(yieldThenHang([makeContentBlockStop()])));
       jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
       agentService = createAgentService();
@@ -1111,6 +1219,74 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
 
       expect(agentService['circuitBreakerTimers'].size).toBeLessThanOrEqual(1);
+    });
+  });
+
+  describe('[P0] audit finding #1 — processAssistantMessage coverage', () => {
+    it('registers a tool_use delivered via an SDKAssistantMessage (type: "assistant") and routes its tool_result to the classifier', async () => {
+      // No preceding content_block_start stream event: the tool call is
+      // registered SOLELY by processAssistantMessage reading
+      // msg.message.content — the exact code path the audit found with ZERO
+      // coverage, and the exact bug class from the incident (old code read
+      // msg.content and the whole function was a no-op).
+      setupMockQuery([
+        makeAssistantToolUseMessage('tc-1', 'Bash', { command: 'echo hi' }),
+        makeToolResultUserMessage('tc-1', 'hi'),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      // processUserMessage only calls the classifier when the tool was
+      // registered. If processAssistantMessage failed to register the
+      // tool_use from the assistant message, classifyToolResult is never
+      // called — so this assertion directly proves processAssistantMessage ran
+      // and read msg.message.content correctly.
+      expect(mockClassifier.classifyToolResult).toHaveBeenCalledWith(
+        'tc-1',
+        'Bash',
+        expect.any(String),
+        'hi',
+        'user-1',
+      );
+    });
+  });
+
+  describe('[P0] regression — SDK iterator non-abort error emits RUN_ERROR (not RUN_FINISHED)', () => {
+    it('emits RUN_ERROR with the error message and does NOT emit RUN_FINISHED when iterator.next() rejects with a non-abort error', async () => {
+      async function* throwingGenerator(): AsyncGenerator<SDKMessage, void> {
+        throw new Error('spawn failed: ENOENT');
+      }
+      mockQuery = jest.fn(() => makeQueryFromGenerator(throwingGenerator()));
+      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+
+      agentService = createAgentService();
+      const errorSpy = jest.spyOn(agentService['logger'], 'error');
+
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedEvents).toContain(EventType.RUN_ERROR);
+      expect(emittedEvents).not.toContain(EventType.RUN_FINISHED);
+
+      const errorCalls = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === EventType.RUN_ERROR,
+      );
+      expect(errorCalls[0][1].data.message).toBe('spawn failed: ENOENT');
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('spawn failed: ENOENT'),
+      );
     });
   });
 });

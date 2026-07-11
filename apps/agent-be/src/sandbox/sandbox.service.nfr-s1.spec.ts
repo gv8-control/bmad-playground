@@ -4,6 +4,15 @@
  * Story 3.8: Track Per-User LLM Spend
  * Story 3.10: Verify Commits Carry the User's Own Identity
  * Story 3.12: Drain Conversations Gracefully on Deploy
+ * Post-3.12 fix: clone() and getWorkingTreeStatus() exitCode checks
+ * Fidelity remediation item 2: SDK Git service migration — clone() now uses
+ *   sandbox.git.clone(url, path, branch?, commitId?, username?, password?)
+ *   instead of shelling out via executeCommand. The OAuth token is passed as
+ *   the `password` param to the SDK, NOT injected into the URL. This removes
+ *   the credential exposure in process args (the original security issue).
+ * Fidelity remediation item 8: typed-mock discipline — uses the shared
+ *   mock-daytona.ts factory instead of hand-rolled `any` + `as never` casts.
+ *
  * NFR-S1 regression guard tests for SandboxService.
  *
  * Covers: AC-3 (platform-internal credentials never injected into Sandbox).
@@ -14,43 +23,23 @@
  * These tests verify the EXISTING SandboxService implementation satisfies NFR-S1.
  * They are regression guards — if a future change adds env vars to daytona.create()
  * or interpolates credentials into command strings, these tests fail.
- *
- * NFR-S1 Task 6.4 regression guard: ANTHROPIC_API_KEY is passed to the in-process
- * Claude Agent SDK via AgentService.runTurn()'s query() env option — it runs inside
- * the NestJS container, NOT inside the Daytona Sandbox. The Sandbox only receives
- * executeCommand calls (git operations). The provision() test below guards that
- * daytona.create() never receives env vars, which covers this concern at the
- * Sandbox boundary.
- *
- * TDD GREEN PHASE — all tests un-skipped and passing.
- * Existing code satisfies NFR-S1 — these tests PASS immediately.
  */
+import type { Daytona } from '@daytonaio/sdk';
 import { SandboxService } from './sandbox.service';
+import {
+  createMockDaytonaWithSandbox,
+  type MockDaytona,
+  type MockSandbox,
+} from '../../test/helpers/mock-daytona';
 
 describe('SandboxService NFR-S1 — credential isolation regression guards (Story 3.8 AC-3)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mockDaytona: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mockSandbox: any;
+  let mockDaytona: MockDaytona;
+  let mockSandbox: MockSandbox;
   let service: SandboxService;
 
   beforeEach(() => {
-    mockSandbox = {
-      id: 'sandbox-1',
-      process: {
-        executeCommand: jest.fn().mockResolvedValue({ exitCode: 0, result: '' }),
-        killPtySession: jest.fn().mockResolvedValue(undefined),
-      },
-    };
-
-    mockDaytona = {
-      create: jest.fn().mockResolvedValue(mockSandbox),
-      get: jest.fn().mockResolvedValue(mockSandbox),
-      delete: jest.fn().mockResolvedValue(undefined),
-      start: jest.fn().mockResolvedValue(undefined),
-    };
-
-    service = new SandboxService(mockDaytona as never);
+    ({ mockDaytona, mockSandbox } = createMockDaytonaWithSandbox());
+    service = new SandboxService(mockDaytona as unknown as Daytona);
   });
 
   afterEach(() => {
@@ -86,32 +75,44 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
     });
   });
 
-  describe('[P0] clone() — OAuth token injected into git URL only', () => {
-    it('injects OAuth token into git URL via x-access-token username (not as env var or separate arg)', async () => {
+  describe('[P0] clone() — OAuth token passed to SDK git.clone, NOT in URL (item 2 security fix)', () => {
+    it('passes the OAuth token as the password param to sandbox.git.clone, not in the URL', async () => {
       await service.clone(
         'sandbox-1',
         'https://github.com/test/repo.git',
         'fake-oauth-token',
       );
 
-      expect(mockSandbox.process.executeCommand).toHaveBeenCalledTimes(1);
-      const command = mockSandbox.process.executeCommand.mock.calls[0][0] as string;
-      expect(command).toContain('x-access-token');
-      expect(command).toContain('fake-oauth-token');
-      expect(command).toContain('git clone');
+      expect(mockSandbox.git.clone).toHaveBeenCalledTimes(1);
+      const [url, path, , , username, password] = mockSandbox.git.clone.mock.calls[0];
+      expect(url).toBe('https://github.com/test/repo.git');
+      expect(url).not.toContain('fake-oauth-token');
+      expect(url).not.toContain('x-access-token');
+      expect(path).toBe('repo');
+      expect(username).toBe('x-access-token');
+      expect(password).toBe('fake-oauth-token');
     });
 
-    it('credential is NOT passed as an env var or separate argument to executeCommand', async () => {
+    it('does NOT call executeCommand — git operations go through the SDK Git service', async () => {
       await service.clone(
         'sandbox-1',
         'https://github.com/test/repo.git',
         'fake-oauth-token',
       );
 
-      const callArgs = mockSandbox.process.executeCommand.mock.calls[0];
-      expect(callArgs).toHaveLength(4);
-      const envArg = callArgs[2];
-      expect(envArg).toBeUndefined();
+      expect(mockSandbox.process.executeCommand).not.toHaveBeenCalled();
+    });
+
+    it('credential is NOT passed as an env var to executeCommand', async () => {
+      await service.clone(
+        'sandbox-1',
+        'https://github.com/test/repo.git',
+        'fake-oauth-token',
+      );
+
+      // clone() no longer calls executeCommand at all — credential never reaches
+      // the process execution boundary.
+      expect(mockSandbox.process.executeCommand).not.toHaveBeenCalled();
     });
   });
 
@@ -124,7 +125,7 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
 
       expect(mockSandbox.process.executeCommand).toHaveBeenCalledTimes(2);
       const commands = mockSandbox.process.executeCommand.mock.calls.map(
-        (c: unknown[]) => c[0] as string,
+        (c) => c[0] as string,
       );
       const allCommands = commands.join(' ');
       expect(allCommands).toContain('git config user.name');
@@ -143,7 +144,7 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
 
       expect(mockSandbox.process.executeCommand).toHaveBeenCalledTimes(2);
       const commands = mockSandbox.process.executeCommand.mock.calls.map(
-        (c: unknown[]) => c[0] as string,
+        (c) => c[0] as string,
       );
       const allCommands = commands.join(' ');
       expect(allCommands).toContain('git add');
@@ -176,7 +177,7 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
       await service.commit('sandbox-1', 'msg');
 
       const commands = mockSandbox.process.executeCommand.mock.calls.map(
-        (c: unknown[]) => c[0] as string,
+        (c) => c[0] as string,
       );
       const commitCommand = commands.find((cmd: string) => cmd.includes('git commit'));
       expect(commitCommand).toBeDefined();
@@ -187,7 +188,7 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
       await service.commit('sandbox-1', 'msg');
 
       const commands = mockSandbox.process.executeCommand.mock.calls.map(
-        (c: unknown[]) => c[0] as string,
+        (c) => c[0] as string,
       );
       const allCommands = commands.join(' ');
       expect(allCommands).not.toMatch(/--author=|bmad-easy|platform@/);
@@ -197,7 +198,7 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
       await service.injectGitConfig('sandbox-1', { name: 'A', email: 'a@b.com' });
 
       const commands = mockSandbox.process.executeCommand.mock.calls.map(
-        (c: unknown[]) => c[0] as string,
+        (c) => c[0] as string,
       );
       expect(commands.some((cmd: string) => cmd.includes('git config user.name'))).toBe(true);
       expect(commands.some((cmd: string) => cmd.includes('git config user.email'))).toBe(true);
@@ -219,6 +220,61 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
       await expect(
         service.injectGitConfig('sandbox-1', { name: 'A', email: 'a@b.com' }),
       ).rejects.toThrow('email config failed');
+    });
+  });
+
+  describe('[P0] clone() — propagates SDK errors (error propagation guard)', () => {
+    it('[P0] clone() throws when sandbox.git.clone rejects', async () => {
+      mockSandbox.git.clone.mockRejectedValueOnce(new Error('fatal: repository not found'));
+
+      await expect(
+        service.clone('sandbox-1', 'https://github.com/test/repo.git', 'fake-token'),
+      ).rejects.toThrow('fatal: repository not found');
+    });
+
+    it('[P0] clone() does not throw when sandbox.git.clone resolves', async () => {
+      await expect(
+        service.clone('sandbox-1', 'https://github.com/test/repo.git', 'fake-token'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('[P0] clone() propagates "destination path" error when directory is not empty (Gap C)', async () => {
+      mockSandbox.git.clone.mockRejectedValueOnce(
+        new Error("fatal: destination path '.' already exists and is not an empty directory."),
+      );
+
+      await expect(
+        service.clone('sandbox-1', 'https://github.com/test/repo.git', 'fake-token'),
+      ).rejects.toThrow("fatal: destination path '.' already exists and is not an empty directory.");
+    });
+
+    it('[P0] clone() passes the repo subdirectory as the path arg, not the sandbox root', async () => {
+      await service.clone('sandbox-1', 'https://github.com/test/repo.git', 'fake-token');
+
+      expect(mockSandbox.git.clone).toHaveBeenCalledTimes(1);
+      const [, path] = mockSandbox.git.clone.mock.calls[0];
+      expect(path).toBe('repo');
+    });
+  });
+
+  describe('[P0] getWorkingTreeStatus() — SDK git.status() mapping', () => {
+    it('[P0] throws when sandbox.git.status rejects', async () => {
+      mockSandbox.git.status.mockRejectedValueOnce(new Error('fatal: not a git directory'));
+
+      await expect(
+        service.getWorkingTreeStatus('sandbox-1'),
+      ).rejects.toThrow('fatal: not a git directory');
+    });
+
+    it('[P0] returns clean status when fileStatus is empty', async () => {
+      mockSandbox.git.status.mockResolvedValueOnce({
+        currentBranch: 'main',
+        fileStatus: [],
+      });
+
+      await expect(
+        service.getWorkingTreeStatus('sandbox-1'),
+      ).resolves.toEqual({ dirty: false, files: [] });
     });
   });
 
@@ -252,6 +308,26 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
 
       expect(result.status).toBe('ready');
       expect(mockDaytona.start).toHaveBeenCalledWith(mockSandbox);
+    });
+  });
+
+  describe('[P1] cwd argument — git config and commit pass explicit repo subdirectory (Gap C)', () => {
+    it('[P1] injectGitConfig() passes "repo" as cwd, not undefined', async () => {
+      await service.injectGitConfig('sandbox-1', { name: 'A', email: 'a@b.com' });
+
+      expect(mockSandbox.process.executeCommand).toHaveBeenCalledTimes(2);
+      for (const call of mockSandbox.process.executeCommand.mock.calls) {
+        expect(call[1]).toBe('repo');
+      }
+    });
+
+    it('[P1] commit() passes "repo" as cwd, not undefined', async () => {
+      await service.commit('sandbox-1', 'test message');
+
+      expect(mockSandbox.process.executeCommand).toHaveBeenCalledTimes(2);
+      for (const call of mockSandbox.process.executeCommand.mock.calls) {
+        expect(call[1]).toBe('repo');
+      }
     });
   });
 });

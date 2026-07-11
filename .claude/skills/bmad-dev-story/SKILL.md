@@ -345,6 +345,9 @@ Activation is complete. If `activation_steps_prepend` or `activation_steps_appen
     <action>Add integration tests for component interactions specified in story requirements</action>
     <action>Include end-to-end tests for critical user flows when story requirements demand them</action>
     <action>Cover edge cases and error handling scenarios identified in story Dev Notes</action>
+
+    <!-- CONTRACT FIDELITY — external SDK consumers -->
+    <critical if="task/subtask code consumes an external SDK's streaming or message contract (e.g. `@anthropic-ai/claude-agent-sdk`, `@daytonaio/sdk`, GitHub API)">Tests MUST exercise the real SDK contract shape — not a fabricated fixture that matches what the code expects. Place the test seam at the SDK boundary (mock the SDK's input function, yield real-shaped SDK message objects through the real processing code) — NOT at the service boundary (a fake that emits outputs directly bypasses the SDK→internal-event mapping code where contract bugs live). Do NOT use `as SDKMessage` or similar type assertions to bypass the compiler when constructing test fixtures — they silence the type checker and hide shape mismatches between the assumed contract and the real contract. Accepted approaches: (a) recorded-session replay fixture — commit a JSONL of real SDK output, replay through the real processing code, assert the output sequence; (b) type-checked construction — construct real SDK types using the SDK's own type declarations without `as` bypasses, so the compiler enforces the shape. See `docs/sdk-contract-testing-gap.md` for the incident that motivated this requirement.</critical>
   </step>
 
   <step n="7" goal="Run validations and tests">
@@ -428,6 +431,7 @@ Activation is complete. If `activation_steps_prepend` or `activation_steps_appen
       - Dev Agent Record contains implementation notes
       - Change Log includes summary of changes
       - Only permitted story sections were modified
+      - For any code consuming an external system's streaming/message contract: tests exercise the real contract shape (recorded-session replay or type-checked construction — no `as` type-assertion bypasses that silence the compiler)
     </action>
 
     <!-- Mark story ready for review - sprint status conditional -->

@@ -22,7 +22,13 @@ export class ManualCommitService implements OnModuleDestroy {
     _userId: string,
     sandboxId: string,
   ): Promise<{ committed: boolean; clean: boolean; queued: boolean }> {
-    if (this.pendingCommits.has(conversationId) || this.executingCommits.has(conversationId)) {
+    if (this.pendingCommits.has(conversationId)) {
+      return { committed: false, clean: false, queued: true };
+    }
+
+    if (this.executingCommits.has(conversationId)) {
+      this.pendingCommits.add(conversationId);
+      this.pendingSandboxIds.set(conversationId, sandboxId);
       return { committed: false, clean: false, queued: true };
     }
 

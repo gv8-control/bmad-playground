@@ -58,6 +58,7 @@ export function ConversationPane({
   const runEndedRef = useRef(false);
   const saveFallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryingRef = useRef(false);
+  const unmountedRef = useRef(false);
 
   const { draft, setDraft, clearDraft } = useDraftPersistence(
     conversationIdRef.current,
@@ -74,6 +75,7 @@ export function ConversationPane({
     void startSession();
 
     return () => {
+      unmountedRef.current = true;
       eventSourceRef.current?.close();
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -114,6 +116,7 @@ export function ConversationPane({
   }, [messages.length]);
 
   async function startSession() {
+    unmountedRef.current = false;
     const isResume = conversationIdRef.current !== null;
     setState(isResume ? 'reconnecting' : 'provisioning');
     setCredentialFailed(false);
@@ -167,7 +170,13 @@ export function ConversationPane({
       }
     }
 
-    if (!convId) return;
+    if (!convId) {
+      setState('error');
+      setErrorMessage('Failed to create conversation.');
+      return;
+    }
+
+    if (unmountedRef.current) return;
 
     const eventSource = new EventSource(
       `${apiUrl}/api/conversations/${convId}/events?token=${boundaryJwt}`,
@@ -593,6 +602,7 @@ export function ConversationPane({
     });
 
     eventSource.onerror = () => {
+      setAgentState((prev) => prev !== 'idle' ? 'idle' : prev);
       setState((prev) =>
         prev === 'ready' || prev === 'timeout' || prev === 'reconnecting'
           ? prev
@@ -678,6 +688,11 @@ export function ConversationPane({
       }
 
       const data = (await response.json()) as { conversationId: string; title: string | null };
+
+      if (!data.conversationId) {
+        setErrorMessage('Failed to send message.');
+        return;
+      }
 
       setDraft('');
       clearDraft();

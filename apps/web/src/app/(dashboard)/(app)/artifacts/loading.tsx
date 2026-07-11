@@ -13,7 +13,7 @@ export default function ArtifactsLoading() {
             <div
               key={i}
               data-testid="skeleton-entry"
-              className="py-2.5 px-4 flex flex-col gap-0.5 h-16 animate-pulse"
+              className="py-3 px-4 flex flex-col gap-1 h-16 animate-pulse"
             >
               <div className="h-3 w-20 bg-surface-raised rounded" />
               <div className="h-4 w-48 bg-surface-raised rounded" />

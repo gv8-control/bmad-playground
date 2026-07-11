@@ -426,7 +426,6 @@ export interface ISandboxService {
   destroy(sandboxId: string): Promise<void>;
   injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void>;
   getWorkingTreeStatus(sandboxId: string): Promise<WorkingTreeStatus>;
-  terminateProcess(sandboxId: string, processId: string): Promise<void>;
 }
 
 export const SANDBOX_SERVICE = Symbol('ISandboxService');

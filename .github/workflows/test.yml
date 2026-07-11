@@ -2,7 +2,28 @@
 # Stack: fullstack (Nx monorepo — Yarn, Next.js + NestJS)
 # Framework: Playwright (E2E) + Jest/@nestjs/testing (unit/integration)
 #
-# All stages active: lint, unit/integration, E2E (4 shards), burn-in.
+# Tier split (see `_bmad-output/test-artifacts/test-design-qa.md` → Execution Strategy):
+#   Tier 1 — PR (fake-backed, every push/PR):  lint, typecheck, unit, e2e (4 shards), burn-in
+#   Tier 2 — Nightly multi-conn (03:00 UTC):   P0-008, P2-004, P1-003, P0-010 (--grep @multi-conn)
+#   Tier 3 — Nightly real-service (03:00 UTC): one happy-path agent run (--grep @real-service)
+#   Tier 4 — Weekly spike (Sundays 04:00 UTC): P1-012 repo-size boundary, future k6/Artillery
+#
+# Required GitHub Actions secrets:
+#   AUTH_SECRET                  Auth.js session signing key (also signs boundary JWT)
+#   CREDENTIAL_ENCRYPTION_KEK   32-byte hex KEK for OAuth token envelope encryption
+#   AUTH_GITHUB_ID               real GitHub OAuth App client id (Tier 3 only)
+#   AUTH_GITHUB_SECRET           real GitHub OAuth App client secret (Tier 3 only)
+#   DAYTONA_API_KEY              real @daytonaio/sdk provision/clone/git-status (Tier 3 only)
+#   DAYTONA_API_URL              Daytona API endpoint (Tier 3 only)
+#   ANTHROPIC_API_KEY            real Claude Agent SDK streaming (Tier 3 only)
+#   TEST_GITHUB_USERNAME         real GitHub test account username (Tier 3 only)
+#   TEST_GITHUB_PASSWORD         real GitHub test account password (Tier 3 only)
+#   TEST_GITHUB_OTP_SECRET       TOTP secret if 2FA enabled on the test account (Tier 3 only)
+#   TEST_GITHUB_REPO_URL         real repo URL the OAuth token can clone (Tier 3 only)
+# Non-secret env vars (hardcoded in the workflow, not secrets):
+#   DATABASE_URL                 Postgres service container (postgres:16-alpine, bmad_easy_test DB)
+#   TEST_ENV                     Set to 'ci' on all Playwright jobs — enables test endpoints
+# All secret access is via `secrets.*` references; no values are hardcoded.
 
 name: Test Pipeline
 
@@ -11,9 +32,24 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Tier to invoke manually (defaults to nightly-real-service)'
+        type: choice
+        options:
+          - nightly-real-service
+          - nightly-multi-conn
+          - weekly-spike
+        required: false
+        default: nightly-real-service
   schedule:
-    # Weekly burn-in: Sundays at 02:00 UTC
+    # Weekly burn-in: Sundays at 02:00 UTC → triggers PR-tier burn-in only.
     - cron: '0 2 * * 0'
+    # Nightly (03:00 UTC daily): multi-conn + real-service smoke tiers.
+    - cron: '0 3 * * *'
+    # Weekly spike (Sundays 04:00 UTC): performance spikes (after burn-in).
+    - cron: '0 4 * * 0'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,6 +57,9 @@ concurrency:
 
 env:
   NODE_VERSION: '24'
+  # URL of the agent-be backend, consumed by the web app's env-guard at startup.
+  # Both dev servers run on localhost in every job; this is not a secret.
+  API_URL: http://localhost:3001
 
 jobs:
   # ── Lint ──────────────────────────────────────────────────────────────────────
@@ -28,6 +67,8 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # PR-tier: push/PR only. Nightly and weekly schedules invoke their own jobs below.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
 
     steps:
       - uses: actions/checkout@v4
@@ -47,12 +88,43 @@ jobs:
       - name: Lint all apps and libs
         run: yarn nx run-many --target=lint --all --parallel=4
 
+  # ── Typecheck (tsc --noEmit, not just ts-jest transpile-only) ────────────────
+  # ts-jest runs in transpile-only mode (isolatedModules: true), so type errors
+  # in test files would NOT surface in the test step. This gate enforces real
+  # type-checking against SDK declarations (audit finding C-1).
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # PR-tier: push/PR only.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run typecheck (enforces tsc --noEmit against real SDK declarations)
+        run: yarn nx run-many --target=typecheck --all --parallel=4
+
   # ── Unit & integration tests (NestJS / Jest) ──────────────────────────────────
   unit:
     name: Unit & Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: lint
+    needs: [lint, typecheck]
+    # PR-tier: push/PR only. (Burn-in covers nightly/weekly playwright regression.)
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
 
     steps:
       - uses: actions/checkout@v4
@@ -90,11 +162,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: lint
+    # PR-tier: push/PR only. (Burn-in covers weekly playwright regression.)
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
 
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
 
     steps:
       - uses: actions/checkout@v4
@@ -119,6 +211,16 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
@@ -126,13 +228,21 @@ jobs:
         run: yarn nx run web:dev &
         env:
           PORT: 3000
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+          # Enables /api/internal/test/* endpoints (seed-user, repo-connections)
+          # used by auth.setup.ts syntheticSession() + withRepoConnection fixture.
+          TEST_ENV: ci
 
       - name: Start agent-be
         run: yarn nx run agent-be:serve &
         env:
           PORT: 3001
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
 
       - name: Wait for services
         run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
@@ -142,6 +252,8 @@ jobs:
         env:
           CI: true
           BASE_URL: http://localhost:3000
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
 
       - name: Upload E2E results
         if: failure()
@@ -159,7 +271,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: e2e
-    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
+    # PR-triggered OR the dedicated weekly-cron schedule (Sunday 02:00 UTC).
+    # The nightly (03:00 UTC) and weekly-spike (04:00 UTC) schedules are scoped
+    # to their own jobs below — burn-in does NOT re-run on those triggers.
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 2 * * 0')
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
 
     steps:
       - uses: actions/checkout@v4
@@ -184,6 +319,16 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
@@ -191,13 +336,19 @@ jobs:
         run: yarn nx run web:dev &
         env:
           PORT: 3000
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+          TEST_ENV: ci
 
       - name: Start agent-be
         run: yarn nx run agent-be:serve &
         env:
           PORT: 3001
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
 
       - name: Wait for services
         run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
@@ -206,6 +357,8 @@ jobs:
         env:
           CI: true
           BASE_URL: http://localhost:3000
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           BURN_IN_COUNT: '10'
         run: |
           # Security: inputs passed through env: to prevent script injection
@@ -265,6 +418,399 @@ jobs:
           if [ "$UNIT_RESULT" = "failure" ]; then
             echo ":x: **Unit/integration tests failed**" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # ============================================================================
+  # NIGHTLY + WEEKLY TIERS (Tier 2/3/4) — NOT triggered by push/PR.
+  # See `_bmad-output/test-artifacts/test-design-qa.md` → Execution Strategy.
+  # All jobs accept `workflow_dispatch` for on-demand invocation; their
+  # `if:` filters check the triggering schedule OR the dispatch input.tier.
+  # ============================================================================
+
+  # ── Tier 2: Nightly Multi-Connection / Multi-Process (~30-60 min) ─────────────
+  # Specs (tagged @multi-conn): P0-008 (10-concurrent-SSE), P2-004 (multi-session
+  # last-write-wins), P1-003 (Daytona-outage simulation), P0-010 (sandbox-agent-
+  # crash termination). Specs not yet authored — `--pass-with-no-tests` keeps the
+  # job green-no-op until they land. Reuses the existing `setup` project for auth
+  # state (see playwright.config.ts).
+  nightly-multi-conn:
+    name: Nightly Multi-Conn (Tier 2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '0 3 * * *') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == 'nightly-multi-conn')
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Install Playwright browsers
+        run: yarn playwright install --with-deps chromium
+
+      - name: Run multi-conn scenarios (--grep @multi-conn)
+        # Playwright's webServer block (playwright.config.ts:110-121) starts
+        # `yarn nx run web:dev` + `yarn nx run agent-be:serve` automatically with
+        # `reuseExistingServer: false` (CI mode). Secrets propagate to the dev
+        # servers via env inheritance from this step's `env:` block.
+        env:
+          CI: true
+          BASE_URL: http://localhost:3000
+          # Enables /api/internal/test/* endpoints used by withRepoConnection fixture.
+          TEST_ENV: ci
+          # Agent-be env validation requires DATABASE_URL + AUTH_SECRET.
+          # CREDENTIAL_ENCRYPTION_KEK is needed because EncryptionService is
+          # instantiated eagerly via CredentialsModule. No real Daytona/Claude
+          # calls — the tested code paths never reach agent-run code.
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          # OAuth placeholders are sufficient — multi-conn specs don't exercise
+          # the OAuth redirect flow (same convention as the PR-tier e2e job).
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+        run: yarn playwright test --grep @multi-conn --pass-with-no-tests
+
+      - name: Upload multi-conn results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-multi-conn-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+  # ── Tier 3: Nightly Real-Service Smoke (~5-10 min, ~$1-2/run) ─────────────────
+  # One happy-path agent run end-to-end against real Daytona + real Claude API +
+  # real GitHub OAuth. Catches SDK shape drift that fakes cannot surface. Also
+  # runs NFR-P1/P2 timing assertions (Playwright `performance.now()`).
+  #
+  # Mitigations (per test-design-qa.md):
+  #   - `fail-fast: false` so a transient Daytona/Claude failure doesn't abort
+  #     the rest of the (small) suite.
+  #   - `retries: 3` on the `real-service` Playwright project (set in
+  #     playwright.config.ts:79) — independent from the PR-tier 2-retry budget.
+  #   - `--pass-with-no-tests` for the unblocked-state until specs land.
+  #
+  # PLAYWRIGHT_REAL_SERVICE=1 engages the real-service webServer block in
+  # playwright.config.ts:95-109 (starts dev servers with reuseExistingServer
+  # false + 120s timeout) and the real-service Playwright project (line 76-85).
+  nightly-real-service:
+    name: Nightly Real-Service Smoke (Tier 3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '0 3 * * *') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == 'nightly-real-service')
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Install Playwright browsers
+        run: yarn playwright install --with-deps chromium
+
+      - name: Clean up stale Daytona sandboxes
+        # Failed test runs can leave orphaned sandboxes that accumulate
+        # against the 30GiB account disk quota. This step deletes all
+        # existing sandboxes before the test to ensure a clean slate.
+        env:
+          DAYTONA_API_URL: ${{ secrets.DAYTONA_API_URL }}
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+        run: npx tsx scripts/cleanup-daytona-sandboxes.ts
+
+      - name: Run real-service smoke (--grep @real-service)
+        # The webServer block in playwright.config.ts starts both dev servers
+        # (`yarn nx run web:dev` + `yarn nx run agent-be:serve`) with
+        # `reuseExistingServer: false` because PLAYWRIGHT_REAL_SERVICE=1 forges
+        # the real-service branch at line 95. SandboxServiceFake is NEVER
+        # injected — `yarn nx run agent-be:serve` always boots the production
+        # AppModule (sandbox.module.ts:9 wires useClass: SandboxService).
+        #
+        # TEST_ENV enables the /api/internal/test/* endpoints (repo-connections
+        # seed). TEST_GITHUB_* triggers the real OAuth browser flow in
+        # auth.setup.ts (not the synthetic JWT session). The OAuth callback
+        # (auth.ts jwt callback) stores the encrypted access_token in Postgres,
+        # which Daytona needs to clone. auth.setup.ts also seeds a
+        # RepoConnection with TEST_GITHUB_REPO_URL so /conversations/new does
+        # not redirect to /onboarding.
+        env:
+          CI: true
+          BASE_URL: http://localhost:3000
+          PLAYWRIGHT_REAL_SERVICE: '1'
+          # Enables test endpoints (seed-user, repo-connections) on the web server.
+          # Non-secret — just a flag. env-guard.ts blocks it if NODE_ENV=production.
+          TEST_ENV: ci
+          # Full secrets list — real Daytona + Claude + GitHub OAuth + Postgres.
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          AUTH_GITHUB_ID: ${{ secrets.AUTH_GITHUB_ID }}
+          AUTH_GITHUB_SECRET: ${{ secrets.AUTH_GITHUB_SECRET }}
+          DAYTONA_API_URL: ${{ secrets.DAYTONA_API_URL }}
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Real GitHub test account — drives the browser OAuth flow in
+          # auth.setup.ts realOAuthFlow(). Without these, auth.setup.ts falls
+          # back to syntheticSession() which creates a JWT with no stored OAuth
+          # token, so Daytona cannot clone.
+          TEST_GITHUB_USERNAME: ${{ secrets.TEST_GITHUB_USERNAME }}
+          TEST_GITHUB_PASSWORD: ${{ secrets.TEST_GITHUB_PASSWORD }}
+          TEST_GITHUB_OTP_SECRET: ${{ secrets.TEST_GITHUB_OTP_SECRET }}
+          # Real repo URL the OAuth token can clone. auth.setup.ts seeds a
+          # RepoConnection pointing here so the happy-path spec lands on
+          # /conversations/new instead of redirecting to /onboarding.
+          TEST_GITHUB_REPO_URL: ${{ secrets.TEST_GITHUB_REPO_URL }}
+        run: yarn playwright test --grep @real-service --pass-with-no-tests
+
+      - name: Upload real-service results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-real-service-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+  # ── Tier 4: Weekly / On-Demand Performance Spikes (~hours) ────────────────────
+  # Long-running, infrequent validation. Currently a placeholder until
+  # P1-012 (repo-size boundary empirical spike) is automated and a k6/Artillery
+  # latency-regression suite lands. The job runs `yarn playwright test --grep
+  # @performance-spike --pass-with-no-tests` so it stays green until specs land.
+  weekly-spike:
+    name: Weekly Performance Spike (Tier 4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '0 4 * * 0') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == 'weekly-spike')
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bmad_easy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bmad_easy_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Generate Prisma client
+        run: yarn nx run database-schemas:generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: yarn prisma migrate deploy --config libs/database-schemas/prisma.config.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Install Playwright browsers
+        run: yarn playwright install --with-deps chromium
+
+      - name: Run performance spikes (--grep @performance-spike)
+        # P1-012 (repo-size boundary empirical spike) and the future k6/Artillery
+        # regression suite will tag specs @performance-spike. Until then, the
+        # `--pass-with-no-tests` flag keeps this job green.
+        env:
+          CI: true
+          BASE_URL: http://localhost:3000
+          TEST_ENV: ci
+          # Tier 4 spikes may or may not need real services — start with the
+          # multi-conn secret set (no Daytona/Anthropic); promote to real-service
+          # secrets when an actual @performance-spike spec requires them.
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+        run: yarn playwright test --grep @performance-spike --pass-with-no-tests
+
+      - name: Upload spike results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-spike-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+  # ── Security: Dependency Vulnerability Scan ──────────────────────────────────
+  # Fails on critical/high vulnerabilities. Runs on PRs and weekly schedule.
+  # Uses `yarn npm audit` (Yarn Berry) with JSON output for structured parsing.
+  security-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run npm audit (fail on critical/high)
+        run: |
+          # Use yarn npm audit for Yarn Berry compatibility
+          # --recursive scans all workspace dependencies
+          # --severity high fails on high and critical
+          yarn npm audit --recursive --severity high --json > audit-report.json 2>/dev/null || true
+          # Check for critical/high vulnerabilities
+          CRITICAL=$(jq '[.advisories // [] | .[] | select(.severity == "critical")] | length' audit-report.json 2>/dev/null || echo "0")
+          HIGH=$(jq '[.advisories // [] | .[] | select(.severity == "high")] | length' audit-report.json 2>/dev/null || echo "0")
+          echo "Critical vulnerabilities: $CRITICAL"
+          echo "High vulnerabilities: $HIGH"
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "::error::Found $CRITICAL critical and $HIGH high vulnerabilities"
+            yarn npm audit --recursive --severity high || true
+            exit 1
+          fi
+          echo "No critical or high vulnerabilities found"
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-report
+          path: audit-report.json
+          retention-days: 30
 
 # ============================================================================
 # EXTENSION PATTERNS — Script Injection Prevention

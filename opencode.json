@@ -30,6 +30,25 @@
     }
   },
   "mcp": {
+    "github": {
+      "type": "local",
+      "command": [
+        "docker",
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e",
+        "GITHUB_TOOLSETS",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "enabled": true,
+      "environment": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "{env:GITHUB_TOKEN}",
+        "GITHUB_TOOLSETS": "default,actions"
+      }
+    },
     "n8n": {
       "type": "remote",
       "url": "http://localhost:5678/mcp-server/http",
@@ -37,6 +56,24 @@
       "oauth": false,
       "headers": {
         "Authorization": "Bearer {env:N8N_MCP_TOKEN}"
+      }
+    },
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "@playwright/mcp@latest"],
+      "enabled": true
+    },
+    "playwright-test": {
+      "type": "local",
+      "command": ["npx", "playwright", "run-test-mcp-server"],
+      "enabled": true
+    },
+    "daytona": {
+      "type": "local",
+      "command": ["daytona", "mcp", "start"],
+      "enabled": true,
+      "environment": {
+        "HOME": "{env:HOME}"
       }
     }
   },

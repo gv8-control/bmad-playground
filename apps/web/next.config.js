@@ -2,6 +2,8 @@
 
 const path = require('path');
 
+const apiUrl = process.env.API_URL || 'http://localhost:3001';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // pg and adapter-pg use Node.js built-ins (util/types); exclude from browser bundle
@@ -22,6 +24,24 @@ const nextConfig = {
           {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=()',
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: https:",
+              "font-src 'self' data:",
+              "connect-src 'self' https://api.github.com " + apiUrl,
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+            ].join('; '),
           },
         ],
       },

@@ -69,7 +69,7 @@ export function AppShell({ user, conversations, children }: AppShellProps) {
             <SheetTrigger asChild>
               <button
                 aria-label="Open navigation"
-                className="p-2 bg-surface border border-border rounded-md text-text-1 hover:bg-surface-raised transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg lg:hidden"
+                className="p-2 bg-surface border border-border rounded-md text-text-1 hover:bg-surface-raised transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface lg:hidden"
               >
                 <Menu className="h-6 w-6" />
               </button>
@@ -77,6 +77,7 @@ export function AppShell({ user, conversations, children }: AppShellProps) {
             <SheetContent
               side="left"
               className="w-[240px] bg-surface"
+              data-testid="sheet-content"
               onCloseAutoFocus={(e) => {
                 if (isNavigatingRef.current) {
                   isNavigatingRef.current = false;

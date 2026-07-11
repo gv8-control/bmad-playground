@@ -145,6 +145,23 @@ describe('WorkingTreeIndicator', () => {
     });
   });
 
+  describe('[P2] AC-7 — Help-text reachability (info affordance presence by state)', () => {
+    it('info affordance is absent in clean state (nothing at risk to disclose)', () => {
+      renderIndicator('clean');
+      expect(screen.queryByLabelText('Why does this matter?')).not.toBeInTheDocument();
+    });
+
+    it('info affordance is absent in hidden state', () => {
+      renderIndicator('hidden');
+      expect(screen.queryByLabelText('Why does this matter?')).not.toBeInTheDocument();
+    });
+
+    it('info affordance is present only in dirty state', () => {
+      renderIndicator('dirty');
+      expect(screen.getByLabelText('Why does this matter?')).toBeInTheDocument();
+    });
+  });
+
   describe('[P1] AC-7 — Info tooltip dismissal', () => {
     it('info tooltip dismissible by outside click and Escape', () => {
       renderIndicator('dirty');

@@ -51,7 +51,7 @@ const components: Components = {
     return (
       <code
         className={cn(
-          'font-mono text-xs text-text-1 bg-surface-raised rounded px-1.5 py-0.5',
+          'font-mono text-xs text-text-1 bg-surface-raised rounded px-2 py-1',
           className,
         )}
         {...props}
@@ -108,7 +108,7 @@ export function AgentMessage({ message }: AgentMessageProps) {
             <CopyButton text={message.content} />
           </div>
         </div>
-        <span className="text-xs text-text-3">{time}</span>
+        <span className="text-xs text-text-2">{time}</span>
       </div>
     </div>
   );

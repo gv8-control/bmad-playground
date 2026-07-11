@@ -21,7 +21,7 @@ export function SlashCommandPicker({
         role="listbox"
         id="skill-listbox"
       >
-        <p className="text-text-3 text-sm px-3 py-2">
+        <p className="text-text-2 text-sm px-3 py-2">
           No skills found in this repository.
         </p>
       </div>

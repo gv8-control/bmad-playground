@@ -6,14 +6,15 @@ import type { PrismaService } from '../../src/prisma/prisma.service';
 import type { ISandboxService } from '@bmad-easy/shared-types';
 import { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { SessionEventsService } from '../../src/streaming/session-events.service';
+import { EventType } from '@ag-ui/core';
 
 const DEFAULT_SCRIPT: SseEvent[] = [
-  { event: 'RUN_STARTED', data: {} },
-  { event: 'TEXT_MESSAGE_START', data: { messageId: 'msg-1', role: 'assistant' } },
-  { event: 'TEXT_MESSAGE_CONTENT', data: { messageId: 'msg-1', delta: 'Hello' } },
-  { event: 'TEXT_MESSAGE_CONTENT', data: { messageId: 'msg-1', delta: ' world' } },
-  { event: 'TEXT_MESSAGE_END', data: { messageId: 'msg-1' } },
-  { event: 'RUN_FINISHED', data: {} },
+  { event: EventType.RUN_STARTED, data: {} },
+  { event: EventType.TEXT_MESSAGE_START, data: { messageId: 'msg-1', role: 'assistant' } },
+  { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Hello' } },
+  { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: ' world' } },
+  { event: EventType.TEXT_MESSAGE_END, data: { messageId: 'msg-1' } },
+  { event: EventType.RUN_FINISHED, data: {} },
 ];
 
 const FILE_MODIFYING_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
@@ -24,7 +25,6 @@ export class AgentServiceFake implements IAgentService {
   private script: SseEvent[] = DEFAULT_SCRIPT;
   private shouldFailNextRun = false;
   private activeRun = false;
-  private readonly runParams = new Map<string, AgentRunParams>();
 
   constructor(
     private readonly sessionEvents: SessionEventsService,
@@ -50,11 +50,11 @@ export class AgentServiceFake implements IAgentService {
   ): void {
     const toolCallId = `tc-${Date.now()}`;
     const events: SseEvent[] = [
-      { event: 'RUN_STARTED', data: {} },
-      { event: 'TOOL_CALL_START', data: { toolCallId, toolCallName: toolName, parentMessageId: null } },
-      { event: 'TOOL_CALL_ARGS', data: { toolCallId, delta: input } },
-      { event: 'TOOL_CALL_END', data: { toolCallId } },
-      { event: 'TOOL_CALL_RESULT', data: { messageId: toolCallId, toolCallId, content: output, role: 'tool' } },
+      { event: EventType.RUN_STARTED, data: {} },
+      { event: EventType.TOOL_CALL_START, data: { toolCallId, toolCallName: toolName, parentMessageId: null } },
+      { event: EventType.TOOL_CALL_ARGS, data: { toolCallId, delta: input } },
+      { event: EventType.TOOL_CALL_END, data: { toolCallId } },
+      { event: EventType.TOOL_CALL_RESULT, data: { messageId: toolCallId, toolCallId, content: output, role: 'tool' } },
     ];
     if (credentialFailure) {
       events.push({
@@ -72,12 +72,12 @@ export class AgentServiceFake implements IAgentService {
         data: { type: 'TOOL_CALL_PROMOTED', toolCallId, artifactId: null, ...promoted },
       });
     }
-    events.push({ event: 'RUN_FINISHED', data: {} });
+    events.push({ event: EventType.RUN_FINISHED, data: {} });
     this.script = events;
   }
 
   setCircuitBreakerScript(): void {
-    this.script = [{ event: 'RUN_STARTED', data: {} }];
+    this.script = [{ event: EventType.RUN_STARTED, data: {} }];
   }
 
   failNextRun(): void {
@@ -89,13 +89,12 @@ export class AgentServiceFake implements IAgentService {
   }
 
   async runTurn(params: AgentRunParams): Promise<void> {
-    this.runParams.set(params.conversationId, params);
     this.activeRun = true;
 
     if (this.shouldFailNextRun) {
       this.shouldFailNextRun = false;
       this.sessionEvents.emit(params.conversationId, {
-        event: 'RUN_ERROR',
+        event: EventType.RUN_ERROR,
         data: { message: 'AgentServiceFake: simulated run failure' },
       });
       this.activeRun = false;
@@ -106,18 +105,18 @@ export class AgentServiceFake implements IAgentService {
     let currentToolName: string | null = null;
 
     for (const event of this.script) {
-      if (event.event === 'TEXT_MESSAGE_CONTENT') {
+      if (event.event === EventType.TEXT_MESSAGE_CONTENT) {
         const delta = (event.data as { delta?: string }).delta ?? '';
         accumulatedText += delta;
       }
 
-      if (event.event === 'TOOL_CALL_START') {
+      if (event.event === EventType.TOOL_CALL_START) {
         currentToolName = (event.data as { toolCallName?: string }).toolCallName ?? null;
       }
 
       this.sessionEvents.emit(params.conversationId, event);
 
-      if (event.event === 'TOOL_CALL_RESULT' && currentToolName && FILE_MODIFYING_TOOLS.has(currentToolName)) {
+      if (event.event === EventType.TOOL_CALL_RESULT && currentToolName && FILE_MODIFYING_TOOLS.has(currentToolName)) {
         try {
           const status = await this.sandboxService.getWorkingTreeStatus(params.sandboxId);
           if (status.dirty) {
@@ -141,8 +140,8 @@ export class AgentServiceFake implements IAgentService {
       }
     }
 
-    const hasRunFinished = this.script.some((e) => e.event === 'RUN_FINISHED');
-    const hasRunError = this.script.some((e) => e.event === 'RUN_ERROR');
+    const hasRunFinished = this.script.some((e) => e.event === EventType.RUN_FINISHED);
+    const hasRunError = this.script.some((e) => e.event === EventType.RUN_ERROR);
 
     if (hasRunFinished && !hasRunError && accumulatedText.length > 0) {
       await this.prisma.turn.create({
@@ -162,13 +161,8 @@ export class AgentServiceFake implements IAgentService {
   }
 
   async stop(conversationId: string): Promise<void> {
-    const params = this.runParams.get(conversationId);
-    if (params) {
-      await this.sandboxService.terminateProcess(params.sandboxId, 'agent-process');
-    }
-
     this.sessionEvents.emit(conversationId, {
-      event: 'RUN_FINISHED',
+      event: EventType.RUN_FINISHED,
       data: {},
     });
 

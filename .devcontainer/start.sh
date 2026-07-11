@@ -15,3 +15,5 @@ until curl -sf http://localhost:5678/healthz > /dev/null 2>&1; do sleep 1; done
 
 .devcontainer/import-workflows.sh
 .devcontainer/import-credentials.sh
+
+daytona login --api-key "$DAYTONA_API_KEY" >/dev/null 2>&1 || true

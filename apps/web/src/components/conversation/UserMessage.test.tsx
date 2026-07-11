@@ -31,4 +31,14 @@ describe('UserMessage', () => {
     render(<UserMessage message={message} />);
     expect(screen.getByText(/12:00/)).toBeInTheDocument();
   });
+
+  describe('[P3] AC-5 — timestamp hover-only behavior (UX-DR4)', () => {
+    it('timestamp container has opacity-0 class (hover-only per DESIGN.md)', () => {
+      const { container } = render(<UserMessage message={message} />);
+      const timestamp = screen.getByText(/12:00/);
+      const hoverWrapper = timestamp.parentElement;
+      expect(hoverWrapper?.className).toContain('opacity-0');
+      expect(hoverWrapper?.className).toContain('group-hover:opacity-100');
+    });
+  });
 });

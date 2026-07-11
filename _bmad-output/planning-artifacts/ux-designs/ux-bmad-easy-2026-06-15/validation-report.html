@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>UX Design Validation: bmad-easy — Implementation Drift (Epic 3 mid-implementation)</title>
+<title>UX Design Validation: bmad-easy — Aesthetics Review</title>
 <style>
   :root {
     --bg: #fafaf9;
@@ -56,23 +56,23 @@
   .synthesis p { margin: 0 0 10px; }
   .synthesis p:last-child { margin-bottom: 0; }
 
-  .lens-summary {
+  .dimension-summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 10px;
     margin-bottom: 24px;
   }
-  .lens-card {
+  .dim-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 12px 14px;
   }
-  .lens-card .lens-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-  .lens-card .lens-count { font-size: 14px; font-weight: 600; }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
 
-  section.reviewer-section { margin-bottom: 14px; }
-  section.reviewer-section details {
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -103,22 +103,25 @@
     letter-spacing: -0.005em;
     flex: 1;
   }
-  .reviewer-source {
-    font-size: 12px;
-    color: var(--muted);
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
   }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
 
   .dim-body { padding: 4px 20px 18px; }
   .dim-judgment { color: var(--text); font-size: 14.5px; }
   .dim-judgment p { margin: 0 0 10px; }
 
   .findings-list { padding: 0 20px 4px; }
-  .severity-group { padding: 8px 0 0; }
-  .severity-group h3 {
-    font-size: 13px; font-weight: 600; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.04em; margin: 18px 0 6px;
-  }
   article.finding {
     padding: 14px 0;
     border-top: 1px solid var(--border);
@@ -148,7 +151,12 @@
   .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
   .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
   .finding-fix strong { color: var(--muted); font-weight: 500; }
-  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; background: rgba(0,0,0,0.04); padding: 1px 4px; border-radius: 3px; }
+
+  .reviewer-source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
 
   .mechanical {
     background: var(--surface);
@@ -178,321 +186,324 @@
 
     <header class="report-header">
       <div class="title">
-        <h1>bmad-easy — UX Validation Report</h1>
-        <div class="subtitle">Implementation drift lens · Epic 3 (3.1–3.7 done) mid-implementation</div>
+        <h1>bmad-easy — UX Aesthetics Validation Report</h1>
+        <div class="subtitle">_bmad-output/planning-artifacts/ux-designs/ux-bmad-easy-2026-06-15/</div>
       </div>
     </header>
 
     <div class="synthesis">
-      <p>The built UX is broadly faithful to the spines for the happy paths — streaming, tool pills, semantic pills, working-tree indicator, manual-save flow, credential/403 split, and the three audited 2026-07-04 spine sections (session-start timeout, working-tree <code>ⓘ</code> disclosure, circuit-breaker system message) all match. Risk concentrates in two areas: <strong>client-side SSE/streaming resilience</strong> (duplicate messages on reconnect, lost events, dead-end error states) and <strong>the classifier's promotion contract</strong> (modify-commits and multi-artifact-per-commit don't produce the Semantic Pill the spine states unconditionally).</p>
-      <p>One critical gap is a fully missing component — the scroll-to-bottom button — which the code wires up but never actually shows, contradicting the spine and Story 3.3 AC (UX-DR9) in normal use. The high-severity items (reconnect duplication, modify-commit promotion) are reachable on common BMAD iteration patterns and warrant fixes before Epic 3 closes.</p>
-      <p><em>Lens run: implementation-drift only (rubric walker skipped — its 2026-07-02 pass is recent and all findings were applied). Forward-looking coverage for backlog stories 3.8–3.12 is a separate lens, not run here.</em></p>
+      <p>The aesthetic direction is sound: a coherent blue-violet dark palette, elevation via surface lightness (no shadows), a restrained violet accent reserved for primary actions, and a clear two-typeface typographic ramp. Execution, however, has real gaps that a downstream builder would propagate.</p>
+      <p>A broken color-token reference (<code>{colors.warning}</code> / <code>{colors.warning-bg}</code> — defined nowhere in the frontmatter) was introduced when the Access Notice component was added on 2026-07-02 and was not caught by the prior rubric pass, which ran the same day. The Access Notice also lacks a <code>components:</code> frontmatter entry — it has prose only. The muted text token (<code>text-3</code>, <code>#56556A</code>) fails WCAG AA contrast on every surface (~2.3–2.7:1; AA requires 4.5:1) and is used for permanent informational text (timestamps, "All saved" indicator). The stated 4px spacing grid is violated throughout the mockups and in the spine's own component specs (7px, 10px, 11px, 14px appear routinely; the credential-error-banner spec itself uses 10px). Cross-mock consistency is uneven: the conversation mock diverges from the other four app-shell mocks in nav-item display model, textarea text color, and send-button class naming.</p>
+      <p>None of this is fatal to the aesthetic vision. The palette, elevation system, typography, and shape language are well-conceived. But the three critical findings (broken tokens, inaccessible text, missing component spec) and the six high-severity findings should be resolved before a builder mirrors these artifacts.</p>
     </div>
 
-    <div class="lens-summary">
-      <div class="lens-card">
-        <div class="lens-name">Critical</div>
-        <div class="lens-count" style="color: var(--sev-critical)">1</div>
+    <div class="dimension-summary">
+      <div class="dim-card">
+        <div class="dim-name">Colors</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
       </div>
-      <div class="lens-card">
-        <div class="lens-name">High</div>
-        <div class="lens-count" style="color: var(--sev-high)">2</div>
+      <div class="dim-card">
+        <div class="dim-name">Margins &amp; Spacing</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
       </div>
-      <div class="lens-card">
-        <div class="lens-name">Medium</div>
-        <div class="lens-count" style="color: var(--sev-medium)">7</div>
-      </div>
-      <div class="lens-card">
-        <div class="lens-name">Low</div>
-        <div class="lens-count" style="color: var(--sev-low)">12</div>
-      </div>
-      <div class="lens-card">
-        <div class="lens-name">Not UX-relevant (excluded)</div>
-        <div class="lens-count" style="color: var(--muted)">15</div>
+      <div class="dim-card">
+        <div class="dim-name">Consistency</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
       </div>
     </div>
 
-    <section class="reviewer-section">
+    <!-- Colors -->
+    <section class="dimension">
       <details open>
         <summary>
-          <h2>Implementation drift review</h2>
-          <span class="reviewer-source">review-implementation-drift.md</span>
+          <h2>Colors</h2>
+          <span class="verdict-pill verdict-thin">thin</span>
         </summary>
         <div class="dim-body">
           <div class="dim-judgment">
-            <p>Scope: Epic 3 stories 3.1–3.7 (all <code>done</code>) vs. finalized spine pair (2026-07-04). Cross-checked <code>deferred-work.md</code> (273 lines) against the live code in <code>apps/web/src/components/conversation/</code> and <code>apps/agent-be/src/{streaming,conversations}/</code>. Findings classified by UX-visible severity (downstream impact on what the user sees), not fix difficulty.</p>
+            <p>Palette coherence is strong — a blue-violet dark theme with restrained accent use and clear semantic-color discipline. However, a broken token reference, WCAG AA contrast failures on the muted text token, inconsistent primary-action treatment, an invisible border token, ad-hoc colors in mocks, and inconsistent focus-ring/loading-state implementations bring the verdict down to thin.</p>
           </div>
         </div>
         <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">Broken color-token references: {colors.warning} / {colors.warning-bg} undefined</h3>
+              <span class="finding-location">DESIGN.md line 381, EXPERIENCE.md line 262</span>
+            </header>
+            <div class="finding-note">The Access Notice component prose references <code>{colors.warning-bg}</code> and <code>{colors.warning}</code> for its background and left border, but the frontmatter <code>colors:</code> block defines no <code>warning</code> or <code>warning-bg</code> token. The semantic palette has <code>positive</code>/<code>caution</code>/<code>negative</code> only. Downstream code mirroring the spine cannot resolve these references. The prior rubric review (§2, "strong") did not catch this because the Access Notice was added as part of applying that review's own findings on the same day.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add <code>warning</code> / <code>warning-bg</code> tokens to the frontmatter, or replace with <code>{colors.caution}</code> / <code>{colors.caution-bg}</code> (the closest existing semantic).</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">text-3 (#56556A) fails WCAG AA contrast on every surface</h3>
+              <span class="finding-location">DESIGN.md line 18</span>
+            </header>
+            <div class="finding-note">Computed ratios: 2.68:1 on <code>bg</code>, 2.49:1 on <code>surface</code>, 2.29:1 on <code>surface-raised</code>. AA requires 4.5:1 for normal text. <code>text-3</code> is used for permanent informational text: agent message timestamps (shown permanently per DESIGN.md line 337), the "All saved" clean-state indicator (line 352), footer links, disabled text. No contrast targets are stated anywhere in DESIGN.md.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Lighten <code>text-3</code> to meet 4.5:1 on all surfaces (~<code>#757488</code> or lighter), or restrict <code>text-3</code> to placeholder/disabled use and move timestamps and "All saved" to <code>text-2</code>. State contrast targets in DESIGN.md §Colors.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Sign-in primary button uses text-1 (#EDECF5) as background instead of accent (#7B6EE8)</h3>
+              <span class="finding-location">key-signin.html line 131</span>
+            </header>
+            <div class="finding-note">DESIGN.md Do's: "Use <code>{colors.accent}</code> for all primary interactive elements." The onboarding "Connect repository" button in the same pre-app-shell context uses <code>accent</code>. Two primary-action treatments with no documented rationale.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use <code>accent</code> for the sign-in button, or document the exception in DESIGN.md.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">border-subtle (#1E1E26) equals surface-raised (#1E1E26) — invisible on raised surfaces</h3>
+              <span class="finding-location">DESIGN.md lines 11, 13</span>
+            </header>
+            <div class="finding-note"><code>border-subtle</code> is for "inner divisions on raised surfaces" but is the same color as the raised surface it sits on. Visible only against <code>surface</code> (#16161C), as in the side-nav right border.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Set <code>border-subtle</code> to a value between <code>surface</code> and <code>border</code> (e.g., <code>#232330</code>).</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Ad-hoc colors not in the palette</h3>
+              <span class="finding-location">key-project-map.html line 218, key-new-conversation.html line 351, key-artifact-browser.html line 209</span>
+            </header>
+            <div class="finding-note">Artifact-card hover border <code>#3b3b4f</code> (no token). Slash-picker item hover bg <code>#2B2B38</code> (border token used as bg; spine says <code>surface-raised</code>). List-entry hover <code>rgba(30,30,38,0.6)</code> (ad-hoc semi-transparent surface-raised).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Replace with nearest token; add a hover-surface token if <code>surface-raised</code> is too subtle.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Focus-ring implementation inconsistent and non-compliant with spine</h3>
+              <span class="finding-location">key-onboarding.html line 142, key-new-conversation.html line 264</span>
+            </header>
+            <div class="finding-note">Spine specifies "2px outline, 2px offset" in accent. Onboarding input uses 20% opacity box-shadow; chat input uses 15% opacity. Different opacities; neither is a 2px outline with 2px offset. Project-context.md canonical: <code>focus:ring-2 focus:ring-accent focus:ring-offset-2</code>.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on the spine's 2px solid accent outline with 2px offset across all mocks.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Loading/disabled button states use ad-hoc colors with no spine tokens</h3>
+              <span class="finding-location">key-onboarding.html line 196, key-new-conversation.html lines 310–318</span>
+            </header>
+            <div class="finding-note"><code>connect-button.loading</code> uses #56556A (text-3) as bg. <code>send-button.disabled</code> uses #1E1E26 (surface-raised) bg + #56556A text. <code>send-button.loading</code> uses #56556A bg. Two different disabled/loading treatments; neither tokenized.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add disabled/loading button-state tokens, or specify as "accent at 40% opacity" with a documented value.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Browser-chrome lock icon uses positive (#3ECF8E) decoratively</h3>
+              <span class="finding-location">all 7 mocks, e.g. key-signin.html line 51</span>
+            </header>
+            <div class="finding-note">DESIGN.md Don'ts: "Never use them [semantic colors] decoratively." Mock furniture only, not product UI.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use a neutral color for mock chrome, or note that browser-chrome furniture is outside the design system scope.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Spinner treatments inconsistent between mocks</h3>
+              <span class="finding-location">key-onboarding.html lines 203–205, key-new-conversation.html lines 225–226</span>
+            </header>
+            <div class="finding-note">Onboarding spinner: white track at 30% opacity, white head. New-conversation spinner: border (#2B2B38) track, accent (#7B6EE8) head. Different visual language for the same loading concept.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on one spinner treatment; document in DESIGN.md.</div>
+          </article>
+        </div>
+      </details>
+    </section>
 
-          <div class="severity-group">
-            <h3>Critical (1)</h3>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-critical">Critical</span>
-                <h3 class="finding-title">Scroll-to-bottom button never appears; new-message count never increments</h3>
-                <span class="finding-location">EXPERIENCE.md › Scroll Behavior + {components.scroll-to-bottom-button}; Story 3.3 AC (UX-DR9)</span>
-              </header>
-              <div class="finding-note"><code>showScrollToBottom</code> is initialized <code>false</code> (<code>ConversationPane.tsx:43</code>) and <code>setShowScrollToBottom</code> is called in exactly one place — <code>handleScrollToBottom</code>, where it is set to <code>false</code> (<code>ConversationPane.tsx:720</code>). It is never set <code>true</code>. <code>ChatMessageList</code> updates a local <code>isAtBottomRef</code> on scroll and auto-scrolls while at bottom, so auto-scroll <em>pause</em> works, but the list never notifies the parent that the user has scrolled away, so the button never shows and <code>newMessageCount</code> never increments. The <code>ScrollToBottomButton</code> is rendered but always receives <code>showScrollToBottom={false}</code>. A user who scrolls up during a long streaming response has no jump-back affordance and no "N new" count — directly contradicting the spine component and the Story 3.3 AC in normal use.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — call a parent callback from <code>ChatMessageList</code>'s scroll handler to set <code>showScrollToBottom</code> when not at bottom, and a <code>useEffect</code> on <code>messages</code> to increment <code>newMessageCount</code> while scrolled away.</div>
-            </article>
+    <!-- Margins & Spacing -->
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Margins &amp; Spacing</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The 4px base unit and Tailwind scale are clearly stated, and many values comply. But the grid rule is widely violated — in the mockups and in the spine's own component specs — and the spacing scale is not tokenized in the frontmatter. Cross-surface padding inconsistencies and undocumented max-widths round out the picture. The direction is right; the discipline is missing.</p>
           </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">4px grid violated throughout mockups and spine specs</h3>
+              <span class="finding-location">DESIGN.md line 266, frontmatter line 186; all app-shell mocks</span>
+            </header>
+            <div class="finding-note">Off-grid values: 7px (nav-item padding, all 5 app-shell mocks), 10px (credential-error-banner in DESIGN.md frontmatter line 186; list-entry; teaser-item; field-group gap), 11px (GitHub button; connect-button), 14px (field-input; teaser-item), 6px (frontmatter-badge; nav active margin). The 10px in the spine's own frontmatter is notable — the grid rule is violated inside the spine itself.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Snap all off-grid values to nearest 4px multiple (7→8, 10→8 or 12, 11→12, 14→12 or 16, 6→4 or 8). Document 2px half-step exception if needed for tight controls.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">spacing frontmatter has only base: 4px — no scale tokens</h3>
+              <span class="finding-location">DESIGN.md lines 61–63</span>
+            </header>
+            <div class="finding-note">Tailwind scale (4, 8, 12, 16, 20, 24, 32, 40, 48, 64) is prose-only. Downstream code can't reference <code>{spacing.4}</code> etc. Contributes to off-grid proliferation.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add scale tokens (<code>'1': 4px</code>, <code>'2': 8px</code>, …) to the <code>spacing</code> frontmatter.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Chat input area bottom padding inconsistent between chat surfaces</h3>
+              <span class="finding-location">key-new-conversation.html line 245, key-conversation.html line 322</span>
+            </header>
+            <div class="finding-note">New-conversation: <code>padding: 0 32px 24px</code>. Conversation: <code>padding: 0 32px 20px</code>. 24px vs 20px for the same component on two surfaces.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on one value; document in the chat-input component spec.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Undocumented max-widths across mocks with no system</h3>
+              <span class="finding-location">key-signin.html line 65, key-onboarding.html line 65, key-project-map.html line 216, key-artifact-browser.html line 301, key-conversation.html line 222</span>
+            </header>
+            <div class="finding-note">Auth card 400px, onboarding card 480px, artifact card 720px, md-content 720px, message row 824px (760 + 64 padding). The 760px chat max-width is documented; the others are not. 400, 480, 720, 760, 824 have no documented relationship.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Document a content-width system in DESIGN.md §Layout &amp; Spacing, or note as per-surface decisions.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Tool-pill padding (2px 8px) vs semantic-pill padding (4px 10px) — different sizing</h3>
+              <span class="finding-location">DESIGN.md frontmatter lines 97, 106</span>
+            </header>
+            <div class="finding-note">Semantic pill is described as "elevated variant of Tool Pill" but has different padding. When both appear in the same message stream, they render at different heights. 2px is also off the 4px grid.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Align semantic-pill padding to match tool-pill, or document the size relationship if intentional.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Status-badge padding (2px 8px) differs from semantic-pill padding (4px 10px)</h3>
+              <span class="finding-location">DESIGN.md frontmatter lines 141, 106</span>
+            </header>
+            <div class="finding-note">Both are pill-shaped badges with inconsistent internal sizing.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize pill-badge padding across tool-pill, semantic-pill, and status-badge variants.</div>
+          </article>
+        </div>
+      </details>
+    </section>
 
-          <div class="severity-group">
-            <h3>High (2)</h3>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-high">High</span>
-                <h3 class="finding-title">Duplicate messages and tool pills on transient SSE reconnect</h3>
-                <span class="finding-location">EXPERIENCE.md › Conversation Loading (Returning) + Component Patterns › Streaming Chat Messages</span>
-              </header>
-              <div class="finding-note"><code>SessionEventsService.getEventStream</code> returns a <code>ReplaySubject(100)</code> keyed by <code>conversationId</code>. On a transient <code>EventSource</code> drop, the browser auto-reconnects (the <code>onerror</code> handler does not close the source), the SSE endpoint returns the same subject, and the last 100 buffered events replay. Every client handler (<code>TEXT_MESSAGE_START</code>, <code>TOOL_CALL_CONTENT</code>, <code>TOOL_CALL_START</code>, …) appends to <code>messages</code> with no dedup, so replayed events render as duplicate messages/tokens/pills. Fallback IDs (<code>msg-${Date.now()}</code>) collide or regenerate across replays, compounding dupes.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — dedup by a stable event/message id in the client handlers, or clear the replay buffer once a stable connection is established. Spine is silent (coverage gap — "Reconnecting…" is about sandbox re-init, not SSE-transport reconnect event dedup).</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-high">High</span>
-                <h3 class="finding-title">Agent git commit that modifies an existing _bmad-output/ artifact produces no Semantic Pill</h3>
-                <span class="finding-location">EXPERIENCE.md › Tool Pills and Semantic Pills + Story 3.4 AC-2</span>
-              </header>
-              <div class="finding-note"><code>classifyToolResult</code> only promotes when <code>extractBmadArtifactPaths</code> returns ≥1 path. That extractor matches <code>create mode</code> lines and a diffMatch regex, but a plain <code>git commit -m "msg"</code> (the Claude Code agent's typical invocation) only lists <code>create mode</code> for <em>new</em> files — modified-but-existing files are not named in the commit stdout, so <code>bmadPaths</code> is empty and the call returns <code>null</code> (no promotion). The successful commit renders as a plain completed Tool Pill, never as "Progress saved · {type} · {title} · View". This contradicts the spine's unconditional wording on iteration commits — a core BMAD pattern (the agent writes to the same PRD/architecture file across multiple turns), so the first commit shows a Semantic Pill and every subsequent one does not. Borderline critical. The working-tree-clean signal still fires, so the user sees "All saved" — the missing piece is the Semantic Pill + its "View" link.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — run <code>git show --name-only HEAD</code> (or <code>git diff-tree --no-commit-id --name-only -r HEAD</code>) after a detected successful commit to enumerate changed BMAD paths, then promote. Spine: contradicted (for modify-commits).</div>
-            </article>
+    <!-- Consistency -->
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Consistency</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The spines are internally well-structured — section ordering, token cross-references (except the broken warning tokens), and component naming are largely consistent. But the mockups diverge from the spines and from each other in several places: nav-item display model, textarea text color, send-button class naming, active-state margins, shadow discipline, scrollbar behavior, and wordmark presentation. The Access Notice component is the most serious consistency gap — prose without a frontmatter spec, referencing undefined tokens.</p>
           </div>
-
-          <div class="severity-group">
-            <h3>Medium (7)</h3>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-medium">Medium</span>
-                <h3 class="finding-title">Working-tree indicator stuck in "Saving…" if MANUAL_SAVE_SUCCEEDED SSE event never arrives</h3>
-                <span class="finding-location">EXPERIENCE.md › Working Tree Indicator › Save confirmation flow (step 3)</span>
-              </header>
-              <div class="finding-note"><code>handleSave</code> sets <code>saving</code>, and on <code>data.committed === true</code> does nothing client-side, leaving the transition to the SSE event. If that event is lost (dropped-events race, or a connection drop in the window between the save POST response and the event), the indicator stays on "Saving…" indefinitely.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — client-side timeout fallback re-querying working-tree state, or set <code>clean</code> after a grace period on <code>committed=true</code>. Spine: silent (no lost-event failure mode specified).</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-medium">Medium</span>
-                <h3 class="finding-title">POST /resume non-2xx not detected → UI stuck in "Reconnecting…" for full 30s</h3>
-                <span class="finding-location">EXPERIENCE.md › Conversation Loading (Returning) (step 3)</span>
-              </header>
-              <div class="finding-note">The <code>/resume</code> fetch in <code>startSession</code> has no <code>response.ok</code> check — only <code>.catch</code> for network errors. A 5xx resolves without throwing, so <code>state</code> stays <code>reconnecting</code> until the 30s client timeout fires the (false) "Starting your session is taking longer than expected." + Retry.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — check <code>response.ok</code> on <code>/resume</code> and surface an error state immediately. Spine: silent on resume HTTP errors.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-medium">Medium</span>
-                <h3 class="finding-title">The "error" session state is a dead-end: input disabled, no action button</h3>
-                <span class="finding-location">EXPERIENCE.md › Conversation Surface States (every error row pairs text with a button)</span>
-              </header>
-              <div class="finding-note"><code>inputDisabled</code> includes <code>state === 'error'</code>, but the Retry button renders only for <code>state === 'timeout'</code>. A <code>SESSION_ERROR</code>, a failed conversation-create POST, or a <code>/resume</code> network failure lands in <code>error</code> with an <code>errorMessage</code> paragraph but no Retry/Refresh affordance. The spine's established shape everywhere else is "error text + single action button."</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — render the Retry button for <code>state === 'error'</code> as well, or add a Refresh action. Spine: silent on a terminal session-error distinct from the timeout.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-medium">Medium</span>
-                <h3 class="finding-title">Circuit-breaker race: events emit after RUN_ERROR, so the system message is no longer at the stream-stop point</h3>
-                <span class="finding-location">EXPERIENCE.md › Conversation Surface States › "Agent process terminated (circuit breaker)"</span>
-              </header>
-              <div class="finding-note"><code>handleCircuitBreaker</code> emits <code>RUN_ERROR</code> first, but pending classifier and working-tree promises and one more in-flight <code>iterator.next()</code> result can settle and emit <code>TOOL_CALL_PROMOTED</code> / <code>WORKING_TREE_DIRTY</code> / <code>TEXT_MESSAGE_*</code> <em>after</em> the system message. The client renders those after "The agent stopped unexpectedly," so the apparent stop point drifts downward and the working-tree indicator can flip after the termination notice.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — await/drop pending promises before emitting <code>RUN_ERROR</code>, or have the client ignore stream events after <code>RUN_ERROR</code>. Spine: contradicted (the stop point is not the stop point).</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-medium">Medium</span>
-                <h3 class="finding-title">False error-state Tool Pills: client-side string-regex error detection on tool output</h3>
-                <span class="finding-location">EXPERIENCE.md › Tool Pills and Semantic Pills</span>
-              </header>
-              <div class="finding-note"><code>TOOL_CALL_RESULT</code> marks a pill errored when <code>content</code> matches <code>/^error:/im</code>, <code>/Command exited with code [1-9]/</code>, or <code>/failed to push/i</code>. Legitimate tool output that <em>contains</em> those substrings — e.g. a successful <code>read</code> of a file mentioning "error:", or a code-review comment containing "failed to push" — renders as a red "✕ {toolName} failed" pill for a call that actually succeeded. Plausible in BMAD workflows that read logs/code.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — rely on the backend's tool_result error flag / classifier rather than client-side string matching on output content. Spine: contradicted (error styling for non-errors).</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-medium">Medium</span>
-                <h3 class="finding-title">Dropped SSE events before subscription can cause a false session-start timeout</h3>
-                <span class="finding-location">EXPERIENCE.md › New Conversation / Session start timeout</span>
-              </header>
-              <div class="finding-note"><code>emit()</code> silently no-ops when no <code>ReplaySubject</code> exists for the conversation; the subject is created lazily in <code>getEventStream</code>, which only runs when the SSE GET reaches the controller. <code>provisionSandbox</code> is fire-and-forgotten and emits <code>SESSION_READY</code>; <code>resumeConversation</code>'s fast path emits <code>SESSION_READY</code> synchronously-ish. If either fires before the client's <code>EventSource</code> GET is processed (narrow on a fast connection, realistic on a slow proxy), <code>SESSION_READY</code> is lost, state stays <code>provisioning</code>/<code>reconnecting</code>, and the user hits the 30s false "Starting your session is taking longer than expected." + Retry.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — create the <code>ReplaySubject</code> eagerly in <code>createConversation</code>/<code>resumeConversation</code> before firing the provisioner, or create-on-first-emit. Spine: silent (no dropped-event race specified).</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-medium">Medium</span>
-                <h3 class="finding-title">TOOL_CALL_RESULT for an untracked tool_use_id skips classification → 401/403 never detected</h3>
-                <span class="finding-location">EXPERIENCE.md › Conversation Surface States › Credential failed / Access denied; Story 3.7 AC-1/AC-2</span>
-              </header>
-              <div class="finding-note">In <code>processAssistantMessage</code>, <code>TOOL_CALL_RESULT</code> is emitted <em>before</em> the <code>toolCallInfo</code> lookup; if the lookup misses (a non-streamed <code>tool_use</code>), the classifier block is skipped entirely — so a 401/403 pattern sitting in such an untracked result never triggers <code>CREDENTIAL_FAILURE</code>/<code>ACCESS_DENIED</code>, defeating the whole point of Story 3.7's real-time alert.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code — track <code>tool_use_id</code> on <code>content_block_start</code> before results arrive, or run a defensive classification pass on <code>TOOL_CALL_RESULT</code> when <code>toolCallInfo</code> is missing. Spine: contradicted (the alert contract is silently skipped for untracked tool_use).</div>
-            </article>
-          </div>
-
-          <div class="severity-group">
-            <h3>Low (12)</h3>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">EventSource.onerror doesn't close the source; state may diverge from auto-reconnecting stream</h3>
-                <span class="finding-location">ConversationPane.tsx:504-506</span>
-              </header>
-              <div class="finding-note">Pre-<code>ready</code> an error flips to the dead-end <code>error</code> state; post-<code>ready</code> errors are silently swallowed. Narrow window; the 30s timeout eventually recovers.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Code or spine — manage the EventSource lifecycle explicitly, or document reconnect semantics. Spine: silent on transient SSE drops.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">Multi-artifact single commit only promotes the first artifact</h3>
-                <span class="finding-location">tool-pill-classifier.service.ts:170</span>
-              </header>
-              <div class="finding-note">A single <code>git commit</code> touching PRD + architecture yields one Semantic Pill; the second artifact's "View" is missing.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Product decision — emit one promotion per BMAD path, or accept first-wins. Spine: silent (only "multiple commits" addressed).</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">Semantic title allows 1-word titles for 1-word messages (no 2-word minimum)</h3>
-                <span class="finding-location">semantic-title.ts:10</span>
-              </header>
-              <div class="finding-note">The LLM-generated title promised in the Story 3.2 deferral was never implemented in 3.3. Side nav can show "Hello" / "Test". Cosmetic.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Enforce 2-word min in the heuristic, or implement LLM titles. Spine: contradicted (Side Navigation "2–5 word semantic title").</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">getWorkingTreeStatus mis-parses renames and ignores git exit code</h3>
-                <span class="finding-location">sandbox.service.ts</span>
-              </header>
-              <div class="finding-note"><code>line.slice(3)</code> mishandles <code>R  old -&gt; new</code> and quoted paths; git error text on stdout is treated as a file list. Could yield a false dirty/clean — the latter risks a misleading "All saved" (data-loss disclosure misfires). Renames rare in BMAD working trees.</div>
-              <div class="finding-fix"><strong>Fix:</strong> <code>--porcelain</code> -z-aware parsing + exitCode check. Spine: contradicted on the rename/error edge.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">Concurrent runTurn state corruption + orphaned/stale circuit-breaker timers</h3>
-                <span class="finding-location">agent.service.ts:52-92, 221-239</span>
-              </header>
-              <div class="finding-note">A second <code>runTurn</code> overwrites the first's maps; <code>startCircuitBreakerTimer</code> doesn't clear a pre-existing entry, so an orphaned timer from a prior run could fire on a new run ("agent stopped unexpectedly" on a healthy turn). The UI disables input during processing, so the trigger is UI-prevented in normal use.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Per-run timer scoping + concurrent-turn guard (Story 3.11 scope). Spine: silent on concurrent turns.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">First-message + idle-timer race persists a message to a destroyed sandbox (no agent response)</h3>
-                <span class="finding-location">conversations.service.ts</span>
-              </header>
-              <div class="finding-note">Edge at the 60s boundary.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Coordinate the boundary. Spine: silent.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">isSuccessfulCommit / isFailedCommit match keywords inside commit messages</h3>
-                <span class="finding-location">tool-pill-classifier.service.ts:46-58</span>
-              </header>
-              <div class="finding-note">Commit-body text containing "error:" or "files changed" is misclassified → false Semantic Pill or missed promotion based on commit-message wording.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Parse only git infrastructure output, not the message body. Spine: contradicted on edge.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">extractBmadArtifactPaths truncates paths with whitespace; deriveTitleFromPath yields "Untitled"</h3>
-                <span class="finding-location">tool-pill-classifier.service.ts:69, 78, 41-44</span>
-              </header>
-              <div class="finding-note">BMAD paths rarely contain spaces.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Whitespace-aware parsing. Spine: contradicted on edge.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">processAssistantMessage double-processes duplicate tool_use_id blocks</h3>
-                <span class="finding-location">agent.service.ts:383-459</span>
-              </header>
-              <div class="finding-note">No "seen" guard. Emits two <code>TOOL_CALL_RESULT</code>s, runs the classifier twice, calls <code>markCredentialFailed</code> twice. Client overwrites the same id (idempotent); mostly internal.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Add a "seen" guard. Spine: silent.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">processAssistantMessage silently drops non-text content blocks (images)</h3>
-                <span class="finding-location">agent.service.ts:369-463</span>
-              </header>
-              <div class="finding-note">BMAD agent output is text/code.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Handle non-text blocks or document the constraint. Spine: silent on non-text content.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">Stale-closure useEffect + dual conversationId ref/state can drift</h3>
-                <span class="finding-location">ConversationPane.tsx:43, 54-55</span>
-              </header>
-              <div class="finding-note">Empty-deps effect captures initial props; <code>setConversationId</code> not called on the resume path. Props don't change per mount in practice.</div>
-              <div class="finding-fix"><strong>Fix:</strong> Refactor to dependent effect or document the mount-once contract. Spine: silent.</div>
-            </article>
-
-            <article class="finding">
-              <header>
-                <span class="badge badge-sev-low">Low</span>
-                <h3 class="finding-title">Deploy-time onModuleDestroy drops pending manual commits without MANUAL_SAVE_FAILED; in-flight promises emit to torn-down SessionEventsService</h3>
-                <span class="finding-location">manual-commit.service.ts:110-113, agent.service.ts:204-219</span>
-              </header>
-              <div class="finding-note">Deploy/drain UX is Story 3.12 (backlog, out of scope here).</div>
-              <div class="finding-fix"><strong>Fix:</strong> Story 3.12 scope. Spine: silent (forward-looking).</div>
-            </article>
-          </div>
-
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">access-notice component has prose but no frontmatter spec</h3>
+              <span class="finding-location">DESIGN.md lines 380–381</span>
+            </header>
+            <div class="finding-note">The <code>components:</code> frontmatter defines 16 components; the Access Notice is described in §Components prose but has no <code>access-notice</code> key. Its prose references non-existent <code>{colors.warning}</code> / <code>{colors.warning-bg}</code> tokens. A downstream builder has no machine-readable spec.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add an <code>access-notice:</code> entry to the frontmatter with resolved token references, or fold into <code>credential-error-banner</code> as a variant.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Nav-item display property inconsistent across mocks</h3>
+              <span class="finding-location">key-conversation.html line 114 vs others line 103</span>
+            </header>
+            <div class="finding-note">Conversation mock uses <code>display: flex</code>; all other app-shell mocks use <code>display: block</code>. Changes vertical alignment and hit-area of nav items.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on one display model across all app-shell mocks.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Conversation mock textarea uses text-3 (#56556A) for entered text instead of text-1</h3>
+              <span class="finding-location">key-conversation.html line 344</span>
+            </header>
+            <div class="finding-note">Entered text renders at 2.29:1 contrast — nearly invisible. The new-conversation mock correctly uses <code>#EDECF5</code> (text-1). If a builder mirrors the mock, typed text would be unreadable.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Set textarea color to <code>#EDECF5</code> (text-1); reserve <code>text-3</code> for <code>::placeholder</code> only.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Send-button class naming inconsistent</h3>
+              <span class="finding-location">key-new-conversation.html line 294 vs key-conversation.html line 360</span>
+            </header>
+            <div class="finding-note"><code>.send-button</code> vs <code>.send-btn</code> — different class names for the same component across mocks.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize on one class name.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Nav-item active-state margins inconsistent across mocks</h3>
+              <span class="finding-location">key-project-map.html line 117, key-conversation.html lines 131/138, key-settings.html line 138</span>
+            </header>
+            <div class="finding-note">1px vs 0px top/bottom margin creates subtle vertical position shifts. The conversation mock has two active classes (<code>.active</code> and <code>.active-conv</code>) with different margins.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Standardize active-state margins; use one active class.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Slash picker uses box-shadow, contradicting the no-shadow rule</h3>
+              <span class="finding-location">key-new-conversation.html line 332</span>
+            </header>
+            <div class="finding-note">DESIGN.md Don'ts: "Don't use box shadows to communicate elevation on dark surfaces." The slash picker is a floating dropdown that uses shadow for visual separation. No floating-element exception is documented.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Document a floating-element exception in §Elevation &amp; Depth, or replace shadow with stronger border/contrast.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Scrollbars hidden in multiple mocks, undocumented in spine</h3>
+              <span class="finding-location">key-project-map.html line 204, key-conversation.html line 217, key-artifact-browser.html lines 199/261</span>
+            </header>
+            <div class="finding-note"><code>::-webkit-scrollbar { display: none; }</code> in 4 mocks. Spine doesn't mention scrollbar styling. Hidden scrollbars harm usability and accessibility.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Document the decision in EXPERIENCE.md, or show styled scrollbars.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Wordmark presentation inconsistent between pre-app-shell and app-shell</h3>
+              <span class="finding-location">key-signin.html lines 231–233 vs key-project-map.html line 282</span>
+            </header>
+            <div class="finding-note">Sign-in: logo box ("be" in accent-filled 12px square) + "bmad-easy" name + tagline. App-shell: text "bmad·easy" with middle dot in accent. Different brand presentations with no documented relationship.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Document both wordmark treatments in DESIGN.md §Brand &amp; Style, or standardize.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Dead CSS: .annotation-band defined but unused in 4 mocks</h3>
+              <span class="finding-location">key-project-map.html, key-new-conversation.html, key-conversation.html, key-artifact-browser.html</span>
+            </header>
+            <div class="finding-note">CSS block defined but not rendered in the HTML body. Could confuse a builder reading the mock source.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Remove unused CSS blocks.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">min-width: 1280px on body doesn't match spine's 1024px minimum</h3>
+              <span class="finding-location">all 7 mocks; EXPERIENCE.md line 16</span>
+            </header>
+            <div class="finding-note">Mocks don't demonstrate the 1024px minimum or the tablet (768–1023px) collapsed-nav behavior. A builder wouldn't know what the UI looks like at 1024px.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Render mocks at 1024px, or note that mocks are at 1280px for readability and the 1024px layout is spine-only.</div>
+          </article>
         </div>
       </details>
     </section>
 
     <div class="mechanical">
-      <h3>Not UX-relevant (excluded from findings)</h3>
-      <p style="margin: 0 0 8px; color: var(--muted); font-size: 13px;">Considered and excluded — purely backend/internal, no user-visible surface in MVP for stories 3.1–3.7:</p>
+      <h3>Mechanical notes</h3>
       <ul>
-        <li>OAuth token embedded in <code>git clone</code> URL / <code>.git/config</code> — security hardening.</li>
-        <li><code>SandboxService.resume</code> returns <code>conversationId: sandboxId</code> — latent internal contract, no caller.</li>
-        <li><code>provisionQueue.release</code> in <code>finally</code> when <code>acquire</code> might throw — internal semaphore; <code>acquire</code> has no throw path today.</li>
-        <li>SSH-style repo URL → <code>TypeError</code> → opaque <code>SESSION_ERROR</code> — onboarding validates HTTPS.</li>
-        <li>Idle timeout cleared on first message, never restarted — resource/cost; Story 3.9 scope.</li>
-        <li>In-memory sandbox state lost on restart — resume flow re-provisions per spec.</li>
-        <li><code>getStatus</code> returns <code>'failed'</code> not 404 for missing conversation — internal API contract.</li>
-        <li><code>sendTurn</code> doesn't validate sandbox state before persisting — <code>RUN_ERROR</code> surfaces anyway.</li>
-        <li><code>SendMessageDto</code> no <code>max()</code> on content — input validation.</li>
-        <li><code>createConversation</code> validates a <code>CreateConversationDto</code> body it discards — internal.</li>
-        <li><code>markCredentialFailed</code> marks all of the user's connections — MVP has a single connection per user.</li>
-        <li><code>viewHref</code> not URL-encoded — artifact IDs are UUIDs in practice.</li>
-        <li><code>pendingClassifierPromises</code> race — latent.</li>
-        <li><code>abortPromise</code> listener never removed / <code>iterator.return()</code> not called / <code>resetCircuitBreakerTimer</code> re-arms for aborted runs — resource cleanup.</li>
-        <li>Several test-only issues — not production code.</li>
+        <li><strong>Broken cross-reference (critical):</strong> <code>{colors.warning}</code> and <code>{colors.warning-bg}</code> referenced in DESIGN.md line 381 and EXPERIENCE.md line 262 — neither exists in the frontmatter. Prior rubric review (§2, "strong") did not include these in its checked-token list.</li>
+        <li><strong>Missing component frontmatter (critical):</strong> <code>access-notice</code> described in DESIGN.md §Components prose (line 380) but absent from the <code>components:</code> frontmatter (16 entries; should be 17).</li>
+        <li><strong>Contrast targets unstated:</strong> DESIGN.md §Colors does not state WCAG contrast targets for any text/surface combination. <code>text-3</code> fails AA everywhere; <code>accent</code> as text on <code>surface</code> is borderline (4.50:1).</li>
+        <li><strong>Spacing scale not tokenized:</strong> <code>spacing</code> frontmatter has <code>base: 4px</code> only; Tailwind scale is prose-only. 6 distinct off-grid values (6, 7, 10, 11, 14, 28) appear across mocks and spine specs.</li>
+        <li><strong>Class naming drift:</strong> <code>.send-button</code> vs <code>.send-btn</code> across two mocks for the same component.</li>
       </ul>
     </div>
 
     <footer class="report-footer">
       <div class="meta">
-        <span>DESIGN.md: _bmad-output/planning-artifacts/ux-designs/ux-bmad-easy-2026-06-15/DESIGN.md</span>
-        <span>EXPERIENCE.md: _bmad-output/planning-artifacts/ux-designs/ux-bmad-easy-2026-06-15/EXPERIENCE.md</span>
-        <span>Reviewer: review-implementation-drift.md</span>
-        <span>Generated: 2026-07-05T18:30:00Z</span>
+        <span>Review: review-aesthetics.md</span>
+        <span>Generated: 2026-07-08T12:00:00Z</span>
+        <span>Prior: review-rubric.md (2026-07-02), review-implementation-drift.md (2026-07-05)</span>
       </div>
     </footer>
   </div>

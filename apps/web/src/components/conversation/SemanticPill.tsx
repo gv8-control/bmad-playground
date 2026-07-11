@@ -35,7 +35,7 @@ export function SemanticPill({ artifactType, artifactTitle, viewHref }: Semantic
       role="status"
       aria-live="polite"
       className={cn(
-        'inline-flex items-center gap-1.5 bg-positive-bg border border-positive rounded-sm px-2.5 py-1 text-sm text-positive',
+        'inline-flex items-center gap-2 bg-positive-bg border border-positive rounded-sm px-2 py-1 text-sm text-positive',
       )}
     >
       <span className="font-medium">Progress saved</span>

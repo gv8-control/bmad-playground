@@ -8,17 +8,27 @@
         "--rm",
         "-e",
         "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e",
+        "GITHUB_TOOLSETS",
         "ghcr.io/github/github-mcp-server"
       ],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}",
+        "GITHUB_TOOLSETS": "default,actions"
       }
     },
-    "n8n-mcp": {
+    "n8n": {
       "type": "http",
-      "url": "http://0.0.0.0:5678/mcp-server/http",
+      "url": "http://localhost:5678/mcp-server/http",
       "headers": {
         "Authorization": "Bearer ${N8N_MCP_TOKEN}"
+      }
+    },
+    "daytona": {
+      "command": "daytona",
+      "args": ["mcp", "start"],
+      "env": {
+        "HOME": "${HOME}"
       }
     }
   }

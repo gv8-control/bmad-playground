@@ -34,7 +34,7 @@ export function ChatMessageList({
     if (isAtBottomRef.current && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isThinking]);
 
   function handleScroll() {
     const container = containerRef.current;
@@ -63,6 +63,7 @@ export function ChatMessageList({
         onScroll={handleScroll}
         className="h-full overflow-y-auto px-8 pt-6 pb-4"
         aria-live="polite"
+        data-testid="chat-message-list"
       >
         {messages.length === 0 && (
           <p className="text-text-2 text-sm">
@@ -76,7 +77,7 @@ export function ChatMessageList({
           if (message.role === 'system') {
             return (
               <div key={message.id} className="flex justify-center py-4">
-                <p className="text-xs text-text-3 text-center max-w-md" role="status">{message.content}</p>
+                <p className="text-xs text-text-2 text-center max-w-md" role="status">{message.content}</p>
               </div>
             );
           }
