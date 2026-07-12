@@ -19,5 +19,6 @@ export N8N_RUN_MIGRATIONS=false
 
 .devcontainer/import-workflows.sh
 .devcontainer/import-credentials.sh
+.devcontainer/setup-n8n-mcp-token.sh
 
 daytona login --api-key "$DAYTONA_API_KEY" >/dev/null 2>&1 || true
