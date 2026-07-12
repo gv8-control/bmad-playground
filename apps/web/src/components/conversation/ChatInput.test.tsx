@@ -130,3 +130,77 @@ describe('ChatInput', () => {
     expect(textarea).toBeDisabled();
   });
 });
+
+// ─── Story 5.1: Visual containers (AC-6) ────────────────────────────────────
+//
+// GREEN PHASE: tests are active for Task 6 implementation.
+//
+// AC-6: Conversation chat-input-box container.
+// The textarea, Send button, and WorkingTreeIndicator must sit inside a
+// single bordered chat-input-box container (bg-surface-raised border
+// border-border rounded-lg p-3 px-4 flex flex-col). The textarea is
+// transparent (bg-transparent border-none). A footer row holds the
+// WorkingTreeIndicator (left) and Send/Stop button (right).
+
+describe('ChatInput — chat-input-box container (Story 5.1, AC-6)', () => {
+  it('[P0] renders a chat-input-box container with bg-surface-raised border border-border rounded-lg (AC-6, Task 6.1)', () => {
+    render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
+    const container = document.querySelector('.bg-surface-raised.border.border-border.rounded-lg');
+    expect(container).toBeInTheDocument();
+  });
+
+  it('[P0] the textarea is transparent (bg-transparent border-none) inside the container (AC-6, Task 6.2)', () => {
+    render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
+    const textarea = screen.getByLabelText('Message input');
+    expect(textarea).toHaveClass('bg-transparent');
+    expect(textarea).toHaveClass('border-none');
+  });
+
+  it('[P0] renders a footer row (flex items-center justify-between) containing the Send button (AC-6, Task 6.3, 6.4)', () => {
+    render(<ChatInput value="hello" onChange={jest.fn()} onSubmit={jest.fn()} />);
+    const footer = document.querySelector('.flex.items-center.justify-between');
+    expect(footer).toBeInTheDocument();
+    expect(footer).toContainElement(screen.getByRole('button', { name: /send/i }));
+  });
+
+  it('[P0] renders the workingTreeIndicator prop in the footer row left side (AC-6, Task 6.5)', () => {
+    const indicator = <div data-testid="wt-indicator">Working Tree</div>;
+    render(
+      <ChatInput
+        value="hello"
+        onChange={jest.fn()}
+        onSubmit={jest.fn()}
+        workingTreeIndicator={indicator}
+      />,
+    );
+    const footer = document.querySelector('.flex.items-center.justify-between');
+    expect(footer).toContainElement(screen.getByTestId('wt-indicator'));
+  });
+
+  it('[P0] renders without workingTreeIndicator prop (footer row still exists) (AC-6, Task 6.5)', () => {
+    render(<ChatInput value="hello" onChange={jest.fn()} onSubmit={jest.fn()} />);
+    const footer = document.querySelector('.flex.items-center.justify-between');
+    expect(footer).toBeInTheDocument();
+    expect(footer).toContainElement(screen.getByRole('button', { name: /send/i }));
+  });
+
+  it('[P1] the chat-input-box container has focus-within ring (AC-6, Task 6.1)', () => {
+    render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
+    const container = document.querySelector('.bg-surface-raised.border.border-border.rounded-lg');
+    expect(container).toHaveClass('focus-within:ring-2');
+  });
+
+  it('[P1] the Stop button renders inside the footer row when isProcessing and onStop are provided (AC-6, Task 6.3)', () => {
+    render(
+      <ChatInput
+        value=""
+        onChange={jest.fn()}
+        onSubmit={jest.fn()}
+        onStop={jest.fn()}
+        isProcessing={true}
+      />,
+    );
+    const footer = document.querySelector('.flex.items-center.justify-between');
+    expect(footer).toContainElement(screen.getByLabelText('Stop agent'));
+  });
+});

@@ -185,6 +185,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Design tokens are custom dark-first colors defined in `tailwind.config.ts` (`bg`, `surface`, `surface-raised`, `border`, `text-1/2/3`, `accent`, `positive`, `caution`, `negative`). Use semantic token names, never raw hex values.
 - Font: Inter (sans), JetBrains Mono (mono).
 - **Standard focus ring classes:** `focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface` — the canonical visible-focus styling for every focusable interactive element (UX-DR16). Used across `ArtifactListEntry`, `ArtifactCard`, `RefreshButton`, sign-in submit button. Apply verbatim to new focusable elements.
+- **`focus-within:` ring on a container wrapping a borderless input:** when a container provides the visual styling (background, border) for a focusable element and the element itself is transparent (`bg-transparent border-none outline-none`), put the focus ring on the container via `focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-surface` — the element suppresses the default outline (`outline-none`) but has no `focus:ring-*` of its own. The container's `focus-within:` ring fires when any child receives focus. See `ChatInput.tsx` (Story 5.1).
 
 #### GitHub API Integration
 

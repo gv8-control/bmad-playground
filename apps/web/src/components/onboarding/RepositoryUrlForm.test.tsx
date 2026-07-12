@@ -3,12 +3,10 @@
  * Component unit tests for RepositoryUrlForm (Client Component).
  * Covers AC-1 (single URL input, no token field), AC-4 (inline error display,
  * per-cause messages), and UX-DR14/UX-DR16 accessibility requirements.
+ * Also covers Story 5.1 AC-2 (form panel) and AC-3 (BMAD-not-found panel).
  *
- * RED PHASE: all tests are skipped until RepositoryUrlForm.tsx is created (Task 5.3).
- * Remove test.skip() one describe-block at a time as you implement each piece.
- *
- * Module will not resolve until Task 5.3 creates the component file — that
- * "Cannot find module" error is the expected TDD red-phase signal.
+ * GREEN PHASE: all tests are active. Story 1.3 and Story 5.1 implementation
+ * complete.
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
@@ -264,5 +262,101 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
     await screen.findByRole('link', { name: /bmad documentation/i });
     await userEvent.click(button);
     await waitFor(() => expect(screen.queryByRole('link')).not.toBeInTheDocument());
+  });
+});
+
+// ─── Story 5.1: Visual containers (AC-2, AC-3) ───────────────────────────────
+//
+// GREEN PHASE: tests are active for Tasks 2 and 3 implementation.
+// AC-2: Onboarding form panel wraps the Repository URL input.
+// The input and its supporting copy must sit inside a form panel
+// (bg-surface border border-border rounded-xl p-7).
+//
+// AC-3: Onboarding BMAD-not-found panel for blocking states.
+// BMAD-validation errors (with documentationLink) must render in a styled
+// panel (bg-negative-bg border border-negative rounded-lg p-4) with a
+// title/body split. Non-BMAD errors keep the inline error style.
+
+describe('RepositoryUrlForm — form panel container (Story 5.1, AC-2)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] wraps the form inner content in a panel with bg-surface border border-border rounded-xl p-7 (AC-2, Task 2.1)', () => {
+    render(<RepositoryUrlForm />);
+    const panel = document.querySelector('.bg-surface.border.border-border.rounded-xl.p-7');
+    expect(panel).toBeInTheDocument();
+  });
+
+  it('[P0] the form panel contains the label, input, and submit button (AC-2, Task 2.2)', () => {
+    render(<RepositoryUrlForm />);
+    const panel = document.querySelector('.bg-surface.border.border-border.rounded-xl.p-7');
+    expect(panel).toContainElement(screen.getByLabelText(/repository url/i));
+    expect(panel).toContainElement(
+      screen.getByRole('button', { name: /connect repository/i }),
+    );
+  });
+});
+
+describe('RepositoryUrlForm — BMAD-not-found panel (Story 5.1, AC-3)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] renders a styled panel (bg-negative-bg border border-negative rounded-lg p-4) for BMAD-validation errors with documentationLink (AC-3, Task 3.1)', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({
+      error: 'BMAD initialization is incomplete. Missing: _bmad/.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => {
+      const panel = document.querySelector('.bg-negative-bg.border.border-negative.rounded-lg.p-4');
+      expect(panel).toBeInTheDocument();
+    });
+  });
+
+  it('[P0] the BMAD-not-found panel has a title/body split layout (AC-3, Task 3.2)', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({
+      error: 'BMAD initialization is incomplete. Missing: _bmad/.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => {
+      const panel = document.querySelector('.bg-negative-bg.border.border-negative.rounded-lg.p-4');
+      expect(panel).toBeInTheDocument();
+    });
+    const panel = document.querySelector('.bg-negative-bg.border.border-negative.rounded-lg.p-4');
+    const link = await screen.findByRole('link', { name: /bmad documentation/i });
+    expect(panel).toContainElement(link);
+  });
+
+  it('[P0] keeps inline error style (no bg-negative-bg panel) for non-BMAD errors without documentationLink (AC-3, Task 3.3)', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({
+      error: "You don't have write access to this repository.",
+      errorCode: 'INSUFFICIENT_PERMISSION',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    const panel = document.querySelector('.bg-negative-bg.border.border-negative.rounded-lg.p-4');
+    expect(panel).not.toBeInTheDocument();
+  });
+
+  it('[P1] preserves role="alert" and aria-describedby wiring in the BMAD-not-found panel (AC-3, Task 3.4)', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({
+      error: 'BMAD initialization is incomplete. Missing: _bmad/.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    const input = screen.getByLabelText(/repository url/i);
+    const alert = screen.getByRole('alert');
+    expect(input.getAttribute('aria-describedby')).toBe(alert.id);
   });
 });

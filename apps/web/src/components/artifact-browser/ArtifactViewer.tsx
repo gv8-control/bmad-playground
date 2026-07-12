@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
@@ -9,6 +10,22 @@ export interface ArtifactViewerProps {
 function stripFrontmatter(content: string): string {
   return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
 }
+
+function parseFrontmatter(content: string): Record<string, string> | null {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!match) return null;
+  const frontmatterBlock = match[1];
+  const result: Record<string, string> = {};
+  for (const line of frontmatterBlock.split(/\r?\n/)) {
+    const lineMatch = line.match(/^(\w+):\s*(.*)$/);
+    if (lineMatch) {
+      result[lineMatch[1]] = lineMatch[2];
+    }
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+const FRONTMATTER_FIELDS = ['title', 'status', 'updated'] as const;
 
 const components: Components = {
   h1: ({ node: _node, ...props }) => (
@@ -87,7 +104,12 @@ const components: Components = {
 };
 
 export function ArtifactViewer({ content }: ArtifactViewerProps) {
+  const frontmatter = parseFrontmatter(content);
   const strippedContent = stripFrontmatter(content);
+  const fields = FRONTMATTER_FIELDS.filter(
+    (key) => frontmatter && frontmatter[key] !== undefined,
+  );
+
   return (
     <div
       className="flex-1 overflow-y-auto px-12 py-8"
@@ -95,6 +117,33 @@ export function ArtifactViewer({ content }: ArtifactViewerProps) {
       aria-label="Artifact content"
     >
       <div className="max-w-[720px]">
+        {frontmatter && fields.length > 0 && (
+          <div
+            className="inline-flex items-center gap-2.5 bg-surface-raised border border-border rounded-md p-2 px-3 mb-6"
+            aria-label="Artifact metadata"
+          >
+            {fields.map((key, index) => {
+              const value = frontmatter[key];
+              return (
+                <Fragment key={key}>
+                  {index > 0 && (
+                    <span className="w-px h-3.5 bg-border"></span>
+                  )}
+                  <span className="text-text-2 font-mono text-xs">{key}</span>
+                  {key === 'status' ? (
+                    <span className="text-text-2 font-mono text-xs border border-border rounded-full px-2 py-0.5">
+                      {value}
+                    </span>
+                  ) : (
+                    <span className="text-text-1 font-mono text-xs font-medium">
+                      {value}
+                    </span>
+                  )}
+                </Fragment>
+              );
+            })}
+          </div>
+        )}
         <Markdown remarkPlugins={[remarkGfm]} components={components}>
           {strippedContent}
         </Markdown>

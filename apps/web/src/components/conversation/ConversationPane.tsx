@@ -913,7 +913,6 @@ export function ConversationPane({
             <SessionStartSpinner />
           )
         )}
-        <WorkingTreeIndicator state={effectiveWorkingTreeState} onSave={handleSave} />
         <div ref={pickerContainerRef} className="relative">
           {pickerOpen && (
             <SlashCommandPicker
@@ -934,6 +933,7 @@ export function ConversationPane({
               inputRef={inputRef}
               ariaActivedescendant={pickerOpen && filteredSkills.length > 0 ? `skill-option-${pickerSelectedIndex}` : undefined}
               ariaControls={pickerOpen ? 'skill-listbox' : undefined}
+              workingTreeIndicator={<WorkingTreeIndicator state={effectiveWorkingTreeState} onSave={handleSave} />}
             />
           )}
         </div>

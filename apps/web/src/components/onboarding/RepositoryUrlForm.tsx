@@ -36,46 +36,63 @@ export function RepositoryUrlForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <label htmlFor="repo-url" className="text-text-2 text-sm font-medium">
-          Repository URL
-        </label>
-        <input
-          id="repo-url"
-          type="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://github.com/your-org/your-repo"
-          required
-          disabled={isPending}
-          aria-describedby={error ? 'repo-url-error' : undefined}
-          className="px-3 py-3 bg-surface border border-border rounded-md text-text-1 text-sm placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-60 disabled:cursor-not-allowed"
-        />
-        {error && (
-          <div id="repo-url-error" role="alert" className="text-negative text-sm flex flex-col gap-1">
-            <span>{error}</span>
-            {documentationLink && (
-              <a
-                href={documentationLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline text-sm"
-              >
-                BMAD documentation
-              </a>
-            )}
-          </div>
-        )}
-      </div>
+    <form onSubmit={handleSubmit} className="w-full">
+      <div className="bg-surface border border-border rounded-xl p-7 flex flex-col gap-5">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="repo-url" className="text-text-2 text-sm font-medium">
+            Repository URL
+          </label>
+          <input
+            id="repo-url"
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://github.com/your-org/your-repo"
+            required
+            disabled={isPending}
+            aria-describedby={error ? 'repo-url-error' : undefined}
+            className="px-3 py-3 bg-surface border border-border rounded-md text-text-1 text-sm placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-60 disabled:cursor-not-allowed"
+          />
+          {error && documentationLink ? (
+            <div
+              id="repo-url-error"
+              role="alert"
+              className="bg-negative-bg border border-negative rounded-lg p-4 flex flex-col gap-2"
+            >
+              <div className="font-medium text-negative text-sm">
+                BMAD not set up in this repository
+              </div>
+              <div className="text-negative text-sm flex flex-col gap-1">
+                <span>{error}</span>
+                <a
+                  href={documentationLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-sm"
+                >
+                  BMAD documentation
+                </a>
+              </div>
+            </div>
+          ) : error ? (
+            <div
+              id="repo-url-error"
+              role="alert"
+              className="text-negative text-sm flex flex-col gap-1"
+            >
+              <span>{error}</span>
+            </div>
+          ) : null}
+        </div>
 
-      <button
-        type="submit"
-        disabled={isPending || !url.trim()}
-        className="w-full px-4 py-3 bg-accent text-accent-fg rounded-md text-sm font-medium hover:bg-accent-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-60 disabled:cursor-not-allowed"
-      >
-        {isPending ? 'Validating…' : 'Connect repository'}
-      </button>
+        <button
+          type="submit"
+          disabled={isPending || !url.trim()}
+          className="w-full px-4 py-3 bg-accent text-accent-fg rounded-md text-sm font-medium hover:bg-accent-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isPending ? 'Validating…' : 'Connect repository'}
+        </button>
+      </div>
     </form>
   );
 }

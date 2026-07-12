@@ -120,3 +120,75 @@ describe('ArtifactViewer — frontmatter stripping (AC-1)', () => {
     expect(screen.getByTestId('markdown')).toHaveTextContent('# Hello');
   });
 });
+
+// ─── Story 5.1: Visual containers (AC-5) ─────────────────────────────────────
+//
+// GREEN PHASE: tests are active for Task 5 implementation.
+//
+// AC-5: Artifact-browser frontmatter metadata badge.
+// When an artifact has YAML frontmatter, a metadata badge renders above
+// the Markdown content showing title, status, and updated fields as
+// label-value pairs in JetBrains Mono. The badge uses a
+// bg-surface-raised border border-border rounded-md pill style.
+
+describe('ArtifactViewer — frontmatter metadata badge (Story 5.1, AC-5)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] renders a frontmatter metadata badge when content has frontmatter (AC-5, Task 5.2, 5.3)', () => {
+    const content = '---\ntitle: My Artifact\nstatus: draft\nupdated: 2026-07-12\n---\n# Hello';
+    render(<ArtifactViewer content={content} />);
+    const badge = document.querySelector('.bg-surface-raised.border.border-border.rounded-md');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveAttribute('aria-label', 'Artifact metadata');
+  });
+
+  it('[P0] renders metadata fields as label-value pairs in JetBrains Mono (AC-5, Task 5.4)', () => {
+    const content = '---\ntitle: My Artifact\nstatus: draft\nupdated: 2026-07-12\n---\n# Hello';
+    render(<ArtifactViewer content={content} />);
+    const badge = document.querySelector('[aria-label="Artifact metadata"]');
+    expect(badge).toBeInTheDocument();
+    expect(badge?.querySelectorAll('.font-mono').length).toBeGreaterThan(0);
+    expect(badge?.textContent).toContain('title');
+    expect(badge?.textContent).toContain('My Artifact');
+    expect(badge?.textContent).toContain('updated');
+    expect(badge?.textContent).toContain('2026-07-12');
+  });
+
+  it('[P0] renders the status field as a pill (rounded-full) (AC-5, Task 5.5)', () => {
+    const content = '---\ntitle: My Artifact\nstatus: draft\nupdated: 2026-07-12\n---\n# Hello';
+    render(<ArtifactViewer content={content} />);
+    const badge = document.querySelector('[aria-label="Artifact metadata"]');
+    expect(badge).toBeInTheDocument();
+    const statusPill = badge?.querySelector('.rounded-full');
+    expect(statusPill).toBeInTheDocument();
+    expect(statusPill?.textContent).toContain('draft');
+  });
+
+  it('[P0] does NOT render a badge when content has no frontmatter (AC-5, Task 5.6)', () => {
+    const content = '# Hello World';
+    render(<ArtifactViewer content={content} />);
+    const badge = document.querySelector('[aria-label="Artifact metadata"]');
+    expect(badge).not.toBeInTheDocument();
+  });
+
+  it('[P1] skips absent frontmatter fields (only title, no status/updated) (AC-5, Task 5.5)', () => {
+    const content = '---\ntitle: Only Title\n---\n# Hello';
+    render(<ArtifactViewer content={content} />);
+    const badge = document.querySelector('[aria-label="Artifact metadata"]');
+    expect(badge).toBeInTheDocument();
+    expect(badge?.textContent).toContain('title');
+    expect(badge?.textContent).toContain('Only Title');
+    expect(badge?.textContent).not.toContain('status');
+    expect(badge?.textContent).not.toContain('updated');
+  });
+
+  it('[P1] badge renders above the Markdown content (AC-5, Task 5.2)', () => {
+    const content = '---\ntitle: My Artifact\n---\n# Hello';
+    const { container } = render(<ArtifactViewer content={content} />);
+    const badge = container.querySelector('[aria-label="Artifact metadata"]');
+    const markdown = container.querySelector('[data-testid="markdown"]');
+    expect(badge).toBeInTheDocument();
+    expect(markdown).toBeInTheDocument();
+    expect(badge?.compareDocumentPosition(markdown as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+});
