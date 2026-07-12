@@ -90,7 +90,7 @@ export default async function ArtifactsPage({
       {credentialFailed && <CredentialErrorBanner />}
       {selectedArtifactId ? (
         <div className="flex flex-1 overflow-hidden">
-          <div className="w-[280px] flex-shrink-0 border-r border-border-subtle overflow-y-auto">
+          <div className="w-[280px] flex-shrink-0 border-r border-surface-raised overflow-y-auto no-scrollbar">
             {renderArtifacts.length === 0 ? (
               <p className="text-text-2 text-sm">
                 Start your first conversation to create an artifact.

@@ -1,11 +1,12 @@
 /**
  * ATDD — Story 2.5: View a Single Artifact's Rendered Content
+ * Story 5.4: Fix Token-Usage Drift (AC-6: h2/hr border-surface-raised)
  * Component unit tests for ArtifactViewer (Server Component, synchronous).
  * Covers AC-1 (rendered Markdown content, read-only, role="main").
  *
  * GREEN PHASE: implementation complete. ArtifactViewer strips YAML
  * frontmatter and renders Markdown via react-markdown + remark-gfm with
- * component-level className overrides.
+ * component-level className overrides. Story 5.4 fixes hairline border tokens.
  *
  * react-markdown is mocked as a render stub that captures props to isolate
  * the test from the markdown library's internals — frontmatter-stripping,
@@ -190,5 +191,42 @@ describe('ArtifactViewer — frontmatter metadata badge (Story 5.1, AC-5)', () =
     expect(badge).toBeInTheDocument();
     expect(markdown).toBeInTheDocument();
     expect(badge?.compareDocumentPosition(markdown as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+});
+
+// ─── Story 5.4: Hairline border token (AC-6) ─────────────────────────────────
+//
+// Story 5.4: AC-6: h2 separator and hr use border-surface-raised (not border-border-subtle).
+// Since react-markdown is mocked, we test the component override functions
+// from the `components` prop by rendering their output directly.
+// Tests are active (GREEN) after Story 5.4 implementation.
+
+describe('ArtifactViewer — hairline border tokens (Story 5.4, AC-6)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] h2 separator uses border-surface-raised, not border-border-subtle (AC-6)', () => {
+    render(<ArtifactViewer content="# Hello" />);
+    const callArgs = mockMarkdown.mock.calls[0][0] as {
+      components?: Record<string, (props: Record<string, unknown>) => React.ReactElement>;
+    };
+    const H2 = callArgs.components!.h2;
+    const { container } = render(H2({ node: null, children: 'Heading' }));
+    const h2 = container.querySelector('h2');
+    expect(h2).not.toBeNull();
+    expect(h2!.className).toContain('border-surface-raised');
+    expect(h2!.className).not.toContain('border-border-subtle');
+  });
+
+  it('[P0] hr element uses border-surface-raised, not border-border-subtle (AC-6)', () => {
+    render(<ArtifactViewer content="# Hello" />);
+    const callArgs = mockMarkdown.mock.calls[0][0] as {
+      components?: Record<string, (props: Record<string, unknown>) => React.ReactElement>;
+    };
+    const Hr = callArgs.components!.hr;
+    const { container } = render(Hr({ node: null }));
+    const hr = container.querySelector('hr');
+    expect(hr).not.toBeNull();
+    expect(hr!.className).toContain('border-surface-raised');
+    expect(hr!.className).not.toContain('border-border-subtle');
   });
 });

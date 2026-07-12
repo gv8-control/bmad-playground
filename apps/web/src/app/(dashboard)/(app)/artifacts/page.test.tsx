@@ -6,11 +6,12 @@
  * Covers AC-1 (two-column layout, rendered content), AC-2 (artifact load
  * error state), AC-3 (back navigation via query parameter approach).
  * Story 5.2 covers: AC-7 (breadcrumb inline beside title), AC-8 (header bottom divider).
+ * Story 5.4 covers: AC-6 (list pane border-surface-raised).
  *
  * GREEN PHASE: implementation complete. Story 2.4 delivered the list-only
  * page; Story 2.5 adds searchParams handling, selected-artifact query,
  * two-column layout, and ArtifactViewer/ArtifactLoadError rendering.
- * Story 5.2 tests are active and passing.
+ * Story 5.2 and Story 5.4 tests are active and passing.
  *
  * Child component rendering (ArtifactListEntry, ArtifactViewer,
  * ArtifactLoadError, CredentialErrorBanner) is verified by their own
@@ -433,6 +434,35 @@ describe('ArtifactsPage — page structure (AC-1, UX-DR16)', () => {
       const h1Match = html.match(/<h1[^>]*>/);
       expect(h1Match).not.toBeNull();
       expect(h1Match![0]).not.toContain('px-8');
+    });
+  });
+
+  // ─── Story 5.4: Hairline border token (AC-6) ───────────────────────────────
+  //
+  // Story 5.4: AC-6: Artifact list pane divider uses border-surface-raised (not border-border-subtle).
+  // Test is active (GREEN) after Story 5.4 implementation.
+
+  describe('[P0] Story 5.4, AC-6 — Artifact list pane border token', () => {
+    it('list pane divider uses border-surface-raised, not border-border-subtle (AC-6)', async () => {
+      setupArtifacts(ARTIFACTS);
+      mockArtifactFindFirst.mockResolvedValue(SELECTED_ARTIFACT);
+      const html = await renderPage({ id: 'art_1' });
+      expect(html).toContain('border-surface-raised');
+      expect(html).not.toContain('border-border-subtle');
+    });
+  });
+
+  // ─── Story 5.4: Scrollbar hiding (AC-7) ────────────────────────────────────
+  //
+  // Story 5.4: AC-7: Scrollable artifact list pane hides scrollbars via no-scrollbar.
+  // Test is active (GREEN) after Story 5.4 implementation.
+
+  describe('[P0] Story 5.4, AC-7 — Scrollbar hiding on artifact list pane', () => {
+    it('artifact list pane has no-scrollbar class (AC-7)', async () => {
+      setupArtifacts(ARTIFACTS);
+      mockArtifactFindFirst.mockResolvedValue(SELECTED_ARTIFACT);
+      const html = await renderPage({ id: 'art_1' });
+      expect(html).toContain('no-scrollbar');
     });
   });
 });

@@ -10,8 +10,9 @@
  * Story 5.2 covers: AC-1 (wordmark interpunct), AC-2 (wordmark border-b),
  * AC-3 (Settings label), AC-4 (active inset pill), AC-5 (single padding),
  * AC-6 (button spacing/alignment), AC-9 (separator styling), AC-10 (top-clustered nav).
+ * Story 5.4 covers: AC-6 (nav right border border-surface-raised).
  *
- * GREEN PHASE: Story 5.2 tests are active and passing.
+ * GREEN PHASE: Story 5.2 and Story 5.4 tests are active and passing.
  */
 
 import '@testing-library/jest-dom';
@@ -380,6 +381,33 @@ describe('SideNavigation', () => {
         const conversationList = screen.getByTestId('conversation-list');
         expect(conversationList.className).not.toContain('mt-4');
       });
+    });
+  });
+
+  // ─── Story 5.4: Hairline border token (AC-6) ───────────────────────────────
+  //
+  // Story 5.4: AC-6: Nav right border uses border-surface-raised (not border-border-subtle).
+  // Test is active (GREEN) after Story 5.4 implementation.
+
+  describe('[P0] Story 5.4, AC-6 — Nav right border token', () => {
+    it('nav element uses border-surface-raised on right border, not border-border-subtle (AC-6)', () => {
+      render(<SideNavigation user={USER} />);
+      const nav = screen.getByRole('navigation');
+      expect(nav.className).toContain('border-surface-raised');
+      expect(nav.className).not.toContain('border-border-subtle');
+    });
+  });
+
+  // ─── Story 5.4: Scrollbar hiding (AC-7) ────────────────────────────────────
+  //
+  // Story 5.4: AC-7: Scrollable conversation list panel hides scrollbars via no-scrollbar.
+  // Test is active (GREEN) after Story 5.4 implementation.
+
+  describe('[P0] Story 5.4, AC-7 — Scrollbar hiding on conversation list', () => {
+    it('conversation list scrollable panel has no-scrollbar class (AC-7)', () => {
+      render(<SideNavigation user={USER} />);
+      const conversationList = screen.getByTestId('conversation-list');
+      expect(conversationList.className).toContain('no-scrollbar');
     });
   });
 });

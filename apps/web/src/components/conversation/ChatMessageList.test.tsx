@@ -4,6 +4,7 @@
  * Story 3.3: Converse with the Streaming Agent
  * Tests for ChatMessageList component.
  * Covers AC-1 (renders messages), AC-5 (scroll-to-bottom button).
+ * Story 5.4 covers: AC-7 (scrollbar hiding via no-scrollbar on message panel).
  */
 import { render, screen } from '@testing-library/react';
 
@@ -193,6 +194,27 @@ describe('ChatMessageList — Story 5.3 structural drift', () => {
 
       const list = screen.getByTestId('chat-message-list');
       expect(list).toHaveAttribute('role', 'log');
+    });
+  });
+
+  // ─── Story 5.4: Scrollbar hiding (AC-7) ────────────────────────────────────
+  //
+  // Story 5.4: AC-7: Scrollable message panel hides scrollbars via no-scrollbar.
+  // Test is active (GREEN) after Story 5.4 implementation.
+
+  describe('[P0] Story 5.4, AC-7 — Scrollbar hiding on message panel', () => {
+    it('message scroll panel has no-scrollbar class (AC-7)', () => {
+      render(
+        <ChatMessageList
+          messages={[userMessage]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      const list = screen.getByTestId('chat-message-list');
+      expect(list.className).toContain('no-scrollbar');
     });
   });
 });

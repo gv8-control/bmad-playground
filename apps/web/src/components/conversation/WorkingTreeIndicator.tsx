@@ -136,7 +136,7 @@ export function WorkingTreeIndicator({ state, onSave }: WorkingTreeIndicatorProp
           role="dialog"
           aria-modal="true"
           aria-label="Save current progress"
-          className="absolute bottom-full left-0 mb-2 z-10 bg-surface-raised border border-border rounded-md p-4 shadow-lg min-w-[240px]"
+          className="absolute bottom-full left-0 mb-2 z-10 bg-surface-raised border border-border rounded-md p-4 shadow-floating min-w-[240px]"
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.preventDefault();
@@ -176,7 +176,7 @@ export function WorkingTreeIndicator({ state, onSave }: WorkingTreeIndicatorProp
                 triggerRef.current?.focus();
               }}
               className={cn(
-                'rounded-sm bg-accent px-3 py-2 text-sm text-bg font-medium',
+                'rounded-sm bg-accent px-3 py-2 text-sm text-accent-fg font-medium',
                 FOCUS_RING,
               )}
             >
@@ -204,7 +204,7 @@ export function WorkingTreeIndicator({ state, onSave }: WorkingTreeIndicatorProp
         <div
           ref={tooltipRef}
           role="tooltip"
-          className="absolute bottom-full left-0 mb-2 z-10 bg-surface-raised border border-border rounded-md p-3 shadow-lg max-w-[300px] text-sm text-text-2"
+          className="absolute bottom-full left-0 mb-2 z-10 bg-surface-raised border border-border rounded-md p-3 shadow-floating max-w-[300px] text-sm text-text-2"
         >
           {INFO_TEXT}
         </div>

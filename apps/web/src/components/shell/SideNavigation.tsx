@@ -26,7 +26,7 @@ export function SideNavigation({ user, conversations = [] }: SideNavigationProps
   const ariaLabel = `${user.name ?? user.email ?? 'User'} — Settings`;
 
   return (
-    <nav className="w-[240px] h-full bg-surface border-r border-border-subtle flex flex-col">
+    <nav className="w-[240px] h-full bg-surface border-r border-surface-raised flex flex-col">
       <div data-testid="product-wordmark" className="h-12 flex items-center px-4 text-text-1 font-semibold tracking-tight border-b border-surface-raised">
         bmad<span className="text-accent">·</span>easy
       </div>
@@ -39,7 +39,7 @@ export function SideNavigation({ user, conversations = [] }: SideNavigationProps
       </Link>
 
       <div className="flex-1 flex flex-col overflow-hidden py-1">
-        <div data-testid="conversation-list" className="flex flex-col gap-1 overflow-y-auto">
+        <div data-testid="conversation-list" className="flex flex-col gap-1 overflow-y-auto no-scrollbar">
           {conversations
             .filter((c) => c.title !== null)
             .map((c) => (

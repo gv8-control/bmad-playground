@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { connectRepository } from '@/actions/repo-connection.actions';
+import { cn } from '@/lib/utils';
 
 type ConnectResult = Awaited<ReturnType<typeof connectRepository>>;
 
@@ -39,7 +40,7 @@ export function RepositoryUrlForm() {
     <form onSubmit={handleSubmit} className="w-full">
       <div className="bg-surface border border-border rounded-xl p-7 flex flex-col gap-5">
         <div className="flex flex-col gap-2">
-          <label htmlFor="repo-url" className="text-text-2 text-sm font-medium">
+          <label htmlFor="repo-url" className="text-text-1 text-sm font-medium">
             Repository URL
           </label>
           <input
@@ -51,7 +52,12 @@ export function RepositoryUrlForm() {
             required
             disabled={isPending}
             aria-describedby={error ? 'repo-url-error' : undefined}
-            className="px-3 py-3 bg-surface border border-border rounded-md text-text-1 text-sm placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-60 disabled:cursor-not-allowed"
+            className={cn(
+              'px-3 py-3 bg-bg border border-border rounded-md text-text-1 text-sm placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg disabled:opacity-60 disabled:cursor-not-allowed',
+              error
+                ? 'border-negative focus:border-negative'
+                : 'focus:border-accent',
+            )}
           />
           {error && documentationLink ? (
             <div

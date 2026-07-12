@@ -33,7 +33,7 @@ const components: Components = {
   ),
   h2: ({ node: _node, ...props }) => (
     <h2
-      className="text-lg font-semibold text-text-1 mt-7 mb-3 pt-5 border-t border-border-subtle"
+      className="text-lg font-semibold text-text-1 mt-7 mb-3 pt-5 border-t border-surface-raised"
       {...props}
     />
   ),
@@ -96,7 +96,7 @@ const components: Components = {
   ),
   em: ({ node: _node, ...props }) => <em className="italic" {...props} />,
   hr: ({ node: _node, ...props }) => (
-    <hr className="border-border-subtle border-t my-6" {...props} />
+    <hr className="border-surface-raised border-t my-6" {...props} />
   ),
   del: ({ node: _node, ...props }) => (
     <del className="line-through text-text-2" {...props} />

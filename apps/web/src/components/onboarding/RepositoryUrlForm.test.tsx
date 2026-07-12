@@ -4,9 +4,11 @@
  * Covers AC-1 (single URL input, no token field), AC-4 (inline error display,
  * per-cause messages), and UX-DR14/UX-DR16 accessibility requirements.
  * Also covers Story 5.1 AC-2 (form panel) and AC-3 (BMAD-not-found panel).
+ * Also covers Story 5.4 AC-2/AC-3 (token-usage drift: bg-bg, text-text-1,
+ * ring-offset-bg, focus:border-accent, border-negative on error).
  *
- * GREEN PHASE: all tests are active. Story 1.3 and Story 5.1 implementation
- * complete.
+ * GREEN PHASE: all tests are active. Story 1.3, Story 5.1, and Story 5.4
+ * implementation complete.
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
@@ -262,6 +264,55 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
     await screen.findByRole('link', { name: /bmad documentation/i });
     await userEvent.click(button);
     await waitFor(() => expect(screen.queryByRole('link')).not.toBeInTheDocument());
+  });
+});
+
+// ─── Story 5.4: Token-usage drift (AC-2, AC-3) ──────────────────────────────
+//
+// Story 5.4: AC-2: Input background is bg-bg (recessed), label uses text-text-1.
+// AC-3: Focus ring offset uses ring-offset-bg, border transitions on focus/error.
+// Tests are active (GREEN) after Story 5.4 implementation.
+
+describe('RepositoryUrlForm — token-usage drift (Story 5.4, AC-2, AC-3)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] input uses bg-bg (recessed), not bg-surface (raised) (AC-2)', () => {
+    render(<RepositoryUrlForm />);
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input.className).toContain('bg-bg');
+    expect(input.className).not.toMatch(/\bbg-surface\b/);
+  });
+
+  it('[P0] field label uses text-text-1, not text-text-2 (AC-2)', () => {
+    render(<RepositoryUrlForm />);
+    const label = screen.getByText(/repository url/i);
+    expect(label.className).toContain('text-text-1');
+    expect(label.className).not.toContain('text-text-2');
+  });
+
+  it('[P0] focus ring offset uses ring-offset-bg, not ring-offset-surface (AC-3)', () => {
+    render(<RepositoryUrlForm />);
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input.className).toContain('ring-offset-bg');
+    expect(input.className).not.toContain('ring-offset-surface');
+  });
+
+  it('[P0] input border transitions to border-accent on focus (AC-3)', () => {
+    render(<RepositoryUrlForm />);
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input.className).toContain('focus:border-accent');
+  });
+
+  it('[P0] input border transitions to border-negative on error, persists on focus (AC-3)', async () => {
+    (connectRepository as jest.Mock).mockResolvedValue({ error: 'Error.', errorCode: 'UNKNOWN' });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input.className).toContain('border-negative');
+    expect(input.className).toContain('focus:border-negative');
+    expect(input.className).not.toContain('focus:border-accent');
   });
 });
 
