@@ -119,11 +119,11 @@
       "stage": "review",
       "skill": "bmad-testarch-nfr",
       "agent": "reviewer",
-      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section.",
+      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section. For findings you determine were introduced by the current story and that have a straightforward remediation (e.g., a missing class or attribute the story should have applied to a location it touched), apply the fix directly rather than only documenting it; for findings that are pre-existing or require complex remediation, document them as before.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-03T19:31:19.848Z",
-      "updatedByRun": "2.4-a1-20260703T153249"
+      "updatedAt": "2026-07-12T17:03:00.862Z",
+      "updatedByRun": "5.4-a1-20260712T150150"
     },
     {
       "id": "update-project-context",
