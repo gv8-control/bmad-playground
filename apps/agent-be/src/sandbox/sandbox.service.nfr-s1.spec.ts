@@ -57,10 +57,10 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
 
       expect(mockDaytona.create).toHaveBeenCalledTimes(1);
       const createArg = mockDaytona.create.mock.calls[0][0];
-      expect(createArg).toHaveProperty('labels');
-      expect(createArg).not.toHaveProperty('env');
-      expect(createArg).not.toHaveProperty('resources');
-      expect(createArg).not.toHaveProperty('metadata');
+      expect(Object.keys(createArg)).toContain('labels');
+      expect(Object.keys(createArg)).not.toContain('env');
+      expect(Object.keys(createArg)).not.toContain('resources');
+      expect(Object.keys(createArg)).not.toContain('metadata');
     });
 
     it('labels contain conversationId only — no credentials in labels', async () => {

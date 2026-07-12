@@ -14,7 +14,7 @@
     "test:e2e:report": "playwright show-report playwright-report",
     "develop-epic": "node scripts/develop-epic.mjs",
     "rotate-kek": "dotenv -e .env -- ts-node --transpile-only scripts/rotate-kek.ts",
-    "db:migrate": "dotenv -e .env -- prisma migrate deploy --config libs/database-schemas/prisma.config.ts",
+    "db:migrate": "dotenv -e .env -- ts-node --transpile-only scripts/run-migrations.ts",
     "db:migrate:status": "dotenv -e .env -- prisma migrate status --config libs/database-schemas/prisma.config.ts"
   },
   "devDependencies": {

@@ -3,3 +3,6 @@
 {"ts":"2026-07-06T11:00:22Z","source":"opencode-runner","context":"Unit tests (3.11) / initial run","rc":124,"salvagedOutput":"yes","stderrTail":""}
 {"ts":"2026-07-12T07:22:54Z","source":"opencode-runner","context":"Prepare tests (4.2) / initial run","rc":124,"salvagedOutput":"yes","stderrTail":""}
 {"ts":"2026-07-12T10:16:04Z","source":"opencode-runner","context":"Prepare tests (4.3) / initial run","rc":124,"salvagedOutput":"yes","stderrTail":""}
+{"ts":"2026-07-12T19:59:10Z","source":"opencode-runner","context":"Test review (4.4) / initial run","rc":124,"salvagedOutput":"yes","stderrTail":""}
+{"ts":"2026-07-12T21:24:53Z","source":"opencode-runner","context":"Implement story (4.5) / initial run","rc":124,"salvagedOutput":"yes","stderrTail":""}
+{"ts":"2026-07-12T21:34:33Z","source":"opencode-runner","context":"NFR review (4.4) / follow-up run","rc":124,"salvagedOutput":"yes","stderrTail":""}

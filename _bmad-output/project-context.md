@@ -205,6 +205,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **E2E tests** live in `playwright/` directory (Playwright), not in `apps/`.
 - **Integration tests** in `apps/agent-be/test/integration/` with a separate Jest config (`apps/agent-be/test/jest-integration.config.ts`).
 - Test file naming: `*.spec.ts` for unit, `*.test.tsx` for React component tests, `*.integration.spec.ts` for integration.
+- **Operational script testability (`scripts/*.ts`):** scripts with testable functions (especially security invariants like `describeDatabase()`) export those functions and guard `main()` with `if (require.main === module)` so unit tests can import without side effects. Unit tests in `apps/agent-be/test/` import from `scripts/` via relative path with `// eslint-disable-next-line @nx/enforce-module-boundaries` (since `scripts/` is not an Nx project). See `scripts/run-migrations.ts` + `apps/agent-be/test/unit/run-migrations.spec.ts` (Story 4.4).
 
 #### Test Priority Tags
 
