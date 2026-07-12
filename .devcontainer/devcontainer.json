@@ -1,5 +1,7 @@
 {
   "name": "BMad Easy Dev",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/bmad-playground,type=bind,consistency=cached",
+  "workspaceFolder": "/workspaces/bmad-playground",
   "image": "mcr.microsoft.com/devcontainers/universal:5",
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
