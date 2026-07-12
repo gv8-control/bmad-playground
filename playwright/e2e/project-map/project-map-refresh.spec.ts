@@ -12,7 +12,6 @@ import { test, expect } from '../../support/merged-fixtures';
  * no interaction with agent-be, sandboxes, or conversations; router.refresh()
  * re-renders only the current route's Server Components).
  *
- * GREEN PHASE: RefreshButton is wired to the Project Map header (Task 2.1 done).
  * These tests use page.route() to mock the Server Action POST response (React
  * Flight wire format — same pattern as bmad-validation.spec.ts), allowing
  * verification of spinner state, syncArtifactsAction invocation, and page

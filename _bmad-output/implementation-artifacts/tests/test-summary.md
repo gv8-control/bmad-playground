@@ -1,6 +1,6 @@
 # Test Automation Summary
 
-**Last updated:** 2026-07-12 (Story 4.1 — Vercel project provisioning; 8 unit tests verified passing, 0 E2E/API tests generated — infrastructure config story, E2E deferred per DP-5)
+**Last updated:** 2026-07-12 (Story 4.3 — Dockerfile for agent-be; 36 unit + 8 integration tests verified passing, 0 E2E/API tests generated — infrastructure story, E2E deferred per DP-5)
 
 ---
 
@@ -2143,3 +2143,159 @@ yarn nx test web -- --testPathPattern=vercel-config --skip-nx-cache --verbose
 
 - **No action required for Story 4.1** — all automatable ACs (AC-1 config file validation, AC-2 auto-deploy disabled) have complete unit test coverage. AC-3 and the operational portions of AC-1/AC-2 are verified operationally per the story's Tasks 2–4.
 - **Production URL smoke test (optional, future):** a Playwright test navigating to `https://bmad-easy.vercel.app` and asserting HTTP 200/302 could be added once the deploy pipeline (Story 4.6) is wired. This would be an integration test against a live deployment, not a mock — deferred until the CI deploy job exists.
+
+---
+
+## Story 4.3: Add a Dockerfile for `apps/agent-be`
+
+**Generated:** 2026-07-12
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### API Tests
+
+**None generated.** Story 4.3 has no HTTP API endpoint surface. The story creates a Dockerfile, `.dockerignore`, and Railway configuration. The Railway GraphQL API calls (`serviceInstanceUpdate`, `variableCollectionUpsert`) are server-to-server operations against an external service with side effects (changing Railway service configuration). They are operational steps performed by the developer (Task 3), not application code under test.
+
+### E2E Tests
+
+**None generated.** Story 4.3 has no UI. The testable artifacts are `apps/agent-be/Dockerfile` (a static text file with Docker build instructions) and `.dockerignore` (a static text file with ignore patterns). E2E deferred per DP-5 with a per-AC browser-level mock feasibility check documented in the ATDD checklist (see Deferral Analysis below).
+
+### Unit Tests (existing — verified passing)
+
+- [x] [apps/agent-be/test/dockerfile.spec.ts](../../../apps/agent-be/test/dockerfile.spec.ts) — Dockerfile structural validation (20 tests)
+- [x] [apps/agent-be/test/dockerignore.spec.ts](../../../apps/agent-be/test/dockerignore.spec.ts) — `.dockerignore` exclusion pattern validation (16 tests)
+
+#### Test Inventory — `dockerfile.spec.ts`
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| Dockerfile exists at apps/agent-be/Dockerfile | AC-1 | P0 | File is at the correct path, with the app it builds |
+| Install stage (FROM ... AS install) | AC-1 | P0 | Multi-stage build: install stage present |
+| Build stage (FROM ... AS build) | AC-1 | P0 | Multi-stage build: build stage present |
+| Runtime stage (FROM ... AS runtime) | AC-1 | P0 | Multi-stage build: runtime stage present |
+| All stages use node:24-slim base image | AC-1 | P0 | Node 24 per `.nvmrc`, slim variant for musl compatibility |
+| Install stage activates Corepack | AC-1 | P0 | Corepack activates Yarn 4.17.0 per `packageManager` field |
+| Install stage runs yarn install --immutable | AC-1 | P0 | Immutable install at workspace root, matching local dev |
+| Runtime stage runs yarn install for production deps | AC-1 | P0 | Production deps from generated `package.json` |
+| Build stage runs database-schemas:generate | AC-4 | P0 | Prisma generate step in build stage |
+| Build stage runs nx build agent-be | AC-1 | P0 | Nx build target in build stage |
+| Prisma generate runs before nx build agent-be | AC-4 | P1 | Ordering: generate before build (index comparison) |
+| Dockerfile EXPOSEs port 3001 | AC-1 | P0 | Exposes the port agent-be listens on |
+| CMD is ["node", "main.js"] | AC-1 | P0 | Entry point is the compiled `main.js` |
+| Runtime stage copies build output from build stage | AC-1 | P0 | COPY --from=build for build output |
+| HEALTHCHECK instruction is present | AC-3 | P0 | HEALTHCHECK instruction in Dockerfile |
+| HEALTHCHECK polls /health (not /api/health) | AC-3 | P0 | Health endpoint at root, excluded from `/api` prefix |
+| HEALTHCHECK interval is 30s | AC-3 | P0 | Default 30s interval per AC |
+| HEALTHCHECK uses Node.js (no curl install) | AC-3 | P0 | Node.js one-liner, no `curl` in `node:24-slim` |
+| No secret ARG directives in Dockerfile | AC-1 | P0 | Credential isolation: no `ARG <secret>=` directives |
+| No secret ENV directives in Dockerfile | AC-1 | P0 | Credential isolation: no `ENV <secret>=` directives |
+
+#### Test Inventory — `dockerignore.spec.ts`
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| .dockerignore exists at repo root | AC-1 | P0 | At same level as build context |
+| Excludes .env files | AC-1 | P0 | Secrets must never enter Docker build context |
+| Excludes node_modules/ | AC-1 | P0 | Avoids copying GBs of `node_modules` into build context |
+| Excludes .git/ | AC-1 | P0 | Git history not needed in Docker build |
+| Excludes dist/ | AC-1 | P0 | Build output not needed — Dockerfile produces its own |
+| Excludes .nx/ | AC-1 | P0 | Nx cache not needed in build |
+| Excludes .next/ | AC-1 | P0 | Next.js build output not needed for agent-be |
+| Excludes out/ | AC-1 | P0 | Generic build output not needed |
+| Excludes libs/database-schemas/src/generated/ | AC-1 | P0 | Prisma generated client is a build artifact — Dockerfile runs `prisma generate` itself |
+| Excludes playwright-report/ | AC-1 | P0 | Test reports not needed in production image |
+| Excludes test-results/ | AC-1 | P0 | Test results not needed in production image |
+| Excludes .vercel/ | AC-1 | P0 | Vercel config not needed for agent-be build |
+| Excludes .railway/ | AC-1 | P0 | Railway config not needed in image |
+| Excludes .claude/ | AC-1 | P0 | Claude config not needed in production image |
+| Excludes _bmad-output/ | AC-1 | P0 | BMAD artifacts not needed in production image |
+| Excludes docs/ | AC-1 | P0 | Documentation not needed in production image |
+
+### Integration Tests (existing — verified passing)
+
+- [x] [apps/agent-be/test/integration/railway-project-structure.integration.spec.ts](../../../apps/agent-be/test/integration/railway-project-structure.integration.spec.ts) — Railway service configuration validation (8 tests, 3 from Story 4.3)
+
+#### Test Inventory — Story 4.3 integration tests
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| agent-be service has rootDirectory set to "." | AC-1 | P1 | Monorepo root as build context for Dockerfile |
+| RAILWAY_DOCKERFILE_PATH is set to "apps/agent-be/Dockerfile" | AC-1 | P0 | Railway finds Dockerfile at custom path |
+| healthcheckPath is set to "/health" | AC-3 | P1 | Railway-level health probe complements Dockerfile HEALTHCHECK |
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| Unit | `dockerfile.spec.ts` | 20 | 20 | 0 | **ALL PASSING** |
+| Unit | `dockerignore.spec.ts` | 16 | 16 | 0 | **ALL PASSING** |
+| Integration | `railway-project-structure.integration.spec.ts` | 8 (3 from 4.3) | 8 | 0 | **ALL PASSING** |
+| E2E | — | 0 | — | — | **N/A (deferred)** |
+| API | — | 0 | — | — | **N/A (no endpoint surface)** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Unit/Integration Tests | E2E / Operational |
+|---|---|---|---|
+| AC-1 | Multi-stage build with Corepack/Yarn | 20 dockerfile tests + 16 dockerignore tests + 2 integration tests (rootDirectory, RAILWAY_DOCKERFILE_PATH) | Docker build verified operationally in Task 4 (local `docker build` + `docker run`) |
+| AC-2 | Local health check passes | — | Verified operationally in Task 4 (`GET /health` responds 200 from running container) |
+| AC-3 | Railway health check | 4 dockerfile tests (HEALTHCHECK present, /health path, 30s interval, Node.js) + 1 integration test (healthcheckPath) | Railway deploy verified operationally in Task 5 (build succeeded, health check mechanism working) |
+| AC-4 | Prisma generate before build | 3 dockerfile tests (database-schemas:generate present, nx build present, ordering) | — |
+
+---
+
+## E2E Deferral Analysis (Browser-Level Mock Verification)
+
+Per the ATDD checklist, each AC was checked for browser-level mock coverage before deferring:
+
+- **AC-2 (Docker image build — `docker build`):** Docker daemon operation. Playwright route interception only intercepts browser-initiated HTTP requests, not Docker daemon CLI commands. The Docker build creates a real container image with layers, filesystem, and metadata. **No mock covers this — defer.**
+- **AC-2 (Docker container run — `docker run`):** Docker daemon operation. Running a container creates a real process with network namespace, filesystem, and env vars. No browser interaction can trigger or verify container execution. **No mock covers this — defer.**
+- **AC-2 (`GET /health` from running container):** An HTTP request to `localhost:3001/health` could be intercepted by Playwright, but the container must be running first (Docker daemon operation). Without a running container, there's no server to intercept. **No mock covers this — defer.**
+- **AC-3 (Railway deploy and health check):** Server-to-server Railway API operation. Railway builds the Docker image in its infrastructure, runs it, and polls the health endpoint. No browser interaction can trigger or verify Railway's build/deploy pipeline. **No mock covers this — defer.**
+- **AC-3 (Railway dashboard shows healthy status):** Railway infrastructure state. A browser could navigate to the Railway dashboard, but that requires Railway authentication and verifies external service state, not a mock. **No mock covers this — defer.**
+
+**Conclusion:** No browser-level mock pattern can simulate any of the deferred ACs. All deferred portions involve Docker daemon operations or Railway infrastructure outcomes that are not browser-interactable. Playwright's `page.route()` can only intercept browser-initiated HTTP requests, and none of the Docker/Railway operations originate from a browser. Verified operationally per the story's Tasks 4–5.
+
+---
+
+## Test Execution
+
+```bash
+# Unit tests (all agent-be, includes 36 Story 4.3 tests)
+yarn nx test agent-be -- --testPathPattern=dockerfile --verbose
+yarn nx test agent-be -- --testPathPattern=dockerignore --verbose
+# Result: 18 suites passed, 339 tests passed (36 Story 4.3 tests), 0 failed, 0 skipped
+
+# Integration tests (requires RAILWAY_TOKEN in .env.local — makes real Railway API calls)
+yarn nx test-integration agent-be -- --testPathPatterns=railway-project-structure --verbose
+# Result: 8 tests passed (3 Story 4.3 tests), 0 failed, 0 skipped
+# (Verified in automate-validation-report-4-3.md)
+```
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — **N/A**: no HTTP API endpoint is the subject of the ACs. Railway GraphQL API calls are operational steps with external side effects, not application code under test.
+- [x] E2E tests generated (if UI exists) — **N/A**: no UI surface exists. Story 4.3 is an infrastructure/deployment story; the testable artifacts are static text files (Dockerfile, .dockerignore). E2E deferred per DP-5 with per-AC browser-level-mock analysis.
+- [x] Tests use standard test framework APIs — Jest 30 (`existsSync`, `readFileSync`, `describe`/`test` structure); Railway integration uses `fetch` with `AbortSignal.timeout(10_000)`
+- [x] Tests cover happy path — all required Dockerfile stages, instructions, and .dockerignore patterns validated
+- [x] Tests cover 1-2 critical error cases — file-not-found handled gracefully via `loadDockerfile()`/`loadDockerignore()` returning empty strings (clean assertion failures, not crashes); credential isolation (no secrets baked in, .env excluded); build-command ordering verified via index comparison
+- [x] All generated tests run successfully — 36/36 unit + 8/8 integration pass (verified via `yarn nx test agent-be` and `yarn nx test-integration agent-be`)
+- [x] Tests use proper locators (semantic, accessible) — N/A (config file validation, no UI)
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references on all tests
+- [x] No hardcoded waits or sleeps — synchronous file reads for unit tests; `AbortSignal.timeout(10_000)` for integration API calls
+- [x] Tests are independent (no order dependency) — each unit test loads the file independently; integration tests make independent Railway API queries
+- [x] Test summary created — this section
+- [x] Tests saved to appropriate directories — unit in `apps/agent-be/test/`, integration in `apps/agent-be/test/integration/`
+- [x] Summary includes coverage metrics — 44 tests (36 unit + 8 integration), all passing, 0 skipped, 0 E2E/API (deferred)
+
+### Next Steps
+
+- **No action required for Story 4.3** — all automatable ACs (AC-1, AC-3, AC-4) have complete unit + integration test coverage. AC-2 is deferred with documented justification (Docker daemon operations cannot be automated). The operational portions of AC-2 and AC-3 were verified manually per the story's Tasks 4–5.
+- **CI Docker build (optional, future):** building the Docker image in GitHub Actions and running the health check as a CI step is Story 4.6 scope. Once wired, a CI integration test could verify `docker build` succeeds and `GET /health` responds 200 from the built image — this would be a CI pipeline test, not a Playwright E2E test.

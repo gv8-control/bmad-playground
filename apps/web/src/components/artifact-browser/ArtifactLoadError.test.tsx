@@ -3,9 +3,6 @@
  * Component unit tests for ArtifactLoadError (Client Component).
  * Covers AC-2 (artifact load error state with Refresh button).
  *
- * GREEN PHASE: implementation complete. ArtifactLoadError renders the
- * error message and a Refresh button calling router.refresh().
- *
  * next/navigation is mocked to isolate the test from the router.
  *
  * Priority tags: P0 for AC coverage, P1 for edge cases.

@@ -24,7 +24,6 @@
  * in-flight provisioning via DELETE before minting new conversation).
  * Story 3.12 covers: AC-1 (SESSION_DRAINING event handler sets state to
  * 'reconnecting' — reuses existing SessionState; onerror preserves state).
- * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';

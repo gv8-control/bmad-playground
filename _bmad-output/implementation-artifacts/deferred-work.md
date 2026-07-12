@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: code review of 4-3-add-a-dockerfile-for-apps-agent-be (2026-07-12)
+
+- Non-deterministic dependency resolution — root yarn.lock copied for merged package.json doesn't match; `yarn install` without `--immutable` may resolve different versions. Spec-accepted tradeoff (DP-3). [apps/agent-be/Dockerfile:24-26]
+- Runtime container runs as root — no USER directive in Dockerfile. Security best practice not in ACs. [apps/agent-be/Dockerfile]
+- NODE_ENV=production not set in runtime stage — env var wiring is Story 4.5 scope. [apps/agent-be/Dockerfile:17-30]
+- HEALTHCHECK http.get has no request timeout — hangs until Docker's --timeout=3s kills it. Optimization, not a bug. [apps/agent-be/Dockerfile:28-29]
+- RAILWAY_TOKEN regex doesn't strip quotes from .env.local values — pre-existing issue. [apps/agent-be/test/integration/railway-project-structure.integration.spec.ts:33]
+
 ## Deferred from: code review of 4-1-provision-the-vercel-project-for-apps-web (2026-07-12)
 
 - P1 test in `vercel-config.spec.ts` casts `buildCommand as string` without a `typeof` check before calling `.indexOf()` — if `buildCommand` is undefined, throws `TypeError` instead of a clean assertion error. Low impact: the P0 sibling tests in the same describe block check `typeof buildCommand).toBe('string')` first and would fail first. Test quality improvement, not a production issue. [`apps/web/src/__tests__/vercel-config.spec.ts:65`]

@@ -3,10 +3,6 @@
  * Component unit tests for ArtifactViewer (Server Component, synchronous).
  * Covers AC-1 (rendered Markdown content, read-only, role="main").
  *
- * GREEN PHASE: implementation complete. ArtifactViewer strips YAML
- * frontmatter and renders Markdown via react-markdown + remark-gfm with
- * component-level className overrides.
- *
  * react-markdown is mocked as a render stub that captures props to isolate
  * the test from the markdown library's internals — frontmatter-stripping,
  * container structure, read-only assertion, and prop passing are tested here.

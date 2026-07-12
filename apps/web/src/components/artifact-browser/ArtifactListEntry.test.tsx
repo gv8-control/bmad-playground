@@ -4,10 +4,6 @@
  * Covers AC-1 (clickable list entry with selected state) and UX-DR16
  * (non-color state signaling, ARIA roles/labels, focus rings).
  *
- * GREEN PHASE: implementation complete. Story 2.4 delivered the base
- * component; Story 2.5 adds `href` and `selected` props and changes the
- * root element from `<div>` to `<Link>`.
- *
  * Priority tags: P0 for AC coverage, P1 for edge cases.
  */
 

@@ -5,9 +5,6 @@
  * Covers AC-1 (artifact list with cards), AC-2 (in-progress visual distinction),
  * UX-DR16 (non-color state signaling), and Story 2.6 AC-1/AC-2 (click-to-navigate).
  *
- * Story 2.2 and Story 2.6 tests are GREEN (component delivered as a <Link>
- * with href, aria-label, and hover/focus styling).
- *
  * Priority tags: P0 for AC coverage, P1 for edge cases.
  */
 

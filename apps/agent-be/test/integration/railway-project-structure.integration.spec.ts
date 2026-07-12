@@ -1,11 +1,15 @@
 /**
- * Integration tests for Railway project structure (Story 4.2).
+ * Integration tests for Railway project structure (Stories 4.2 + 4.3).
  *
  * Verifies:
- * - AC-1: Project contains Postgres and agent-be service shell
- * - AC-2: DATABASE_URL is provisioned on the Postgres service
+ * - AC-1 (4.2): Project contains Postgres and agent-be service shell
+ * - AC-2 (4.2): DATABASE_URL is provisioned on the Postgres service
+ * - AC-1 (4.3): rootDirectory is "." (monorepo root for Docker build context)
+ * - AC-1 (4.3): RAILWAY_DOCKERFILE_PATH is set to "apps/agent-be/Dockerfile"
+ * - AC-3 (4.3): healthcheckPath is set to "/health"
  *
- * Run: yarn nx test-integration agent-be -- --testPathPattern=railway-project-structure
+ *
+ * Run: yarn nx test-integration agent-be -- --testPathPatterns=railway-project-structure
  */
 
 import * as fs from 'fs';
@@ -143,7 +147,7 @@ describe('Railway project structure — Story 4.2', () => {
     expect(serviceNames).toContain('agent-be');
   });
 
-  it('[P1] agent-be service has rootDirectory set to "apps/agent-be"', async () => {
+  it('[P1] agent-be service has rootDirectory set to "." (monorepo root)', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const envId = projectData.project.environments.edges.find((e: any) => e.node.name === 'production')?.node.id;
     if (!envId) throw new Error('Production environment not found in project');
@@ -160,7 +164,7 @@ describe('Railway project structure — Story 4.2', () => {
       }
     `);
 
-    expect(data.serviceInstance.rootDirectory).toBe('apps/agent-be');
+    expect(data.serviceInstance.rootDirectory).toBe('.');
   });
 
   // --- AC-2: DATABASE_URL is provisioned ---
@@ -196,5 +200,63 @@ describe('Railway project structure — Story 4.2', () => {
     expect(vars).toHaveProperty('DATABASE_URL');
     expect(typeof vars.DATABASE_URL).toBe('string');
     expect((vars.DATABASE_URL as string).startsWith('postgresql://')).toBe(true);
+  });
+
+  // --- Story 4.3: Dockerfile and Railway configuration ---
+
+  it('[P0] RAILWAY_DOCKERFILE_PATH is set to "apps/agent-be/Dockerfile"', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const envId = projectData.project.environments.edges.find((e: any) => e.node.name === 'production')?.node.id;
+    if (!envId) throw new Error('Production environment not found in project');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const agentBeServiceId = projectData.project.services.edges.find((e: any) => e.node.name === 'agent-be')?.node.id;
+    if (!agentBeServiceId) throw new Error('agent-be service not found in project');
+
+    const data = await railwayGraphQL(`
+      query {
+        variables(
+          projectId: "${projectId}"
+          environmentId: "${envId}"
+          serviceId: "${agentBeServiceId}"
+        )
+      }
+    `);
+
+    const rawVars = data.variables as unknown;
+    if (rawVars == null) {
+      throw new Error('Railway API returned null for variables — no variables set on agent-be service');
+    }
+    let vars: Record<string, string>;
+    try {
+      vars = typeof rawVars === 'string' ? JSON.parse(rawVars) : (rawVars as Record<string, string>);
+    } catch {
+      throw new Error(`Railway API returned malformed JSON for variables on agent-be service`);
+    }
+    expect(Object.keys(vars)).toContain('RAILWAY_DOCKERFILE_PATH');
+    expect(vars.RAILWAY_DOCKERFILE_PATH).toBe('apps/agent-be/Dockerfile');
+  });
+
+  it('[P1] healthcheckPath is set to "/health"', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const envId = projectData.project.environments.edges.find((e: any) => e.node.name === 'production')?.node.id;
+    if (!envId) throw new Error('Production environment not found in project');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const agentBeServiceId = projectData.project.services.edges.find((e: any) => e.node.name === 'agent-be')?.node.id;
+    if (!agentBeServiceId) throw new Error('agent-be service not found in project');
+
+    const data = await railwayGraphQL(`
+      query {
+        serviceInstance(serviceId: "${agentBeServiceId}", environmentId: "${envId}") {
+          healthcheckPath
+        }
+      }
+    `);
+
+    if (!data.serviceInstance) {
+      throw new Error('Railway API returned null for serviceInstance — agent-be may not be deployed to production');
+    }
+    expect(data.serviceInstance.healthcheckPath).toBe('/health');
   });
 });

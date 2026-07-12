@@ -3,9 +3,6 @@
  * Component unit tests for RepositoryUrlForm (Client Component).
  * Covers AC-1 (single URL input, no token field), AC-4 (inline error display,
  * per-cause messages), and UX-DR14/UX-DR16 accessibility requirements.
- *
- * GREEN PHASE: all tests are un-skipped and passing.
- * RepositoryUrlForm.tsx has been created and all tests are active.
  */
 
 import { render, screen, waitFor } from '@testing-library/react';

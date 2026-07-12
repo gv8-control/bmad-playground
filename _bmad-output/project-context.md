@@ -13,7 +13,7 @@ sections_completed:
     'critical_rules',
   ]
 status: 'complete'
-rule_count: 173
+rule_count: 175
 optimized_for_llm: true
 ---
 
@@ -313,6 +313,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `apps/web` deploys to Vercel; `apps/agent-be` deploys to Railway (Docker).
 - Production only for MVP — no staging environment.
 - Local CI mirror: `./scripts/ci-local.sh`. Affected-only: `./scripts/test-changed.sh main`. Burn-in: `./scripts/burn-in.sh 10`.
+
+#### Docker
+
+- **Corepack in Docker runtime stages using generated `package.json`:** Nx's `generatePackageJson: true` produces a `package.json` without the `packageManager` field — `corepack enable` alone falls back to Corepack's default Yarn (1.x in Node 24), which ignores `.yarnrc.yml`. Use `corepack prepare yarn@4.17.0 --activate` in any Docker stage that runs `yarn` against a generated `package.json` (not the root `package.json`). The generated `package.json` may also miss transitive runtime deps (e.g. `@prisma/client-runtime-utils`, `ws` peer dep from `@daytonaio/sdk`) — merge root `dependencies` + root `yarn.lock` into the generated `package.json` if `MODULE_NOT_FOUND` occurs at runtime. See `apps/agent-be/Dockerfile` runtime stage (Story 4.3, Decision DP-2).
+- **HEALTHCHECK on `node:*-slim` images:** `node:24-slim` has no `curl`/`wget`. Use a `node -e` one-liner with `require('http')` to poll the health endpoint. Use `127.0.0.1` (not `localhost`) — `localhost` may resolve to IPv6 `::1` in some container runtimes, failing if the server binds IPv4 only. See `apps/agent-be/Dockerfile` (Story 4.3).
 
 #### Environment
 

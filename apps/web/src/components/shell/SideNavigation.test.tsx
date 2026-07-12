@@ -7,8 +7,6 @@
  * conversation list section exists but is empty.
  * Story 3.2 covers: AC-4 (conversation list renders titles as links, active highlight,
  * empty state).
- *
- * TDD GREEN PHASE: all tests are un-skipped and passing.
  */
 
 import '@testing-library/jest-dom';
