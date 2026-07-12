@@ -1,5 +1,9 @@
 # Deferred Work
 
+## Deferred from: code review of 4-1-provision-the-vercel-project-for-apps-web (2026-07-12)
+
+- P1 test in `vercel-config.spec.ts` casts `buildCommand as string` without a `typeof` check before calling `.indexOf()` — if `buildCommand` is undefined, throws `TypeError` instead of a clean assertion error. Low impact: the P0 sibling tests in the same describe block check `typeof buildCommand).toBe('string')` first and would fail first. Test quality improvement, not a production issue. [`apps/web/src/__tests__/vercel-config.spec.ts:65`]
+
 ## Deferred from: code review of credential-health.ts decrypt-failure classification fix (2026-07-04)
 
 - `markCredentialHealthy` has zero call sites anywhere in `apps/web/src` outside of tests — no production code path clears `RepoConnection.credentialHealth` back to `'healthy'` after a failure. Not caused by this change, but this change adds a new trigger (decrypt failure) into the same `'failed'` state with no automatic recovery. [`apps/web/src/lib/credential-health.ts:69`]
@@ -355,3 +359,10 @@ Four Playwright specs created (uncommitted) for the new real-service / multi-con
 - **"browse available skills" skip relies on unstable UI copy** — The intro prompt is excluded by matching the substring `'browse available skills'`. If the copy is reworded, the skip breaks and the intro prompt's `<p>` would satisfy the first-token check. The intro prompt is removed when `messages.length > 0` (after user echo), but there's a race window between echo and React removing the prompt. [`playwright/e2e/real-service/functional-smoke.spec.ts:116`, `playwright/e2e/real-service/nfr-performance.spec.ts:140`]
 - **Run error before first token causes 60s hang** — If `RUN_ERROR` or `STREAM_ERROR` fires before any `TEXT_MESSAGE_CONTENT`, the `waitForFunction` polls for 60s before timing out. The error is correctly excluded by `closest('[role="status"]')`, but there's no fast-fail path. The post-hoc "hello" validation would catch it, but only after the 60s timeout. [`playwright/e2e/real-service/nfr-performance.spec.ts:131-147`]
   - **`waitForSessionReady` hangs if backend omits WORKING_TREE_* before SESSION_READY** — Readiness is detected by the WorkingTreeIndicator text appearing. If the backend emits `SESSION_READY` without first emitting a `WORKING_TREE_*` event, `workingTreeState` stays `'hidden'` and the indicator never renders. The test hangs for 60s before failing. A secondary readiness signal (e.g., message input enabled) would be more robust. [`playwright/e2e/real-service/functional-smoke.spec.ts:49-53`, `playwright/e2e/real-service/nfr-performance.spec.ts:64-68`]
+
+## Deferred from: project-context pattern audit of 4-1-provision-the-vercel-project-for-apps-web (2026-07-12)
+
+Pattern audited: React 19 `ReactElement.props` is `unknown` — cast before accessing (added to `project-context.md`). Story 4.1 fixed a build-blocking instance in `AgentMessage.tsx:18` (`extractText`). The following test files access `.props` on a `React.ReactElement` cast without the type assertion, masked by ts-jest `diagnostics: false` (transpile-only). Would surface if diagnostics are enabled or a `typecheck` target is added for test files.
+
+- `(dashboard)/layout.test.tsx` accesses `result.props['data-testid']` and `result.props.children` on a `React.ReactElement` cast without casting `props` to the expected shape — React 19 types `props` as `unknown`, so property access is a TypeScript strict error. Masked by ts-jest `diagnostics: false`. [`apps/web/src/app/(dashboard)/layout.test.tsx:55-56`]
+- `(dashboard)/(app)/layout.test.tsx` accesses `result.props.user` and `result.props.children` on a `React.ReactElement` cast without casting `props` to the expected shape — same React 19 `unknown` issue. Masked by ts-jest `diagnostics: false`. [`apps/web/src/app/(dashboard)/(app)/layout.test.tsx:82-83`]

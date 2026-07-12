@@ -6,8 +6,8 @@
  * Verifies the jwt callback encrypts and upserts the access token after user
  * upsert when account.access_token is present (AC-3).
  *
- * RED PHASE: all tests are skipped until auth.ts is updated (Task 3.1).
- * Remove test.skip() one at a time as you implement.
+ * GREEN PHASE: all tests are un-skipped and passing.
+ * auth.ts has been updated with credential storage and all tests are active.
  *
  * Relationship to auth.integration.spec.ts:
  *   auth.integration.spec.ts covers the existing jwt/session callbacks from Story 1.2.

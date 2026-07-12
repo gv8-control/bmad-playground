@@ -8,8 +8,7 @@
  * Story 3.2 covers: AC-4 (conversation list renders titles as links, active highlight,
  * empty state).
  *
- * TDD RED PHASE: Story 3.2 tests are skipped (it.skip). Remove skips
- * one describe-block at a time per task during implementation.
+ * TDD GREEN PHASE: all tests are un-skipped and passing.
  */
 
 import '@testing-library/jest-dom';

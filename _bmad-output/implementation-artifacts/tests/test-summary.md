@@ -1,6 +1,6 @@
 # Test Automation Summary
 
-**Last updated:** 2026-07-06 (Story 3.10 — commit attribution verification; 19 backend tests verified passing, 0 E2E generated — backend-only story, E2E deferred per DP-5)
+**Last updated:** 2026-07-12 (Story 4.1 — Vercel project provisioning; 8 unit tests verified passing, 0 E2E/API tests generated — infrastructure config story, E2E deferred per DP-5)
 
 ---
 
@@ -2043,3 +2043,103 @@ The traceability matrix (`_bmad-output/test-artifacts/traceability-matrix.md`, E
 - **No action required for Story 3.10** — all 3 ACs have complete coverage at the appropriate test levels (unit + regression guard + integration) per the ATDD checklist plan.
 - **Real-sandbox E2E (future, if desired):** requires (a) Daytona availability in CI, (b) fixing the `POST /api/internal/test/seed-user` hang in the Playwright auth setup, and (c) a real GitHub test repository. Even then, the verification would be a real `git log --format='%an <%ae>'` inspection inside a provisioned sandbox — not a browser assertion. None of these are in scope for this skill.
 - **Traceability matrix reconciliation (separate task):** update `_bmad-output/test-artifacts/traceability-matrix.md` Epic 3 backlog table — Stories 3.4–3.10 are implemented, not `NONE` / "Not implemented".
+
+---
+
+## Story 4.1: Provision the Vercel Project for `apps/web`
+
+**Generated:** 2026-07-12
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### API Tests
+
+**None generated.** Story 4.1 has no HTTP API endpoint surface. The Vercel REST API calls (`POST /v11/projects`, `GET /v6/deployments/{id}`) are server-to-server operations against an external service with irreversible side effects (creating a real Vercel project, triggering a real production deploy). They are operational steps performed by the developer (Tasks 2–4), not application code under test.
+
+### E2E Tests
+
+**None generated.** Story 4.1 has no UI. The only testable artifact is `apps/web/vercel.json` — a static JSON configuration file. E2E deferred per DP-5 with a per-AC browser-level mock feasibility check documented in the ATDD checklist (see Deferral Analysis below).
+
+### Unit Tests (existing — verified passing)
+
+- [x] [apps/web/src/__tests__/vercel-config.spec.ts](../../../apps/web/src/__tests__/vercel-config.spec.ts) — `vercel.json` structural validation (8 tests)
+
+#### Test Inventory
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| vercel.json exists at apps/web/vercel.json | AC-1 | P0 | Config file is present at the Vercel project's `rootDirectory` |
+| framework is set to "nextjs" | AC-1 | P0 | Framework preset explicitly declared |
+| installCommand is "yarn install --immutable" | AC-1 | P0 | Immutable installs enforced at workspace root |
+| buildCommand includes database-schemas:generate | AC-1 | P0 | Prisma generate step present in build command |
+| buildCommand includes nx build web | AC-1 | P0 | Nx build target present in build command |
+| buildCommand runs prisma generate before nx build web | AC-1 | P1 | Ordering: generate runs before build (index comparison) |
+| git.deploymentEnabled is false | AC-2 | P0 | Auto-deploy disabled via vercel.json |
+| $schema is present for IDE validation | AC-1 | P1 | Schema reference for IDE validation |
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| Unit | `vercel-config.spec.ts` | 8 | 8 | 0 | **ALL PASSING** |
+| E2E | — | 0 | — | — | **N/A (deferred)** |
+| API | — | 0 | — | — | **N/A (no endpoint surface)** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Unit Tests | E2E / Operational |
+|---|---|---|---|
+| AC-1 | Project created with correct monorepo configuration | 7 tests (file existence, framework, installCommand, buildCommand ×3, $schema) | Vercel project creation + production build verified operationally in Tasks 2–3 (server-to-server API, external side effects) |
+| AC-2 | Auto-deploy disabled | 1 test (`git.deploymentEnabled: false`) | No GitHub repo connected verified operationally in Task 4 (external service state) |
+| AC-3 | Placeholder production URL exists | — | Verified operationally in Task 3 (`https://bmad-easy.vercel.app` returns HTTP 302 → `/sign-in`) |
+
+---
+
+## E2E Deferral Analysis (Browser-Level Mock Verification)
+
+Per the ATDD checklist, each AC was checked for browser-level mock coverage before deferring:
+
+- **AC-1 (Vercel project creation via REST API):** Server-to-server API call. Playwright `page.route()` intercepts browser-initiated requests only, not server-to-server calls. The Vercel API creates real external resources with side effects. **No mock covers this — defer.**
+- **AC-1 (Production build succeeds on Vercel):** Vercel build pipeline outcome. No browser interaction can verify build success — the build runs in Vercel's infrastructure. **No mock covers this — defer.**
+- **AC-2 (No GitHub repo connected):** Vercel project settings are external service state. A browser-level mock cannot verify external service configuration. **No mock covers this — defer.**
+- **AC-3 (Placeholder `*.vercel.app` URL exists):** The URL is a Vercel API response field from project creation. A Playwright test could navigate to the URL and check HTTP 200/302, but that requires a live deployment — an integration with an external service, not a mock. **No mock covers this — defer.**
+
+**Conclusion:** No browser-level mock pattern can simulate any portion of the deferred ACs. All involve external Vercel API state or infrastructure outcomes that are not browser-interactable. Verified operationally per the story's Tasks 2–4.
+
+---
+
+## Test Execution
+
+```bash
+# Unit tests (Story 4.1 + all web)
+yarn nx test web -- --testPathPattern=vercel-config --skip-nx-cache --verbose
+# Result: 62 suites passed, 720 tests passed (8 Story 4.1 tests), 0 failed, 0 skipped
+```
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — **N/A**: no HTTP API endpoint is the subject of the ACs. Vercel REST API calls are operational steps with external side effects, not application code under test.
+- [x] E2E tests generated (if UI exists) — **N/A**: no UI surface exists. Story 4.1 is an infrastructure/deployment story; the only testable artifact is a static JSON config file. E2E deferred per DP-5 with per-AC browser-level-mock analysis.
+- [x] Tests use standard test framework APIs — Jest 30 (`existsSync`, `readFileSync`, `describe`/`test` structure)
+- [x] Tests cover happy path — all 6 required `vercel.json` properties validated
+- [x] Tests cover 1-2 critical error cases — file-not-found handled gracefully via `loadVercelConfig()` returning `{}` (clean assertion failures, not crashes); build-command ordering verified via index comparison
+- [x] All generated tests run successfully — 8/8 pass (verified via `yarn nx test web -- --testPathPattern=vercel-config`)
+- [x] Tests use proper locators (semantic, accessible) — N/A (config file validation, no UI)
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references on all 8 tests
+- [x] No hardcoded waits or sleeps — synchronous file read, no async waits
+- [x] Tests are independent (no order dependency) — each test calls `loadVercelConfig()` independently; no shared mutable state
+- [x] Test summary created — this section
+- [x] Tests saved to appropriate directories — unit co-located with source at `apps/web/src/__tests__/vercel-config.spec.ts`
+- [x] Summary includes coverage metrics — 8 tests, 8 passing, 0 skipped, 0 E2E/API (deferred)
+
+### Next Steps
+
+- **No action required for Story 4.1** — all automatable ACs (AC-1 config file validation, AC-2 auto-deploy disabled) have complete unit test coverage. AC-3 and the operational portions of AC-1/AC-2 are verified operationally per the story's Tasks 2–4.
+- **Production URL smoke test (optional, future):** a Playwright test navigating to `https://bmad-easy.vercel.app` and asserting HTTP 200/302 could be added once the deploy pipeline (Story 4.6) is wired. This would be an integration test against a live deployment, not a mock — deferred until the CI deploy job exists.

@@ -6,11 +6,8 @@
  * Covers AC-2 (URL validation + write-access check), AC-3 (encrypted storage,
  * token never returned to client), AC-4 (descriptive per-cause error messages).
  *
- * RED PHASE: all tests are skipped until repo-connection.actions.ts is created (Task 4).
- * Remove test.skip() one describe-block at a time as you implement each task.
- *
- * Module will not resolve until Task 4.1 creates the actions file — that
- * "Cannot find module" error is the expected TDD red-phase signal.
+ * GREEN PHASE: all tests are un-skipped and passing.
+ * repo-connection.actions.ts has been created and all tests are active.
  */
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────

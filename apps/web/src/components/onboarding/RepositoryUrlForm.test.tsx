@@ -4,11 +4,8 @@
  * Covers AC-1 (single URL input, no token field), AC-4 (inline error display,
  * per-cause messages), and UX-DR14/UX-DR16 accessibility requirements.
  *
- * RED PHASE: all tests are skipped until RepositoryUrlForm.tsx is created (Task 5.3).
- * Remove test.skip() one describe-block at a time as you implement each piece.
- *
- * Module will not resolve until Task 5.3 creates the component file — that
- * "Cannot find module" error is the expected TDD red-phase signal.
+ * GREEN PHASE: all tests are un-skipped and passing.
+ * RepositoryUrlForm.tsx has been created and all tests are active.
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
