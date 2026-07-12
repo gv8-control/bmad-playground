@@ -38,7 +38,9 @@ class MockBroadcastChannel {
     this.listeners = this.listeners.filter((l) => l !== listener);
   }
 
-  close(): void {}
+  close(): void {
+    // no-op for test mock
+  }
 
   static reset(): void {
     MockBroadcastChannel.instances = [];

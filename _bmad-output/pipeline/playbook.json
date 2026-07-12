@@ -107,11 +107,11 @@
       "stage": "review",
       "skill": "bmad-testarch-test-review",
       "agent": "planner",
-      "prompt": "run Validate mode. Flag skipped story-related tests for un-skipping or removal (with reason). Fix stale transitional markers directly wherever found during the search, including those from earlier stories in the same directories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation. Treat empty placeholder test stubs (active tests with no assertions, only a comment or empty body) as transitional artifacts — remove them directly wherever found during the search, including those from earlier stories in the same directories, since an empty test that passes trivially inflates the count without verifying behavior.",
+      "prompt": "run Validate mode. Flag skipped story-related tests for un-skipping or removal (with reason). When the skip reason is no longer applicable — the behavior is covered by other tests, the environmental dependency is permanent with no planned fix, or the test body is empty — remove the skipped test directly rather than only flagging it, since a skipped test that will never be un-skipped is a transitional artifact that inflates the count without verifying behavior. Fix stale transitional markers directly wherever found during the search, including those from earlier stories in the same directories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation. Treat empty placeholder test stubs (active tests with no assertions, only a comment or empty body) as transitional artifacts — remove them directly wherever found during the search, including those from earlier stories in the same directories, since an empty test that passes trivially inflates the count without verifying behavior.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-06T12:26:33.858Z",
-      "updatedByRun": "3.11-a1-20260706T082713"
+      "updatedAt": "2026-07-12T09:58:55.031Z",
+      "updatedByRun": "5.2-a1-20260712T074239"
     },
     {
       "id": "review-nfrs",

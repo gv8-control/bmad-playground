@@ -1,0 +1,87 @@
+{
+  "story": "5.2",
+  "runId": "5.2-a1-20260712T074239",
+  "observations": [
+    {
+      "fingerprint": "skipped-tests-from-prior-stories-persist",
+      "summary": "The review-tests step flagged 3 skipped Story 5.1 E2E test blocks with 'Recommendation: Remove' (each covered by component tests, one with an empty body) but did not remove them — the prompt says 'flag' for skipped tests unlike 'fix directly' for stale markers and empty stubs, so the skipped tests persist and will recur as noise on future runs.",
+      "evidence": "_bmad-output/test-artifacts/test-reviews/test-review-validation-5-2.md:107-139 — 3 skipped Story 5.1 E2E test blocks in playwright/e2e/visual-containers/story-5-1-visual-containers.spec.ts (lines 141, 255, 458) each with 'Recommendation: Remove' and clear rationale (covered by RepositoryUrlForm.test.tsx, ArtifactViewer.test.tsx, ChatInput.test.tsx respectively; Flag 3 has an empty body). Report line 196: 'no direct action was taken since they have legitimate skip reasons with component-test coverage documented.' Playbook review-tests prompt (playbook.json:110): 'Flag skipped story-related tests for un-skipping or removal (with reason).' — says 'flag' not 'fix directly,' unlike stale markers ('Fix stale transitional markers directly') and empty stubs ('remove them directly'). Ledger entries 19 (Story 3.3) and 22 (Story 3.4) record prior occurrences: 'no step ever resolves them, so they will recur as noise on every future run.'",
+      "grade": "confirmed",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "stale-atdd-red-phase-headers",
+      "summary": "2 stale RED PHASE markers from Story 1.3 (repo-connection.actions.spec.ts and auth.credential.spec.ts) found and fixed directly by the review-tests guard; the 3.12 update_step to implement-story continues to prevent new markers (0 new stale markers from 5.2's implement-story), so the pattern is converging — the guard is cleaning up the pre-3.12 backlog.",
+      "evidence": "_bmad-output/test-artifacts/test-reviews/test-review-validation-5-2.md:62-103 — Fix 1 (repo-connection.actions.spec.ts:9-13, Story 1.3, stale RED PHASE header fixed to 'All tests are active and passing') and Fix 2 (auth.credential.spec.ts:9-10, Story 1.3, same fix). Journal step_end for review-tests: '2 stale transitional markers fixed directly.' Journal step_end for implement-story: 'After green, remove the test's skip marker and update any test-file headers that claim tests are skipped, disabled, or in a red-phase state to reflect that the tests are now active.' Playbook implement-story prompt updatedAt: 2026-07-06T15:31:43.986Z (updatedByRun: 3.12-a1-20260706T122634) — the 3.12 amendment was active for this run. Ledger entries 23, 32, 36, 42, 51, 58, 64, 72 record prior occurrences across Stories 3.4 through 5.1.",
+      "grade": "confirmed",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "implement-step-skips-nfr-hardening",
+      "summary": "Prior confirmed observation (ledger entries 5, 37, 43, 52, 59, 66, 73 — Stories 2.2 through 5.1, 7 occurrences) — the pattern did NOT recur in 5.2: the 3.9 update_step is working, as implement-story proactively verified all applicable NFR patterns and review-nfrs found 0 blockers (1 MEDIUM pre-existing, 2 LOW, 2 INFO).",
+      "evidence": "Journal step_end for implement-story: '0 new lint errors — pre-existing error in InProgressArtifactCard.test.tsx not modified' and 'Build — pre-existing type error in AgentMessage.tsx:18 not modified.' Journal step_end for review-nfrs: 'Gate Decision: PASS — No NFR blockers. The MEDIUM finding (#1, missing take on turn.findMany) is pre-existing code not introduced by this story (confirmed via git diff).' Story file NFR Audit (5-2-fix-shared-shell-and-page-header-structural-drift.md:494-498): MEDIUM missing take limit on turn.findMany (pre-existing), LOW missing select on repoConnection.findUnique (pre-existing), LOW conversations/[conversationId]/loading.tsx not updated (maintainability, not an NFR pattern gap). Playbook implement-story prompt updatedAt: 2026-07-06T05:41:22.969Z (updatedByRun: 3.9-a1-20260706T022258) — the 3.9 amendment was active for this run.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "prepare-tests-scaffolding-not-reflected-in-story",
+      "summary": "Prior confirmed observation (ledger entries 38, 55, 63, 74 — Stories 3.8, 3.11, 3.12, 5.1, 5 occurrences) — the pattern did NOT recur in 5.2: the 3.11 update_step is working, as prepare-tests amended Task 11 to instruct activation of existing scaffolding rather than creation.",
+      "evidence": "Journal step_end for prepare-tests: 'Story file Task 11 amended from Write/update co-located tests to Activate existing ATDD red-phase test scaffolds — instructs the dev to remove it.skip() one sub-task at a time rather than creating scaffolds from scratch.' Journal step_end for validate-story-2: '0 critical issues.' Playbook prepare-tests prompt updatedAt: 2026-07-06T12:26:33.858Z (updatedByRun: 3.11-a1-20260706T082713) — the 3.11 amendment was active for this run.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "atdd-step-opts-out-of-e2e-prematurely",
+      "summary": "Prior observation (ledger entries 33, 61, 65, 68, 76 — Stories 3.7 through 5.1, 5 occurrences) — the pattern did NOT recur in 5.2: the 3.7 update_step is working, as prepare-tests performed the mock-feasibility check and documented it in the ATDD checklist before deferring E2E.",
+      "evidence": "Journal step_end for prepare-tests: 'E2E deferred — all 10 ACs are CSS class presence and DOM structure assertions; no browser-level mock pattern adds value beyond component/page tests. Existing E2E suite (app-shell.spec.ts) covers behavioral aspects. Check recorded in ATDD checklist.' Journal step_end for e2e-tests: '19 tests, all passing — E2E tests verifying user-visible outcomes across 8 of the 10 ACs.' Playbook prepare-tests prompt updatedAt: 2026-07-06T08:27:13.232Z (updatedByRun: 3.10-a1-20260706T055517) — includes the 3.7 mock-feasibility check amendment.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "atdd-incomplete-regression-guards",
+      "summary": "Prior confirmed observation (ledger entries 39, 45, 48, 53, 60, 77 — Stories 3.8 through 5.1, 5 occurrences) — the pattern did NOT recur in 5.2: the 3.10 update_step is working, as prepare-tests correctly checked the scope and determined it does not apply (Story 5.2 is CSS/structural with no external command execution).",
+      "evidence": "Journal step_end for prepare-tests: 'Regression guard template not applicable — story involves no external command execution.' Playbook prepare-tests prompt updatedAt: 2026-07-06T08:27:13.232Z (updatedByRun: 3.10-a1-20260706T055517) — the 3.10 amendment was active for this run.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "review-tests-empty-placeholder-stubs-unresolved",
+      "summary": "Prior confirmed observation (ledger entries 49, 54, 62, 65, 75 — Stories 3.10 through 5.1, 4 occurrences) — the pattern did NOT recur in 5.2: the 3.11 update_step is working, as review-tests found 0 empty placeholder stubs across all test files in scope.",
+      "evidence": "_bmad-output/test-artifacts/test-reviews/test-review-validation-5-2.md:143-147 — 'Result: None found. A comprehensive search was performed across all test files in apps/web/src, playwright/e2e, apps/agent-be/src, and libs.' Journal step_end for review-tests: 'Empty Placeholder Test Stubs: None found.' Playbook review-tests prompt updatedAt: 2026-07-06T12:26:33.858Z (updatedByRun: 3.11-a1-20260706T082713) — the 3.11 amendment was active for this run.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "infra-opencode-timeout",
+      "summary": "Prior confirmed observation (ledger entries 41, 56, 70 — Stories 3.9, 3.11, 5.1, 3 occurrences) — the pattern did NOT recur in 5.2: no runner errors recorded for this run; all 12 steps completed successfully with no salvaged output or timeouts.",
+      "evidence": "runner-errors.jsonl has 4 entries, all from prior runs (2.3, 3.9, 3.11, 5.1) — no entry for 5.2. Journal story_end: status success. All 12 step_end events have status: success with no indication of salvaged output or mid-stream narration.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    },
+    {
+      "fingerprint": "infra-e2e-env-config-missing",
+      "summary": "Prior confirmed observation (ledger entry 57, Story 3.11; ledger entry 78, Story 5.1 deduced non-recurrence) — the pattern did NOT recur in 5.2: 19 E2E tests passed (0 failed, 0 skipped), indicating the auth.setup.ts seed-user issue remains resolved; AC-8 on /artifacts was deferred due to a specific page Server Component hang (GitHub API timeout), not the global env config issue.",
+      "evidence": "Journal step_end for e2e-tests: '19 tests, all passing (2.1m).' Journal step_end for e2e-tests responseExcerpt: 'AC-8 on /artifacts deferred — the page Server Component hangs in the E2E environment (GitHub API timeout with fake repo). Covered by /settings + /conversations/new E2E tests (same header template) and the component test in artifacts/page.test.tsx.' Compare to ledger entry 57 (Story 3.11): 'no .env.local exists with DATABASE_URL/AUTH_SECRET/CREDENTIAL_ENCRYPTION_KEK — this blocks ALL E2E test execution.' 19 tests passing indicates the global env issue is resolved.",
+      "grade": "deduced",
+      "hypothesis": "",
+      "nextStep": ""
+    }
+  ],
+  "amendments": [
+    {
+      "type": "update_step",
+      "stepId": "review-tests",
+      "prompt": "run Validate mode. Flag skipped story-related tests for un-skipping or removal (with reason). When the skip reason is no longer applicable — the behavior is covered by other tests, the environmental dependency is permanent with no planned fix, or the test body is empty — remove the skipped test directly rather than only flagging it, since a skipped test that will never be un-skipped is a transitional artifact that inflates the count without verifying behavior. Fix stale transitional markers directly wherever found during the search, including those from earlier stories in the same directories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation. Treat empty placeholder test stubs (active tests with no assertions, only a comment or empty body) as transitional artifacts — remove them directly wherever found during the search, including those from earlier stories in the same directories, since an empty test that passes trivially inflates the count without verifying behavior.",
+      "rationale": "The review-tests step has flagged but not removed skipped tests from prior stories in 3 stories (3.3, 3.4, 5.2), causing them to persist and recur as noise on every future run; the prompt says 'flag' for skipped tests unlike 'fix directly' for stale markers and empty stubs, so the agent recommends removal but does not act on its own recommendation."
+    }
+  ],
+  "guardReports": []
+}

@@ -2231,4 +2231,147 @@ describe('ConversationPane', () => {
       expect(screen.queryByText(/Session failed to start/i)).not.toBeInTheDocument();
     });
   });
+
+  // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────
+  //
+  // GREEN PHASE: tests are active for Story 5.3 implementation.
+  //
+  // AC-1: Chat-input area 824px column centering (matches messages container)
+  // AC-3: SessionStartSpinner centered in chat-messages panel (not input area)
+  // AC-10: Conversation limit copy "limit of 10 active conversations"
+  // AC-11: Retry button text color uses accent-fg (not text-bg)
+
+  describe('Story 5.3 — structural drift', () => {
+    describe('[P0] AC-1 — Chat-input area 824px column centering', () => {
+      it('chat-input area has max-w-[824px] mx-auto w-full for column centering', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+
+        const inputArea = document.querySelector('.flex-shrink-0.border-t.border-border');
+        expect(inputArea).toBeInTheDocument();
+        const innerDiv = inputArea?.querySelector('div');
+        expect(innerDiv?.className).toContain('max-w-[824px]');
+        expect(innerDiv?.className).toContain('mx-auto');
+        expect(innerDiv?.className).toContain('w-full');
+      });
+    });
+
+    describe('[P0] AC-3 — SessionStartSpinner in chat-messages panel', () => {
+      it('SessionStartSpinner renders inside the chat-messages panel, not the input area', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+
+        const input = screen.getByLabelText('Message input');
+        await act(async () => {
+          fireEvent.change(input, { target: { value: 'hello world' } });
+        });
+        await act(async () => {
+          fireEvent.click(screen.getByText('Send'));
+        });
+
+        const spinner = await screen.findByText(/Starting session/i);
+        const messageList = screen.getByTestId('chat-message-list');
+        expect(messageList).toContainElement(spinner);
+      });
+
+      it('SessionStartSpinner does not render in the input area (border-t container)', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+
+        const input = screen.getByLabelText('Message input');
+        await act(async () => {
+          fireEvent.change(input, { target: { value: 'hello world' } });
+        });
+        await act(async () => {
+          fireEvent.click(screen.getByText('Send'));
+        });
+
+        const spinner = await screen.findByText(/Starting session/i);
+        const inputArea = document.querySelector('.flex-shrink-0.border-t');
+        expect(inputArea).not.toContainElement(spinner);
+      });
+    });
+
+    describe('[P0] AC-10 — Conversation limit copy', () => {
+      it('limit-reached message includes "limit of 10 active conversations"', async () => {
+        (global.fetch as jest.Mock).mockImplementation((url: string) => {
+          if (url.includes('/conversations') && !url.includes('/turns') && !url.includes('/skills') && !url.includes('/resume')) {
+            return Promise.resolve({
+              ok: false,
+              status: 409,
+              json: async () => ({
+                code: 'CONVERSATION_LIMIT_REACHED',
+                message: "You've reached the limit of 10 active conversations. Return to one of your existing conversations, or try again later.",
+              }),
+            } as Response);
+          }
+          return Promise.resolve({
+            ok: true,
+            json: async () => [],
+          } as Response);
+        });
+
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/limit of 10 active conversations/)).toBeInTheDocument();
+        });
+      });
+
+      it('limit-reached fallback message includes "limit of 10 active conversations"', async () => {
+        (global.fetch as jest.Mock).mockImplementation((url: string) => {
+          if (url.includes('/conversations') && !url.includes('/turns') && !url.includes('/skills') && !url.includes('/resume')) {
+            return Promise.resolve({
+              ok: false,
+              status: 409,
+              json: async () => ({
+                code: 'CONVERSATION_LIMIT_REACHED',
+              }),
+            } as Response);
+          }
+          return Promise.resolve({
+            ok: true,
+            json: async () => [],
+          } as Response);
+        });
+
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/limit of 10 active conversations/)).toBeInTheDocument();
+        });
+      });
+    });
+
+    describe('[P0] AC-11 — Retry button text color uses accent-fg', () => {
+      it('Retry button uses text-accent-fg (not text-bg)', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('SESSION_TIMEOUT', { reason: 'mid-session' });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText('Retry')).toBeInTheDocument();
+        });
+
+        const retryButton = screen.getByText('Retry');
+        expect(retryButton.className).toContain('text-accent-fg');
+        expect(retryButton.className).not.toContain('text-bg');
+      });
+    });
+  });
 });

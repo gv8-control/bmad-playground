@@ -1,6 +1,6 @@
 # Test Automation Summary
 
-**Last updated:** 2026-07-12 (Story 5.2 — shell structural drift E2E tests; 19 active tests passing)
+**Last updated:** 2026-07-12 (Story 5.3 — conversation stream structural drift E2E fixes; 3 broken tests fixed)
 
 ---
 
@@ -2284,4 +2284,136 @@ yarn playwright test playwright/e2e/shell/story-5-2-shell-structural-drift.spec.
 
 - Run the full E2E suite to confirm no regressions with the existing `app-shell.spec.ts` tests
 - When the `/artifacts` page environment issue is resolved (GitHub API timeout), add the AC-8 E2E test for `/artifacts`
+
+---
+
+## Story 5.3: Fix Conversation Stream Structural Drift — E2E Test Fixes
+
+**Generated:** 2026-07-12
+**Story status:** review
+**Mode:** Fix broken existing E2E tests (no new E2E generated — component tests cover ACs at the appropriate level per ATDD DP-4)
+
+---
+
+### Why E2E Fixes Were Needed
+
+Story 5.3 AC-6 removed the visible header (Breadcrumb + h1) from `/conversations/new`, replacing the visible h1 with a visually-hidden `<h1 tabIndex={-1} className="sr-only">` for route-focus management. Three existing E2E tests asserted on the now-removed elements:
+
+| # | File | Test | What broke |
+|---|------|------|------------|
+| 1 | `app-shell.spec.ts:187` | `[P1] breadcrumb visible on /conversations/new` | Asserted breadcrumb IS visible — AC-6 removed it |
+| 2 | `story-5-2-shell-structural-drift.spec.ts:202` | `[P0] breadcrumb and h1 same row on /conversations/new` | Asserted both breadcrumb + h1 visible — AC-6 removed both |
+| 3 | `story-5-2-shell-structural-drift.spec.ts:243` | `[P0] header has visible bottom border on /conversations/new` | Asserted visible h1 + `main header` element — AC-6 removed the header |
+
+A fourth test was also broken but not caught in the initial analysis:
+
+| # | File | Test | What broke |
+|---|------|------|------------|
+| 4 | `app-shell.spec.ts:37` | `[P1] New Conversation button navigates to /conversations/new` | Asserted `toBeVisible()` on h1 — AC-6 made it `sr-only` (not visible) |
+
+---
+
+### Fixes Applied
+
+#### 1. `app-shell.spec.ts:187` — Breadcrumb test flipped
+
+**Before:** `[P1] breadcrumb visible on /conversations/new (depth-1 page)` — asserted breadcrumb IS visible + "← project map" link IS visible.
+
+**After:** `[P1] no breadcrumb on /conversations/new (header removed by Story 5.3 AC-6)` — asserts breadcrumb is NOT visible. AC-6 reversed the depth-1 header rule for this page specifically; all other depth-1 pages (`/settings`, `/artifacts`) retain the canonical header and their tests are unchanged.
+
+**Status:** PASSES
+
+#### 2. `story-5-2-shell-structural-drift.spec.ts:202` — Breadcrumb+h1 same row test removed
+
+**Before:** `[P0] breadcrumb and h1 are on the same horizontal row on /conversations/new` — asserted both visible and on the same row.
+
+**After:** Test removed entirely. This tested Story 5.2's addition (inline breadcrumb + h1 header) that Story 5.3 AC-6 reversed for `/conversations/new` only. The `/settings` and `/artifacts` tests in the same AC-7 describe block remain valid for the canonical depth-1 header structure. A comment documents the removal.
+
+**Status:** PASSES (all 20 remaining tests in the spec pass)
+
+#### 3. `story-5-2-shell-structural-drift.spec.ts:243` — Header border test removed
+
+**Before:** `[P0] header has a visible bottom border on /conversations/new` — asserted visible h1 + visible `main header` element with border.
+
+**After:** Test removed entirely. Same rationale as fix 2 — the header element was removed by AC-6. The `/settings` border test and `/project-map` no-border test in the same AC-8 describe block remain valid. The stale comment referencing `/conversations/new` was updated.
+
+**Status:** PASSES
+
+#### 4. `app-shell.spec.ts:37` — h1 assertion changed to `toBeAttached()`
+
+**Before:** `await expect(page.getByRole('heading', { level: 1, name: /new conversation/i })).toBeVisible();`
+
+**After:** `await expect(page.getByRole('heading', { level: 1, name: /new conversation/i })).toBeAttached();`
+
+The h1 still exists in the DOM (for `AppShell` route-focus management) but is now `sr-only` (not visible). `toBeAttached()` verifies the element exists without asserting visibility. The test's primary purpose (verifying navigation) is already covered by the URL assertion at line 40.
+
+**Status:** Correct fix applied. Cannot be verified in isolation due to a pre-existing click timeout at line 39 (see Pre-existing Issues below).
+
+---
+
+### Test Execution
+
+```bash
+yarn test:e2e playwright/e2e/shell/app-shell.spec.ts playwright/e2e/shell/story-5-2-shell-structural-drift.spec.ts
+```
+
+**Results:**
+- story-5-2 spec: 20 passed, 0 failed (all tests pass after removing 2 broken tests)
+- app-shell.spec.ts breadcrumb fix (test 187): PASSES when run in isolation
+- app-shell.spec.ts h1 fix (test 37): correct fix, blocked by pre-existing click timeout
+
+---
+
+### Pre-existing Issues (Not Caused by Story 5.3)
+
+#### 1. `app-shell.spec.ts:37` — Click timeout on "New Conversation" link
+
+**Symptom:** `locator.click: Timeout 15000ms exceeded` — the link IS found and resolved in the DOM, but the click action times out waiting for the element to be "visible, enabled and stable."
+
+**Verification:** Stashed all changes and ran the test against the original code — same failure. This is pre-existing, not caused by Story 5.3 or the test fixes.
+
+**Likely cause:** The `/project-map` page has a sync-on-first-visit-when-empty behavior that triggers a GitHub API sync, causing the page to re-render and the "New Conversation" link to move during the click attempt (Playwright's actionability check waits for the element to stop moving).
+
+**Impact:** This test was already failing before Story 5.3. The h1 assertion fix (`toBeVisible()` → `toBeAttached()`) is correct and necessary — when the click timeout is fixed (separate issue), the h1 assertion will correctly use `toBeAttached()`.
+
+#### 2. `story-5-2 spec:61` — Flaky console error from `/artifacts` page module
+
+**Symptom:** `Console/page errors detected during test: Switched to client rendering because the server rendering errored: Module RefreshButton.tsx was instantiated because it was required from module artifacts/page... but the module factory is not available.`
+
+**Status:** Flaky — failed on first run, passed on second run. This is the same pre-existing `/artifacts` page Server Component issue documented in the story-5-2 spec's own comment (lines 222-226): "The /artifacts page Server Component hangs in the E2E environment because getCredentialHealthStatus() calls the GitHub API with a fake repo connection."
+
+---
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `playwright/e2e/shell/app-shell.spec.ts` | Flipped breadcrumb test (visible → not visible); changed h1 assertion (`toBeVisible()` → `toBeAttached()`) |
+| `playwright/e2e/shell/story-5-2-shell-structural-drift.spec.ts` | Removed 2 `/conversations/new` tests (breadcrumb+h1 same row, header border); updated stale comment |
+
+**No production code was modified.**
+
+---
+
+### Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no API endpoints in this story
+- [x] E2E tests generated (if UI exists) — No new E2E tests generated; 3 broken existing E2E tests fixed (AC-6 impact). ATDD DP-4 deferred new E2E coverage — all 11 ACs are structural assertions covered by component tests at the appropriate level
+- [x] Tests use standard test framework APIs — Playwright `test`/`expect` from project's merged-fixtures
+- [x] Tests cover happy path — existing E2E tests for other pages remain valid
+- [x] Tests cover 1-2 critical error cases — breadcrumb NOT visible on `/conversations/new` (AC-6 reversal)
+- [x] All generated tests run successfully — 20/20 story-5-2 tests pass; breadcrumb fix passes in isolation
+- [x] Tests use proper locators (semantic, accessible) — `getByRole('navigation', { name: /breadcrumb/i })`, `getByRole('heading', { level: 1 })`
+- [x] Tests have clear descriptions — `[P0]`/`[P1]` priority prefixes with AC references
+- [x] No hardcoded waits or sleeps — all assertions use Playwright auto-waiting
+- [x] Tests are independent (no order dependency) — `test.describe.serial` manages shared user state
+- [x] Test summary created — this section
+- [x] Tests saved to appropriate directories — `playwright/e2e/shell/`
+- [x] Summary includes coverage metrics — 3 broken tests fixed, 20/20 story-5-2 tests passing, 1 pre-existing failure documented
+
+### Next Steps
+
+- Fix the pre-existing click timeout on `app-shell.spec.ts:37` (likely needs `waitForLoadState('networkidle')` or waiting for the project-map sync to complete before clicking)
+- Fix the flaky `/artifacts` page Server Component console error (GitHub API timeout in E2E environment)
+- Run the full E2E suite to confirm no cross-spec regressions
 

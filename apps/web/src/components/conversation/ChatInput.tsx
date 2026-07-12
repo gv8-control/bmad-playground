@@ -27,7 +27,7 @@ export function ChatInput({
   onStop,
   disabled = false,
   isProcessing = false,
-  placeholder = 'Type a message...',
+  placeholder = 'Message…',
   onKeyDown,
   inputRef,
   ariaActivedescendant,
@@ -89,9 +89,9 @@ export function ChatInput({
             type="button"
             onClick={onSubmit}
             disabled={disabled || !value.trim()}
-            className="rounded-md bg-accent px-4 py-2 text-sm text-accent-fg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:opacity-50"
+            className="rounded-md border border-transparent bg-accent px-4 py-2 text-sm text-accent-fg font-medium flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:bg-text-3 disabled:text-text-2 disabled:border-border"
           >
-            Send
+            Send <span aria-hidden="true">↑</span>
           </button>
         )}
       </div>

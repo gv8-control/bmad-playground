@@ -15,12 +15,13 @@ function extractText(children: React.ReactNode): string {
   if (typeof children === 'number') return String(children);
   if (Array.isArray(children)) return children.map(extractText).join('');
   if (children && typeof children === 'object' && 'props' in children) {
-    return extractText((children as React.ReactElement).props.children);
+    const props = (children as React.ReactElement).props as { children?: React.ReactNode };
+    return extractText(props.children);
   }
   return '';
 }
 
-const components: Components = {
+export const markdownComponents: Components = {
   h1: ({ node: _node, ...props }) => (
     <h1 className="text-xl font-semibold text-text-1 mb-3" {...props} />
   ),
@@ -72,7 +73,7 @@ const components: Components = {
     );
   },
   a: ({ node: _node, ...props }) => (
-    <a className="text-accent hover:text-accent-hover underline" {...props} />
+    <a className="text-accent hover:text-accent-hover underline focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface" {...props} />
   ),
   strong: ({ node: _node, ...props }) => (
     <strong className="font-semibold text-text-1" {...props} />
@@ -90,11 +91,11 @@ export function AgentMessage({ message }: AgentMessageProps) {
   }).format(message.createdAt);
 
   return (
-    <div className="group mb-4 flex justify-start">
+    <div className="group mb-6 flex justify-start">
       <div className="w-full max-w-[760px]">
         <div className="flex items-start justify-between gap-2">
           <div className="relative flex-1">
-            <Markdown remarkPlugins={[remarkGfm]} components={components}>
+            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {message.content}
             </Markdown>
             {message.isStreaming && (

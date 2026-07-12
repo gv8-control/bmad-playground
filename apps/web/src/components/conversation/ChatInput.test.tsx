@@ -204,3 +204,74 @@ describe('ChatInput — chat-input-box container (Story 5.1, AC-6)', () => {
     expect(footer).toContainElement(screen.getByLabelText('Stop agent'));
   });
 });
+
+// ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
+//
+// GREEN PHASE: tests are active for Story 5.3 implementation.
+//
+// AC-4: Disabled Send button uses muted-surface style
+// AC-5: Placeholder copy "Message…" (not "Type a message…")
+// AC-8: Send button arrow icon and font-medium
+
+describe('ChatInput — Story 5.3 structural drift', () => {
+  describe('[P0] AC-4 — Disabled Send button uses muted-surface style', () => {
+    it('disabled Send button does not use opacity-50', () => {
+      render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton.className).not.toContain('opacity-50');
+    });
+
+    it('disabled Send button uses bg-text-3 for muted surface', () => {
+      render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton.className).toContain('bg-text-3');
+    });
+
+    it('disabled Send button uses text-text-2 for muted text', () => {
+      render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton.className).toContain('text-text-2');
+    });
+
+    it('disabled Send button uses border border-border for muted border', () => {
+      render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton.className).toContain('border');
+      expect(sendButton.className).toContain('border-border');
+    });
+  });
+
+  describe('[P0] AC-5 — Placeholder copy', () => {
+    it('default placeholder is "Message…" not "Type a message…"', () => {
+      render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const textarea = screen.getByLabelText('Message input');
+      expect(textarea).toHaveAttribute('placeholder', 'Message…');
+    });
+
+    it('does not use "Type a message…" as placeholder', () => {
+      render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const textarea = screen.getByLabelText('Message input');
+      expect(textarea.getAttribute('placeholder')).not.toBe('Type a message…');
+    });
+  });
+
+  describe('[P0] AC-8 — Send button arrow icon and font-medium', () => {
+    it('Send button text uses font-medium', () => {
+      render(<ChatInput value="hello" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton.className).toContain('font-medium');
+    });
+
+    it('Send button has gap-1.5 between text and icon', () => {
+      render(<ChatInput value="hello" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton.className).toContain('gap-1.5');
+    });
+
+    it('Send button displays an upward arrow (↑) character', () => {
+      render(<ChatInput value="hello" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton.textContent).toContain('↑');
+    });
+  });
+});

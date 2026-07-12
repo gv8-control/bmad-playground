@@ -92,3 +92,40 @@ describe('[P0] SlashCommandPicker interactions', () => {
     expect(options[2]).toHaveAttribute('id', 'skill-option-2');
   });
 });
+
+// ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
+//
+// GREEN PHASE: tests are active for Story 5.3 implementation.
+//
+// AC-9: Slash picker "Skills — type to filter" header
+
+describe('SlashCommandPicker — Story 5.3 structural drift', () => {
+  describe('[P0] AC-9 — "Skills — type to filter" header', () => {
+    it('renders "Skills — type to filter" header at the top of the picker', () => {
+      render(
+        <SlashCommandPicker
+          skills={SKILLS}
+          selectedIndex={0}
+          onSelect={jest.fn()}
+        />,
+      );
+
+      expect(screen.getByText(/Skills.*type to filter/i)).toBeInTheDocument();
+    });
+
+    it('header renders before the skills list', () => {
+      const { container } = render(
+        <SlashCommandPicker
+          skills={SKILLS}
+          selectedIndex={0}
+          onSelect={jest.fn()}
+        />,
+      );
+
+      const listbox = screen.getByRole('listbox');
+      const firstChild = listbox.firstChild;
+      expect(firstChild).toBeDefined();
+      expect(firstChild?.textContent).toMatch(/Skills.*type to filter/i);
+    });
+  });
+});

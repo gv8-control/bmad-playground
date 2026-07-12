@@ -18,8 +18,16 @@ export function useDraftPersistence(conversationId: string | null) {
     try {
       const key = conversationId
         ? `conversation-${conversationId}-draft`
-        : 'new-conversation-draft';
-      const saved = localStorage.getItem(key);
+        : 'new-conversation';
+      let saved = localStorage.getItem(key);
+      if (saved === null && !conversationId) {
+        const oldSaved = localStorage.getItem('new-conversation-draft');
+        if (oldSaved !== null) {
+          localStorage.setItem(key, oldSaved);
+          localStorage.removeItem('new-conversation-draft');
+          saved = oldSaved;
+        }
+      }
       if (saved) setDraft(saved);
       else setDraft('');
     } catch {
@@ -34,7 +42,7 @@ export function useDraftPersistence(conversationId: string | null) {
     try {
       const key = conversationId
         ? `conversation-${conversationId}-draft`
-        : 'new-conversation-draft';
+        : 'new-conversation';
       localStorage.setItem(key, draft);
     } catch {
       // storage unavailable
@@ -45,7 +53,7 @@ export function useDraftPersistence(conversationId: string | null) {
     try {
       const key = conversationId
         ? `conversation-${conversationId}-draft`
-        : 'new-conversation-draft';
+        : 'new-conversation';
       localStorage.removeItem(key);
     } catch {
       // storage unavailable

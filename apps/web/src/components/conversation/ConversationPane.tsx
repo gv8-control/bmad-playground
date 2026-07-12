@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { SkillInfo } from '@bmad-easy/shared-types';
-import { SessionStartSpinner } from './SessionStartSpinner';
 import { SlashCommandPicker } from './SlashCommandPicker';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
@@ -24,6 +23,7 @@ export interface ConversationPaneProps {
   apiUrl: string;
   initialConversationId?: string;
   initialMessages?: ChatMessage[];
+  placeholder?: string;
 }
 
 export function ConversationPane({
@@ -31,6 +31,7 @@ export function ConversationPane({
   apiUrl,
   initialConversationId,
   initialMessages = [],
+  placeholder,
 }: ConversationPaneProps) {
   const router = useRouter();
   const [state, setState] = useState<SessionState>('init');
@@ -149,7 +150,7 @@ export function ConversationPane({
             setState('limit-reached');
             setErrorMessage(
               message ??
-                "You've reached the limit of active conversations. Return to one of your existing conversations, or try again later.",
+                "You've reached the limit of 10 active conversations. Return to one of your existing conversations, or try again later.",
             );
             return;
           }
@@ -891,51 +892,39 @@ export function ConversationPane({
         onScrollToBottom={handleScrollToBottom}
         onScrollPositionChange={handleScrollPositionChange}
         isThinking={isThinking}
+        showSpinner={showSpinner}
+        spinnerLabel={state === 'reconnecting' ? 'Reconnecting…' : undefined}
+        errorMessage={errorMessage}
+        showRetry={state === 'timeout' || state === 'error'}
+        onRetry={handleRetry}
       />
-      {errorMessage && (
-        <p className="px-8 text-negative text-sm" role="alert">
-          {errorMessage}
-        </p>
-      )}
-      {(state === 'timeout' || state === 'error') && (
-        <button
-          onClick={handleRetry}
-          className="mx-8 mb-2 rounded-md bg-accent px-4 py-2 text-sm text-bg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface"
-        >
-          Retry
-        </button>
-      )}
-      <div className="flex-shrink-0 border-t border-border px-8 py-4">
-        {showSpinner && (
-          state === 'reconnecting' ? (
-            <SessionStartSpinner label="Reconnecting…" />
-          ) : (
-            <SessionStartSpinner />
-          )
-        )}
-        <div ref={pickerContainerRef} className="relative">
-          {pickerOpen && (
-            <SlashCommandPicker
-              skills={filteredSkills}
-              selectedIndex={pickerSelectedIndex}
-              onSelect={handleSelectSkill}
-            />
-          )}
-          {state !== 'limit-reached' && (
-            <ChatInput
-              value={draft}
-              onChange={handleInputChange}
-              onSubmit={handleSubmit}
-              onStop={handleStop}
-              disabled={inputDisabled}
-              isProcessing={isProcessing}
-              onKeyDown={handleKeyDown}
-              inputRef={inputRef}
-              ariaActivedescendant={pickerOpen && filteredSkills.length > 0 ? `skill-option-${pickerSelectedIndex}` : undefined}
-              ariaControls={pickerOpen ? 'skill-listbox' : undefined}
-              workingTreeIndicator={<WorkingTreeIndicator state={effectiveWorkingTreeState} onSave={handleSave} />}
-            />
-          )}
+      <div className="flex-shrink-0 border-t border-border">
+        <div className="px-8 py-4 max-w-[824px] mx-auto w-full">
+          <div ref={pickerContainerRef} className="relative">
+            {pickerOpen && (
+              <SlashCommandPicker
+                skills={filteredSkills}
+                selectedIndex={pickerSelectedIndex}
+                onSelect={handleSelectSkill}
+              />
+            )}
+            {state !== 'limit-reached' && (
+              <ChatInput
+                value={draft}
+                onChange={handleInputChange}
+                onSubmit={handleSubmit}
+                onStop={handleStop}
+                disabled={inputDisabled}
+                isProcessing={isProcessing}
+                placeholder={placeholder}
+                onKeyDown={handleKeyDown}
+                inputRef={inputRef}
+                ariaActivedescendant={pickerOpen && filteredSkills.length > 0 ? `skill-option-${pickerSelectedIndex}` : undefined}
+                ariaControls={pickerOpen ? 'skill-listbox' : undefined}
+                workingTreeIndicator={<WorkingTreeIndicator state={effectiveWorkingTreeState} onSave={handleSave} />}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

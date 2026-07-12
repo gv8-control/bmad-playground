@@ -199,25 +199,10 @@ test.describe.serial('Story 5.2 — Shell Structural Drift', () => {
       expect(headingBox!.y).toBeLessThanOrEqual(crumbBox!.y + crumbBox!.height);
     });
 
-    test('[P0] breadcrumb and h1 are on the same horizontal row on /conversations/new', async ({ page, withRepoConnection }) => {
-      await page.goto('/conversations/new');
-
-      const breadcrumb = page.getByRole('navigation', { name: /breadcrumb/i });
-      const heading = page.getByRole('heading', { level: 1, name: /new conversation/i });
-
-      await expect(breadcrumb).toBeVisible();
-      await expect(heading).toBeVisible();
-
-      const crumbBox = await breadcrumb.boundingBox();
-      const headingBox = await heading.boundingBox();
-
-      expect(crumbBox).not.toBeNull();
-      expect(headingBox).not.toBeNull();
-
-      // Same row: vertical ranges overlap or touch (not stacked with a gap)
-      expect(crumbBox!.y).toBeLessThanOrEqual(headingBox!.y + headingBox!.height);
-      expect(headingBox!.y).toBeLessThanOrEqual(crumbBox!.y + crumbBox!.height);
-    });
+    // /conversations/new header test removed — Story 5.3 AC-6 removed the visible
+    // Breadcrumb + h1 from this page (replaced with a visually-hidden sr-only h1
+    // for route-focus management). The /settings and /artifacts tests above
+    // remain valid for the canonical depth-1 header structure.
   });
 
   // ─── AC-8: Header bottom divider on depth-1 pages ──────────────────────────
@@ -235,21 +220,12 @@ test.describe.serial('Story 5.2 — Shell Structural Drift', () => {
     });
 
     // AC-8 on /artifacts is covered by:
-    // 1. The /settings and /conversations/new E2E tests below (same header template)
+    // 1. The /settings E2E test above (same header template)
     // 2. The component test in artifacts/page.test.tsx (renderToStaticMarkup)
     // The /artifacts page Server Component hangs in the E2E environment because
     // getCredentialHealthStatus() calls the GitHub API with a fake repo connection.
-
-    test('[P0] header has a visible bottom border on /conversations/new', async ({ page, withRepoConnection }) => {
-      await page.goto('/conversations/new');
-
-      await expect(page.getByRole('heading', { level: 1, name: /new conversation/i })).toBeVisible();
-
-      const header = page.locator('main header').first();
-      await expect(header).toBeVisible();
-      const borderBottom = await header.evaluate((el) => getComputedStyle(el).borderBottomWidth);
-      expect(parseFloat(borderBottom)).toBeGreaterThan(0);
-    });
+    // /conversations/new header test removed — Story 5.3 AC-6 removed the visible
+    // header from this page (visually-hidden sr-only h1 remains for route-focus).
 
     test('[P1] project-map (depth-0) header does NOT have a bottom border', async ({ page, withRepoConnection }) => {
       await page.goto('/project-map');

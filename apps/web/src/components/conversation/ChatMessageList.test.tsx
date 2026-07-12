@@ -97,3 +97,102 @@ describe('ChatMessageList', () => {
     expect(screen.getByRole('status')).toHaveTextContent('The agent stopped unexpectedly.');
   });
 });
+
+// ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
+//
+// GREEN PHASE: tests are active for Story 5.3 implementation.
+//
+// AC-1: 824px column centering for messages
+// AC-2: Rich new-conversation empty-state
+// AC-7: role="log" on chat-messages container
+
+describe('ChatMessageList — Story 5.3 structural drift', () => {
+  describe('[P0] AC-1 — 824px column centering', () => {
+    it('messages container has max-w-[824px] mx-auto w-full for column centering', () => {
+      render(
+        <ChatMessageList
+          messages={[userMessage]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      const list = screen.getByTestId('chat-message-list');
+      expect(list.className).toContain('max-w-[824px]');
+      expect(list.className).toContain('mx-auto');
+      expect(list.className).toContain('w-full');
+    });
+  });
+
+  describe('[P0] AC-2 — Rich new-conversation empty-state', () => {
+    it('renders ✦ icon character in empty state', () => {
+      render(
+        <ChatMessageList
+          messages={[]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      expect(screen.getByText('✦')).toBeInTheDocument();
+    });
+
+    it('renders "Start a new conversation" title in empty state', () => {
+      render(
+        <ChatMessageList
+          messages={[]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Start a new conversation')).toBeInTheDocument();
+    });
+
+    it('renders <kbd> element showing "/" in empty state', () => {
+      render(
+        <ChatMessageList
+          messages={[]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      const kbd = screen.getByText('/');
+      expect(kbd.tagName).toBe('KBD');
+    });
+
+    it('does not render the old simplified placeholder text', () => {
+      render(
+        <ChatMessageList
+          messages={[]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      expect(screen.queryByText(/Press `\/` to browse available skills/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('[P0] AC-7 — role="log" on chat-messages container', () => {
+    it('chat-messages container has role="log"', () => {
+      render(
+        <ChatMessageList
+          messages={[userMessage]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      const list = screen.getByTestId('chat-message-list');
+      expect(list).toHaveAttribute('role', 'log');
+    });
+  });
+});
