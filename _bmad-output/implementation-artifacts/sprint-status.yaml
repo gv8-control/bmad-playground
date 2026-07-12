@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-07-08T13:00:00Z
+# last_updated: 2026-07-12T17:30:00Z
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-12T00:00:00Z
+last_updated: 2026-07-12T17:30:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -88,7 +88,7 @@ development_status:
   5-2-fix-shared-shell-and-page-header-structural-drift: done
   5-3-fix-conversation-stream-structural-drift: done
   5-4-fix-token-usage-drift-and-token-config-gaps: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   # ── Epic 6: Sandbox-Based Agent Execution ──
   # Migrates agent execution from host-based (SDK query()) to sandbox-based

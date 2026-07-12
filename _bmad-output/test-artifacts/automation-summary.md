@@ -31,6 +31,8 @@ inputDocuments:
 **Mode:** BMad-Integrated
 **Stack:** fullstack (Next.js frontend + NestJS backend)
 
+> **Note (2026-07-12 post-Epic-5):** This file is the original Story-1.2/1.3/1.4-era automation summary (last saved 2026-06-24) and is retained for historical reference only. Per-story automate-validation reports (22+ files under `_bmad-output/test-artifacts/automate-validation-report-*.md`) are the source of truth for actual coverage. As of 2026-07-12, 853 tests pass across 65 Jest suites plus 3 active Playwright visual-container specs (Epic 5); Epic 5 traceability gate = CONCERNS with 38/38 ACs at FULL coverage. The gap-filling tests described below (decryption tamper detection, `oAuthCredential.upsert` error resilience, malformed JSON in `_bmad/package.json`) shipped and remain part of the suite.
+
 ---
 
 ## Step 1: Preflight & Context

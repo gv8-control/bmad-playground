@@ -4,7 +4,7 @@ totalSteps: 5
 stepsCompleted: ['step-01-detect-mode', 'step-02-load-context', 'step-03-risk-and-testability', 'step-04-coverage-plan', 'step-05-generate-output']
 lastStep: 'step-05-generate-output'
 nextStep: ''
-lastSaved: '2026-06-17'
+lastSaved: '2026-07-12'
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
@@ -331,3 +331,66 @@ System-level estimate across the full MVP scope, before epic/story breakdown:
 - B-04: NFR-O1 alert threshold (PM, pending Q-2 cost estimate)
 
 **Workflow complete.** All 5 steps executed. Next step for the team: review and approve Quick Guide items, assign owners, then run `bmad-testarch-atdd` for P0 acceptance test generation per story.
+
+## Post-Epic-5 Update (2026-07-12, EDIT mode)
+
+**Trigger:** Epic 5 ("UX Mockup Fidelity — Close Visual Drift", 4 stories 5.1–5.4) completed; wave-1 (bug hunt, fidelity audit, traceability gate, NFR audit) and wave-2 (per-epic NFR aggregation) assessment artefacts landed. This section records the post-epic reality so the system-level progress file matches `sprint-status.yaml` and the Epic 5 traceability matrix. The original Steps 1–5 above are preserved verbatim for auditability.
+
+**Autonomous decisions (in place of halting at the skill's checkpoints):**
+
+1. **Mode determination:** chose `[E] Edit` per the task brief; the system-level plan already exists and only surgical edits are needed.
+2. **Target selection (step-01-assess #1):** targeted the existing test-plan files — `test-design-architecture.md`, this file, `test-design-qa.md`, `bmad-easy-handoff.md`, plus a minimal note on the stale `automation-summary.md`. Did not create duplicate artefacts. Left the hydration-gap files (`test-design-progress-hydration-gap.md`, `test-design-epic-hydration-gap.md`) untouched — they are scoped to a separate post-incident design and stand on their own.
+3. **Confirmation gates (step-01-assess #3, step-02-apply-edit #1):** proceeded without halting; recorded this decision here per the unattended-operation guideline.
+
+### Current Project State (2026-07-12)
+
+| Epic | Status (per `sprint-status.yaml`) | Stories | Test Artefacts |
+|---|---|---|---|
+| Epic 1 (Authentication & Repository Connection) | done | 9 (1.1–1.9) | ATDD + automate-validation + test-review (where applicable); epic-1-retrospective done |
+| Epic 2 (Project Map & Artifact Browser) | done | 6 (2.1–2.6) | ATDD + automate-validation + test-review; epic-2-retrospective done |
+| Epic 3 (Conversations — Running BMAD Skills with the Agent) | done | 12 (3.1–3.12) | ATDD + automate-validation + test-review + NFR per story; epic-3-retrospective done |
+| Epic 5 (UX Mockup Fidelity — Close Visual Drift) | in-progress in yaml but **all 4 stories done** (5.1–5.4) | 4 | ATDD + automate-validation + 3 of 4 test-reviews (5.2's missing — Low evidence gap) + per-story + epic-level NFR; bug-hunt + fidelity audit + traceability gate complete |
+| Epic 6 (Sandbox-Based Agent Execution) | backlog | 5 (6.1–6.5) | None yet — see "Epic 6 forward-look" below |
+| Epic 4 | (no Epic 4 — numbering skips per `epics.md`) | — | — |
+
+**Note on Epic 5 status field:** `sprint-status.yaml` still lists `epic-5: in-progress` even though all four stories are `done`. Traceability-matrix-epic-5.md flagged the same. The epic status field is a manual-transition item — not a coverage or quality gap.
+
+### Epic 5 Test Outcomes
+
+- **Traceability gate:** `CONCERNS` (per `traceability/gate-decision-epic-5.json`). 38/38 ACs at FULL coverage; P0 100% (36/36), P1 100% (2/2); 0 critical-open items; 853 tests passing across 65 Jest suites plus 3 active Playwright visual-container specs; 0 skipped.
+- **Test fidelity audit (2026-07-12):** PASS. 2 LOW Gap-C findings (bounded; both downstream of the prior agent-be SSE contract blocker) + 1 INFO coverage note (`withArtifacts` Playwright fixture broken; hover-token E2E for 5.4 AC-1/AC-5 reduced to className-only unit tests).
+- **NFR assessment (epic-level, 2026-07-12):** PASS-WITH-CONCERNS. 24 PASS, 5 CONCERNS (de-duplicated: 1 Medium + 4 Low), 0 FAIL. The 1 Medium is story-introduced: NFR-5.3-1 auto-scroll effect deps after Story 5.3 AC-3 spinner relocation (bug-hunt M1). Roughly 9 quick-win fixes (~1 hour total) identified for a follow-up hardening story.
+- **Bug hunt (2026-07-12):** 11 findings (0 critical, 0 high, 3 medium, 8 low). The 3 mediums: M1 auto-scroll regression; M2 `no-scrollbar` missing on full-width artifact list pane (5.4-AC7 gap); M3 `parseFrontmatter` renders quoted YAML values with quotes (deferred DP-5 hardening).
+- **Deferred work:** pruned clean (0 orphaned items across Epic 5 stories).
+
+### New Test-Plan Items Tee'd Up for the Known Gaps
+
+These items close the wave-1+2 findings without re-scoping the original system-level coverage matrix. They are tracked in detail in `test-design-qa.md` "Post-Epic-5 Gap Closure Plan":
+
+- **P1-014** — Auto-scroll regression test on `SESSION_TIMEOUT` while scrolled up (closes bug-hunt M1 / NFR-5.3-1).
+- **P1-015** — Type-checked `connectRepository` mock factory + `.catch()` path test (closes fidelity-audit Finding 1).
+- **P1-016** — 5.4-AC7 full-width artifact-list pane `no-scrollbar` + test case (closes bug-hunt M2 / NFR-5.4-2 / traceability concern 1).
+- **P1-017** — Tighten ChatInput AC-4 disabled-state test to assert the `disabled:` variant scoping + a positive enabled-button assertion (closes bug-hunt L1 false-green test).
+- **P2-008** — Restore `withArtifacts` Playwright fixture and the 5.4 AC-1 / AC-5 hover-token E2E blocks (closes fidelity-audit Finding 3, INFO).
+- **P2-009** — Loading-skeleton header parity E2E: every `loading.tsx` renders the same header as its companion `page.tsx` (closes bug-hunt L3 + NFR-5.2-3).
+- **P2-010** — Supplement 5.2-AC10 conversation-list scroll behaviour E2E (closes traceability concern 4; jsdom cannot test scroll).
+- **P3-001** — NFR quick-wins bundle (~9 fixes) — landed as a single follow-up hardening story (closes `nfr-assessment-5-epic.md` Quick Wins list and most of the bug-hunt L-tier findings).
+
+### Epic 6 Forward-Look (Backlog, Not Started)
+
+Epic 6 migrates agent execution from the host process (host-based SDK `query()` per Story 3.3 DP-2) back into the Daytona sandbox per PRD §3 and architecture.md data flow. Five stories (6.1–6.5). The testability needs the test plan must tee up before Epic 6 enters implementation are recorded in `test-design-architecture.md` § "Epic 6 (Sandbox-Based Agent Execution) — Forward-Looking Testability Preview". Headline items:
+
+- New test seam `IAguiEventBridgeService` / `AGUI_EVENT_BRIDGE_SERVICE` for the new `agui-event-bridge.service.ts` (Story 6.2) — delivered with the service, not bolted on after (B-01 lesson).
+- Possible `ISandboxService` extension for `getSessionCommandLogs` streaming so the event bridge can be integration-tested without real Daytona.
+- P0-010 (sandbox-agent bridge killed mid-session → backend terminates the orphaned agent process) becomes fully testable — tighten the assertion to verify the Daytona process session actually terminates.
+- Story 6.5 Real-Service E2E is the Tier-3 real-service tier made mandatory, not a deferred enhancement — NFR-P1/P2 timing depends on the real Daytona + Claude path the new sandbox-based execution exercises.
+- `networkAllowList` egress control (Story 6.1) extends P0-014 with a network-route assertion.
+- `ANTHROPIC_API_KEY` becomes required in `apps/agent-be/src/config/env.validation.ts`; `AGENT_WORKDIR` becomes dead config.
+
+### Files Edited This Run
+
+- `_bmad-output/test-artifacts/test-design-architecture.md` — status line, GA Launch bullet, "Post-Epic-5 Update" + "Epic 6 Forward-Looking Testability Preview" sections, Risk Summary effort note.
+- `_bmad-output/test-artifacts/test-design-progress.md` — `lastSaved`, this Post-Epic-5 Update section.
+- `_bmad-output/test-artifacts/test-design-qa.md` — status line, exit criteria, Post-Epic-5 Gap Closure Plan + Epic 6 Forward-Look sections.
+- `_bmad-output/test-artifacts/test-design/bmad-easy-handoff.md` — `generatedAt`, purpose, Epic-5-done + Epic-6-backlog blocks, Phase Transition table.
+- `_bmad-output/test-artifacts/automation-summary.md` — minimal stale-data note pointing to per-story automate-validation reports.

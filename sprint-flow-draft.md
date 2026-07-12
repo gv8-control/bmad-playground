@@ -2,7 +2,7 @@ This document is only for myself to read and run manually. Do not automatically 
 After all Epic sprints done (my decision):
 
 - /bmad-bug-hunt Target Epic X
-- /bmad-agent-fidelity-auditor Target: Epic X
+- /bmad-agent-fidelity-auditor Target: Epic X (not needed currently, is run as part of bmad-bug-hunt)
 - /bmad-testarch-trace Run in Create mode
   - if decision is FAIL, must run dev or similar skill to fix before moving on
 - /bmad-testarch-nfr Run in Create mode for Epic X

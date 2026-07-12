@@ -25,7 +25,7 @@ inputDocuments:
 
 **Date:** 2026-06-16
 **Author:** TEA Master Test Architect (BMad)
-**Status:** Revised 2026-07-07 — implementation phase (Epics 1–3 complete, 28 stories done per `sprint-status.yaml`; gate decision PASS, 92% coverage, 251/251 tests passing).
+**Status:** Revised 2026-07-12 — post-Epic-5 update. Epics 1, 2, 3, and 5 complete (32 stories done per `sprint-status.yaml`); Epic 5 traceability gate = CONCERNS (38/38 ACs at FULL coverage, 853 tests passing across 65 Jest suites, 3 active Playwright visual-container specs, 0 skipped); NFR-5 epic PASS-WITH-CONCERNS; test-fidelity audit 2026-07-12 PASS. Epic 6 (Sandbox-Based Agent Execution) is backlog, not started. Earlier 2026-07-07 baseline (gate decision PASS, 92% coverage, 251/251 tests passing) is retained as historical reference in the body of this document.
 **Project:** bmad-easy
 
 **Related:** See Architecture doc (`test-design-architecture.md`) for testability concerns and architectural blockers.
@@ -44,12 +44,12 @@ inputDocuments:
 **Coverage Summary:**
 
 - P0 tests: ~17 (critical paths, security, tenant isolation, sandbox lifecycle)
-- P1 tests: ~13 (core flows, NFR timing, durability)
-- P2 tests: ~7 (secondary flows, accepted-risk regression checks)
-- P3 tests: ~0 identified at system level (none surfaced — see note below)
-- **Total**: ~37 scenarios (~140–205 hours, ~4–6 sprints with 1 QA/SDET working in parallel with implementation)
+- P1 tests: ~13 + 4 post-Epic-5 gap-closure items (P1-014 through P1-017) = ~17 (core flows, NFR timing, durability, plus the auto-scroll regression test, type-checked `connectRepository` mock factory, 5.4-AC7 `no-scrollbar` full-width pane test, ChatInput AC-4 false-green tightening)
+- P2 tests: ~7 + 3 post-Epic-5 gap-closure items (P2-008 through P2-010) = ~10 (secondary flows, accepted-risk regression checks, plus `withArtifacts` fixture restoration for 5.4 AC-1/AC-5 hover-token E2E, loading-skeleton header parity E2E, 5.2-AC10 conversation-list scroll E2E)
+- P3 tests: ~0 + 1 post-Epic-5 implementation bundle (P3-001 NFR quick-wins hardening story) = ~1
+- **Total (system-level + post-Epic-5 gap closure)**: ~45 scenarios. **(2026-07-12: post-Epic-5 update. Per-story test artefacts under `_bmad-output/test-artifacts/` elaborate these into 853 tests across 65 Jest suites + 3 active Playwright visual-container specs; Epic 5 gate = CONCERNS, 38/38 ACs at FULL coverage. The system-level scenario count above is retained for shape/planning reference; the traceability matrix is the source of truth for actual coverage.)**
 
-**Note on P3:** No purely cosmetic/exploratory scenarios were identified at system level for this MVP; if any emerge during epic-level test design (e.g., UI polish on Project Map), add them there.
+**Note on P3:** The P3-001 NFR quick-wins bundle is the first P3 entry. It is a single follow-up hardening story closing ~9 small fixes (~1 hour total). Additional P3 items may emerge during future epic-level test design.
 
 ---
 
@@ -193,12 +193,12 @@ test('example: create and assert conversation record @p0', async ({ apiRequest }
 
 **Testing phase is complete when ALL of the following are met:**
 
-- [x] All P0 tests passing (251/251 per fidelity audit 2026-07-06; P0 100% per gate decision 2026-07-07)
-- [x] All P1 tests passing (or failures triaged and accepted) — P1 ≥95% per gate decision (2026-07-07: PASS)
-- [x] No open high-priority / high-severity bugs
-- [x] Test coverage agreed as sufficient — gate decision PASS (2026-07-07), 92% overall coverage
-- [ ] All four score-6 risks (R-01–R-04) have verified mitigations — R-01 verified PASS (NFR-S2), R-02 implemented (circuit breaker PASS), R-03 architectural decision made but empirical spike pending, R-04 HTTP/2 invariant documented but not verified
-- [x] NFR-R3 and NFR-O1 alert threshold either resolved or explicitly accepted — both PASS (2026-07-07)
+- [x] All P0 tests passing — 853/853 across 65 Jest suites per fidelity audit 2026-07-12 (was 251/251 per fidelity audit 2026-07-06); P0 100% per Epic 5 gate decision (2026-07-12)
+- [x] All P1 tests passing (or failures triaged and accepted) — P1 100% per Epic 5 gate decision (2026-07-12); earlier baseline P1 ≥95% per gate decision (2026-07-07: PASS)
+- [x] No open high-priority / high-severity bugs — Epic 5 bug hunt (2026-07-12) found 0 critical, 0 high; 3 medium (NFR-5.3-1 auto-scroll regression, NFR-5.4-2 full-width pane `no-scrollbar` gap, M3 `parseFrontmatter` quoted-YAML — deferred DP-5); 8 low (test-fidelity and NFR carry-overs). None blocks release; tracked in "Post-Epic-5 Gap Closure Plan" below.
+- [x] Test coverage agreed as sufficient — Epic 5 gate = CONCERNS (38/38 ACs at FULL coverage); 4 documented weaknesses recorded (5.4-AC7 full-width pane, 5.3-AC5 branded placeholder, 5.2-AC10 scroll behaviour, NFR-5.4 a11y). None a blocker. Earlier baseline: gate decision PASS (2026-07-07), 92% overall coverage.
+- [ ] All four score-6 risks (R-01–R-04) have verified mitigations — R-01 verified PASS (NFR-S2); R-02 implemented (circuit breaker PASS, becomes fully testable under Epic 6 sandbox-based execution — see Forward-Look); R-03 architectural decision made (shallow clone in code) but empirical spike still pending; R-04 HTTP/2 invariant documented but not verified. **No change since 2026-07-07.**
+- [x] NFR-R3 and NFR-O1 alert threshold either resolved or explicitly accepted — both PASS (-standing since 2026-07-07; Epic 5 did not modify SSE transport or cost tracking)
 
 ---
 
@@ -409,6 +409,63 @@ No P3 scenarios identified at system level for this MVP. Re-evaluate during epic
 - All P0/P1 PR-tier tests must pass before merge to `main`.
 - Nightly suite failures are triaged each morning; a failing Nightly test blocks the next release candidate, not individual PRs.
 - Cross-team coordination needed: Backend must flag any change to `sandbox.service.ts` or `credentials.service.ts` for QA review, since these carry the four score-6 risks.
+
+---
+
+## Post-Epic-5 Gap Closure Plan (2026-07-12)
+
+**Trigger:** Epic 5 complete (4 stories, 38/38 ACs at FULL coverage) but the traceability gate is CONCERNS, not PASS. The wave-1 (bug hunt, fidelity audit, traceability, NFR-5 epic) and wave-2 (per-story NFR aggregation) artefacts identified a small set of follow-up test items that close the documented weaknesses without re-scoping the original system-level coverage matrix below. None blocks release; all are P1/P2/P3 follow-ups.
+
+### New Test-Plan Items
+
+| Test ID | Requirement | Test Level | Priority | Risk / Finding Closed | Notes |
+|---|---|---|---|---|---|
+| P1-014 | Auto-scroll regression — assert Retry button is scrolled into view on `SESSION_TIMEOUT` while the user is scrolled up | Integration (jsdom) + E2E (real browser, real streaming) | P1 | bug-hunt M1 / NFR-5.3-1 (Medium story-introduced regression) | Recommended default: scroll-override is appropriate for error states (the error is a state change the user should be aware of). Implementation approach: either add `errorMessage`/`showRetry`/`showSpinner` to the existing `useEffect` deps at `ChatMessageList.tsx:44-48`, OR (preferred) add a second `useEffect` that scrolls to bottom when these flags flip, guarded by `isAtBottomRef.current`. |
+| P1-015 | Type-checked `connectRepository` mock factory + one `.catch()`-path test (generic "unexpected error occurred" fallback renders) | Unit | P1 | fidelity-audit-2026-07-12 Finding 1 (LOW Gap-C) | Replace `jest.mock('@/actions/repo-connection.actions', () => ({ connectRepository: jest.fn() }))` at `RepositoryUrlForm.test.tsx:20-22` with a typed factory keyed on `ConnectResult`. Mitigated by `repo-connection.actions.spec.ts` (646 lines, action end-to-end covered) — only the consumer-side mock shape is unverified. |
+| P1-016 | 5.4-AC7 `no-scrollbar` full-width artifact-list pane: add the class + render a test case without an `id` searchParam asserting `no-scrollbar` is present | Unit (component) | P1 | bug-hunt M2 / NFR-5.4-2 / traceability concern 1 | One-line implementation fix at `apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx:123` plus one test case in `page.test.tsx`. Existing tests pass `{ id: 'art_1' }` (two-pane mode) — the full-width layout is the untested path. |
+| P1-017 | Tighten ChatInput AC-4 disabled-state test — assert the `disabled:` prefix scopes the muted tokens (e.g., `expect(sendButton.className).toContain('disabled:bg-text-3')`) AND add a positive assertion that the enabled Send button does NOT contain `bg-text-3` | Unit (component) | P1 | bug-hunt L1 (false-green test) | The existing `toContain('bg-text-3')` assertion at `ChatInput.test.tsx:224-241` matches both `disabled:bg-text-3` (correct) and `bg-text-3` (always-applied regression). Renders `<ChatInput value="" ... />` only; add a positive `value="hello"` enabled-button case. |
+| P2-008 | Restore `withArtifacts` Playwright fixture (broken on unique-constraint violations) and the 5.4 AC-1 (`ArtifactCard` hover border → computed `borderColor`) + AC-5 (`ArtifactListEntry` hover → computed `backgroundColor`) E2E blocks | E2E (Playwright) | P2 | fidelity-audit-2026-07-12 Finding 3 (INFO) | Currently only className-level unit tests remain (`ArtifactCard.test.tsx:147`, `ArtifactListEntry.test.tsx:109-123`). The Story 5.4 computed-style E2E suite covers AC-2/3/6/7 — the hover-only cases (AC-1, AC-5) lack that end-to-end verification. Track `withArtifacts` fixture fix as a deferred-work item; when fixed, restore the removed E2E blocks. |
+| P2-009 | Loading-skeleton header parity E2E — every `loading.tsx` renders the same header structure as its companion `page.tsx` (assert `border-b border-surface-raised`, Breadcrumb, h1) | E2E (Playwright) | P2 | bug-hunt L3 / NFR-5.2-3 | Catches the class of `loading.tsx` drift on all 4 depth-1 pages. The specific instance — `conversations/[conversationId]/loading.tsx:4-6` uses pre-5.2 header structure (no `border-b`, no Breadcrumb, `py-6` not `pt-6 pb-4`) — is also a one-line fix bundled into the P3-001 quick-wins story below. |
+| P2-010 | Supplement 5.2-AC10 conversation-list scroll behaviour E2E — assert the conversation list scrolls (jsdom cannot test scroll behaviour) | E2E (Playwright) | P2 | traceability concern 4 (5.2-AC10) | Component tests provide structural coverage; this E2E is supplementary — the gate decision does not depend on it. |
+| P3-001 | NFR quick-wins bundle — land ~9 small fixes in a single follow-up hardening story | Implementation + tests | P3 | `nfr-assessment-5-epic.md` Quick Wins (closes most bug-hunt L-tier findings) | See "Quick-wins bundle" detail below. |
+
+### P3-001 Quick-Wins Bundle Detail (~1 hour total)
+
+Sourced from `nfr-assessment-5-epic.md` § "Quick Wins". Bundling these into a single PR closes the bulk of Epic 5 NFR findings efficiently:
+
+1. Add `take: 100` to `turn.findMany` at `conversations/[conversationId]/page.tsx:33-37` — closes NFR-5.2-1 (Medium).
+2. Add `select: { id: true }` to `repoConnection.findUnique` at `artifacts/page.tsx:24-26` — closes NFR-5.2-2 / NFR-5.4-1 (Low) in a single edit.
+3. Add `no-scrollbar` to full-width artifact list pane at `artifacts/page.tsx:123` — closes NFR-5.4-2 / bug-hunt M2 / P1-016's implementation half.
+4. Hoist `Intl.DateTimeFormat` to module scope in `AgentMessage.tsx:87-91` and `UserMessage.tsx:11-15` — closes NFR-5.3-3 / bug-hunt L4.
+5. Add `aria-live="polite"` assertion at `ChatMessageList.test.tsx:195` — closes NFR-5.3-4 / bug-hunt L2.
+6. Update `conversations/[conversationId]/loading.tsx:4-6` to canonical depth-1 header — closes NFR-5.2-3 / bug-hunt L3.
+7. Add `tabIndex={0}` + `role="region"` + `aria-label` to the three `no-scrollbar` panels (`SideNavigation.tsx:42`, `ChatMessageList.tsx:75`, `artifacts/page.tsx:93`) — closes NFR-5.4-4 / bug-hunt L6.
+8. Add `maxLength={2000}` to `RepositoryUrlForm` input at `RepositoryUrlForm.tsx:46-53` — closes NFR-5.4-5 / bug-hunt L7.
+9. Add `MAX_DRAFT_SIZE` guard to `useDraftPersistence` localStorage write — closes NFR-5.3-5.
+
+**Validation:** `yarn nx test web` passes; manual visual check of loading skeleton + `no-scrollbar` panels; lint + typecheck clean.
+
+### Items NOT Requiring New Test-Plan Entries
+
+- **5.3-AC5 branded placeholder not wired** — implementation deferral (DP-5-style design decision); test correctly verifies default placeholder behaviour. No new test needed until the branded variant is implemented.
+- **`parseFrontmatter` quoted-YAML handling** (bug-hunt M3) — explicitly deferred per DP-5 (simple string parsing without a YAML parser dependency). Coordinate one-line quote-strip fix with the deferred `stripFrontmatter` regex hardening story; not scoped here.
+- **`SlashCommandPicker` header `role="presentation"` inside `role="listbox"`** (bug-hunt L8) — theoretical ARIA structure concern; best-available fix without structural rewrite. Document as accepted deviation; no automated test.
+- **`ArtifactViewer` `<a>` link focus ring missing** (bug-hunt L5) — pre-existing, dismissed during 5.3 review as out-of-scope. Coordinate with the deferred `target="_blank"` / `rel="noopener noreferrer"` addition for external links in artifact content.
+
+---
+
+## Epic 6 (Sandbox-Based Agent Execution) — Forward-Look
+
+Epic 6 is backlog, not started (per `sprint-status.yaml` and `sprint-change-proposal-2026-07-11.md`). It migrates agent execution from the host process (host-based SDK `query()` per Story 3.3 DP-2) back into the Daytona sandbox per PRD §3 and architecture.md data flow. Five stories (6.1–6.5). Full testability preview is recorded in `test-design-architecture.md` § "Epic 6 ... Forward-Looking Testability Preview". Headline items for QA planning:
+
+- **Story 6.1 (binary install during provision):** sandbox-agent + Claude Code binaries deployed inside sandbox during provision; `networkAllowList` applied for egress control. Test needs: binary install path + checksum verification; NFR-S1 defence-in-depth test extends P0-014 with a network-route assertion (allow list excludes `apps/agent-be`, Postgres, Auth.js).
+- **Story 6.2 (agui-event-bridge.service.ts):** new NestJS service that receives the sandbox-agent normalized event stream via Daytona's `getSessionCommandLogs(sessionId, commandId, onStdout, onStderr)` API and re-encodes to AG-UI events, with circuit breaker + heartbeat. Test needs: new `IAguiEventBridgeService` / `AGUI_EVENT_BRIDGE_SERVICE` Symbol-token test seam + `AguiEventBridgeServiceFake` delivered with the service, not bolted on after (B-01 lesson); possible `ISandboxService` extension for `getSessionCommandLogs` so the bridge can be integration-tested without real Daytona.
+- **Story 6.3 (AgentService migration):** `AgentService.runTurn()` launches sandbox-agent inside sandbox via Daytona process session; streams via event bridge; `stop()` terminates a real sandbox process. Test needs: P0-010 (sandbox-agent bridge killed mid-session → backend terminates the orphaned agent process) becomes fully testable — tighten the assertion to verify the Daytona process session actually terminates; update `AgentServiceFake` to reflect the new execution mechanism (per `sprint-change-proposal-2026-07-11.md` §4.6 post-implementation updates).
+- **Story 6.4 (verify working-tree / commit / credential flows):** existing P0-009 (Tool Pill/Semantic Pill classification incl. `CREDENTIAL_FAILURE`), P1-005 (Working Tree Indicator), P1-006 (Manual commit), P0-003/004 (git config injection) all need regression runs against the new sandbox-based execution path. The host-based `terminateProcess` no-op behaviour (Story 3.3 DP-2) is replaced by real sandbox process termination.
+- **Story 6.5 (Real-Service E2E verification):** Tier 3 real-service smoke + NFR-P1/P2 timing tests pass. This makes the "Nightly: Real-Service Smoke Tests" tier (see "Execution Strategy" / "Real-Service Smoke Tests" above) mandatory, not a deferred enhancement — NFR-P1 (first token ≤1,500ms) and NFR-P2 (chat ready ≤10s) timing assertions depend on the real Daytona + Claude path the new sandbox-based execution exercises.
+- **Env validation:** `ANTHROPIC_API_KEY` becomes required in `apps/agent-be/src/config/env.validation.ts` Zod schema; `AGENT_WORKDIR` becomes dead config (remove). Update the env-validation unit test accordingly when the change ships.
+
+**Action before Epic 6 implementation begins:** architect adds `IAguiEventBridgeService` to `libs/shared-types` before Story 6.2 implementation starts; QA reviews the test seam design against the B-01 `SandboxService` / `AgentService` pattern (interface + fake + Symbol DI token + `buildTestModule()` wiring). When Epic 6 enters implementation, run `bmad-testarch-test-design` epic-level to generate the per-story ATDD checklists from this forward-look.
 
 ---
 

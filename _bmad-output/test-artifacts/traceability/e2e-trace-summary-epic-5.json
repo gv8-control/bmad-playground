@@ -1,0 +1,177 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_at": "2026-07-12T16:00:00.000Z",
+  "repo": "bmad-easy",
+  "collection_mode": "manual",
+  "collection_status": "COLLECTED",
+  "inventory_basis": "acceptance_criteria",
+  "gate_basis": "priority_thresholds",
+  "source_sha": "f2e6399bcae3d17b28caf5c3dcfb28932d005a29",
+  "target": {
+    "type": "epic",
+    "id": "epic-5",
+    "label": "Epic 5: UX Mockup Fidelity — Close Visual Drift"
+  },
+  "decision_mode": "deterministic",
+  "evaluator": "Marius",
+  "confidence": "high",
+  "oracle": {
+    "resolution_mode": "formal_requirements",
+    "confidence": "high",
+    "sources": [
+      "_bmad-output/planning-artifacts/epics.md",
+      "_bmad-output/implementation-artifacts/5-1 through 5-4 story files",
+      "_bmad-output/test-artifacts/atdd-checklist-5-1 through 5-4",
+      "_bmad-output/test-artifacts/automate-validation-report-5-1 through 5-4",
+      "_bmad-output/test-artifacts/nfr-assessment-5-1.md",
+      "_bmad-output/test-artifacts/nfr-assessment-5-4.md",
+      "_bmad-output/project-context.md"
+    ],
+    "external_pointer_status": "not_used",
+    "synthetic": false
+  },
+  "coverage": {
+    "inventory": {
+      "covered": 38,
+      "total": 38,
+      "pct": 100
+    },
+    "priority_breakdown": {
+      "P0": {
+        "total": 36,
+        "covered": 36,
+        "pct": 100
+      },
+      "P1": {
+        "total": 2,
+        "covered": 2,
+        "pct": 100
+      },
+      "P2": {
+        "total": 0,
+        "covered": 0,
+        "pct": 100
+      },
+      "P3": {
+        "total": 0,
+        "covered": 0,
+        "pct": 100
+      }
+    },
+    "by_level": {
+      "e2e": {
+        "tests": 98,
+        "criteria_covered": 6
+      },
+      "component": {
+        "tests": 124,
+        "criteria_covered": 34
+      },
+      "unit": {
+        "tests": 11,
+        "criteria_covered": 4
+      },
+      "other": {
+        "tests": 0,
+        "criteria_covered": 0
+      }
+    }
+  },
+  "tests": {
+    "files": 23,
+    "cases": 135,
+    "skipped_cases": 0,
+    "fixme_cases": 0,
+    "pending_cases": 0
+  },
+  "risk_summary": {
+    "critical_open": 0,
+    "high_open": 0,
+    "medium_open": 2,
+    "low_open": 5
+  },
+  "heuristics": {
+    "endpoint_gaps": 0,
+    "auth_negative_path_status": "not_applicable",
+    "error_path_status": "present",
+    "ui_journey_status": "present",
+    "ui_state_status": "present"
+  },
+  "blockers": [],
+  "concerns": [
+    {
+      "id": "CONCERN-5.4-AC7",
+      "severity": "MEDIUM",
+      "ac": "5.4-AC7",
+      "description": "no-scrollbar class missing from full-width artifact list pane (artifacts/page.tsx:123). Two-pane layout has the class and is tested, but full-width layout is missing it and has no test. Both an implementation and test coverage gap.",
+      "remediation": "Add no-scrollbar class to line 123; add test case rendering page without id searchParam"
+    },
+    {
+      "id": "CONCERN-5.3-AC5",
+      "severity": "LOW",
+      "ac": "5.3-AC5",
+      "description": "Branded placeholder 'Message bmad-easy…' not wired up by parent component. Implementation sets default to 'Message…' (tested), but branded variant is never passed. Implementation gap, not test gap.",
+      "remediation": "Wire placeholder prop on ChatInput in new-conversation context"
+    },
+    {
+      "id": "CONCERN-5.2-AC10",
+      "severity": "LOW",
+      "ac": "5.2-AC10",
+      "description": "Tests cover only zero-conversation case for top-clustered nav links. jsdom cannot test scroll behavior with conversations filling the viewport.",
+      "remediation": "Add E2E layout test with conversations if needed"
+    },
+    {
+      "id": "CONCERN-NFR-5.4",
+      "severity": "MEDIUM",
+      "ac": "NFR",
+      "description": "NFR-5.4 returned PASS WITH CONCERNS: 2 Medium findings (missing select projection on repoConnection.findUnique, AC-7 full-width pane gap) and 3 Low findings (keyboard scrollability, missing maxLength, no-scrollbar panels not keyboard-scrollable). All pre-existing or follow-up items.",
+      "remediation": "Address in follow-up patches"
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "HIGH",
+      "action": "Fix AC-7 full-width pane gap — add no-scrollbar to artifacts/page.tsx:123 and add test case",
+      "requirements": ["5.4-AC7"]
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Run E2E test suite against running dev server + database to verify all E2E tests pass (not executed in this session)",
+      "requirements": []
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Wire up branded placeholder 'Message bmad-easy…' on ChatInput in new-conversation context (AC-5, Story 5.3)",
+      "requirements": ["5.3-AC5"]
+    },
+    {
+      "priority": "LOW",
+      "action": "Update sprint-status.yaml to mark epic-5 as done (all 4 stories are done)",
+      "requirements": []
+    },
+    {
+      "priority": "LOW",
+      "action": "Address pre-existing NFR findings (select projection on repoConnection.findUnique, maxLength on input, keyboard scrollability of no-scrollbar panels)",
+      "requirements": []
+    }
+  ],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix-epic-5.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  },
+  "gate_status": "CONCERNS",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "100%",
+    "p0_status": "MET",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "100%",
+    "p1_status": "MET",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "100%",
+    "overall_status": "MET"
+  }
+}

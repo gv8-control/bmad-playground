@@ -25,7 +25,7 @@ inputDocuments:
 
 **Date:** 2026-06-16
 **Author:** TEA Master Test Architect (BMad)
-**Status:** Architecture Review Complete — all four pre-implementation blockers (B-01–B-04) resolved or delivered. Revised 2026-07-07 against implementation evidence (Epics 1–3 complete, 28 stories done per sprint-status.yaml; NFR audit 2026-07-07 at CONCERNS; gate decision PASS, 92% coverage).
+**Status:** Architecture Review Complete — all four pre-implementation blockers (B-01–B-04) resolved or delivered. Revised 2026-07-12 against post-Epic-5 implementation evidence (Epics 1, 2, 3, and 5 complete — 32 stories done per `sprint-status.yaml`; Epic 5 traceability gate = CONCERNS with 38/38 ACs FULL coverage, 853 tests passing across 65 suites; NFR-5 epic PASS-WITH-CONCERNS; Epic 6 backlog, not started). Earlier 2026-07-07 baseline (Epics 1–3 complete, gate decision PASS, 92% coverage) is retained as historical reference in the body of this document.
 **Project:** bmad-easy
 **PRD Reference:** `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md`
 **ADR Reference:** `_bmad-output/planning-artifacts/architecture.md`
@@ -40,7 +40,7 @@ inputDocuments:
 
 - **Revenue/Impact:** Target pricing ~$25–30/seat/month; PRD §10 includes a cost-floor analysis tying Daytona/Claude spend directly to unit economics.
 - **Problem:** Non-dev roles cannot run BMAD methodology skills today because they require a local dev environment, CLI fluency, and direct GitHub repo access.
-- **GA Launch:** Not yet dated; project is in implementation — Epics 1–3 complete (28 stories done per `sprint-status.yaml`), NFR audit (2026-07-07) at CONCERNS, gate decision PASS (92% overall coverage, P0 100% / P1 ≥95%).
+- **GA Launch:** Not yet dated. Epics 1, 2, 3, and 5 complete (32 stories per `sprint-status.yaml` as of 2026-07-12). Epic 5 (UX Mockup Fidelity — Close Visual Drift, 4 stories 5.1–5.4) completed this session with gate = CONCERNS: 38/38 ACs at FULL coverage, 853 tests passing across 65 Jest suites plus 3 active Playwright visual-container specs; NFR-5 epic PASS-WITH-CONCERNS (1 Medium story-introduced regression — auto-scroll effect deps after Story 5.3 AC-3 spinner relocation; ~9 quick-win fixes tracked for a follow-up hardening story). Epic 6 (Sandbox-Based Agent Execution) is backlog — it migrates agent execution from the host process (host-based SDK `query()` per Story 3.3 DP-2) back into the Daytona sandbox per PRD §3 and architecture.md data flow, and is the next scope for test planning.
 
 **Architecture** (from architecture.md):
 
@@ -52,11 +52,46 @@ inputDocuments:
 
 - Up to 10 concurrent Conversations/sessions per the stated NFR-R4 ceiling; single-container NestJS deploy for MVP (no horizontal scaling yet).
 
+### Post-Epic-5 Update (2026-07-12)
+
+Epic 5 is complete. The four stories (5.1–5.4) delivered the UX-mockup fidelity fixes across the shared shell, page headers, conversation stream, and Tailwind token drift; all ATDD checklists, automate-validation reports, and three of four test-review-validation reports exist under `_bmad-output/test-artifacts/`. Story 5.2's test-review-validation report is the one missing evidence artefact (recorded as a Low evidence gap, not a coverage gap — see `nfr-assessment-5-epic.md`).
+
+**Traceability gate (CONCERNS, not PASS):** per `traceability/gate-decision-epic-5.json`, 38/38 ACs have FULL coverage with real exercising tests (135 Epic-5-specific tests, 853 total tests, 0 skipped). The decision is CONCERNS rather than PASS because of four documented weaknesses (none a blocker):
+
+1. **5.4-AC7 full-width artifact list pane missing `no-scrollbar`** (bug-hunt M2, NFR-5.4-2) — implementation gap inside an AC that otherwise has coverage. Issue: `apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx:123` has `overflow-y-auto` but lacks `no-scrollbar`; existing tests pass `{ id: 'art_1' }` (two-pane mode), no test renders the page without an `id` searchParam.
+2. **5.3-AC5 branded placeholder not wired in implementation** — test correctly verifies the default placeholder; the branded variant is deferred.
+3. **5.2-AC10 scroll behavior untested in jsdom** — component tests provide structural coverage; a supplementary E2E is recommended for scroll behaviour on the conversation list.
+4. **NFR-5.4 a11y gaps** — `no-scrollbar` panels (Story 5.4 AC-7) lack `tabIndex={0}` + `role="region"` (bug-hunt L6, NFR-5.4-4); keyboard-only users cannot scroll them.
+
+**Known gaps to close in a follow-up hardening story** (sourced from `bug-hunt-epic-5-…md`, `test-fidelity-audit-2026-07-12.md`, `nfr-assessment-5-epic.md`):
+
+- **Auto-scroll regression test** — `ChatMessageList.tsx:44-48` `useEffect` deps `[messages, isThinking]` omit `errorMessage`/`showRetry`/`showSpinner` after Story 5.3 AC-3 relocated the spinner/Retry into the scrollable container (bug-hunt M1, NFR-5.3-1, Medium). Add a regression test asserting the Retry button is scrolled into view on `SESSION_TIMEOUT` while the user is scrolled up. Recommended default: scroll-override is appropriate for error states.
+- **5.4-AC7 no-scrollbar full-width pane + test** — one-line fix at `artifacts/page.tsx:123` (add `no-scrollbar`) plus a test case rendering the page without an `id` searchParam.
+- **False-green ChatInput test (bug-hunt L1)** — `ChatInput.test.tsx:224-241` asserts `toContain('bg-text-3')` which matches both `disabled:bg-text-3` (correct) and `bg-text-3` (always-applied regression). Add a positive assertion that the enabled Send button does NOT contain `bg-text-3`.
+- **5.4 AC-1 / AC-5 hover-token E2E restoration** — `test-review-validation-report-5-4.md` removed the skipped E2E blocks because the `withArtifacts` Playwright fixture is broken on unique-constraint violations. Only className-level unit tests remain for `ArtifactCard` and `ArtifactListEntry` hover borders (fidelity audit Finding 3, INFO). Track `withArtifacts` fixture fix as a deferred-work item; when fixed, restore the removed E2E blocks for computed `borderColor` / `backgroundColor` verification.
+- **Type-checked `connectRepository` mock factory + `.catch()` path test (fidelity audit Finding 1, LOW Gap-C)** — `RepositoryUrlForm.test.tsx:20-22` mocks `connectRepository` as a bare `jest.fn()` typed only as `(...args: unknown[]) => any`. Replace with a typed factory keyed on `ConnectResult`; add one `.catch()`-path test asserting the generic "unexpected error occurred" fallback renders.
+- **NFR quick-wins bundle (~9 fixes, ~1 hour total)** — see `nfr-assessment-5-epic.md` "Quick Wins" list: `take: 100` on `turn.findMany`; `select: { id: true }` on `repoConnection.findUnique`; hoist `Intl.DateTimeFormat` to module scope in `AgentMessage`/`UserMessage`; add `aria-live="polite"` test assertion; update `conversations/[conversationId]/loading.tsx` to the canonical depth-1 header; add `tabIndex={0}` + `role="region"` to the three `no-scrollbar` panels; add `maxLength={2000}` to `RepositoryUrlForm` input; add `MAX_DRAFT_SIZE` guard to `useDraftPersistence`.
+
+**Deferred work — pruned clean:** 0 orphaned deferred-work items remaining across Epic 5 stories (per the post-epic assessment).
+
+### Epic 6 (Sandbox-Based Agent Execution) — Forward-Looking Testability Preview
+
+Epic 6 is backlog, not started. Per `sprint-change-proposal-2026-07-11.md` and `sprint-status.yaml`, it has five stories (6.1–6.5) that migrate agent execution from the host process (host-based SDK `query()` per Story 3.3 DP-2) back into the Daytona sandbox per PRD §3 and architecture.md data flow. This update records the testability needs the test plan must tee up before Epic 6 enters implementation:
+
+- **New test seam: `agui-event-bridge.service.ts`** (Story 6.2). This is a new NestJS service that receives the sandbox-agent (rivet-dev) normalized event stream via Daytona's `getSessionCommandLogs(sessionId, commandId, onStdout, onStderr)` API and re-encodes to AG-UI events, with circuit breaker + heartbeat. Like `ISandboxService` / `SANDBOX_SERVICE` and `IAgentService` / `AGENT_SERVICE`, it needs an `IAguiEventBridgeService` / `AGUI_EVENT_BRIDGE_SERVICE` Symbol-token test seam plus an `AguiEventBridgeServiceFake` that reproduces production side effects (emitting AG-UI events, calling `terminateProcess` on circuit-breaker trip). The fake must be delivered with the service, not bolted on later (B-01 lesson). Action for the architect: add the interface to `libs/shared-types` before Story 6.2 implementation begins.
+- **`ISandboxService` extension (possible)** — `SandboxServiceFake` may need a `getSessionCommandLogs` or equivalent streaming-exec method so the new event bridge can be integration-tested without a real Daytona sandbox. Story-level design decision; flagged here so the Story 6.2 design does not regress the B-01 test seam that unblocked the entire Conversation-path suite.
+- **Story 3.3 DP-2 reconciliation** — Story 3.3's `AgentService` runs the agent via `query()` in the host Node.js process; `terminateProcess` is kept for `IAgentService` compliance but is effectively a no-op. Epic 6 makes `terminateProcess` real (it terminates a genuine sandbox process session). Existing P0-010 (sandbox-agent bridge killed mid-session → backend terminates the orphaned agent process, asserted "not just that an error event is emitted") was structurally correct but practically unverifiable against the host-based execution; Epic 6 makes it fully testable. Keep P0-010 on the Epic 6 test plan and tighten the assertion to verify the Daytona process session actually terminates.
+- **Story 6.5 Real-Service E2E Verification is Tier 3 in practice.** The QA doc's "Nightly: Real-Service Smoke Tests" tier was always a backlog need (per `bmad-easy-handoff.md` § "Real-Service Smoke Tests"). Epic 6's Story 6.5 makes that tier mandatory — NFR-P1 (first token ≤1,500 ms) and NFR-P2 (chat ready ≤10 s) timing assertions depend on the real Daytona + real Claude API path that only the new sandbox-based execution exercises. Plan to land the Tier 3 wiring as part of Story 6.5, not as a deferred enhancement.
+- **`networkAllowList` egress control** (Story 6.1) — adds a NFR-S1 defence-in-depth test: assert the allow list excludes platform-internal endpoints (`apps/agent-be`, Postgres, Auth.js). This extends the existing P0-014 (sandbox env injection excludes internal credentials) with a network-route assertion.
+- **`ANTHROPIC_API_KEY` becomes a required env var** in `apps/agent-be/src/config/env.validation.ts` Zod schema once Epic 6 lands (per `sprint-change-proposal-2026-07-11.md` §4.5); `AGENT_WORKDIR` becomes dead config (remove). Update the env-validation unit test accordingly when the change ships.
+
+These items are recorded here so that when Epic 6 enters implementation, the per-story ATDD + test-design work begins from a pre-identified testability surface — not from a greenfield discovery pass.
+
 **Risk Summary:**
 
 - **Total risks**: 10 (R-01–R-10)
 - **High-priority (≥6)**: 4 risks requiring mitigation before their respective implementation milestones (none score 9 / gate-blocking)
-- **Test effort**: ~140–205 hours system-wide (~4–6 sprints for 1 QA/SDET working in parallel with implementation), excluding items currently blocked on open architecture/PM decisions. **(2026-07-07: superseded — Epics 1–3 complete; actual effort recorded in per-story test artifacts. Gate decision PASS, 92% coverage, 251/251 tests passing.)**
+- **Test effort**: ~140–205 hours system-wide (~4–6 sprints for 1 QA/SDET working in parallel with implementation), excluding items currently blocked on open architecture/PM decisions. **(2026-07-07: superseded — Epics 1–3 complete; actual effort recorded in per-story test artifacts. Gate decision PASS, 92% coverage, 251/251 tests passing.)** **(2026-07-12: further superseded — Epics 1, 2, 3, and 5 complete; 853/853 tests passing across 65 suites; Epic 5 gate = CONCERNS with 38/38 ACs at FULL coverage; NFR-5 epic PASS-WITH-CONCERNS. Per-story test artefacts (ATDD checklists, automate-validation reports, test reviews, NFR assessments) under `_bmad-output/test-artifacts/` elaborate the scenarios below. The system-level ranges are retained for historical reference only.)**
 
 ---
 
