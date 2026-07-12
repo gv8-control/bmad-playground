@@ -1,11 +1,6 @@
 #!/bin/bash
 cp --update=none .env.example .env
 
-# n8n loads external hooks via require(), which needs an absolute path.
-# Compute it here so it's baked into .env and available in every shell
-# that sources it (start.sh, .bashrc, manual pm2 commands).
-sed -i "s|EXTERNAL_HOOK_FILES=.*|EXTERNAL_HOOK_FILES=$PWD/n8n/hooks.js|" .env
-
 corepack enable
 corepack prepare yarn@4.17.0 --activate
 
