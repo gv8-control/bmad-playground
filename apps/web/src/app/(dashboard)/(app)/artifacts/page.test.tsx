@@ -5,10 +5,12 @@
  * Server Component unit tests for ArtifactsPage.
  * Covers AC-1 (two-column layout, rendered content), AC-2 (artifact load
  * error state), AC-3 (back navigation via query parameter approach).
+ * Story 5.2 covers: AC-7 (breadcrumb inline beside title), AC-8 (header bottom divider).
  *
  * GREEN PHASE: implementation complete. Story 2.4 delivered the list-only
  * page; Story 2.5 adds searchParams handling, selected-artifact query,
  * two-column layout, and ArtifactViewer/ArtifactLoadError rendering.
+ * Story 5.2 tests are active and passing.
  *
  * Child component rendering (ArtifactListEntry, ArtifactViewer,
  * ArtifactLoadError, CredentialErrorBanner) is verified by their own
@@ -401,5 +403,36 @@ describe('ArtifactsPage — page structure (AC-1, UX-DR16)', () => {
     setupArtifacts(ARTIFACTS);
     const html = await renderPage();
     expect(html).toContain('Breadcrumb');
+  });
+
+  describe('[P0] Story 5.2 — Header structure (AC-7, AC-8)', () => {
+    it('header has border-b border-surface-raised (AC-8 divider)', async () => {
+      setupArtifacts(ARTIFACTS);
+      const html = await renderPage();
+      expect(html).toContain('border-b');
+      expect(html).toContain('border-surface-raised');
+    });
+
+    it('header has pt-6 pb-4 px-8 padding (AC-7 header padding)', async () => {
+      setupArtifacts(ARTIFACTS);
+      const html = await renderPage();
+      expect(html).toContain('pt-6');
+      expect(html).toContain('pb-4');
+      expect(html).toContain('px-8');
+    });
+
+    it('breadcrumb and h1 are in a flex items-center gap-3 row (AC-7 inline)', async () => {
+      setupArtifacts(ARTIFACTS);
+      const html = await renderPage();
+      expect(html).toContain('flex items-center gap-3');
+    });
+
+    it('h1 does NOT have px-8 (padding moved to header) (AC-7)', async () => {
+      setupArtifacts(ARTIFACTS);
+      const html = await renderPage();
+      const h1Match = html.match(/<h1[^>]*>/);
+      expect(h1Match).not.toBeNull();
+      expect(h1Match![0]).not.toContain('px-8');
+    });
   });
 });

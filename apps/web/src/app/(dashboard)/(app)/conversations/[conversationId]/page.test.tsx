@@ -4,11 +4,14 @@
  * Story 3.2: Invoke BMAD Skills via Slash Command
  * Server Component unit tests for ConversationPage.
  * Covers AC-4 (URL transition target page, conversation lookup, tenant isolation).
+ * Story 5.2 covers: AC-7 (breadcrumb inline beside title), AC-8 (header bottom divider).
  *
  * The page reads a conversation from Postgres by id + userId (tenant isolation),
  * redirects to /sign-in if unauthenticated, redirects to /conversations/new
  * if the conversation doesn't exist or doesn't belong to the user, mints a
  * boundary JWT, and renders ConversationPane with initialConversationId.
+ *
+ * GREEN PHASE: Story 5.2 tests are active and passing.
  *
  * Child component rendering (ConversationPane, Breadcrumb) is verified by
  * their own co-located component tests. This page test focuses on
@@ -217,5 +220,51 @@ describe('ConversationPage — conversation rendering (AC-4)', () => {
 
     expect(html).toContain('Conversation');
     expect(html).not.toContain('ConversationPane:undefined');
+  });
+
+  describe('[P0] Story 5.2 — Header structure (AC-7, AC-8)', () => {
+    beforeEach(() => {
+      mockAuth.mockResolvedValue(SESSION);
+      mockConversationFindFirst.mockResolvedValue(CONVERSATION);
+      mockTurnFindMany.mockResolvedValue([]);
+      mockMintBoundaryJwt.mockResolvedValue(BOUNDARY_JWT);
+    });
+
+    it('header has border-b border-surface-raised (AC-8 divider)', async () => {
+      const element = await ConversationPage({
+        params: Promise.resolve({ conversationId: 'conv-1' }),
+      });
+      const html = renderToStaticMarkup(element);
+      expect(html).toContain('border-b');
+      expect(html).toContain('border-surface-raised');
+    });
+
+    it('header has pt-6 pb-4 px-8 padding (AC-7 header padding)', async () => {
+      const element = await ConversationPage({
+        params: Promise.resolve({ conversationId: 'conv-1' }),
+      });
+      const html = renderToStaticMarkup(element);
+      expect(html).toContain('pt-6');
+      expect(html).toContain('pb-4');
+      expect(html).toContain('px-8');
+    });
+
+    it('breadcrumb and h1 are in a flex items-center gap-3 row (AC-7 inline)', async () => {
+      const element = await ConversationPage({
+        params: Promise.resolve({ conversationId: 'conv-1' }),
+      });
+      const html = renderToStaticMarkup(element);
+      expect(html).toContain('flex items-center gap-3');
+    });
+
+    it('h1 does NOT have px-8 (padding moved to header) (AC-7)', async () => {
+      const element = await ConversationPage({
+        params: Promise.resolve({ conversationId: 'conv-1' }),
+      });
+      const html = renderToStaticMarkup(element);
+      const h1Match = html.match(/<h1[^>]*>/);
+      expect(h1Match).not.toBeNull();
+      expect(h1Match![0]).not.toContain('px-8');
+    });
   });
 });

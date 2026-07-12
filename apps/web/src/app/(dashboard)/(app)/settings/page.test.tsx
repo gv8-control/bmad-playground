@@ -4,8 +4,10 @@
  * ATDD — Story 5.1: Restore Missing Visual Containers Across Surfaces
  * Server Component unit tests for SettingsPage.
  * Covers AC-4 (Settings "coming soon" empty-state).
+ * Story 5.2 covers: AC-7 (breadcrumb inline beside title), AC-8 (header bottom divider).
  *
  * GREEN PHASE: tests are active for Task 4 implementation.
+ * Story 5.2 tests are active and passing.
  *
  * Uses the @jest-environment node + renderToStaticMarkup pattern from
  * project-map/page.test.tsx (Server Component test canonical pattern).
@@ -66,5 +68,32 @@ describe('SettingsPage — coming soon empty-state (Story 5.1, AC-4)', () => {
     expect(markup).toContain('Breadcrumb');
     expect(markup).toContain('tabindex="-1"');
     expect(markup).toContain('Settings');
+  });
+
+  describe('[P0] Story 5.2 — Header structure (AC-7, AC-8)', () => {
+    it('header has border-b border-surface-raised (AC-8 divider)', async () => {
+      const markup = renderToStaticMarkup(await SettingsPage());
+      expect(markup).toContain('border-b');
+      expect(markup).toContain('border-surface-raised');
+    });
+
+    it('header has pt-6 pb-4 px-8 padding (AC-7 header padding)', async () => {
+      const markup = renderToStaticMarkup(await SettingsPage());
+      expect(markup).toContain('pt-6');
+      expect(markup).toContain('pb-4');
+      expect(markup).toContain('px-8');
+    });
+
+    it('breadcrumb and h1 are in a flex items-center gap-3 row (AC-7 inline)', async () => {
+      const markup = renderToStaticMarkup(await SettingsPage());
+      expect(markup).toContain('flex items-center gap-3');
+    });
+
+    it('h1 does NOT have px-8 (padding moved to header) (AC-7)', async () => {
+      const markup = renderToStaticMarkup(await SettingsPage());
+      const h1Match = markup.match(/<h1[^>]*>/);
+      expect(h1Match).not.toBeNull();
+      expect(h1Match![0]).not.toContain('px-8');
+    });
   });
 });
