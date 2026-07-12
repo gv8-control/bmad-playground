@@ -6,9 +6,6 @@
  * Verifies the jwt callback encrypts and upserts the access token after user
  * upsert when account.access_token is present (AC-3).
  *
- * GREEN PHASE: all tests are un-skipped and passing.
- * auth.ts has been updated with credential storage and all tests are active.
- *
  * Relationship to auth.integration.spec.ts:
  *   auth.integration.spec.ts covers the existing jwt/session callbacks from Story 1.2.
  *   This file covers only the NEW credential-storage behaviour added in Story 1.3.

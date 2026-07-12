@@ -10,7 +10,6 @@
  *   - complete() removes the subject from the emitters Map
  *   - reconnecting clients get a fresh ReplaySubject (no stale drain event replayed)
  *
- * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { SessionEventsService } from './session-events.service';
 

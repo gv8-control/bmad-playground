@@ -5,9 +5,6 @@
  * Integration tests for the connectRepository Server Action.
  * Covers AC-2 (URL validation + write-access check), AC-3 (encrypted storage,
  * token never returned to client), AC-4 (descriptive per-cause error messages).
- *
- * GREEN PHASE: all tests are un-skipped and passing.
- * repo-connection.actions.ts has been created and all tests are active.
  */
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────

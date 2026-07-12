@@ -24,7 +24,6 @@
  * state from Postgres; persistSandboxState on every write), AC-3 (ManualCommitService
  * drain — complete or notify via MANUAL_SAVE_FAILED).
  *
- * TDD GREEN PHASE: Story 3.5/3.9/3.10/3.11/3.12 tests un-skipped and passing.
  */
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';

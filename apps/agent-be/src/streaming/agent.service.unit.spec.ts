@@ -20,7 +20,6 @@
  * Story 3.11 covers: AC-3 (concurrent-turn guard — second runTurn rejected,
  *                    no RUN_STARTED/RUN_ERROR emitted, circuitBreakerTimers not overwritten).
  *
- * TDD GREEN PHASE — Story 3.4/3.7/3.8/3.11 tests un-skipped and passing.
  */
 import { SessionEventsService } from './session-events.service';
 import { AgentService } from './agent.service';

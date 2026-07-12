@@ -4,9 +4,6 @@
  * Asserts that apps/web/vercel.json exists and contains the correct
  * Vercel project configuration per the story's acceptance criteria.
  *
- * Tests are active (green phase) — vercel.json has been created with
- * the required configuration properties.
- *
  * AC coverage:
  * - AC-1: framework preset, installCommand, buildCommand (prisma generate + nx build web)
  * - AC-2: git.deploymentEnabled: false
