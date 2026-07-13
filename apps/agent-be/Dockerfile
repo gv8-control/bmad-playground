@@ -16,6 +16,7 @@ RUN yarn nx build agent-be
 
 # ── Runtime stage ──
 FROM node:24-slim AS runtime
+ENV NODE_ENV=production
 RUN corepack enable && corepack prepare yarn@4.17.0 --activate
 WORKDIR /app
 COPY --from=build /app/dist/apps/agent-be/ ./

@@ -12,6 +12,7 @@ import { ConversationsModule } from '../conversations/conversations.module';
 import { StreamingModule } from '../streaming/streaming.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { CredentialsModule } from '../credentials/credentials.module';
+import { AnthropicProxyModule } from '../anthropic-proxy/anthropic-proxy.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -28,6 +29,7 @@ import { AppController } from './app.controller';
     CredentialsModule,
     SandboxModule,
     StreamingModule,
+    AnthropicProxyModule,
     ConversationsModule,
   ],
   controllers: [AppController],

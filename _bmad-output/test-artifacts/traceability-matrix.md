@@ -142,12 +142,12 @@ _Case counts are grep-based inclusive counts (`it`/`test` + `.skip`/`.each`/`.on
 
 ### Test Files by Level
 
-#### E2E (28 files, `playwright/e2e/`)
+#### E2E (27 files, `playwright/e2e/`)
 
 | Suite                | File                                                        |
 | -------------------- | ---------------------------------------------------------- |
 | Shell                | `shell/app-shell.spec.ts`, `hydration/hydration.spec.ts`   |
-| Auth                 | `auth/sign-in.spec.ts`, `auth/access-baseline.spec.ts`, `debug-auth.spec.ts` |
+| Auth                 | `auth/sign-in.spec.ts`, `auth/access-baseline.spec.ts` |
 | Onboarding           | `onboarding/onboarding.spec.ts`, `onboarding/bmad-validation.spec.ts` |
 | Project Map          | `project-map/project-map.spec.ts`, `project-map/project-map-refresh.spec.ts`, `project-map/navigate-to-artifact.spec.ts`, `project-map/cross-tab-conversation-focus.spec.ts` |
 | Artifact Browser     | `artifact-browser/artifact-browser.spec.ts`, `artifact-browser/artifact-viewer.spec.ts` |

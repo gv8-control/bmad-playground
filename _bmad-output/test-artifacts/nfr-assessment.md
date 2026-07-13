@@ -361,7 +361,7 @@ Playwright CLI not used — this is a codebase audit, not a live running applica
 | Type | Count | Change Since July 7 |
 |------|-------|---------------------|
 | Jest test files (apps/) | 68 | +0 (was 73 in July 7 — some may have been consolidated) |
-| Playwright E2E specs | 28 | +5 (was 23 in July 7 — `nfr-performance.spec.ts`, `functional-smoke.spec.ts`, `debug-auth.spec.ts`, `repo-size.spec.ts`, `access-baseline.spec.ts` added) |
+| Playwright E2E specs | 27 | +4 (was 23 in July 7 — `nfr-performance.spec.ts`, `functional-smoke.spec.ts`, `repo-size.spec.ts`, `access-baseline.spec.ts` added; `debug-auth.spec.ts` removed — empty stub with no assertions) |
 | Files with P0 tests | 59 | — |
 | Files with P1 tests | 44 | — |
 

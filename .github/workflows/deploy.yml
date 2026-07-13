@@ -1,0 +1,73 @@
+name: Deploy to Production
+on: workflow_dispatch
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - name: Quality gate — verify Test Pipeline passed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          RUN_DATA=$(gh run list --workflow=test.yml --branch="$BRANCH" --status=completed --limit=1 --json conclusion,databaseId,runNumber)
+          if [ -z "$RUN_DATA" ] || [ "$RUN_DATA" = "[]" ]; then
+            echo "No completed Test Pipeline run found on branch '$BRANCH'. Run the Test Pipeline first."
+            exit 1
+          fi
+          CONCLUSION=$(echo "$RUN_DATA" | jq -r '.[0].conclusion')
+          RUN_NUMBER=$(echo "$RUN_DATA" | jq -r '.[0].runNumber')
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "Latest Test Pipeline run #$RUN_NUMBER on '$BRANCH' concluded with '$CONCLUSION'. Fix failing tests before deploying."
+            exit 1
+          fi
+          echo "Latest Test Pipeline run #$RUN_NUMBER passed. Proceeding with deploy."
+          echo "RUN_NUMBER=$RUN_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'yarn'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Deploy to Vercel (apps/web)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: prj_ih4UAxO759A1CHdrZ93j4rk3poYD
+          VERCEL_ORG_ID: team_DV9hczWkgqbOEoMGnX9Pta3t
+        run: |
+          npm install -g vercel@latest
+          vercel deploy --prod --yes --cwd=apps/web
+
+      - name: Deploy to Railway (apps/agent-be)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          npm install -g @railway/cli
+          railway up --service 4df7d0d1-0040-4395-89c8-bd166c4863cf --environment 0c3802e5-d0a4-44c0-beec-ed6ff592f5e5 --project 30ab04b2-132c-440b-92ca-bc57be294d6f
+
+      - name: Deployment summary
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          echo "## Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Vercel (apps/web):** https://bmad-easy.vercel.app" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Railway (apps/agent-be):** See Railway dashboard" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Git SHA:** $SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Test Pipeline run:** #$RUN_NUMBER" >> "$GITHUB_STEP_SUMMARY"

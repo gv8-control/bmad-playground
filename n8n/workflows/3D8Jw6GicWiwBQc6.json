@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-21T22:40:18.521Z",
+  "updatedAt": "2026-07-13T08:12:32.632Z",
   "createdAt": "2026-06-21T12:41:40.926Z",
   "id": "3D8Jw6GicWiwBQc6",
   "name": "BMAD Outcome",
@@ -56,26 +56,21 @@
     },
     {
       "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "claude-haiku-4-5-20251001",
-          "mode": "list",
-          "cachedResultName": "Claude Haiku 4.5"
-        },
+        "model": "voxtral-small-latest",
         "options": {}
       },
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "typeVersion": 1.5,
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
       "position": [
         400,
         192
       ],
-      "id": "e6a04aeb-142e-4d10-85ff-13f28ff5ff72",
-      "name": "Anthropic Chat Model",
+      "id": "ee5118c9-bec3-46fd-a26c-32c81f3fed9d",
+      "name": "Mistral Cloud Chat Model",
       "credentials": {
-        "anthropicApi": {
-          "id": "qsLq66OJbT7LErQP",
-          "name": "Anthropic account"
+        "mistralCloudApi": {
+          "id": "bz3nZ97F04acM0xI",
+          "name": "Mistral Cloud account"
         }
       }
     }
@@ -103,7 +98,7 @@
         ]
       ]
     },
-    "Anthropic Chat Model": {
+    "Mistral Cloud Chat Model": {
       "ai_languageModel": [
         [
           {
@@ -138,9 +133,9 @@
       }
     ]
   },
-  "versionId": "a3f160d9-e753-41f8-93cb-7704415e9e1e",
-  "activeVersionId": "a3f160d9-e753-41f8-93cb-7704415e9e1e",
-  "versionCounter": 52,
+  "versionId": "85db25b3-61db-417e-a299-e4d440543841",
+  "activeVersionId": "1e1e3d53-bb0e-4414-b977-8adb05c54ffa",
+  "versionCounter": 56,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
@@ -165,7 +160,7 @@
     }
   ],
   "versionMetadata": {
-    "name": "Version 75db6a6c",
-    "description": ""
+    "name": null,
+    "description": null
   }
 }

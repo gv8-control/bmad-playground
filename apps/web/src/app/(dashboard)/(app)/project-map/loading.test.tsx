@@ -5,8 +5,8 @@
  *
  * The loading.tsx is a Next.js convention file that renders automatically
  * while the page.tsx Server Component is executing. These tests verify the
- * skeleton structure renders correctly — the E2E test for the 2-second
- * load time (E2E-03) remains skipped pending dev-server infrastructure.
+ * skeleton structure renders correctly. The E2E test for the 2-second
+ * load time (E2E-03) is implemented in project-map.spec.ts.
  *
  * Priority tags: P0 for AC coverage, P1 for negative assertions.
  */
