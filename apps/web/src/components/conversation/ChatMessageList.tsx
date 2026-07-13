@@ -4,9 +4,6 @@ import { useEffect, useRef } from 'react';
 import type { ChatMessage } from './types';
 import { UserMessage } from './UserMessage';
 import { AgentMessage } from './AgentMessage';
-import { ToolPill } from './ToolPill';
-import { SemanticPill } from './SemanticPill';
-import { AccessNotice } from './AccessNotice';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { SessionStartSpinner } from './SessionStartSpinner';
@@ -103,26 +100,6 @@ export function ChatMessageList({
             return (
               <div key={message.id} className="flex justify-center py-4">
                 <p className="text-xs text-text-2 text-center max-w-md" role="status">{message.content}</p>
-              </div>
-            );
-          }
-          if (message.toolCall) {
-            if (message.toolCall.semantic) {
-              return (
-                <SemanticPill
-                  key={message.id}
-                  artifactType={message.toolCall.semantic.artifactType}
-                  artifactTitle={message.toolCall.semantic.artifactTitle}
-                  viewHref={message.toolCall.semantic.viewHref}
-                />
-              );
-            }
-            return (
-              <div key={message.id}>
-                <ToolPill toolCall={message.toolCall} />
-                {message.toolCall.accessNotice && (
-                  <AccessNotice notice={message.toolCall.accessNotice} />
-                )}
               </div>
             );
           }

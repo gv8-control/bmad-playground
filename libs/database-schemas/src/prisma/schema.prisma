@@ -97,6 +97,7 @@ model Turn {
   conversationId String   @map("conversation_id")
   role           String
   content        String
+  segments       Json?
   createdAt      DateTime @default(now()) @map("created_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

@@ -18,6 +18,13 @@ type AgentState = 'idle' | 'thinking' | 'tool-executing' | 'streaming';
 
 const CLIENT_TIMEOUT_MS = 30_000;
 
+function safeUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export interface ConversationPaneProps {
   boundaryJwt: string;
   apiUrl: string;
@@ -31,7 +38,7 @@ export function ConversationPane({
   apiUrl,
   initialConversationId,
   initialMessages = [],
-  placeholder,
+  placeholder = 'Message bmad-easy…',
 }: ConversationPaneProps) {
   const router = useRouter();
   const [state, setState] = useState<SessionState>('init');
@@ -250,7 +257,7 @@ export function ConversationPane({
         setMessages((prev) => {
           if (prev.some((m) => m.id === messageId)) {
             return prev.map((m) =>
-              m.id === messageId ? { ...m, content: '', isStreaming: true } : m,
+              m.id === messageId ? { ...m, isStreaming: true } : m,
             );
           }
           return [
@@ -261,6 +268,7 @@ export function ConversationPane({
               content: '',
               createdAt: new Date(),
               isStreaming: true,
+              segments: [{ type: 'text' as const, content: '' }],
             },
           ];
         });
@@ -276,9 +284,18 @@ export function ConversationPane({
         const messageId = streamingMessageIdRef.current;
         if (messageId) {
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === messageId ? { ...m, content: m.content + delta } : m,
-            ),
+            prev.map((m) => {
+              if (m.id !== messageId) return m;
+              if (!m.segments) return { ...m, content: m.content + delta, segments: [{ type: 'text' as const, content: m.content + delta }] };
+              const newSegments = [...m.segments];
+              const last = newSegments[newSegments.length - 1];
+              if (last && last.type === 'text') {
+                newSegments[newSegments.length - 1] = { type: 'text' as const, content: last.content + delta };
+              } else {
+                newSegments.push({ type: 'text' as const, content: delta });
+              }
+              return { ...m, content: m.content + delta, segments: newSegments };
+            }),
           );
         }
       } catch {
@@ -302,33 +319,44 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const toolCallName = data.toolCallName ?? 'unknown';
-        const toolCallId = data.toolCallId ?? `tc-${Date.now()}`;
+        const toolCallId = data.toolCallId ?? safeUUID();
         setAgentState('tool-executing');
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === toolCallId)) {
-            return prev.map((m) =>
-              m.id === toolCallId && m.toolCall
-                ? { ...m, toolCall: { ...m.toolCall, input: '', output: '', status: 'running' as const } }
-                : m,
+        const streamingId = streamingMessageIdRef.current;
+        if (streamingId) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== streamingId) return m;
+              const segs = m.segments ?? [{ type: 'text' as const, content: '' }];
+              const existingIdx = segs.findIndex(
+                (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+              );
+              if (existingIdx >= 0) return m;
+              return {
+                ...m,
+                segments: [...segs, { type: 'tool_call' as const, toolCall: { toolCallId, toolName: toolCallName, status: 'running' as const, input: '', output: '' } }],
+              };
+            }),
+          );
+        } else {
+          const newMsgId = `msg-${Date.now()}`;
+          setMessages((prev) => {
+            const hasToolCall = prev.some(
+              (m) => m.segments?.some((s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId),
             );
-          }
-          return [
-            ...prev,
-            {
-              id: toolCallId,
+            if (hasToolCall) return prev;
+            return [...prev, {
+              id: newMsgId,
               role: 'assistant' as const,
               content: '',
               createdAt: new Date(),
-              toolCall: {
-                toolCallId,
-                toolName: toolCallName,
-                status: 'running',
-                input: '',
-                output: '',
-              },
-            },
-          ];
-        });
+              segments: [
+                { type: 'text' as const, content: '' },
+                { type: 'tool_call' as const, toolCall: { toolCallId, toolName: toolCallName, status: 'running' as const, input: '', output: '' } },
+              ],
+            }];
+          });
+          streamingMessageIdRef.current = newMsgId;
+        }
       } catch {
         // ignore parse errors
       }
@@ -340,11 +368,18 @@ export function ConversationPane({
         const { toolCallId, delta } = data;
         if (!toolCallId) return;
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === toolCallId && m.toolCall
-              ? { ...m, toolCall: { ...m.toolCall, input: m.toolCall.input + (delta ?? '') } }
-              : m,
-          ),
+          prev.map((m) => {
+            if (!m.segments) return m;
+            let found = false;
+            const newSegments = m.segments.map((s) => {
+              if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                found = true;
+                return { ...s, toolCall: { ...s.toolCall, input: s.toolCall.input + (delta ?? '') } };
+              }
+              return s;
+            });
+            return found ? { ...m, segments: newSegments } : m;
+          }),
         );
       } catch {
         // ignore parse errors
@@ -357,11 +392,18 @@ export function ConversationPane({
         const { toolCallId } = data;
         if (toolCallId) {
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === toolCallId && m.toolCall
-                ? { ...m, toolCall: { ...m.toolCall, status: 'completed' as const } }
-                : m,
-            ),
+            prev.map((m) => {
+              if (!m.segments) return m;
+              let found = false;
+              const newSegments = m.segments.map((s) => {
+                if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                  found = true;
+                  return { ...s, toolCall: { ...s.toolCall, status: 'completed' as const } };
+                }
+                return s;
+              });
+              return found ? { ...m, segments: newSegments } : m;
+            }),
           );
           setAgentState('thinking');
         }
@@ -382,19 +424,26 @@ export function ConversationPane({
               /Command exited with code [1-9]/.test(content) ||
               /failed to push/i.test(content)));
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === toolCallId && m.toolCall
-              ? {
-                  ...m,
+          prev.map((m) => {
+            if (!m.segments) return m;
+            let found = false;
+            const newSegments = m.segments.map((s) => {
+              if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                found = true;
+                return {
+                  ...s,
                   toolCall: {
-                    ...m.toolCall,
+                    ...s.toolCall,
                     output: content ?? '',
-                    status: isError ? ('error' as const) : m.toolCall.status,
-                    errorMessage: isError ? content : m.toolCall.errorMessage,
+                    status: isError ? ('error' as const) : s.toolCall.status,
+                    errorMessage: isError ? content : s.toolCall.errorMessage,
                   },
-                }
-              : m,
-          ),
+                };
+              }
+              return s;
+            });
+            return found ? { ...m, segments: newSegments } : m;
+          }),
         );
       } catch {
         // ignore parse errors
@@ -407,18 +456,25 @@ export function ConversationPane({
         const { toolCallId, artifactType, artifactTitle, viewHref } = data;
         if (!toolCallId) return;
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === toolCallId && m.toolCall
-              ? {
-                  ...m,
+          prev.map((m) => {
+            if (!m.segments) return m;
+            let found = false;
+            const newSegments = m.segments.map((s) => {
+              if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                found = true;
+                return {
+                  ...s,
                   toolCall: {
-                    ...m.toolCall,
+                    ...s.toolCall,
                     status: 'completed' as const,
                     semantic: { artifactType, artifactTitle, viewHref },
                   },
-                }
-              : m,
-          ),
+                };
+              }
+              return s;
+            });
+            return found ? { ...m, segments: newSegments } : m;
+          }),
         );
       } catch {
         // ignore parse errors
@@ -488,20 +544,60 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId } = data;
-        const id = toolCallId || `manual-save-${Date.now()}`;
+        const id = toolCallId || safeUUID();
         if (saveFallbackTimeoutRef.current) {
           clearTimeout(saveFallbackTimeoutRef.current);
           saveFallbackTimeoutRef.current = null;
         }
         setMessages((prev) => {
-          if (prev.some((m) => m.id === id)) return prev;
-          return [
-            ...prev,
-            {
-              id,
-              role: 'assistant' as const,
-              content: '',
-              createdAt: new Date(),
+          const streamingId = streamingMessageIdRef.current;
+          const targetId = streamingId ?? prev.findLast((m) => m.role === 'assistant')?.id;
+          if (targetId) {
+            return prev.map((m) => {
+              if (m.id !== targetId) return m;
+              if (!m.segments) {
+                return {
+                  ...m,
+                  segments: [{
+                    type: 'tool_call' as const,
+                    toolCall: {
+                      toolCallId: id,
+                      toolName: 'Save',
+                      status: 'completed' as const,
+                      input: '',
+                      output: '',
+                      semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
+                    },
+                  }],
+                };
+              }
+              const existingIdx = m.segments.findIndex(
+                (s) => s.type === 'tool_call' && s.toolCall.toolCallId === id,
+              );
+              if (existingIdx >= 0) return m;
+              return {
+                ...m,
+                segments: [...m.segments, {
+                  type: 'tool_call' as const,
+                  toolCall: {
+                    toolCallId: id,
+                    toolName: 'Save',
+                    status: 'completed' as const,
+                    input: '',
+                    output: '',
+                    semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
+                  },
+                }],
+              };
+            });
+          }
+          const newMsg: ChatMessage = {
+            id: `msg-${Date.now()}`,
+            role: 'assistant' as const,
+            content: '',
+            createdAt: new Date(),
+            segments: [{
+              type: 'tool_call' as const,
               toolCall: {
                 toolCallId: id,
                 toolName: 'Save',
@@ -510,8 +606,9 @@ export function ConversationPane({
                 output: '',
                 semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
               },
-            },
-          ];
+            }],
+          };
+          return [...prev, newMsg];
         });
         setWorkingTreeState('clean');
       } catch {
@@ -523,20 +620,60 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId, error } = data;
-        const id = toolCallId || `manual-save-${Date.now()}`;
+        const id = toolCallId || safeUUID();
         if (saveFallbackTimeoutRef.current) {
           clearTimeout(saveFallbackTimeoutRef.current);
           saveFallbackTimeoutRef.current = null;
         }
         setMessages((prev) => {
-          if (prev.some((m) => m.id === id)) return prev;
-          return [
-            ...prev,
-            {
-              id,
-              role: 'assistant' as const,
-              content: '',
-              createdAt: new Date(),
+          const streamingId = streamingMessageIdRef.current;
+          const targetId = streamingId ?? prev.findLast((m) => m.role === 'assistant')?.id;
+          if (targetId) {
+            return prev.map((m) => {
+              if (m.id !== targetId) return m;
+              if (!m.segments) {
+                return {
+                  ...m,
+                  segments: [{
+                    type: 'tool_call' as const,
+                    toolCall: {
+                      toolCallId: id,
+                      toolName: 'Save',
+                      status: 'error' as const,
+                      input: '',
+                      output: '',
+                      errorMessage: error ?? 'Save failed',
+                    },
+                  }],
+                };
+              }
+              const existingIdx = m.segments.findIndex(
+                (s) => s.type === 'tool_call' && s.toolCall.toolCallId === id,
+              );
+              if (existingIdx >= 0) return m;
+              return {
+                ...m,
+                segments: [...m.segments, {
+                  type: 'tool_call' as const,
+                  toolCall: {
+                    toolCallId: id,
+                    toolName: 'Save',
+                    status: 'error' as const,
+                    input: '',
+                    output: '',
+                    errorMessage: error ?? 'Save failed',
+                  },
+                }],
+              };
+            });
+          }
+          const newMsg: ChatMessage = {
+            id: `msg-${Date.now()}`,
+            role: 'assistant' as const,
+            content: '',
+            createdAt: new Date(),
+            segments: [{
+              type: 'tool_call' as const,
               toolCall: {
                 toolCallId: id,
                 toolName: 'Save',
@@ -545,8 +682,9 @@ export function ConversationPane({
                 output: '',
                 errorMessage: error ?? 'Save failed',
               },
-            },
-          ];
+            }],
+          };
+          return [...prev, newMsg];
         });
         setWorkingTreeState('dirty');
       } catch {
@@ -558,20 +696,29 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId } = data;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.toolCall && m.toolCall.toolCallId === toolCallId
-              ? {
-                  ...m,
-                  toolCall: {
-                    ...m.toolCall,
-                    status: 'error' as const,
-                    errorMessage: 'GitHub credentials have expired or been revoked.',
-                  },
+        if (toolCallId) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (!m.segments) return m;
+              let found = false;
+              const newSegments = m.segments.map((s) => {
+                if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                  found = true;
+                  return {
+                    ...s,
+                    toolCall: {
+                      ...s.toolCall,
+                      status: 'error' as const,
+                      errorMessage: 'GitHub credentials have expired or been revoked.',
+                    },
+                  };
                 }
-              : m,
-          ),
-        );
+                return s;
+              });
+              return found ? { ...m, segments: newSegments } : m;
+            }),
+          );
+        }
       } catch {
         // ignore parse errors
       }
@@ -582,21 +729,30 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId, code, retryAfter } = data;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.toolCall && m.toolCall.toolCallId === toolCallId
-              ? {
-                  ...m,
-                  toolCall: {
-                    ...m.toolCall,
-                    status: 'error' as const,
-                    errorMessage: 'Access denied.',
-                    accessNotice: { code, retryAfter },
-                  },
+        if (toolCallId) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (!m.segments) return m;
+              let found = false;
+              const newSegments = m.segments.map((s) => {
+                if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                  found = true;
+                  return {
+                    ...s,
+                    toolCall: {
+                      ...s.toolCall,
+                      status: 'error' as const,
+                      errorMessage: 'Access denied.',
+                      accessNotice: { code, retryAfter },
+                    },
+                  };
                 }
-              : m,
-          ),
-        );
+                return s;
+              });
+              return found ? { ...m, segments: newSegments } : m;
+            }),
+          );
+        }
       } catch {
         // ignore parse errors
       }

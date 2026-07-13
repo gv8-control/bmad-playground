@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-21T22:40:18.521Z",
+  "updatedAt": "2026-07-13T11:46:35.434Z",
   "createdAt": "2026-06-21T12:41:40.926Z",
   "id": "3D8Jw6GicWiwBQc6",
   "name": "BMAD Outcome",
@@ -56,26 +56,21 @@
     },
     {
       "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "claude-haiku-4-5-20251001",
-          "mode": "list",
-          "cachedResultName": "Claude Haiku 4.5"
-        },
+        "model": "mistral-small-latest",
         "options": {}
       },
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "typeVersion": 1.5,
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
       "position": [
         400,
-        192
+        208
       ],
-      "id": "e6a04aeb-142e-4d10-85ff-13f28ff5ff72",
-      "name": "Anthropic Chat Model",
+      "id": "5cd1d87f-d283-44df-9bcf-b79a54591cc8",
+      "name": "Mistral Cloud Chat Model",
       "credentials": {
-        "anthropicApi": {
-          "id": "qsLq66OJbT7LErQP",
-          "name": "Anthropic account"
+        "mistralCloudApi": {
+          "id": "bz3nZ97F04acM0xI",
+          "name": "Mistral Cloud account"
         }
       }
     }
@@ -103,7 +98,7 @@
         ]
       ]
     },
-    "Anthropic Chat Model": {
+    "Mistral Cloud Chat Model": {
       "ai_languageModel": [
         [
           {
@@ -138,34 +133,34 @@
       }
     ]
   },
-  "versionId": "a3f160d9-e753-41f8-93cb-7704415e9e1e",
-  "activeVersionId": "a3f160d9-e753-41f8-93cb-7704415e9e1e",
-  "versionCounter": 52,
+  "versionId": "cc28fa3e-a229-4b91-9ba9-3995e98be055",
+  "activeVersionId": "59ba344a-aedd-40c5-b836-28b4dda4321c",
+  "versionCounter": 57,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-01T03:43:25.204Z",
-      "createdAt": "2026-07-01T03:43:25.204Z",
+      "updatedAt": "2026-07-11T20:37:28.309Z",
+      "createdAt": "2026-07-11T20:37:28.309Z",
       "role": "workflow:owner",
       "workflowId": "3D8Jw6GicWiwBQc6",
-      "projectId": "AYEhcVrohjJ82DQg",
+      "projectId": "xflJlWtrjEQ5puMs",
       "project": {
-        "updatedAt": "2026-06-30T18:07:25.243Z",
-        "createdAt": "2026-06-30T17:25:02.325Z",
-        "id": "AYEhcVrohjJ82DQg",
+        "updatedAt": "2026-07-11T19:23:49.915Z",
+        "createdAt": "2026-07-11T19:23:36.685Z",
+        "id": "xflJlWtrjEQ5puMs",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+        "creatorId": "b027469e-7495-45c3-9419-cdbe393bdcd2"
       }
     }
   ],
   "versionMetadata": {
-    "name": "Version 75db6a6c",
-    "description": ""
+    "name": null,
+    "description": null
   }
 }

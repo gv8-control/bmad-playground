@@ -24,6 +24,10 @@
  * in-flight provisioning via DELETE before minting new conversation).
  * Story 3.12 covers: AC-1 (SESSION_DRAINING event handler sets state to
  * 'reconnecting' — reuses existing SessionState; onerror preserves state).
+ * Story 5.5 covers: AC-1–AC-6, AC-8 (interleaved tool/semantic pills via segments,
+ * SSE event handlers insert into streaming agent message segments, replay dedup,
+ * manual save segments, CREDENTIAL_FAILURE/ACCESS_DENIED segment updates, resume
+ * with segments).
  * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 
@@ -2371,6 +2375,601 @@ describe('ConversationPane', () => {
         const retryButton = screen.getByText('Retry');
         expect(retryButton.className).toContain('text-accent-fg');
         expect(retryButton.className).not.toContain('text-bg');
+      });
+    });
+  });
+
+  // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
+  //
+  // GREEN PHASE: tests are active and passing.
+  //
+  // AC-1: Tool call indicator renders inline at stream position
+  // AC-2: Tool call result replaces indicator in place
+  // AC-3: Semantic Pill promoted in place
+  // AC-4: Error-state Tool Pill renders inline
+  // AC-5: Access Notice renders inline below error Tool Pill
+  // AC-6: Manual save Semantic Pill renders inline
+  // AC-8: SSE event handlers insert into streaming agent message
+  // AC-9: Resume restores tool pills at original positions
+
+  describe('Story 5.5 — Interleaved tool calls in agent markdown stream', () => {
+    beforeEach(() => {
+      jest.useRealTimers();
+    });
+
+    describe('[P0] AC-1 — Tool call indicator renders inline at stream position', () => {
+      it('[P0] TOOL_CALL_START inserts tool_call segment into streaming agent message (not new messages entry)', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Let me check.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Running.*Bash/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainer = document.querySelector('.group.mb-6');
+        expect(agentMessageContainer).not.toBeNull();
+        expect(agentMessageContainer?.textContent).toContain('Running');
+        expect(agentMessageContainer?.textContent).toContain('Bash');
+      });
+
+      it('[P0] tool_call segment renders inline within agent markdown (not standalone row)', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Before tool.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: ' After tool.' });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Running.*Bash/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Before tool.');
+        expect(agentMessageContainers[0].textContent).toContain('Running');
+        expect(agentMessageContainers[0].textContent).toContain('Bash');
+        expect(agentMessageContainers[0].textContent).toContain('After tool.');
+      });
+    });
+
+    describe('[P0] AC-2 — Tool call result replaces indicator in place', () => {
+      it('[P0] TOOL_CALL_RESULT updates tool_call segment in place (no new entry created)', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Working.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_END', { toolCallId: 'tc-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_RESULT', {
+            messageId: 'msg-1',
+            toolCallId: 'tc-1',
+            content: '1 file changed',
+            role: 'tool',
+          });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Bash/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Working.');
+        expect(agentMessageContainers[0].textContent).toContain('Bash');
+      });
+    });
+
+    describe('[P0] AC-3 — Semantic Pill promoted in place', () => {
+      it('[P0] TOOL_CALL_PROMOTED updates tool_call segment semantic field in place', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Saving.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_END', { toolCallId: 'tc-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_RESULT', {
+            messageId: 'msg-1',
+            toolCallId: 'tc-1',
+            content: '1 file changed',
+            role: 'tool',
+          });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_PROMOTED', {
+            toolCallId: 'tc-1',
+            artifactType: 'prd',
+            artifactTitle: 'My PRD',
+            artifactId: 'art-1',
+            viewHref: '/artifacts?id=art-1',
+          });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Progress saved/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Progress saved');
+      });
+    });
+
+    describe('[P0] AC-4 — Error-state Tool Pill renders inline', () => {
+      it('[P0] failed tool result renders error-state Tool Pill inline as segment', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Trying.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_END', { toolCallId: 'tc-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_RESULT', {
+            messageId: 'msg-1',
+            toolCallId: 'tc-1',
+            content: 'error: Command exited with code 1',
+            role: 'tool',
+          });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Bash.*failed/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Trying.');
+        expect(agentMessageContainers[0].textContent).toContain('Bash');
+      });
+    });
+
+    describe('[P0] AC-5 — Access Notice renders inline below error Tool Pill', () => {
+      it('[P0] ACCESS_DENIED updates tool_call segment accessNotice within agent message', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Pushing.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_END', { toolCallId: 'tc-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_RESULT', {
+            messageId: 'msg-1',
+            toolCallId: 'tc-1',
+            content: 'Rate limit exceeded',
+            role: 'tool',
+          });
+        });
+        await act(async () => {
+          MockEventSource.emit('ACCESS_DENIED', {
+            code: 'RATE_LIMITED',
+            toolCallId: 'tc-1',
+          });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/GitHub is rate-limiting this request/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Pushing.');
+        expect(agentMessageContainers[0].textContent).toContain('GitHub is rate-limiting');
+      });
+    });
+
+    describe('[P0] AC-6 — Manual save Semantic Pill renders inline', () => {
+      it('[P0] MANUAL_SAVE_SUCCEEDED inserts tool_call segment with semantic into last agent message', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Done.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_END', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('MANUAL_SAVE_SUCCEEDED', {
+            toolCallId: 'manual-save-1',
+            timestamp: '2026-07-13T12:00:00.000Z',
+          });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Progress saved/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Done.');
+        expect(agentMessageContainers[0].textContent).toContain('Progress saved');
+      });
+
+      it('[P0] MANUAL_SAVE_FAILED inserts error-state tool_call segment into last agent message', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Done.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_END', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('MANUAL_SAVE_FAILED', {
+            toolCallId: 'manual-save-1',
+            error: 'Commit failed',
+          });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Save failed|Commit failed/i)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Done.');
+      });
+    });
+
+    describe('[P0] AC-8 — SSE event handlers insert into streaming agent message', () => {
+      it('[P0] TEXT_MESSAGE_START initializes segments array on streaming agent message', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Hello' });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Hello/)).toBeInTheDocument();
+        });
+      });
+
+      it('[P0] TOOL_CALL_ARGS updates tool_call segment input within agent message segments', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Checking.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_ARGS', { toolCallId: 'tc-1', delta: 'git status' });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Running.*Bash/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+      });
+
+      it('[P0] CREDENTIAL_FAILURE updates tool_call segment within agent message segments', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Pushing.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_END', { toolCallId: 'tc-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_RESULT', {
+            messageId: 'msg-1',
+            toolCallId: 'tc-1',
+            content: 'remote: Invalid username or token.',
+            role: 'tool',
+          });
+        });
+        await act(async () => {
+          MockEventSource.emit('CREDENTIAL_FAILURE', { toolCallId: 'tc-1' });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Bash.*failed/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Pushing.');
+      });
+    });
+
+    describe('[P0] AC-1 edge cases — Replay dedup and stable keys', () => {
+      it('[P0] duplicate TOOL_CALL_START on replay updates existing segment (no duplicate)', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Working.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+
+        await waitFor(() => {
+          expect(screen.getAllByText(/Running.*Bash/)).toHaveLength(1);
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+      });
+
+      it('[P0] tool call before any text creates agent message with empty text segment + tool_call segment', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Bash' });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Running.*Bash/)).toBeInTheDocument();
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Bash');
+      });
+
+      it('[P1] multiple tool calls each render as separate segments within same agent message', async () => {
+        await act(async () => {
+          render(<ConversationPane boundaryJwt="test-jwt" apiUrl="http://localhost:3001" />);
+        });
+        await act(async () => {
+          MockEventSource.emit('SESSION_READY', { sandboxId: 'sb-1' });
+        });
+
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_START', { messageId: 'agent-msg-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TEXT_MESSAGE_CONTENT', { messageId: 'agent-msg-1', delta: 'Working.' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-1', toolCallName: 'Read' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_END', { toolCallId: 'tc-1' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_START', { toolCallId: 'tc-2', toolCallName: 'Bash' });
+        });
+        await act(async () => {
+          MockEventSource.emit('TOOL_CALL_END', { toolCallId: 'tc-2' });
+        });
+
+        await waitFor(() => {
+          expect(screen.getAllByText(/Read/)).toHaveLength(1);
+          expect(screen.getAllByText(/Bash/)).toHaveLength(1);
+        });
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+        expect(agentMessageContainers.length).toBe(1);
+      });
+    });
+
+    describe('[P0] AC-9 — Resume restores tool pills at original positions', () => {
+      it('[P0] initialMessages with segments render pills at correct positions within agent message', async () => {
+        await act(async () => {
+          render(
+            <ConversationPane
+              boundaryJwt="test-jwt"
+              apiUrl="http://localhost:3001"
+              initialConversationId="conv-resume-1"
+              initialMessages={[
+                {
+                  id: 'm1',
+                  role: 'user',
+                  content: 'check the repo',
+                  createdAt: new Date(),
+                },
+                {
+                  id: 'm2',
+                  role: 'assistant',
+                  content: 'Let me check.\nThe task is complete.',
+                  createdAt: new Date(),
+                  segments: [
+                    { type: 'text', content: 'Let me check.\n' },
+                    {
+                      type: 'tool_call',
+                      toolCall: {
+                        toolCallId: 'tc-1',
+                        toolName: 'Bash',
+                        status: 'completed',
+                        input: 'ls -la',
+                        output: 'total 0',
+                      },
+                    },
+                    { type: 'text', content: 'The task is complete.' },
+                  ],
+                },
+              ]}
+            />,
+          );
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/Let me check/)).toBeInTheDocument();
+        });
+
+        expect(screen.getByText(/Bash/)).toBeInTheDocument();
+
+        const agentMessageContainers = document.querySelectorAll('.group.mb-6.justify-start');
+        expect(agentMessageContainers.length).toBe(1);
+        expect(agentMessageContainers[0].textContent).toContain('Let me check');
+        expect(agentMessageContainers[0].textContent).toContain('Bash');
+        expect(agentMessageContainers[0].textContent).toContain('The task is complete');
+      });
+
+      it('[P0] initialMessages without segments fall back to content-only rendering (legacy)', async () => {
+        await act(async () => {
+          render(
+            <ConversationPane
+              boundaryJwt="test-jwt"
+              apiUrl="http://localhost:3001"
+              initialConversationId="conv-resume-1"
+              initialMessages={[
+                {
+                  id: 'm1',
+                  role: 'user',
+                  content: 'hello',
+                  createdAt: new Date(),
+                },
+                {
+                  id: 'm2',
+                  role: 'assistant',
+                  content: 'Hi there',
+                  createdAt: new Date(),
+                },
+              ]}
+            />,
+          );
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText('hello')).toBeInTheDocument();
+        });
+
+        expect(screen.getByText('Hi there')).toBeInTheDocument();
       });
     });
   });

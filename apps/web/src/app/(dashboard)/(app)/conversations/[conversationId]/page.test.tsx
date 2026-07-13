@@ -180,8 +180,8 @@ describe('ConversationPage — conversation rendering (AC-4)', () => {
 
   it('[P0] passes turns as initialMessages to ConversationPane', async () => {
     mockTurnFindMany.mockResolvedValue([
-      { id: 'turn-1', role: 'user', content: 'hello', createdAt: new Date() },
-      { id: 'turn-2', role: 'assistant', content: 'hi there', createdAt: new Date() },
+      { id: 'turn-1', role: 'user', content: 'hello', segments: null, createdAt: new Date() },
+      { id: 'turn-2', role: 'assistant', content: 'hi there', segments: null, createdAt: new Date() },
     ]);
 
     const element = await ConversationPage({
@@ -202,7 +202,7 @@ describe('ConversationPage — conversation rendering (AC-4)', () => {
     expect(mockTurnFindMany).toHaveBeenCalledWith({
       where: { conversationId: 'conv-1' },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, role: true, content: true, createdAt: true },
+      select: { id: true, role: true, content: true, segments: true, createdAt: true },
     });
   });
 

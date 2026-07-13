@@ -29,10 +29,12 @@ jest.mock('@/components/conversation/ConversationPane', () => ({
   ConversationPane: ({
     boundaryJwt,
     apiUrl,
+    placeholder,
   }: {
     boundaryJwt: string;
     apiUrl: string;
-  }) => `ConversationPane:${boundaryJwt}:${apiUrl}`,
+    placeholder?: string;
+  }) => `ConversationPane:${boundaryJwt}:${apiUrl}:${placeholder ?? ''}`,
 }));
 
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -94,6 +96,14 @@ describe('NewConversationPage — Story 5.3 structural drift', () => {
       const element = await NewConversationPage();
       const html = renderToStaticMarkup(element);
       expect(html).toMatch(/<h1[^>]*>New Conversation<\/h1>/);
+    });
+  });
+
+  describe('[P0] AC-5 — Branded placeholder', () => {
+    it('passes placeholder="Message bmad-easy…" to ConversationPane', async () => {
+      const element = await NewConversationPage();
+      const html = renderToStaticMarkup(element);
+      expect(html).toContain('ConversationPane:jwt-token:http://localhost:3001:Message bmad-easy…');
     });
   });
 });

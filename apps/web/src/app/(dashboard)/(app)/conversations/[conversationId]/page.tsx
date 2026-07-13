@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth';
 import { getPrisma } from '@/lib/prisma';
 import { mintBoundaryJwt } from '@/lib/boundary-jwt';
 import { ConversationPane } from '@/components/conversation/ConversationPane';
-import type { ChatMessage } from '@/components/conversation/types';
+import type { ChatMessage, MessageSegment } from '@/components/conversation/types';
 
 export default async function ConversationPage({
   params,
@@ -33,7 +33,7 @@ export default async function ConversationPage({
   const turns = await getPrisma().turn.findMany({
     where: { conversationId },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, role: true, content: true, createdAt: true },
+    select: { id: true, role: true, content: true, segments: true, createdAt: true },
   });
 
   const initialMessages: ChatMessage[] = turns.map((turn) => ({
@@ -41,6 +41,7 @@ export default async function ConversationPage({
     role: turn.role as 'user' | 'assistant',
     content: turn.content,
     createdAt: turn.createdAt,
+    segments: turn.segments as MessageSegment[] | null ?? undefined,
   }));
 
   const boundaryJwt = await mintBoundaryJwt(userId);

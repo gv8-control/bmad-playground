@@ -5,6 +5,10 @@
  * Tests for ChatMessageList component.
  * Covers AC-1 (renders messages), AC-5 (scroll-to-bottom button).
  * Story 5.4 covers: AC-7 (scrollbar hiding via no-scrollbar on message panel).
+ * Story 5.5 covers: AC-1, AC-2, AC-3, AC-4, AC-5 (inline pills — standalone
+ * tool-call rendering branch removed, AgentMessage delegates all assistant
+ * rendering including interleaved tool calls).
+ * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { render, screen } from '@testing-library/react';
 
@@ -215,6 +219,117 @@ describe('ChatMessageList — Story 5.3 structural drift', () => {
 
       const list = screen.getByTestId('chat-message-list');
       expect(list.className).toContain('no-scrollbar');
+    });
+  });
+});
+
+// ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
+//
+// GREEN PHASE: tests are active and passing.
+//
+// AC-1: No standalone tool-call rendering — pills render inline within AgentMessage
+
+describe('ChatMessageList — Story 5.5 inline pills', () => {
+  describe('[P0] AC-1 — No standalone tool-call rendering', () => {
+    it('[P0] assistant message with segments renders pills inline (not standalone rows)', () => {
+      const messageWithSegments: ChatMessage = {
+        id: 'msg-seg-1',
+        role: 'assistant',
+        content: 'Before tool.\nAfter tool.',
+        createdAt: new Date('2026-07-13T12:00:00Z'),
+        segments: [
+          { type: 'text', content: 'Before tool.\n' },
+          {
+            type: 'tool_call',
+            toolCall: {
+              toolCallId: 'tc-1',
+              toolName: 'Bash',
+              status: 'completed',
+              input: 'git status',
+              output: 'nothing to commit',
+            },
+          },
+          { type: 'text', content: 'After tool.' },
+        ],
+      };
+
+      render(
+        <ChatMessageList
+          messages={[messageWithSegments]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      expect(screen.getByText(/Bash/)).toBeInTheDocument();
+
+      const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+      expect(agentMessageContainers.length).toBe(1);
+      expect(agentMessageContainers[0].textContent).toContain('Before tool.');
+      expect(agentMessageContainers[0].textContent).toContain('Bash');
+      expect(agentMessageContainers[0].textContent).toContain('After tool.');
+    });
+
+    it('[P0] does not render standalone ToolPill branch for messages with segments', () => {
+      const messageWithSegments: ChatMessage = {
+        id: 'msg-seg-2',
+        role: 'assistant',
+        content: 'Done.',
+        createdAt: new Date('2026-07-13T12:00:00Z'),
+        segments: [
+          { type: 'text', content: 'Done.' },
+          {
+            type: 'tool_call',
+            toolCall: {
+              toolCallId: 'tc-1',
+              toolName: 'Bash',
+              status: 'completed',
+              input: 'git commit',
+              output: '1 file changed',
+              semantic: {
+                artifactType: 'prd',
+                artifactTitle: 'My PRD',
+                viewHref: '/artifacts?id=art-1',
+              },
+            },
+          },
+        ],
+      };
+
+      render(
+        <ChatMessageList
+          messages={[messageWithSegments]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      expect(screen.getByText(/Progress saved/)).toBeInTheDocument();
+
+      const agentMessageContainers = document.querySelectorAll('.group.mb-6');
+      expect(agentMessageContainers.length).toBe(1);
+    });
+
+    it('[P0] legacy assistant message without segments still renders via AgentMessage', () => {
+      const legacyMessage: ChatMessage = {
+        id: 'msg-legacy',
+        role: 'assistant',
+        content: 'Hello user',
+        createdAt: new Date('2026-07-13T12:00:00Z'),
+      };
+
+      render(
+        <ChatMessageList
+          messages={[legacyMessage]}
+          showScrollToBottom={false}
+          newMessageCount={0}
+          onScrollToBottom={jest.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Hello user')).toBeInTheDocument();
     });
   });
 });

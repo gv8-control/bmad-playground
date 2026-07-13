@@ -28,6 +28,16 @@ jest.mock('next/navigation', () => ({
 
 import { connectRepository } from '@/actions/repo-connection.actions';
 
+type ConnectResult = Awaited<ReturnType<typeof connectRepository>>;
+
+function mockConnectRepositoryResult(result: ConnectResult) {
+  (connectRepository as jest.Mock).mockResolvedValue(result);
+}
+
+function mockConnectRepositoryResultOnce(result: ConnectResult) {
+  (connectRepository as jest.Mock).mockResolvedValueOnce(result);
+}
+
 // ─── Initial render (AC-1, UX-DR14) ──────────────────────────────────────────
 
 describe('RepositoryUrlForm — initial render (AC-1, UX-DR14)', () => {
@@ -89,7 +99,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('[P0] shows inline error when Server Action returns INSUFFICIENT_PERMISSION (AC-4)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: "You don't have write access to this repository. bmad-easy requires write access.",
       errorCode: 'INSUFFICIENT_PERMISSION',
     });
@@ -100,7 +110,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P0] shows inline error when Server Action returns NOT_FOUND (AC-4)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'Repository not found. Check that the URL is correct and you have access to it.',
       errorCode: 'NOT_FOUND',
     });
@@ -111,7 +121,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P0] shows org-restriction error that explicitly names the org cause (AC-4)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'Your GitHub organization has OAuth App access restrictions enabled. Ask an org admin to approve bmad-easy.',
       errorCode: 'ORG_RESTRICTION',
     });
@@ -122,7 +132,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P1] error element has role="alert" for screen reader announcement (UX-DR16)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'Some error.',
       errorCode: 'UNKNOWN',
     });
@@ -133,7 +143,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P1] input has aria-describedby pointing to the error element when error is shown (UX-DR16)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({ error: 'Error.', errorCode: 'UNKNOWN' });
+    mockConnectRepositoryResult({ error: 'Error.', errorCode: 'UNKNOWN' });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
@@ -144,7 +154,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P0] submit button is re-enabled after an error so the user can retry', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({ error: 'Error.', errorCode: 'UNKNOWN' });
+    mockConnectRepositoryResult({ error: 'Error.', errorCode: 'UNKNOWN' });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
@@ -153,9 +163,8 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P1] error is cleared on the next submission attempt', async () => {
-    (connectRepository as jest.Mock)
-      .mockResolvedValueOnce({ error: 'Error.', errorCode: 'UNKNOWN' })
-      .mockResolvedValueOnce({ success: true });
+    mockConnectRepositoryResultOnce({ error: 'Error.', errorCode: 'UNKNOWN' });
+    mockConnectRepositoryResultOnce({ success: true });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     const button = screen.getByRole('button', { name: /connect repository/i });
@@ -165,6 +174,16 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
     await userEvent.click(button);
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
+
+  it('[P1] shows generic fallback when connectRepository rejects (.catch path)', async () => {
+    (connectRepository as jest.Mock).mockRejectedValue(new Error('network'));
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/unexpected error/i));
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /connect repository/i })).toBeEnabled();
+  });
 });
 
 // ─── Successful submission (AC-3) ─────────────────────────────────────────────
@@ -173,7 +192,7 @@ describe('RepositoryUrlForm — successful connection (AC-3)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('[P0] redirects to /project-map when the Server Action returns { success: true } (AC-3)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({ success: true });
+    mockConnectRepositoryResult({ success: true });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
@@ -187,7 +206,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('[P0] shows documentation link when validation error includes documentationLink', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'BMAD initialization is incomplete. Missing: _bmad/.',
       errorCode: 'MISSING_DIRECTORY',
       documentationLink: 'https://docs.bmad-method.org',
@@ -200,7 +219,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P0] does NOT show documentation link for non-validation errors', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: "You don't have write access to this repository.",
       errorCode: 'INSUFFICIENT_PERMISSION',
     });
@@ -212,7 +231,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P0] shows error message for UNSUPPORTED_VERSION with detected version', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'BMAD version 5.9.9 is not supported. Only BMAD v6 is supported.',
       errorCode: 'UNSUPPORTED_VERSION',
       documentationLink: 'https://docs.bmad-method.org',
@@ -224,7 +243,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P0] shows error message for NO_SKILLS_FOUND', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'No BMAD Skills were found in .claude/skills/.',
       errorCode: 'NO_SKILLS_FOUND',
       documentationLink: 'https://docs.bmad-method.org',
@@ -236,7 +255,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P1] documentation link opens in new tab with noopener', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'Missing directory.',
       errorCode: 'MISSING_DIRECTORY',
       documentationLink: 'https://docs.bmad-method.org',
@@ -250,13 +269,12 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P1] documentation link is cleared on next submission', async () => {
-    (connectRepository as jest.Mock)
-      .mockResolvedValueOnce({
-        error: 'Missing directory.',
-        errorCode: 'MISSING_DIRECTORY',
-        documentationLink: 'https://docs.bmad-method.org',
-      })
-      .mockResolvedValueOnce({ success: true });
+    mockConnectRepositoryResultOnce({
+      error: 'Missing directory.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    mockConnectRepositoryResultOnce({ success: true });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     const button = screen.getByRole('button', { name: /connect repository/i });
@@ -304,7 +322,7 @@ describe('RepositoryUrlForm — token-usage drift (Story 5.4, AC-2, AC-3)', () =
   });
 
   it('[P0] input border transitions to border-negative on error, persists on focus (AC-3)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({ error: 'Error.', errorCode: 'UNKNOWN' });
+    mockConnectRepositoryResult({ error: 'Error.', errorCode: 'UNKNOWN' });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
@@ -351,7 +369,7 @@ describe('RepositoryUrlForm — BMAD-not-found panel (Story 5.1, AC-3)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('[P0] renders a styled panel (bg-negative-bg border border-negative rounded-lg p-4) for BMAD-validation errors with documentationLink (AC-3, Task 3.1)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'BMAD initialization is incomplete. Missing: _bmad/.',
       errorCode: 'MISSING_DIRECTORY',
       documentationLink: 'https://docs.bmad-method.org',
@@ -366,7 +384,7 @@ describe('RepositoryUrlForm — BMAD-not-found panel (Story 5.1, AC-3)', () => {
   });
 
   it('[P0] the BMAD-not-found panel has a title/body split layout (AC-3, Task 3.2)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'BMAD initialization is incomplete. Missing: _bmad/.',
       errorCode: 'MISSING_DIRECTORY',
       documentationLink: 'https://docs.bmad-method.org',
@@ -384,7 +402,7 @@ describe('RepositoryUrlForm — BMAD-not-found panel (Story 5.1, AC-3)', () => {
   });
 
   it('[P0] keeps inline error style (no bg-negative-bg panel) for non-BMAD errors without documentationLink (AC-3, Task 3.3)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: "You don't have write access to this repository.",
       errorCode: 'INSUFFICIENT_PERMISSION',
     });
@@ -397,7 +415,7 @@ describe('RepositoryUrlForm — BMAD-not-found panel (Story 5.1, AC-3)', () => {
   });
 
   it('[P1] preserves role="alert" and aria-describedby wiring in the BMAD-not-found panel (AC-3, Task 3.4)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'BMAD initialization is incomplete. Missing: _bmad/.',
       errorCode: 'MISSING_DIRECTORY',
       documentationLink: 'https://docs.bmad-method.org',

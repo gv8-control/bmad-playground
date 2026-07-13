@@ -8,7 +8,7 @@
  * Story 3.2 covers: AC-4 (conversation list renders titles as links, active highlight,
  * empty state).
  * Story 5.2 covers: AC-1 (wordmark interpunct), AC-2 (wordmark border-b),
- * AC-3 (Settings label), AC-4 (active inset pill), AC-5 (single padding),
+ * AC-3 (Settings label), AC-4 (consistent inset pill), AC-5 (single padding),
  * AC-6 (button spacing/alignment), AC-9 (separator styling), AC-10 (top-clustered nav).
  * Story 5.4 covers: AC-6 (nav right border border-surface-raised).
  *
@@ -196,7 +196,7 @@ describe('SideNavigation', () => {
       });
     });
 
-    describe('AC-4: Active-state inset pill styling', () => {
+    describe('AC-4: Consistent inset pill styling for all nav items', () => {
       it('active Project Map item has mx-2 (inset margin)', () => {
         mockUsePathname.mockReturnValue('/project-map');
         render(<SideNavigation user={USER} />);
@@ -211,7 +211,7 @@ describe('SideNavigation', () => {
         expect(projectMapLink.className).toContain('rounded-md');
       });
 
-      it('active item has px-2 (not px-3) when active', () => {
+      it('all nav items use px-2 consistently (not px-3)', () => {
         mockUsePathname.mockReturnValue('/project-map');
         render(<SideNavigation user={USER} />);
         const projectMapLink = screen.getByRole('link', { name: /project map/i });
@@ -219,11 +219,11 @@ describe('SideNavigation', () => {
         expect(projectMapLink.className).not.toMatch(/\bpx-3\b/);
       });
 
-      it('inactive items do NOT have mx-2', () => {
+      it('inactive items also have mx-2 (consistent inset)', () => {
         mockUsePathname.mockReturnValue('/artifacts');
         render(<SideNavigation user={USER} />);
         const projectMapLink = screen.getByRole('link', { name: /project map/i });
-        expect(projectMapLink.className).not.toContain('mx-2');
+        expect(projectMapLink.className).toContain('mx-2');
       });
 
       it('active Artifact Browser item has mx-2 and rounded-md', () => {
@@ -257,11 +257,11 @@ describe('SideNavigation', () => {
     });
 
     describe('AC-5: Single horizontal padding (no doubling)', () => {
-      it('nav links use px-3 (12px horizontal padding)', () => {
+      it('nav links use px-2 (8px horizontal padding)', () => {
         mockUsePathname.mockReturnValue('/settings');
         render(<SideNavigation user={USER} />);
         const projectMapLink = screen.getByRole('link', { name: /project map/i });
-        expect(projectMapLink.className).toContain('px-3');
+        expect(projectMapLink.className).toContain('px-2');
         expect(projectMapLink.className).not.toContain('px-4');
       });
 
@@ -408,6 +408,21 @@ describe('SideNavigation', () => {
       render(<SideNavigation user={USER} />);
       const conversationList = screen.getByTestId('conversation-list');
       expect(conversationList.className).toContain('no-scrollbar');
+    });
+  });
+
+  // ─── Focus ring clearance on scrollable conversation list ─────────────────
+  //
+  // The conversation list has overflow-y-auto, which forces overflow-x to
+  // compute to "auto" per CSS spec. This clips box-shadows (focus rings)
+  // that extend beyond the container's padding box. Adding py-1 (4px) padding
+  // gives the 4px focus ring (2px offset + 2px ring) room to render.
+
+  describe('[P0] Focus ring clearance on scrollable conversation list', () => {
+    it('conversation list has py-1 padding for focus ring clearance', () => {
+      render(<SideNavigation user={USER} />);
+      const conversationList = screen.getByTestId('conversation-list');
+      expect(conversationList.className).toContain('py-1');
     });
   });
 });

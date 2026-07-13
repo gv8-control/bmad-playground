@@ -6,7 +6,7 @@
  * Covers AC-6 (draft persistence keyed by conversationId).
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useDraftPersistence } from './useDraftPersistence';
+import { useDraftPersistence, MAX_DRAFT_SIZE } from './useDraftPersistence';
 
 describe('useDraftPersistence', () => {
   let store: Record<string, string>;
@@ -143,5 +143,74 @@ describe('useDraftPersistence — Story 5.3 structural drift', () => {
       expect(Storage.prototype.removeItem).toHaveBeenCalledWith('new-conversation');
       expect(Storage.prototype.removeItem).not.toHaveBeenCalledWith('new-conversation-draft');
     });
+  });
+});
+
+// ─── C14: MAX_DRAFT_SIZE guard ─────────────────────────────────────────────
+//
+// Guards against oversized drafts blowing past localStorage quotas or causing
+// performance issues. Draft is a chat message, so the cap is conservative.
+
+describe('useDraftPersistence — MAX_DRAFT_SIZE guard', () => {
+  let store: Record<string, string>;
+
+  beforeEach(() => {
+    store = {};
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementation((key: string) => store[key] ?? null);
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string, value: string) => {
+      store[key] = value;
+    });
+    jest.spyOn(Storage.prototype, 'removeItem').mockImplementation((key: string) => {
+      delete store[key];
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('[P0] truncates draft to MAX_DRAFT_SIZE when setDraft exceeds the limit', async () => {
+    const { result } = renderHook(() => useDraftPersistence('conv-1'));
+
+    await waitFor(() => {
+      expect(result.current.draft).toBe('');
+    });
+
+    const oversized = 'a'.repeat(MAX_DRAFT_SIZE + 500);
+
+    act(() => {
+      result.current.setDraft(oversized);
+    });
+
+    expect(result.current.draft).toHaveLength(MAX_DRAFT_SIZE);
+    expect(result.current.draft).toBe('a'.repeat(MAX_DRAFT_SIZE));
+    expect(store['conversation-conv-1-draft']).toHaveLength(MAX_DRAFT_SIZE);
+  });
+
+  it('[P0] truncates stale oversized draft on load from localStorage', async () => {
+    store['conversation-conv-1-draft'] = 'b'.repeat(MAX_DRAFT_SIZE + 500);
+
+    const { result } = renderHook(() => useDraftPersistence('conv-1'));
+
+    await waitFor(() => {
+      expect(result.current.draft).toHaveLength(MAX_DRAFT_SIZE);
+    });
+
+    expect(result.current.draft).toBe('b'.repeat(MAX_DRAFT_SIZE));
+  });
+
+  it('preserves draft at exactly MAX_DRAFT_SIZE without truncation', async () => {
+    const { result } = renderHook(() => useDraftPersistence('conv-1'));
+
+    await waitFor(() => {
+      expect(result.current.draft).toBe('');
+    });
+
+    act(() => {
+      result.current.setDraft('c'.repeat(MAX_DRAFT_SIZE));
+    });
+
+    expect(result.current.draft).toHaveLength(MAX_DRAFT_SIZE);
+    expect(store['conversation-conv-1-draft']).toHaveLength(MAX_DRAFT_SIZE);
   });
 });

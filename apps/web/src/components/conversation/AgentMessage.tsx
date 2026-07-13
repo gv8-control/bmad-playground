@@ -3,8 +3,11 @@
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
-import type { ChatMessage } from './types';
+import type { ChatMessage, MessageSegment } from './types';
 import { CopyButton } from './CopyButton';
+import { ToolPill } from './ToolPill';
+import { SemanticPill } from './SemanticPill';
+import { AccessNotice } from './AccessNotice';
 
 export interface AgentMessageProps {
   message: ChatMessage;
@@ -20,6 +23,12 @@ function extractText(children: React.ReactNode): string {
   }
   return '';
 }
+
+const timeFormatter = new Intl.DateTimeFormat('en', {
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
 
 export const markdownComponents: Components = {
   h1: ({ node: _node, ...props }) => (
@@ -83,21 +92,48 @@ export const markdownComponents: Components = {
   ),
 };
 
+function renderSegment(segment: MessageSegment, index: number) {
+  if (segment.type === 'text') {
+    if (!segment.content) return null;
+    return (
+      <Markdown key={`text-${index}`} remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {segment.content}
+      </Markdown>
+    );
+  }
+  const { toolCall } = segment;
+  return (
+    <div key={`tool-${toolCall.toolCallId}`} className="my-1">
+      {toolCall.semantic ? (
+        <SemanticPill
+          artifactType={toolCall.semantic.artifactType}
+          artifactTitle={toolCall.semantic.artifactTitle}
+          viewHref={toolCall.semantic.viewHref}
+        />
+      ) : (
+        <ToolPill toolCall={toolCall} />
+      )}
+      {toolCall.accessNotice && <AccessNotice notice={toolCall.accessNotice} />}
+    </div>
+  );
+}
+
 export function AgentMessage({ message }: AgentMessageProps) {
-  const time = new Intl.DateTimeFormat('en', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'UTC',
-  }).format(message.createdAt);
+  const time = timeFormatter.format(message.createdAt);
+  const hasSegments = message.segments && message.segments.length > 0;
 
   return (
     <div className="group mb-6 flex justify-start">
       <div className="w-full max-w-[760px]">
         <div className="flex items-start justify-between gap-2">
           <div className="relative flex-1">
-            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-              {message.content}
-            </Markdown>
+            {hasSegments
+              ? message.segments!.map((segment, index) => renderSegment(segment, index))
+              : (
+                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {message.content}
+                </Markdown>
+              )}
             {message.isStreaming && (
               <span
                 className="inline-block h-4 w-2 animate-pulse bg-accent motion-reduce:animate-none"

@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { IAgentService, AgentRunParams } from '@bmad-easy/shared-types';
+import type { IAgentService, AgentRunParams, MessageSegment } from '@bmad-easy/shared-types';
 import type { AccessDeniedCode } from '@bmad-easy/shared-types';
 import type { SseEvent } from '../../src/streaming/session-events.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import type { ISandboxService } from '@bmad-easy/shared-types';
+import type { Prisma } from '@bmad-easy/database-schemas';
 import { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { SessionEventsService } from '../../src/streaming/session-events.service';
 import { EventType } from '@ag-ui/core';
@@ -102,16 +103,82 @@ export class AgentServiceFake implements IAgentService {
     }
 
     let accumulatedText = '';
+    const segments: MessageSegment[] = [{ type: 'text', content: '' }];
     let currentToolName: string | null = null;
 
     for (const event of this.script) {
       if (event.event === EventType.TEXT_MESSAGE_CONTENT) {
         const delta = (event.data as { delta?: string }).delta ?? '';
         accumulatedText += delta;
+        const lastSeg = segments[segments.length - 1];
+        if (lastSeg && lastSeg.type === 'text') {
+          lastSeg.content += delta;
+        } else {
+          segments.push({ type: 'text', content: delta });
+        }
       }
 
       if (event.event === EventType.TOOL_CALL_START) {
-        currentToolName = (event.data as { toolCallName?: string }).toolCallName ?? null;
+        const toolCallId = (event.data as { toolCallId?: string }).toolCallId ?? `tc-${Date.now()}`;
+        const toolCallName = (event.data as { toolCallName?: string }).toolCallName ?? 'unknown';
+        currentToolName = toolCallName;
+        segments.push({
+          type: 'tool_call',
+          toolCall: { toolCallId, toolName: toolCallName, status: 'running', input: '', output: '' },
+        });
+      }
+
+      if (event.event === EventType.TOOL_CALL_ARGS) {
+        const toolCallId = (event.data as { toolCallId?: string }).toolCallId;
+        const delta = (event.data as { delta?: string }).delta ?? '';
+        if (toolCallId) {
+          const seg = segments.find(
+            (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+          );
+          if (seg && seg.type === 'tool_call') {
+            seg.toolCall.input += delta;
+          }
+        }
+      }
+
+      if (event.event === EventType.TOOL_CALL_END) {
+        const toolCallId = (event.data as { toolCallId?: string }).toolCallId;
+        if (toolCallId) {
+          const seg = segments.find(
+            (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+          );
+          if (seg && seg.type === 'tool_call') {
+            seg.toolCall.status = 'completed';
+          }
+        }
+      }
+
+      if (event.event === EventType.TOOL_CALL_RESULT) {
+        const toolCallId = (event.data as { toolCallId?: string }).toolCallId;
+        const content = (event.data as { content?: string }).content ?? '';
+        if (toolCallId) {
+          const seg = segments.find(
+            (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+          );
+          if (seg && seg.type === 'tool_call') {
+            seg.toolCall.output = content;
+          }
+        }
+      }
+
+      if (event.event === 'TOOL_CALL_PROMOTED') {
+        const toolCallId = (event.data as { toolCallId?: string }).toolCallId;
+        const artifactType = (event.data as { artifactType?: string }).artifactType ?? '';
+        const artifactTitle = (event.data as { artifactTitle?: string }).artifactTitle ?? '';
+        const viewHref = (event.data as { viewHref?: string }).viewHref ?? '';
+        if (toolCallId) {
+          const seg = segments.find(
+            (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+          );
+          if (seg && seg.type === 'tool_call') {
+            seg.toolCall.semantic = { artifactType, artifactTitle, viewHref };
+          }
+        }
       }
 
       this.sessionEvents.emit(params.conversationId, event);
@@ -143,17 +210,23 @@ export class AgentServiceFake implements IAgentService {
     const hasRunFinished = this.script.some((e) => e.event === EventType.RUN_FINISHED);
     const hasRunError = this.script.some((e) => e.event === EventType.RUN_ERROR);
 
-    if (hasRunFinished && !hasRunError && accumulatedText.length > 0) {
+    if (hasRunFinished && !hasRunError && (accumulatedText.length > 0 || segments.some((s) => s.type === 'tool_call'))) {
+      const cleanSegments = segments.filter(
+        (s) => s.type !== 'text' || s.content.length > 0,
+      );
       await this.prisma.turn.create({
         data: {
           conversationId: params.conversationId,
           role: 'assistant',
           content: accumulatedText,
+          segments: (cleanSegments.length > 0 ? cleanSegments : segments) as unknown as Prisma.InputJsonValue,
         },
+        select: { id: true },
       });
       await this.prisma.conversation.update({
         where: { id: params.conversationId },
         data: { lastActiveAt: new Date() },
+        select: { id: true },
       });
     }
 

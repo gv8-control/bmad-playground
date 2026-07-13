@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getPrisma } from '@/lib/prisma';
+import type { Prisma } from '@bmad-easy/database-schemas';
 
 type SeedTurn = {
   role: string;
   content: string;
   createdAt?: string;
+  segments?: unknown;
 };
 
 export async function POST(
@@ -26,6 +28,9 @@ export async function POST(
           role: t.role,
           content: t.content,
           createdAt: t.createdAt ? new Date(t.createdAt) : new Date(),
+          ...(t.segments != null
+            ? { segments: t.segments as Prisma.InputJsonValue }
+            : {}),
         },
       }),
     ),

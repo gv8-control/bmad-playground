@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils';
 
 type ConnectResult = Awaited<ReturnType<typeof connectRepository>>;
 
+const MAX_REPOSITORY_URL_LENGTH = 2000;
+
 export function RepositoryUrlForm() {
   const [url, setUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export function RepositoryUrlForm() {
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://github.com/your-org/your-repo"
             required
+            maxLength={MAX_REPOSITORY_URL_LENGTH}
             disabled={isPending}
             aria-describedby={error ? 'repo-url-error' : undefined}
             className={cn(

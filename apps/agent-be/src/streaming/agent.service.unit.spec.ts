@@ -20,7 +20,14 @@
  * Story 3.11 covers: AC-3 (concurrent-turn guard — second runTurn rejected,
  *                    no RUN_STARTED/RUN_ERROR emitted, circuitBreakerTimers not overwritten).
  *
- * TDD GREEN PHASE — Story 3.4/3.7/3.8/3.11 tests un-skipped and passing.
+ * Story 5.5 covers: AC-9 (segments persistence — segments array built alongside
+ *                    accumulatedText, tool_call segments inserted on
+ *                    content_block_start, status updated on content_block_stop,
+ *                    output updated on tool_result, semantic updated on
+ *                    TOOL_CALL_PROMOTED, both content and segments persisted to
+ *                    Turn row).
+ *
+ * TDD GREEN PHASE — Story 3.4/3.7/3.8/3.11/5.5 tests un-skipped and passing.
  */
 import { SessionEventsService } from './session-events.service';
 import { AgentService } from './agent.service';
@@ -1259,6 +1266,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
   describe('[P0] regression — SDK iterator non-abort error emits RUN_ERROR (not RUN_FINISHED)', () => {
     it('emits RUN_ERROR with the error message and does NOT emit RUN_FINISHED when iterator.next() rejects with a non-abort error', async () => {
+      // eslint-disable-next-line require-yield
       async function* throwingGenerator(): AsyncGenerator<SDKMessage, void> {
         throw new Error('spawn failed: ENOENT');
       }
@@ -1287,6 +1295,122 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining('spawn failed: ENOENT'),
       );
+    });
+  });
+
+  // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
+  //
+  // GREEN PHASE: tests are active and passing.
+  //
+  // AC-9: segments persisted alongside content in Turn row
+  // AC-9: Tool call positions captured relative to text
+
+  describe('[P0] Story 5.5 — segments persistence', () => {
+    it('[P0] persists segments alongside content in Turn row', async () => {
+      setupMockQuery([
+        makeTextBlockStart(),
+        makeTextDeltaEvent('Let me check.'),
+        makeContentBlockStop(),
+        makeToolUseBlockStart('tc-1', 'Bash', { command: 'git status' }),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'nothing to commit'),
+        makeTextBlockStart(),
+        makeTextDeltaEvent('Done.'),
+        makeContentBlockStop(),
+        makeResultMessage(0.42),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const assistantTurnCall = mockPrisma.turn.create.mock.calls.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (call: any[]) => call[0]?.data?.role === 'assistant',
+      );
+
+      expect(assistantTurnCall).toBeDefined();
+      expect(assistantTurnCall[0].data.content).toContain('Let me check.');
+      expect(assistantTurnCall[0].data.content).toContain('Done.');
+      expect(assistantTurnCall[0].data).toHaveProperty('segments');
+      expect(Array.isArray(assistantTurnCall[0].data.segments)).toBe(true);
+    });
+
+    it('[P0] segments array contains text and tool_call segments in order', async () => {
+      setupMockQuery([
+        makeTextBlockStart(),
+        makeTextDeltaEvent('Before tool.'),
+        makeContentBlockStop(),
+        makeToolUseBlockStart('tc-1', 'Bash', { command: 'ls' }),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'file.txt'),
+        makeTextBlockStart(),
+        makeTextDeltaEvent('After tool.'),
+        makeContentBlockStop(),
+        makeResultMessage(0.42),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const assistantTurnCall = mockPrisma.turn.create.mock.calls.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (call: any[]) => call[0]?.data?.role === 'assistant',
+      );
+
+      expect(assistantTurnCall).toBeDefined();
+      const segments = assistantTurnCall[0].data.segments;
+      expect(segments.length).toBeGreaterThanOrEqual(3);
+
+      const segmentTypes = segments.map((s: { type: string }) => s.type);
+      expect(segmentTypes).toContain('text');
+      expect(segmentTypes).toContain('tool_call');
+
+      const firstToolCallIdx = segmentTypes.indexOf('tool_call');
+      expect(segmentTypes[firstToolCallIdx - 1]).toBe('text');
+      expect(segmentTypes[firstToolCallIdx + 1]).toBe('text');
+    });
+
+    it('[P0] tool_call segment captures toolCallId, toolName, and status', async () => {
+      setupMockQuery([
+        makeToolUseBlockStart('tc-1', 'Bash', { command: 'git status' }),
+        makeContentBlockStop(),
+        makeToolResultUserMessage('tc-1', 'nothing to commit'),
+        makeResultMessage(0.42),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const assistantTurnCall = mockPrisma.turn.create.mock.calls.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (call: any[]) => call[0]?.data?.role === 'assistant',
+      );
+
+      expect(assistantTurnCall).toBeDefined();
+      const segments = assistantTurnCall[0].data.segments;
+      const toolCallSegment = segments.find(
+        (s: { type: string }) => s.type === 'tool_call',
+      );
+
+      expect(toolCallSegment).toBeDefined();
+      expect(toolCallSegment.toolCall).toHaveProperty('toolCallId', 'tc-1');
+      expect(toolCallSegment.toolCall).toHaveProperty('toolName', 'Bash');
+      expect(toolCallSegment.toolCall).toHaveProperty('status');
     });
   });
 });

@@ -177,6 +177,15 @@ describe('ArtifactsPage — artifact list (AC-1, FR16, UX-DR12)', () => {
     });
   });
 
+  it('[P0] selects only id on repoConnection.findUnique (NFR hardening)', async () => {
+    setupArtifacts(ARTIFACTS);
+    await renderPage();
+    expect(mockFindUnique).toHaveBeenCalledWith({
+      where: { userId: SESSION.userId },
+      select: { id: true },
+    });
+  });
+
   it('[P0] renders artifact titles when Postgres has artifacts', async () => {
     setupArtifacts(ARTIFACTS);
     const html = await renderPage();

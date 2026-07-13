@@ -221,10 +221,21 @@ describe('ChatInput — Story 5.3 structural drift', () => {
       expect(sendButton.className).not.toContain('opacity-50');
     });
 
-    it('disabled Send button uses bg-text-3 for muted surface', () => {
+    it('disabled Send button uses disabled:bg-text-3 prefix (not bare bg-text-3)', () => {
       render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
       const sendButton = screen.getByRole('button', { name: /send/i });
-      expect(sendButton.className).toContain('bg-text-3');
+      expect(sendButton.className).toContain('disabled:bg-text-3');
+      // Ensure bg-text-3 does NOT appear as a bare class (without disabled: prefix)
+      const classNames = sendButton.className.split(/\s+/);
+      expect(classNames).not.toContain('bg-text-3');
+    });
+
+    it('enabled Send button does NOT have bg-text-3 (would be a regression)', () => {
+      render(<ChatInput value="hello" onChange={jest.fn()} onSubmit={jest.fn()} />);
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      // bg-text-3 should only appear with disabled: prefix, never bare
+      const classNames = sendButton.className.split(/\s+/);
+      expect(classNames).not.toContain('bg-text-3');
     });
 
     it('disabled Send button uses text-text-2 for muted text', () => {
@@ -252,6 +263,12 @@ describe('ChatInput — Story 5.3 structural drift', () => {
       render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} />);
       const textarea = screen.getByLabelText('Message input');
       expect(textarea.getAttribute('placeholder')).not.toBe('Type a message…');
+    });
+
+    it('renders branded placeholder "Message bmad-easy…" when provided', () => {
+      render(<ChatInput value="" onChange={jest.fn()} onSubmit={jest.fn()} placeholder="Message bmad-easy…" />);
+      const textarea = screen.getByLabelText('Message input');
+      expect(textarea).toHaveAttribute('placeholder', 'Message bmad-easy…');
     });
   });
 

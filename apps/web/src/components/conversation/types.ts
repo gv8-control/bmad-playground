@@ -1,22 +1,6 @@
-export interface AccessNoticeData {
-  code: 'RATE_LIMITED' | 'ORG_RESTRICTION' | 'INSUFFICIENT_PERMISSION';
-  retryAfter?: number;
-}
+import type { MessageSegment, ToolCallData } from '@bmad-easy/shared-types';
 
-export interface ToolCallData {
-  toolCallId: string;
-  toolName: string;
-  status: 'running' | 'completed' | 'error';
-  input: string;
-  output: string;
-  errorMessage?: string;
-  semantic?: {
-    artifactType: string;
-    artifactTitle: string;
-    viewHref: string;
-  };
-  accessNotice?: AccessNoticeData;
-}
+export type { AccessNoticeData, ToolCallData, MessageSegment } from '@bmad-easy/shared-types';
 
 export interface ChatMessage {
   id: string;
@@ -25,4 +9,5 @@ export interface ChatMessage {
   createdAt: Date;
   isStreaming?: boolean;
   toolCall?: ToolCallData;
+  segments?: MessageSegment[];
 }

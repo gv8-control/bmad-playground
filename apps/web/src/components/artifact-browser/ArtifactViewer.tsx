@@ -19,7 +19,7 @@ function parseFrontmatter(content: string): Record<string, string> | null {
   for (const line of frontmatterBlock.split(/\r?\n/)) {
     const lineMatch = line.match(/^(\w+):\s*(.*)$/);
     if (lineMatch) {
-      result[lineMatch[1]] = lineMatch[2];
+      result[lineMatch[1]] = lineMatch[2].replace(/^["']|["']$/g, '');
     }
   }
   return Object.keys(result).length > 0 ? result : null;
@@ -89,7 +89,10 @@ const components: Components = {
     />
   ),
   a: ({ node: _node, ...props }) => (
-    <a className="text-accent hover:text-accent-hover underline" {...props} />
+    <a
+      className="text-accent hover:text-accent-hover underline focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface"
+      {...props}
+    />
   ),
   strong: ({ node: _node, ...props }) => (
     <strong className="font-semibold text-text-1" {...props} />

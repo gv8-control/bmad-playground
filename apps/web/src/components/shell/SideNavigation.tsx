@@ -39,7 +39,7 @@ export function SideNavigation({ user, conversations = [] }: SideNavigationProps
       </Link>
 
       <div className="flex-1 flex flex-col overflow-hidden py-1">
-        <div data-testid="conversation-list" className="flex flex-col gap-1 overflow-y-auto no-scrollbar">
+        <div data-testid="conversation-list" className="flex flex-col gap-1 overflow-y-auto no-scrollbar py-1">
           {conversations
             .filter((c) => c.title !== null)
             .map((c) => (
@@ -47,9 +47,9 @@ export function SideNavigation({ user, conversations = [] }: SideNavigationProps
                 key={c.id}
                 href={`/conversations/${c.id}`}
                 className={cn(
-                  'px-3 py-2 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface truncate',
+                  'mx-2 px-2 py-2 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface truncate',
                   pathname === `/conversations/${c.id}`
-                    ? 'bg-surface-raised text-text-1 mx-2 px-2'
+                    ? 'bg-surface-raised text-text-1'
                     : 'text-text-2 hover:bg-surface-raised',
                 )}
               >
@@ -64,9 +64,9 @@ export function SideNavigation({ user, conversations = [] }: SideNavigationProps
           <Link
             href="/project-map"
             className={cn(
-              'px-3 py-2 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
+              'mx-2 px-2 py-2 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
               isProjectMapActive
-                ? 'bg-surface-raised text-text-1 mx-2 px-2'
+                ? 'bg-surface-raised text-text-1'
                 : 'text-text-2 hover:bg-surface-raised',
             )}
           >
@@ -75,9 +75,9 @@ export function SideNavigation({ user, conversations = [] }: SideNavigationProps
           <Link
             href="/artifacts"
             className={cn(
-              'px-3 py-2 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
+              'mx-2 px-2 py-2 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
               isArtifactsActive
-                ? 'bg-surface-raised text-text-1 mx-2 px-2'
+                ? 'bg-surface-raised text-text-1'
                 : 'text-text-2 hover:bg-surface-raised',
             )}
           >
@@ -86,13 +86,13 @@ export function SideNavigation({ user, conversations = [] }: SideNavigationProps
         </div>
       </div>
 
-      <div className="p-3 mt-auto">
+      <div className="pb-3 mt-auto">
         <Link
           href="/settings"
           aria-label={ariaLabel}
           className={cn(
-            'flex items-center gap-2 px-2 py-2 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
-            isSettingsActive ? 'bg-surface-raised text-text-1 mx-2' : 'hover:bg-surface-raised',
+            'flex items-center gap-2 mx-2 px-2 py-2 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
+            isSettingsActive ? 'bg-surface-raised text-text-1' : 'hover:bg-surface-raised',
           )}
         >
           <span className="w-8 h-8 rounded-full bg-accent text-accent-fg flex items-center justify-center text-xs font-semibold">

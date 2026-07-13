@@ -194,6 +194,52 @@ describe('ArtifactViewer — frontmatter metadata badge (Story 5.1, AC-5)', () =
   });
 });
 
+// ─── Bug-hunt B2: parseFrontmatter quote-strip ───────────────────────────────
+//
+// YAML frontmatter values may be quoted with single or double quotes.
+// parseFrontmatter must strip surrounding quotes so the metadata badge
+// renders the bare value (e.g. `PRD: Onboarding Flow`, not `"PRD: Onboarding Flow"`).
+// Internal quotes are preserved; only a leading/trailing quote is stripped.
+
+describe('ArtifactViewer — parseFrontmatter quote-stripping (Bug-hunt B2)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] strips surrounding double-quotes from frontmatter values', () => {
+    const content = '---\ntitle: "PRD: Onboarding Flow"\n---\n# Hello';
+    render(<ArtifactViewer content={content} />);
+    const badge = document.querySelector('[aria-label="Artifact metadata"]');
+    expect(badge).toBeInTheDocument();
+    expect(badge?.textContent).toContain('PRD: Onboarding Flow');
+    expect(badge?.textContent).not.toContain('"PRD: Onboarding Flow"');
+    expect(badge?.textContent).not.toMatch(/"[A-Z]/);
+  });
+
+  it('[P0] strips surrounding single-quotes from frontmatter values', () => {
+    const content = "---\ntitle: 'My Title'\n---\n# Hello";
+    render(<ArtifactViewer content={content} />);
+    const badge = document.querySelector('[aria-label="Artifact metadata"]');
+    expect(badge).toBeInTheDocument();
+    expect(badge?.textContent).toContain('My Title');
+    expect(badge?.textContent).not.toContain("'My Title'");
+  });
+
+  it('[P0] leaves unquoted frontmatter values unchanged', () => {
+    const content = '---\ntitle: My Unquoted Title\n---\n# Hello';
+    render(<ArtifactViewer content={content} />);
+    const badge = document.querySelector('[aria-label="Artifact metadata"]');
+    expect(badge).toBeInTheDocument();
+    expect(badge?.textContent).toContain('My Unquoted Title');
+  });
+
+  it('[P1] does not strip quotes from the middle of an unquoted value', () => {
+    const content = '---\ntitle: My "quoted" word\n---\n# Hello';
+    render(<ArtifactViewer content={content} />);
+    const badge = document.querySelector('[aria-label="Artifact metadata"]');
+    expect(badge).toBeInTheDocument();
+    expect(badge?.textContent).toContain('My "quoted" word');
+  });
+});
+
 // ─── Story 5.4: Hairline border token (AC-6) ─────────────────────────────────
 //
 // Story 5.4: AC-6: h2 separator and hr use border-surface-raised (not border-border-subtle).

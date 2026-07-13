@@ -23,6 +23,7 @@ export default async function ArtifactsPage({
 
   const repoConnection = await getPrisma().repoConnection.findUnique({
     where: { userId: session.userId },
+    select: { id: true },
   });
 
   if (!repoConnection) {
