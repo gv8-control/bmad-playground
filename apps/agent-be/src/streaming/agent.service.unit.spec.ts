@@ -1258,6 +1258,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
 
   describe('[P0] regression — SDK iterator non-abort error emits RUN_ERROR (not RUN_FINISHED)', () => {
     it('emits RUN_ERROR with the error message and does NOT emit RUN_FINISHED when iterator.next() rejects with a non-abort error', async () => {
+      // eslint-disable-next-line require-yield
       async function* throwingGenerator(): AsyncGenerator<SDKMessage, void> {
         throw new Error('spawn failed: ENOENT');
       }

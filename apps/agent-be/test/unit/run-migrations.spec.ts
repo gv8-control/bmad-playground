@@ -172,7 +172,7 @@ describe('main() — behavioral flow (AC-2: target confirmed before and after)',
 
   test('[P0] logs target database before and after on success (AC-2)', () => {
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/mydb';
-    mockedExecSync.mockReturnValue(undefined);
+    mockedExecSync.mockReturnValue('');
 
     main();
 

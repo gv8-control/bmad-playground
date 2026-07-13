@@ -209,6 +209,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Integration tests** in `apps/agent-be/test/integration/` with a separate Jest config (`apps/agent-be/test/jest-integration.config.ts`).
 - Test file naming: `*.spec.ts` for unit, `*.test.tsx` for React component tests, `*.integration.spec.ts` for integration.
 - **Operational script testability (`scripts/*.ts`):** scripts with testable functions (especially security invariants like `describeDatabase()`) export those functions and guard `main()` with `if (require.main === module)` so unit tests can import without side effects. Unit tests in `apps/agent-be/test/` import from `scripts/` via relative path with `// eslint-disable-next-line @nx/enforce-module-boundaries` (since `scripts/` is not an Nx project). See `scripts/run-migrations.ts` + `apps/agent-be/test/unit/run-migrations.spec.ts` (Story 4.4).
+- **Testing GitHub Actions workflow YAML files via Jest + js-yaml:** parse `.github/workflows/*.yml` with `js-yaml` in a Jest test at `apps/agent-be/test/unit/`, assert on parsed structure (triggers, permissions, job config, step contents). ALSO assert on raw text for things YAML parsing normalizes away (e.g. `on: workflow_dispatch` string form vs object form — YAML parses both identically). `js-yaml` imported via `require()` with minimal type assertion when `@types/js-yaml` is unavailable. Follows the non-Nx-project test location pattern. See `deploy-workflow.spec.ts` (Story 4.6).
 
 #### Test Priority Tags
 
@@ -319,6 +320,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `apps/web` deploys to Vercel; `apps/agent-be` deploys to Railway (Docker).
 - Production only for MVP — no staging environment.
 - Local CI mirror: `./scripts/ci-local.sh`. Affected-only: `./scripts/test-changed.sh main`. Burn-in: `./scripts/burn-in.sh 10`.
+- **Script injection prevention in GitHub Actions `run:` blocks (generalized):** pass ALL dynamic values (`github.ref_name`, `github.sha`, `github.repository`, `inputs.*`, `matrix.*`) through `env:` intermediaries, never direct `${{ }}` interpolation in `run:` blocks. Generalizes the `test.yml` extension-pattern comment (lines 815-849, which covers `inputs.*` only) to ALL expressions. The strict form (no `${{ }}` at all in `run:` blocks) enables a simple regex-based regression guard in tests. Even system-controlled values like `github.sha` go through `env:` — the guard is strict by design. See `deploy.yml` + `deploy-workflow.spec.ts` (Story 4.6).
+- **Credential isolation in GitHub Actions workflows:** credential env-var names (`VERCEL_TOKEN`, `RAILWAY_TOKEN`, `DATABASE_URL`, `AUTH_SECRET`, etc.) must never appear as `$VAR` or `${VAR}` references in `run:` blocks. Pass credentials through `env:` and let tools read them from the environment automatically (e.g. Vercel CLI reads `VERCEL_TOKEN` from env, no `--token` flag). A `CREDENTIAL_ENV_VARS` list in tests enumerates which env vars are credentials and asserts none appear as `$VAR` or `${VAR}` in any `run:` block. See `deploy-workflow.spec.ts` (Story 4.6).
 
 #### Docker
 

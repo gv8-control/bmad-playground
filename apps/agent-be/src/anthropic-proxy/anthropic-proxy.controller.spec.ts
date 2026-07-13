@@ -15,6 +15,7 @@
  * - Header filtering: client-provided authorization, x-api-key, host, cookie headers are NOT forwarded
  */
 import { EventEmitter } from 'events';
+import type { Request as ExpressRequest, Response as ExpressResponse } from 'express';
 import { Test } from '@nestjs/testing';
 import { AnthropicProxyController } from './anthropic-proxy.controller';
 
@@ -362,7 +363,7 @@ describe('AnthropicProxyController — Story 4.5 AC-5 (NFR-S1 compliance)', () =
       const headers: Record<string, string> = {};
       let writeCount = 0;
 
-      const res = {
+      const res: ExpressResponse = {
         status: jest.fn(function (this: unknown) {
           return res;
         }),
@@ -382,7 +383,7 @@ describe('AnthropicProxyController — Story 4.5 AC-5 (NFR-S1 compliance)', () =
         once: resEmitter.once.bind(resEmitter),
         removeListener: resEmitter.removeListener.bind(resEmitter),
         headers,
-      };
+      } as unknown as ExpressResponse;
 
       // EventEmitter-backed req so 'close' / 'removeListener' work
       const reqEmitter = new EventEmitter();
@@ -402,7 +403,7 @@ describe('AnthropicProxyController — Story 4.5 AC-5 (NFR-S1 compliance)', () =
         on: reqEmitter.on.bind(reqEmitter),
         once: reqEmitter.once.bind(reqEmitter),
         removeListener: reqEmitter.removeListener.bind(reqEmitter),
-      } as unknown as Request;
+      } as unknown as ExpressRequest;
 
       jest.spyOn(global, 'fetch').mockResolvedValue({
         status: 200,
@@ -411,7 +412,7 @@ describe('AnthropicProxyController — Story 4.5 AC-5 (NFR-S1 compliance)', () =
       } as unknown as Response);
 
       // Start the proxy — it will hit backpressure after the first chunk
-      const proxyPromise = controller.proxy(req, res as never);
+      const proxyPromise = controller.proxy(req, res);
 
       // Let the first chunk be read and written (returns false → backpressure)
       await new Promise((r) => setImmediate(r));

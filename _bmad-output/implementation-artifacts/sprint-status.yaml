@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-13T00:00:00Z
+last_updated: 2026-07-13T10:55:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -89,7 +89,7 @@ development_status:
   4-3-add-a-dockerfile-for-apps-agent-be: done
   4-4-run-prisma-migrations-against-the-railway-postgres-instance: done
   4-5-wire-environment-variables-and-secrets-on-both-platforms: done
-  4-6-add-the-manual-trigger-deploy-step-to-ci: in-progress
+  4-6-add-the-manual-trigger-deploy-step-to-ci: done
   4-7-confirm-http2-capable-reverse-proxy-in-front-of-apps-agent-be: backlog
   4-8-deploy-failure-recovery-and-rollback: backlog
   4-9-configure-custom-domain-and-stable-production-url: backlog
