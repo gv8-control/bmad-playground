@@ -106,36 +106,26 @@ describe('Story 4.6 — Deploy Workflow', () => {
       expect(workflow.on).toBe('workflow_dispatch');
     });
 
-    test('[P0] on: trigger contains ONLY workflow_dispatch (object form)', () => {
-      const workflow = loadWorkflow();
-      if (typeof workflow.on === 'object' && workflow.on !== null) {
-        const keys = Object.keys(workflow.on);
-        expect(keys).toEqual(['workflow_dispatch']);
-      }
+    test('[P0] on: trigger contains ONLY workflow_dispatch (raw text — non-vacuous)', () => {
+      // String form "on: workflow_dispatch" cannot hold other triggers.
+      // Assert on the raw YAML so the test is never a no-op.
+      const text = loadWorkflowText();
+      expect(text).toMatch(/^on:\s*workflow_dispatch\s*$/m);
     });
 
     test('[P0] on: trigger does NOT contain push', () => {
-      const workflow = loadWorkflow();
-      const onObj = workflow.on as Record<string, unknown> | string | undefined;
-      if (typeof onObj === 'object' && onObj !== null) {
-        expect(onObj).not.toHaveProperty('push');
-      }
+      const text = loadWorkflowText();
+      expect(text).not.toMatch(/^\s*push:/m);
     });
 
     test('[P0] on: trigger does NOT contain pull_request', () => {
-      const workflow = loadWorkflow();
-      const onObj = workflow.on as Record<string, unknown> | string | undefined;
-      if (typeof onObj === 'object' && onObj !== null) {
-        expect(onObj).not.toHaveProperty('pull_request');
-      }
+      const text = loadWorkflowText();
+      expect(text).not.toMatch(/^\s*pull_request:/m);
     });
 
     test('[P0] on: trigger does NOT contain schedule', () => {
-      const workflow = loadWorkflow();
-      const onObj = workflow.on as Record<string, unknown> | string | undefined;
-      if (typeof onObj === 'object' && onObj !== null) {
-        expect(onObj).not.toHaveProperty('schedule');
-      }
+      const text = loadWorkflowText();
+      expect(text).not.toMatch(/^\s*schedule:/m);
     });
 
     test('[P0] workflow has a "deploy" job', () => {
@@ -209,6 +199,7 @@ describe('Story 4.6 — Deploy Workflow', () => {
       const gateStep = steps.find((s) => s.run?.includes('gh run list'));
       expect(gateStep).toBeDefined();
       expect(gateStep?.run).toContain('success');
+      expect(gateStep?.run).toContain('Proceeding with deploy');
     });
 
     test('[P0] quality-gate step fails if no completed run exists', () => {
@@ -216,7 +207,9 @@ describe('Story 4.6 — Deploy Workflow', () => {
       const steps = getSteps(workflow);
       const gateStep = steps.find((s) => s.run?.includes('gh run list'));
       expect(gateStep).toBeDefined();
-      expect(gateStep?.run).toMatch(/exit 1|fail|error/i);
+      expect(gateStep?.run).toContain('No completed Test Pipeline run found');
+      expect(gateStep?.run).toContain('Run the Test Pipeline first');
+      expect(gateStep?.run).toMatch(/exit 1/i);
     });
 
     test('[P0] quality-gate step uses GH_TOKEN from GITHUB_TOKEN', () => {
@@ -282,6 +275,7 @@ describe('Story 4.6 — Deploy Workflow', () => {
         for (const credVar of CREDENTIAL_ENV_VARS) {
           expect(step.run).not.toContain(`${credVar}=`);
           expect(step.run).not.toMatch(new RegExp(`\\$${credVar}\\b`));
+          expect(step.run).not.toMatch(new RegExp(`\\$\\{${credVar}\\}`));
         }
       }
     });
@@ -298,10 +292,9 @@ describe('Story 4.6 — Deploy Workflow', () => {
       const workflow = loadWorkflow();
       const steps = getSteps(workflow);
       const vercelStep = steps.find((s) => s.run?.includes('vercel deploy'));
-      if (vercelStep) {
-        expect(vercelStep.env?.VERCEL_PROJECT_ID).toBeDefined();
-        expect(vercelStep.env?.VERCEL_ORG_ID).toBeDefined();
-      }
+      expect(vercelStep).toBeDefined();
+      expect(vercelStep?.env?.VERCEL_PROJECT_ID).toBeDefined();
+      expect(vercelStep?.env?.VERCEL_ORG_ID).toBeDefined();
     });
   });
 
@@ -320,26 +313,22 @@ describe('Story 4.6 — Deploy Workflow', () => {
       const workflow = loadWorkflow();
       const steps = getSteps(workflow);
       const gateStep = steps.find((s) => s.run?.includes('gh run list'));
-      if (gateStep) {
-        expect(gateStep.env).toBeDefined();
-        const envValues = Object.values(gateStep.env ?? {});
-        const hasRefName = envValues.some(
-          (v) => v.includes('github.ref_name') || v.includes('${{ github.ref_name }}'),
-        );
-        expect(hasRefName).toBe(true);
-      }
+      expect(gateStep).toBeDefined();
+      expect(gateStep?.env).toBeDefined();
+      const envValues = Object.values(gateStep?.env ?? {});
+      const hasRefName = envValues.some(
+        (v) => v.includes('github.ref_name') || v.includes('${{ github.ref_name }}'),
+      );
+      expect(hasRefName).toBe(true);
     });
 
     test('[P0] branch name is safely quoted in shell commands (no unquoted $BRANCH)', () => {
       const workflow = loadWorkflow();
       const steps = getSteps(workflow);
-      for (const step of steps) {
-        if (!step.run) continue;
-        if (step.run.includes('BRANCH') || step.run.includes('--branch')) {
-          expect(step.run).toMatch(/"\$BRANCH"|'\$BRANCH'|"BRANCH"|'\$BRANCH'/);
-          expect(step.run).not.toMatch(/--branch=\$BRANCH(?!\S)/);
-        }
-      }
+      const gateStep = steps.find((s) => s.run?.includes('gh run list'));
+      expect(gateStep).toBeDefined();
+      expect(gateStep?.run).toMatch(/"\$BRANCH"|'\$BRANCH'/);
+      expect(gateStep?.run).not.toMatch(/--branch=\$BRANCH(?!\S)/);
     });
 
     test('[P0] no ${{ }} expressions in run: blocks except via env: intermediaries', () => {
@@ -347,10 +336,7 @@ describe('Story 4.6 — Deploy Workflow', () => {
       const steps = getSteps(workflow);
       for (const step of steps) {
         if (!step.run) continue;
-        const interpolations = step.run.match(/\$\{\{[^}]+\}\}/g);
-        if (interpolations) {
-          expect(interpolations).toEqual([]);
-        }
+        expect(step.run).not.toMatch(/\$\{\{[^}]+\}\}/);
       }
     });
   });

@@ -1,6 +1,6 @@
 # Test Automation Summary
 
-**Last updated:** 2026-07-12 (Story 4.5 — Wire Environment Variables and Secrets on Both Platforms; 39 unit + 6 integration tests verified passing, 0 E2E/API tests generated — proxy endpoint covered by 9 unit tests, platform env vars covered by 6 integration tests, E2E deferred with per-AC browser-mock feasibility check)
+**Last updated:** 2026-07-13 (Story 4.6 — Add the Manual-Trigger Deploy Step to CI; 31 unit tests verified passing, 0 E2E/API tests generated — CI/CD YAML workflow file has no browser-observable behavior; E2E deferred with per-AC browser-mock feasibility check; existing 31 unit tests provide complete coverage of all 3 ACs + security regression guards)
 
 ---
 
@@ -2597,3 +2597,173 @@ yarn nx test-integration agent-be -- --testPathPatterns=platform-env-vars
 - **When Tasks 4-5 are executed** (wire env vars on Vercel/Railway), remove the `it.skip()` markers from the 4 expected-to-fail integration tests and verify they pass.
 - **When agent-be is deployed to Railway** with the proxy endpoint, verify the proxy works end-to-end via the manual `curl` test described in Story Task 9.
 - **Epic 6** will wire `ANTHROPIC_BASE_URL` into sandbox provisioning (pointing sandboxes at the proxy). At that point, add E2E coverage for the full sandbox → proxy → Anthropic API flow.
+
+---
+
+## Story 4.6: Add the Manual-Trigger Deploy Step to CI
+
+**Generated:** 2026-07-13
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### E2E Tests (Playwright)
+
+None generated. Story 4.6 creates `.github/workflows/deploy.yml` — a CI/CD YAML workflow file with no browser-observable behavior. See E2E Deferral Analysis below.
+
+### API Tests
+
+None generated. Story 4.6 has no API endpoints — it is a GitHub Actions workflow configuration file, not application code.
+
+---
+
+## Coverage
+
+### Existing Unit Tests (Complete — 31 tests, all passing)
+
+**File:** `apps/agent-be/test/unit/deploy-workflow.spec.ts`
+**Workflow file:** `.github/workflows/deploy.yml`
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| Unit | `deploy-workflow.spec.ts` | 31 | 31 | 0 | **ALL PASSING** |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Test Level | Test File(s) | Tests |
+|---|---|---|---|---|
+| AC-1 | Manual trigger only (`workflow_dispatch`), deploys both services | Unit (YAML structure validation) | `deploy-workflow.spec.ts` | 11 tests |
+| AC-2 | Quality gate dependency (verifies Test Pipeline passed) | Unit (YAML structure validation) | `deploy-workflow.spec.ts` | 6 tests |
+| AC-3 | GitHub Environment with protection rules (`environment: production`) | Unit (YAML structure validation) | `deploy-workflow.spec.ts` | 1 test |
+| Security | Permissions, concurrency, timeout | Unit (YAML structure validation) | `deploy-workflow.spec.ts` | 3 tests |
+| Security | Credential-isolation regression guards | Unit (regression guards) | `deploy-workflow.spec.ts` | 5 tests |
+| Security | Input-injection regression guards | Unit (regression guards) | `deploy-workflow.spec.ts` | 4 tests |
+| Summary | Deployment summary step | Unit (YAML structure validation) | `deploy-workflow.spec.ts` | 1 test |
+
+**Note:** AC-3 also specifies required reviewers and branch restriction. These are GitHub Environment settings configured via `gh api`, not YAML properties — they cannot be tested via YAML structure validation. Required reviewers is deferred past MVP (GitHub billing plan limitation). Branch restriction is configured via GitHub API and verified manually (Story Task 1.4). The 1 test covers what is testable in the YAML file (`environment: production`).
+
+---
+
+## E2E Deferral Analysis (Browser-Level Mock Verification)
+
+Per the ATDD checklist, each AC was checked for browser-level mock coverage before deferring:
+
+| AC | Browser mock possible? | Reason |
+|---|---|---|
+| AC-1 (manual trigger + deploys) | No | The workflow file structure (trigger type, deploy targets) is a YAML file property. Browser-level mocks (`page.route()`, `page.goto()`) operate on HTTP requests and DOM interactions — they cannot inspect or assert on the structure of a YAML file on disk. The `on:` trigger type, `jobs.deploy.steps` array, and Vercel/Railway deploy commands are file-level properties, not browser-observable behavior. |
+| AC-2 (quality gate dependency) | No | The quality-gate step runs `gh run list --workflow=test.yml` — a GitHub CLI command executed inside a GitHub Actions runner. Browser-level mocks cannot simulate the GitHub Actions runtime, the `gh` CLI, or the GitHub API responses that the quality-gate step consumes. The step's logic is shell script inside a `run:` block, not browser-executable code. |
+| AC-3 (GitHub Environment) | No | The `environment: production` key is a YAML property. The GitHub Environment itself (required reviewers, branch restriction) is a GitHub repo setting configured via `gh api`, not a browser-observable artifact. Browser-level mocks cannot simulate GitHub Environment protection rules — they exist in GitHub's deployment infrastructure. |
+
+**Conclusion:** No browser-level mock pattern can simulate any of the 3 ACs. All are CI/CD configuration (YAML file structure + GitHub Environment settings), not browser-observable application behavior. E2E coverage is deferred. All ACs are covered by unit tests (YAML structure validation + security regression guards). Manual end-to-end verification (Story Task 4) covers the runtime behavior.
+
+---
+
+## Test Execution
+
+```bash
+# Deploy workflow unit tests (AC-1, AC-2, AC-3, security guards)
+yarn nx test agent-be -- --testPathPattern=deploy-workflow
+# Result: 23 suites, 411 tests passed, 0 failed (31 deploy-workflow + 380 other agent-be tests)
+```
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: Story 4.6 creates a CI/CD YAML workflow file, not an API. No HTTP endpoints exist.
+- [x] E2E tests generated (if UI exists) — N/A: no UI surface exists. The workflow file is a static YAML configuration. E2E deferred with per-AC browser-level-mock feasibility check (no browser mock can simulate any AC).
+- [x] Tests use standard test framework APIs — Jest 30 (`js-yaml` for YAML parsing, `fs.readFileSync` for file loading, `describe`/`test` structure)
+- [x] Tests cover happy path — workflow file exists, valid YAML, `workflow_dispatch` trigger, deploy job with Vercel + Railway steps, quality-gate step, `environment: production`
+- [x] Tests cover 1-2 critical error cases — credential-isolation guards (no token leaks via command arguments or env vars), input-injection guards (no `${{ }}` interpolation in `run:` blocks, branch name safely quoted)
+- [x] All generated tests run successfully — 31/31 pass
+- [x] Tests use proper locators (semantic, accessible) — N/A (YAML structure validation tests, no UI)
+- [x] Tests have clear descriptions — `[P0]` priority prefixes with AC references on all tests
+- [x] No hardcoded waits or sleeps — all tests are synchronous file reads + assertions
+- [x] Tests are independent (no order dependency) — each test loads the workflow file independently
+- [x] Test summary created — this section
+- [x] Tests saved to appropriate directories — `apps/agent-be/test/unit/deploy-workflow.spec.ts` (established location for non-Nx-project tests, per DP-4)
+- [x] Summary includes coverage metrics — 31 tests (all unit), 0 E2E/API (deferred)
+
+---
+
+## Test Inventory
+
+#### Unit Tests — Deploy Workflow (31 tests, all passing)
+
+**File:** `apps/agent-be/test/unit/deploy-workflow.spec.ts`
+
+##### AC-1: Manual trigger only, deploys both services (11 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| workflow file exists and is valid YAML | AC-1 | P0 | File exists and parses as valid YAML via `js-yaml` |
+| workflow name is "Deploy to Production" | AC-1 | P0 | Workflow `name` field matches |
+| on: trigger is workflow_dispatch (string form) | AC-1 | P0 | Manual trigger only (string form) |
+| on: trigger contains ONLY workflow_dispatch (object form) | AC-1 | P0 | No other triggers in object form |
+| on: trigger does NOT contain push | AC-1 | P0 | No push trigger |
+| on: trigger does NOT contain pull_request | AC-1 | P0 | No pull_request trigger |
+| on: trigger does NOT contain schedule | AC-1 | P0 | No schedule trigger |
+| workflow has a "deploy" job | AC-1 | P0 | Deploy job exists |
+| deploy job runs on ubuntu-latest | AC-1 | P0 | Runner configuration |
+| deploy job includes a Vercel deploy step (apps/web) | AC-1 | P0 | Vercel deploy for apps/web |
+| deploy job includes a Railway deploy step (apps/agent-be) | AC-1 | P0 | Railway deploy for apps/agent-be |
+
+##### AC-2: Quality gate dependency (6 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| quality-gate verification step exists in the deploy job | AC-2 | P0 | Quality-gate step present |
+| quality-gate step is the FIRST step in the deploy job | AC-2 | P0 | Runs before any deploy action |
+| quality-gate step uses gh run list --workflow=test.yml | AC-2 | P0 | Checks the correct test workflow |
+| quality-gate step checks for conclusion success | AC-2 | P0 | Only proceeds on success |
+| quality-gate step fails if no completed run exists | AC-2 | P0 | Does not bypass the quality gate |
+| quality-gate step uses GH_TOKEN from GITHUB_TOKEN | AC-2 | P0 | Uses default token (no extra secrets) |
+
+##### AC-3: GitHub Environment with protection rules (1 test)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| deploy job uses environment: production | AC-3 | P0 | Environment protection (required reviewers + branch restriction + env secrets) |
+
+##### Security: permissions and concurrency (3 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| permissions block is least-privilege (actions: read, contents: read) | Security | P0 | Least-privilege token scope |
+| concurrency group prevents concurrent deploys | Security | P0 | No concurrent production deploys |
+| deploy job has timeout-minutes set | Security | P0 | Deploy job has a timeout |
+
+##### Security: credential-isolation regression guards (5 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| VERCEL_TOKEN is referenced only via secrets.*, never as a literal value | Security | P0 | No token leak via command arguments |
+| RAILWAY_TOKEN is referenced only via secrets.*, never as a literal value | Security | P0 | No token leak via command arguments |
+| no credential env-var names appear as literal values in run: blocks | Security | P0 | No credentials in command strings |
+| no credential values appear in the workflow YAML (credential isolation) | Security | P0 | No literal secrets in the file |
+| VERCEL_PROJECT_ID and VERCEL_ORG_ID are in env: (not secrets, but not in run: blocks) | Security | P0 | Project IDs in env, not in command strings |
+
+##### Security: input-injection regression guards (4 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| github.ref_name is NOT directly interpolated in run: blocks | Security | P0 | No `${{ github.ref_name }}` in run: text |
+| github.ref_name IS passed through env: intermediaries | Security | P0 | Branch name passed via env: |
+| branch name is safely quoted in shell commands (no unquoted $BRANCH) | Security | P0 | Malicious input is safely quoted |
+| no ${{ }} expressions in run: blocks except via env: intermediaries | Security | P0 | No direct interpolation of any kind in run: blocks |
+
+##### Deployment summary step (1 test)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| deploy job includes a deployment summary step writing to GITHUB_STEP_SUMMARY | Summary | P0 | Deployment summary is written |
+
+---
+
+## Next Steps
+
+- **No action required for Story 4.6** — all 3 ACs have test coverage at the appropriate level (unit YAML structure validation + security regression guards).
+- **When the Test Pipeline passes** (pre-existing Story 4.5 failures resolved), complete manual E2E verification (Story Tasks 4.6-4.8): trigger the deploy workflow, verify Vercel deploy succeeds, verify Railway deploy succeeds, verify production apps are reachable.
+- **Production URL smoke test (future):** a Playwright test navigating to `https://bmad-easy.vercel.app` and asserting HTTP 200 could be added once the deploy pipeline is fully operational. This would be an integration test against a live deployment, not a mock — deferred until the Test Pipeline passes and deploys succeed.
