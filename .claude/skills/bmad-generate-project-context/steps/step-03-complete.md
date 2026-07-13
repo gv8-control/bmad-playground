@@ -133,7 +133,7 @@ Last Updated: {{date}}
 Based on user skill level, present the completion:
 
 **Expert Mode:**
-"Project context complete. Optimized for LLM consumption with {{rule_count}} critical rules across {{section_count}} sections.
+"Project context complete. Optimized for LLM consumption with critical implementation rules across {{section_count}} sections.
 
 File saved to: `{output_folder}/project-context.md`
 
@@ -144,7 +144,7 @@ Ready for AI agent integration."
 
 **What we created:**
 
-- {{rule_count}} critical implementation rules
+- Critical implementation rules
 - Technology stack with exact versions
 - Framework-specific patterns and conventions
 - Testing and quality guidelines
@@ -194,7 +194,6 @@ date: '{{date}}'
 sections_completed:
   ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
 status: 'complete'
-rule_count: { { total_rules } }
 optimized_for_llm: true
 ---
 ```
@@ -232,7 +231,7 @@ Your optimized project context file is ready at:
 
 **📊 Context Summary:**
 
-- {{rule_count}} critical rules for AI agents
+- Critical rules for AI agents
 - {{section_count}} comprehensive sections
 - Optimized for LLM context efficiency
 - Ready for immediate agent integration

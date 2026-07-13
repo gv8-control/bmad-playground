@@ -88,6 +88,7 @@ development_status:
   5-2-fix-shared-shell-and-page-header-structural-drift: done
   5-3-fix-conversation-stream-structural-drift: done
   5-4-fix-token-usage-drift-and-token-config-gaps: done
+  5-5-interleave-tool-and-semantic-pills-within-the-agent-markdown-stream: backlog
   epic-5-retrospective: done
 
   # ── Epic 6: Sandbox-Based Agent Execution ──

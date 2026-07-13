@@ -13,7 +13,6 @@ sections_completed:
     'critical_rules',
   ]
 status: 'complete'
-rule_count: 182
 optimized_for_llm: true
 ---
 
