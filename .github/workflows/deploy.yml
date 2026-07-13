@@ -19,8 +19,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
-          RUN_DATA=$(gh run list --workflow=test.yml --branch="$BRANCH" --status=completed --limit=1 --json conclusion,databaseId,number)
+          RUN_DATA=$(gh run list --repo "$REPO" --workflow=test.yml --branch="$BRANCH" --status=completed --limit=1 --json conclusion,databaseId,number)
           if [ -z "$RUN_DATA" ] || [ "$RUN_DATA" = "[]" ]; then
             echo "No completed Test Pipeline run found on branch '$BRANCH'. Run the Test Pipeline first."
             exit 1
