@@ -40,6 +40,13 @@ describe('UserMessage', () => {
       expect(hoverWrapper?.className).toContain('opacity-0');
       expect(hoverWrapper?.className).toContain('group-hover:opacity-100');
     });
+
+    it('timestamp container uses whitespace-nowrap (prevents wrapping on short messages)', () => {
+      render(<UserMessage message={message} />);
+      const timestamp = screen.getByText(/12:00/);
+      const hoverWrapper = timestamp.parentElement;
+      expect(hoverWrapper?.className).toContain('whitespace-nowrap');
+    });
   });
 });
 

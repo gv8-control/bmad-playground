@@ -5,6 +5,8 @@ const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     colors: {
+      transparent:       'transparent',
+      current:           'currentColor',
       bg:               '#0D0D11',
       surface:          '#16161C',
       'surface-raised': '#1E1E26',
