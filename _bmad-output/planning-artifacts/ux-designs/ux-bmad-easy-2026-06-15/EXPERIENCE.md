@@ -136,6 +136,8 @@ During streaming:
 
 After streaming completes: cursor disappears, copy action becomes available on hover.
 
+**Timestamps:** Relative time is the primary display on both user and agent messages — "just now" under 1 minute, "X minutes ago" 1–59 min, "X hours ago" 1–23 hr, "yesterday"/"X days ago" 24 hr–6 days, absolute date (e.g. "Jul 8") at 7 days and beyond. Absolute time remains accessible via hover but is not prominent. User message timestamps remain hover-only; agent message timestamps remain low-prominence inline. Relative timestamps update live (interval tick) while the conversation view is open. (Extended 2026-07-13 per Story 7.5 — supersedes the prior "just now under 1 minute" only rule; previously older messages showed wall-clock time.)
+
 ### Tool Pills and Semantic Pills
 
 Tool Pills appear inline in the message stream at the position where the agent tool call occurred — not in a sidebar or separate panel. They are part of the conversation history and scroll with it.
@@ -376,7 +378,7 @@ Behavioral accessibility baseline. Visual contrast ratios are governed by DESIGN
 
 **Focus management:**
 - All interactive elements have a visible focus ring: `{colors.accent}` 2px outline, 2px offset.
-- Focus is not suppressed on click; the focus ring is always visible.
+- Focus is not suppressed on click; the focus ring is always visible. Exception — navigation surfaces only (sidebar nav items, Project Map artifact cards, Artifact Browser list entries): these use `:focus-visible` so the ring appears on keyboard focus but is suppressed on mouse-click focus. Keyboard focus remains fully visible on every interactive element (WCAG 2.4.7 satisfied). Input and action surfaces (chat input; Run/Retry/Send/Save/Stop buttons; search/filter inputs; tab controls; modal controls; tree/expand-collapse toggles; copy buttons; slash-command picker) retain `:focus` — ring on all focus, never suppressed on click. (Navigation-surface exception added 2026-07-13 per Story 7.4.)
 - On route change, focus moves to the page's main heading `h1` or the first interactive element in the content area.
 - Safety net: the global CSS removes the browser default outline only on mouse-click focus (`*:focus:not(:focus-visible) { outline: none; }`); any element that lacks an explicit ring class still shows the browser default outline on keyboard focus, so a forgotten ring class degrades to an unstyled-but-visible indicator rather than no indicator (WCAG 2.4.7).
 

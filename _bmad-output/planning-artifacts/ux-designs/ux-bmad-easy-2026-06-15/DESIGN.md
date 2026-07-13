@@ -374,7 +374,7 @@ While agent is processing: **Stop** button replaces Send. Stop is outlined (bord
 
 **Copy action on messages:** appears on hover at the top-right corner of the message. Single icon button, `text-3` default, `text-2` on hover.
 
-**Timestamps:** User message timestamps on hover only (`xs`, `text-2`, right-aligned). Agent message timestamps inline below the message (`xs`, `text-2`) — shown permanently but at low prominence.
+**Timestamps:** User message timestamps on hover only (`xs`, `text-2`, right-aligned). Agent message timestamps inline below the message (`xs`, `text-2`) — shown permanently but at low prominence. Relative time is the primary display: "just now" under 1 minute, "X minutes ago" 1–59 min, "X hours ago" 1–23 hr, "yesterday"/"X days ago" 24 hr–6 days, absolute date (e.g. "Jul 8") at 7 days and beyond. Absolute time accessible via hover tooltip. Relative timestamps update live (interval tick) while the conversation view is open. (Extended 2026-07-13 per Story 7.5.)
 
 ### Tool Pill
 

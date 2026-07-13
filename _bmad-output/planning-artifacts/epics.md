@@ -138,7 +138,7 @@ UX-DR2: Build the persistent Side Navigation component (240px fixed): product wo
 
 UX-DR3: Build the Chat Input component: auto-growing textarea (52px–200px, internal scroll above max), working tree indicator (left), Send/Stop button (right); Enter submits, Shift+Enter inserts newline; draft persisted to `localStorage` keyed by `conversationId` (or `new-conversation`), cleared on successful send.
 
-UX-DR4: Build streaming Message components (User, Agent) with Markdown rendered progressively during streaming (not transformed on completion), blinking cursor at the insertion point, per-message hover copy action, always-visible per-code-block copy button, and the specified timestamp display rules (relative "just now" under 1 minute, hover-only on user messages, low-prominence inline on agent messages).
+UX-DR4: Build streaming Message components (User, Agent) with Markdown rendered progressively during streaming (not transformed on completion), blinking cursor at the insertion point, per-message hover copy action, always-visible per-code-block copy button, and the specified timestamp display rules: relative time as the primary display on both user and agent messages — "just now" under 1 minute, "X minutes ago" 1–59 min, "X hours ago" 1–23 hr, "yesterday"/"X days ago" 24 hr–6 days, absolute date (e.g. "Jul 8") at 7 days and beyond. Absolute time remains accessible via hover but is not prominent. User message timestamps remain hover-only; agent message timestamps remain low-prominence inline. Relative timestamps update live (interval tick) while the conversation view is open. (Extended 2026-07-13 per Story 7.5 — supersedes the prior "just now under 1 minute" only rule; previously older messages showed wall-clock time.)
 
 UX-DR5: Build the Tool Pill component: inline chip at the exact stream position of the tool call; click toggles an inline expanded view of input/output in monospace; click again collapses; expansion does not affect surrounding layout.
 
@@ -162,13 +162,13 @@ UX-DR14: Implement the Onboarding surface per the architecture's DL-7 correction
 
 UX-DR15: Implement the Sign-In surface: GitHub OAuth as the sole interactive element, no separate sign-up screen, inline auth-error state with OAuth button re-enabled.
 
-UX-DR16: Implement the accessibility floor: visible 2px accent focus rings with 2px offset on all interactive elements (never suppressed on click); route-change focus moves to the page's `h1` or first interactive element; full keyboard navigability; focus-trapping modals (re-auth, save confirmation) that return focus to the trigger on close; non-color state signaling everywhere (icon + text label + color, never color alone); `aria-live="polite"` on the chat message stream and the working tree indicator; `role="status"` on loading/save-confirmation status messages; `prefers-reduced-motion` handling for the streaming cursor and the thinking indicator; `aria-label`s on avatar circles and icon-only buttons.
+UX-DR16: Implement the accessibility floor: visible 2px accent focus rings with 2px offset on all interactive elements (never suppressed on click). Exception — navigation surfaces only (sidebar nav items, Project Map artifact cards, Artifact Browser list entries): these use `:focus-visible` so the ring appears on keyboard focus but is suppressed on mouse-click focus. Keyboard focus remains fully visible on every interactive element (WCAG 2.4.7 satisfied). Input and action surfaces (chat input; Run/Retry/Send/Save/Stop buttons; search/filter inputs; tab controls; modal controls; tree/expand-collapse toggles; copy buttons; slash-command picker) retain `:focus` — ring on all focus, never suppressed on click. (Navigation-surface exception added 2026-07-13 per Story 7.4; the existing `:focus:not(:focus-visible)` browser-default safety net in EXPERIENCE.md precedents this pattern.)
 
 UX-DR17: Implement responsive behavior: desktop-first with a 1024px minimum supported viewport; tablet (768–1023px) collapses the side navigation into an off-canvas drawer triggered by a hamburger button; mobile is explicitly out of scope for MVP.
 
 UX-DR18: Implement the Agent Processing state machine (Idle / Thinking / Tool executing / Streaming response) governing chat input enabled/disabled, Stop button visibility, and the active indicator (three-dot animation vs. inline tool-execution label vs. streaming cursor) — the thinking and tool-execution indicators must remain visually distinct.
 
-UX-DR19: Implement the per-surface loading/empty/error state patterns: Project Map (loading skeleton, empty-state prompt, populated, credential-failed banner, refreshing spinner), Conversation (cold-load skeleton, history-load error with Refresh, "Reconnecting…" with full history visible and disabled input, active/idle), Artifact Browser (list-only, list+detail, loading skeleton, load-error with Refresh, credential-failed banner), Settings (static "coming soon", no states needed).
+UX-DR19: Implement the per-surface loading/empty/error state patterns: Project Map (loading skeleton, empty-state prompt, populated, credential-failed banner, refreshing spinner), Conversation (cold-load skeleton, history-load error with Refresh, "Reconnecting…" with full history visible and disabled input, active/idle), Artifact Browser (list-only, list+detail, loading skeleton, load-error with Refresh, credential-failed banner), Settings (static "coming soon", no states needed). Transition-loading pattern (added 2026-07-13 per Stories 7.2/7.3): in-app navigation transitions (sidebar page switches) and artifact switching in the Artifact Browser surface a content-pane dim (opacity) + small spinner, with existing content remaining visible underneath, rather than a flash of empty skeleton. This is distinct from cold-load skeletons (which apply on initial page load with no existing content). Consistent visual language across both transition surfaces.
 
 UX-DR20: Implement the breadcrumb navigation pattern ("← Project Map") on depth-1 pages (Conversation, Artifact Browser); no animated page/route transitions in MVP (any future addition must respect `prefers-reduced-motion`).
 
@@ -230,6 +230,10 @@ A user can open a Conversation, invoke BMAD Skills via slash command, converse w
 ### Epic 5: UX Mockup Fidelity — Close Visual Drift
 A comprehensive audit identified 102 findings of visual drift between the authoritative UX mockups (7 HTML files + DESIGN.md + EXPERIENCE.md) and the implemented application across all 7 surfaces and the shared shell. Token values match exactly (42/42); the drift is structural (missing containers, wrong layouts), token-usage (wrong tokens applied), and copy-level. This epic closes the drift by restoring missing visual containers, fixing structural divergences, correcting token-usage, and addressing token-config gaps. Epic 4 is reserved and intentionally unused.
 **Investigation:** `_bmad-output/implementation-artifacts/investigations/ux-visual-drift-investigation.md`
+
+### Epic 7: Live-Usage UX Improvements
+Five UX gaps discovered from live-app usage after Epic 5 closed. These are not mockup drift — they are live-usage findings about states and feedback that the design never fully specified (loading feedback during in-app navigation, relative timestamps beyond one minute, prominence of focus rings on navigation surfaces) and about inconsistency in how already-specified patterns render (error presentation in the conversation view). Frontend presentation changes only; independent of Epic 6.
+**Change proposal:** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-13.md`
 
 ## Epic 1: Authentication & Repository Connection
 
@@ -1162,3 +1166,160 @@ So that I can follow the Agent's reasoning and actions as a single continuous na
 - **Scope boundary:** This story does NOT change the SSE event contract, the backend event emission logic, or the `tool-pill-classifier.service.ts` classification logic. It changes only how the frontend stores and renders the events it receives, and how the backend persists turn content for resume.
 - **Test coverage impact:** `ConversationPane.test.tsx` has extensive `TOOL_CALL_*` tests (lines 642-940+) that assert pills appear as entries in the `messages` array. These must be updated to assert inline positioning within agent messages instead. Budget time for significant test refactoring.
 - **Cross-epic risk:** Stories 3.7 (credential failure), 3.9 (sandbox teardown), and 3.12 (graceful drain) have event handlers that update tool call state by matching `toolCallId` in the flat `messages` array. These update patterns (`m.toolCall && m.toolCall.toolCallId === toolCallId`) must be adapted to work with the new interleaved data model — the `toolCallId` lookup now traverses segments within agent messages, not top-level message entries.
+
+## Epic 7: Live-Usage UX Improvements
+
+Five UX gaps discovered from live-app usage after Epic 5 closed. These are not mockup drift — they are live-usage findings about states and feedback that the design never fully specified (loading feedback during in-app navigation, relative timestamps beyond one minute, prominence of focus rings on navigation surfaces) and about inconsistency in how already-specified patterns render (error presentation in the conversation view). Frontend presentation changes only; independent of Epic 6.
+
+**Change proposal:** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-13.md`
+
+### Story 7.1: Unify Error State Presentation in Conversation View
+
+As a user in a conversation,
+I want every error that occurs within the conversation context to render inline in the same place and treatment as the happy-path greeting and the Claude Code error,
+So that errors feel like part of the conversation, not a disconnected popup somewhere else on the page.
+
+**Acceptance Criteria:**
+
+**Given** the new-conversation happy-path greeting
+**When** it renders
+**Then** it is the reference treatment: inline in the chat-messages panel, centered in the 824px column, with the established empty-state treatment
+**And** every error state that occurs within the conversation context matches this placement and visual treatment (inline, centered in the chat-messages panel) — including at minimum the sandbox-setup error ("Failed to set up the sandbox. Please try again or contact support.")
+
+**Given** the sandbox-setup error with its Retry button
+**When** it renders
+**Then** the error message and the Retry action render co-located, inline in the chat-messages panel — not detached above/below the conversation flow
+**And** the Retry button's behavior is unchanged — only its placement and visual treatment change
+
+**Given** a sweep of conversation-context error states performed during implementation
+**When** any additional error state is found that renders outside the conversation flow (e.g. session-start timeout, reconnect failure, history-load error)
+**Then** it is brought inline to the same treatment
+
+**Given** an error within the conversation context and the Credential Error Banner (UX-DR10)
+**When** both could appear
+**Then** the inline error (this story) is distinct from the Credential Error Banner — the banner is the already-specified full-width re-auth surface; this story covers sandbox/session/agent errors that belong in the conversation stream, not credential-health banners
+
+**Scope notes:**
+- Reference treatment = the happy-path new-conversation greeting.
+- Presentation (placement + visual treatment) is in scope. Rewriting error message copy wholesale is out of scope — only bring copy into compliance if a message clearly violates the Voice & Tone rules (EXPERIENCE.md §Voice and Tone).
+- The Retry button's behavior is unchanged.
+
+### Story 7.2: Loading State for Sidebar Page Navigation
+
+As a user switching pages via the sidebar nav,
+I want feedback that the navigation transition is in progress,
+So that the app does not appear frozen while the destination page loads.
+
+**Acceptance Criteria:**
+
+**Given** a sidebar navigation destination
+**When** the user activates it (click or keyboard)
+**Then** a visible loading state appears in the content area within the response frame, indicating navigation is in progress
+**And** the loading treatment is consistent with Story 7.3 (artifact switching) — the same visual language on both surfaces
+
+**Given** a navigation transition is in progress
+**When** the destination page renders
+**Then** the loading state clears and the destination content appears
+
+**Given** the loading treatment
+**When** it renders
+**Then** it uses the shared transition-loading pattern specified in the UX-DR19 amendment: existing content dims via opacity with a small spinner, keeping current content visible underneath rather than flashing an empty skeleton
+
+**Given** the sidebar item itself
+**When** navigation is triggered from it
+**Then** the sidebar item does not render a separate loading indicator — the content-area loading state is the single source of truth for "navigation in progress" (avoids double-signaling; the active state on the destination item already confirms the selection)
+
+**Scope notes:**
+- Applies to all sidebar nav destinations (Project Map, Artifact Browser, existing Conversations, Settings, New Conversation).
+- Shared visual treatment with Story 7.3 — implement the two together.
+
+### Story 7.3: Loading State for Artifact Switching in Artifact Browser
+
+As a user browsing the Artifact Browser with one artifact already open,
+I want loading feedback when I click another artifact to switch to it,
+So that the switch does not appear to have done nothing.
+
+**Acceptance Criteria:**
+
+**Given** an artifact is open in the Artifact Browser and the user clicks another artifact in the list
+**When** the new artifact's content is fetching
+**Then** a visible loading state renders in the content pane, consistent with Story 7.2's treatment
+
+**Given** the loading treatment for artifact switching
+**When** it renders
+**Then** the previously-open artifact remains visible (dimmed via opacity) until the new artifact's content is ready, with a small spinner — no flash of empty content pane
+
+**Given** the new artifact's content arrives
+**When** it renders
+**Then** the loading state clears and the new artifact's rendered Markdown replaces the previous one
+
+**Scope notes:**
+- Distinct surface from Story 7.2 but the loading treatment must feel consistent (decided jointly with Story 7.2).
+- The "keep previous content visible dimmed" behavior is specific to artifact switching (where the outgoing content is meaningful context); Story 7.2's page transitions use the same dim+spinner language but the outgoing page may not persist as long.
+
+### Story 7.4: Reduce Focus State Prominence on Navigation Surfaces
+
+As a user navigating the sidebar, Project Map, and Artifact Browser with a mouse,
+I want focus rings to not create visual noise on navigation surfaces,
+So that the interface feels calm — while keyboard users still get a clear focus indicator.
+
+**Acceptance Criteria:**
+
+**Given** a navigation-surface interactive element (sidebar nav items, Project Map nodes/artifact cards, Artifact Browser list entries)
+**When** it receives focus via mouse click
+**Then** no visible design-system focus ring is shown (mouse-click focus is suppressed on these surfaces)
+
+**Given** the same navigation-surface element
+**When** it receives focus via keyboard (Tab)
+**Then** the visible 2px accent focus ring with 2px offset appears (keyboard focus remains fully visible, satisfying WCAG 2.4.7)
+
+**Given** an input or action surface (chat input; Run, Retry, Send, Save, Stop buttons; search/filter inputs; tab controls; modal dialog controls; tree/expand-collapse toggles; copy buttons; the slash-command picker)
+**When** it receives focus by any means (mouse or keyboard)
+**Then** the visible 2px accent focus ring with 2px offset appears and is never suppressed on click (unchanged from UX-DR16's original rule)
+
+**Given** the global CSS and the existing `:focus:not(:focus-visible)` safety net (EXPERIENCE.md line 381)
+**When** the nav-surface change is implemented
+**Then** navigation surfaces use the `:focus-visible` Tailwind variant (`focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface`) instead of the `:focus` variant (`focus:ring-2 ...`) — so the ring appears on keyboard focus only
+**And** input/action surfaces retain the `:focus` variant (ring on all focus, never suppressed on click)
+
+**Given** the chat input's existing focus state
+**When** this story ships
+**Then** it is unchanged — it is explicitly in the "keep visible" set and was not the source of the noise complaint
+
+**Scope notes:**
+- Recommended reconciliation: `:focus-visible` on navigation surfaces only; full removal of keyboard focus is explicitly out of scope (would be a separate, deliberate accessibility trade-off requiring its own sign-off and is NOT recommended here).
+- "Navigation surfaces" = sidebar nav items, Project Map artifact cards, Artifact Browser list entries. Revisit action buttons, modal controls, tabs, tree toggles, copy buttons, search inputs during implementation — recommend keeping all of these on `:focus` (visible on click).
+
+### Story 7.5: Relative Time for Conversation Timestamps
+
+As a user reading a conversation,
+I want conversation message timestamps to show relative time as the primary display,
+So that I can understand recency without doing mental arithmetic against the current clock.
+
+**Acceptance Criteria:**
+
+**Given** an agent message timestamp
+**When** it renders inline below the message (low prominence, `xs`/`text-2`, per UX-DR4)
+**Then** it displays relative time as the primary text: "just now" under 1 minute; "X minutes ago" 1–59 min; "X hours ago" 1–23 hr; "yesterday" / "X days ago" 24 hr–6 days; absolute date (e.g. "Jul 8") at 7 days and beyond
+
+**Given** a user message timestamp
+**When** it renders (hover-only, per UX-DR4)
+**Then** the hover affordance shows relative time as the primary text using the same threshold table
+**And** absolute time remains accessible (via the same hover) but is not the prominent display
+
+**Given** any message timestamp and the absolute time
+**When** the user hovers the timestamp
+**Then** the absolute time is available (tooltip / `title`) — absolute time is demoted to accessible-but-not-prominent
+
+**Given** a conversation view that stays open
+**When** time passes
+**Then** relative timestamps update live on an interval (configurable, e.g. 60s) while the conversation view is visible — "just now" rolls into "1 minute ago", etc. — and stops updating when the view is unmounted
+
+**Given** the threshold for switching from relative to absolute date
+**When** a message exceeds 7 days
+**Then** the primary display becomes an absolute date (e.g. "Jul 8"), with the full absolute timestamp still available on hover
+
+**Scope notes:**
+- Relative time is primary and low-prominence (not bold, not large) — consistent with UX-DR4's "low-prominence inline on agent messages."
+- Live-updating is in scope (interval tick while the conversation view is open; cleared on unmount).
+- Store the absolute timestamp; compute relative client-side (or server-render once and hydrate with a client interval). Implementation choice.
