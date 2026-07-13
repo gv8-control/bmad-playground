@@ -107,11 +107,11 @@
       "stage": "review",
       "skill": "bmad-testarch-test-review",
       "agent": "planner",
-      "prompt": "run Validate mode. Search all test directories in the project and all test file types (including component test files), not just the story's own test files. Flag skipped story-related tests for un-skipping or removal (with reason). Fix stale transitional markers directly wherever found during the search, including those from earlier stories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation. Treat empty placeholder test stubs (active tests with no assertions, only a comment or empty body) as transitional artifacts — remove them directly wherever found during the search, including those from earlier stories, since an empty test that passes trivially inflates the count without verifying behavior.",
+      "prompt": "run Validate mode. Search all test directories in the project and all test file types (including component test files), not just the story's own test files. Flag skipped story-related tests for un-skipping or removal (with reason). For always-skipped tests with no condition that cannot run in any CI tier, remove them directly or convert to conditional skips — do not just flag them, as they persist as dead code across runs when only flagged. Fix stale transitional markers directly wherever found during the search, including those from earlier stories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation. Treat empty placeholder test stubs (active tests with no assertions, only a comment or empty body) as transitional artifacts — remove them directly wherever found during the search, including those from earlier stories, since an empty test that passes trivially inflates the count without verifying behavior.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-12T15:50:56.335Z",
-      "updatedByRun": "4.3-a1-20260712T082910"
+      "updatedAt": "2026-07-13T11:15:48.883Z",
+      "updatedByRun": "4.6-a1-20260713T093042"
     },
     {
       "id": "review-nfrs",
@@ -119,11 +119,11 @@
       "stage": "review",
       "skill": "bmad-testarch-nfr",
       "agent": "reviewer",
-      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section.",
+      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section. For any MEDIUM or higher finding that is not fixed in this step, record it in @_bmad-output/implementation-artifacts/deferred-work.md so a future story whose scope touches the affected code can pick it up.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-03T19:31:19.848Z",
-      "updatedByRun": "2.4-a1-20260703T153249"
+      "updatedAt": "2026-07-13T11:15:48.883Z",
+      "updatedByRun": "4.6-a1-20260713T093042"
     },
     {
       "id": "update-project-context",

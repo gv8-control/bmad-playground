@@ -5,7 +5,8 @@
  * AC-4 (descriptive per-cause inline errors).
  *
  * Most tests use the synthetic session seeded by auth.setup.ts (AUTH_SECRET only).
- * Tests that require real GitHub org restrictions remain skipped.
+ * Tests that require real GitHub org restrictions are conditionally skipped
+ * (gated on TEST_ORG_RESTRICTION_REPO_URL / TEST_REPO_URL env vars).
  *
  * Server Action POST responses are mocked via page.route() using React Flight
  * wire format so that error/success flows can be tested without real GitHub credentials.
@@ -229,11 +230,15 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
     },
   );
 
-  test.skip(
+  test(
     '[P1] org OAuth App restriction error explicitly names the org cause — not a generic message (AC-4)',
     async ({ page }) => {
       // Requires a test repo in an org with OAuth App access restrictions enabled.
-      // Cannot be simulated without a real GitHub org configured with App restrictions.
+      // Set TEST_ORG_RESTRICTION_REPO_URL to the repo URL to enable this test.
+      test.skip(
+        !process.env.TEST_ORG_RESTRICTION_REPO_URL,
+        'Requires TEST_ORG_RESTRICTION_REPO_URL — a repo in a GitHub org with OAuth App access restrictions',
+      );
       await page.goto('/onboarding');
       await page.getByLabel(/repository url/i).fill('https://github.com/restricted-org-test/some-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
@@ -281,11 +286,15 @@ test.describe('Story 1.3 — successful repository connection (AC-3)', () => {
     },
   );
 
-  test.skip(
+  test(
     '[P1] encrypted token is never visible in the browser — response body check (AC-3)',
     async ({ page }) => {
       // Requires real GitHub credentials and a writable test repo.
-      // Cannot be simulated with route mocking since token security is a server-side property.
+      // Set TEST_REPO_URL to a writable repo to enable this test.
+      test.skip(
+        !process.env.TEST_REPO_URL,
+        'Requires TEST_REPO_URL — a writable GitHub repo with real OAuth credentials',
+      );
       const responses: string[] = [];
 
       page.on('response', async (response) => {

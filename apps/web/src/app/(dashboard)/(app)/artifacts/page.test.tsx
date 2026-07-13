@@ -6,9 +6,9 @@
  * Covers AC-1 (two-column layout, rendered content), AC-2 (artifact load
  * error state), AC-3 (back navigation via query parameter approach).
  *
- * GREEN PHASE: implementation complete. Story 2.4 delivered the list-only
- * page; Story 2.5 adds searchParams handling, selected-artifact query,
- * two-column layout, and ArtifactViewer/ArtifactLoadError rendering.
+ * Story 2.4 delivered the list-only page; Story 2.5 adds searchParams
+ * handling, selected-artifact query, two-column layout, and
+ * ArtifactViewer/ArtifactLoadError rendering.
  *
  * Child component rendering (ArtifactListEntry, ArtifactViewer,
  * ArtifactLoadError, CredentialErrorBanner) is verified by their own
