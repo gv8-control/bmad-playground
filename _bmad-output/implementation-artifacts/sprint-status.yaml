@@ -98,6 +98,15 @@ development_status:
   4-12-secret-rotation-reminder-mechanism: backlog
   epic-4-retrospective: backlog
 
+  # ── Epic 5: UX Mockup Fidelity — Close Visual Drift ──
+  epic-5: done
+  5-1-restore-missing-visual-containers: done
+  5-2-fix-shared-shell-and-page-header-structural-drift: done
+  5-3-fix-conversation-stream-structural-drift: done
+  5-4-fix-token-usage-drift-and-token-config-gaps: done
+  5-5-interleave-tool-and-semantic-pills-within-the-agent-markdown-stream: done
+  epic-5-retrospective: done
+
   # ── Epic 6: Sandbox-Based Agent Execution ──
   # Migrates agent execution from host-based (SDK query()) to sandbox-based
   # per PRD §3 (lines 100, 105) and architecture.md data flow (line 668).
@@ -108,3 +117,14 @@ development_status:
   6-3-migrate-agentservice-to-sandbox-execution: backlog
   6-4-verify-working-tree-commit-and-credential-flows: backlog
   6-5-real-service-e2e-verification: backlog
+
+  # ── Epic 7: Live-Usage UX Improvements ──
+  # Five UX gaps discovered from live-app usage after Epic 5 closed.
+  # Frontend presentation changes only; independent of Epic 6.
+  # See: sprint-change-proposal-2026-07-13.md
+  epic-7: backlog
+  7-1-unify-error-state-presentation-in-conversation-view: backlog
+  7-2-loading-state-for-sidebar-page-navigation: backlog
+  7-3-loading-state-for-artifact-switching-in-artifact-browser: backlog
+  7-4-reduce-focus-state-prominence-on-navigation-surfaces: backlog
+  7-5-relative-time-for-conversation-timestamps: backlog

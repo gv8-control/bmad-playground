@@ -68,11 +68,13 @@ test.describe('Story 1.2 — sign-in page layout', () => {
       await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeEnabled();
 
-      // No other buttons, links, or text inputs on the page (scope to form to
-      // exclude Next.js dev overlay elements like __next-route-announcer__)
+      // No other buttons or text inputs inside the form (scope to form to
+      // exclude Next.js dev overlay elements like __next-route-announcer__).
+      // Legal footer links (Terms of Service, Privacy Policy) are intentionally
+      // outside the form — added by Story 5.1 AC-1.
       await expect(page.locator('form').getByRole('button')).toHaveCount(1);
-      await expect(page.getByRole('textbox')).toHaveCount(0);
-      await expect(page.getByRole('link')).toHaveCount(0);
+      await expect(page.locator('form').getByRole('textbox')).toHaveCount(0);
+      await expect(page.locator('form').getByRole('link')).toHaveCount(0);
     } finally {
       await context.close();
     }

@@ -1,401 +1,600 @@
 ---
-title: 'Implementation Readiness Assessment Report'
-date: 2026-07-11
-project: bmad-easy
-scope: 'Epic 4: MVP Cloud Deployment Provisioning (Stories 4.1–4.12)'
-stepsCompleted: [1, 2, 3, 4, 5, 6]
-overallStatus: 'READY'
-issues:
-  critical: 0
-  major: 0
-  minor: 1
-  fixed: 3
-  accepted: 2
-documentsInventoried:
-  - type: PRD
-    location: prds/prd-bmad-easy-2026-06-14/prd.md
-    format: whole
-  - type: Architecture
-    location: architecture.md
-    format: whole
-  - type: Epics
-    location: epics.md
-    format: whole
-  - type: UX Design
-    location: ux-designs/ux-bmad-easy-2026-06-15/
-    format: whole
-    includes: [DESIGN.md, EXPERIENCE.md]
-  - type: Sprint Change Proposals
-    location: sprint-change-proposal-2026-07-03.md
-    format: whole
-  - type: Sprint Change Proposals
-    location: sprint-change-proposal-2026-07-03-sandbox-secrets-hardening.md
-    format: whole
-  - type: Sprint Change Proposals
-    location: sprint-change-proposal-2026-07-11.md
-    format: whole
+project_name: bmad-easy
+date: '2026-07-11'
+target_epic: 'Epic 5'
+stepsCompleted:
+  - step-01-document-discovery
+  - step-02-prd-analysis
+  - step-03-epic-coverage-validation
+  - step-04-ux-alignment
+  - step-05-epic-quality-review
+  - step-06-final-assessment
+documentsIncluded:
+  - prds/prd-bmad-easy-2026-06-14/prd.md
+  - architecture.md
+  - epics.md
+  - ux-designs/ux-bmad-easy-2026-06-15/DESIGN.md
+  - ux-designs/ux-bmad-easy-2026-06-15/EXPERIENCE.md
 ---
 
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-07-11
 **Project:** bmad-easy
-**Scope:** Epic 4 — MVP Cloud Deployment Provisioning (Stories 4.1–4.12). This is a full re-assessment of Epic 4, superseding the 2026-07-03 report which covered only Stories 4.1–4.7. Epics 1–3 were assessed in the 2026-07-02 report and are not re-assessed here. Epic 6 (Sandbox-Based Agent Execution) is a pending proposal not yet in `epics.md` and is out of scope for this assessment.
+**Target:** Epic 5
 
-## Document Discovery
+## Step 1: Document Discovery
 
-### PRD Files Found
+### Document Inventory
 
-**Whole Documents:**
-- `prds/prd-bmad-easy-2026-06-14/prd.md` (49,239 bytes, 2026-07-06)
+#### PRD
 
-### Architecture Files Found
+| File | Size | Modified |
+|------|------|----------|
+| `prds/prd-bmad-easy-2026-06-14/prd.md` | 48 KB | 2026-07-11 |
 
-**Whole Documents:**
-- `architecture.md` (64,835 bytes, 2026-07-11)
+Companion files: `.decision-log.md`, `review-adversarial-general.md`, `review-rubric.md`, `strategy.md`, `validation-report.md`
 
-### Epics & Stories Files Found
+#### Architecture
 
-**Whole Documents:**
-- `epics.md` (91,891 bytes, 2026-07-11)
+| File | Size | Modified |
+|------|------|----------|
+| `architecture.md` | 61 KB | 2026-07-11 |
 
-### UX Design Files Found
+#### Epics & Stories
 
-**Sharded Documents:**
-- Folder: `ux-designs/ux-bmad-easy-2026-06-15/`
-  - `DESIGN.md` (23,682 bytes)
-  - `EXPERIENCE.md` (34,519 bytes)
-  - `review-aesthetics.md`, `review-implementation-drift.md`, `review-rubric.md`, `validation-report.md`, `validation-report.html`, `.decision-log.md`
+| File | Size | Modified |
+|------|------|----------|
+| `epics.md` | 79 KB | 2026-07-11 |
 
-### Supporting Documents Found
+#### UX Design
 
-- `briefs/brief-bmad-easy-2026-06-12/brief.md` — product brief
-- `sprint-change-proposal-2026-07-03.md` — Epic 4 creation proposal (approved)
-- `sprint-change-proposal-2026-07-03-sandbox-secrets-hardening.md` — `ANTHROPIC_API_KEY` + egress hardening (approved)
-- `sprint-change-proposal-2026-07-11.md` — Epic 6 proposal (pending, not yet in `epics.md`)
-- `research/` — 13 technical/market/domain research reports
+| File | Size | Modified |
+|------|------|----------|
+| `ux-designs/ux-bmad-easy-2026-06-15/DESIGN.md` | 23 KB | 2026-07-11 |
+| `ux-designs/ux-bmad-easy-2026-06-15/EXPERIENCE.md` | 34 KB | 2026-07-11 |
+
+Companion files: `.decision-log.md`, `review-aesthetics.md`, `review-implementation-drift.md`, `review-rubric.md`, `validation-report.md`, `mockups/`
+
+#### Additional Context Documents
+
+- **Product Brief:** `briefs/brief-bmad-easy-2026-06-12/` (brief.md, addendum.md, .decision-log.md)
+- **Research:** 11 research reports (technical + market + domain)
+- **Sprint Change Proposals:** 3 files (2026-07-01, 2026-07-08, 2026-07-11)
+- **Previous Readiness Report:** `implementation-readiness-report-2026-07-02.md`
 
 ### Issues Found
 
-No duplicates found. No required documents missing. All four required document types (PRD, Architecture, Epics, UX) are present and current.
+- **Duplicates:** None detected.
+- **Missing Documents:** None — all four required document types present.
 
-## PRD Analysis
+## Step 2: PRD Analysis
 
 ### Functional Requirements
 
-FR1: Repository Connection via URL — User connects a GitHub Repository by URL; platform uses the OAuth access token (authorized with `repo` scope at sign-in) to validate write access and complete setup. No token entry field. Token stored encrypted at rest, never returned to client.
+#### Feature 4.1: Repository Connection & Onboarding
 
-FR2: BMAD Initialization Validation — Platform validates the connected Repository contains `_bmad/`, `_bmad-output/`, `.claude/`, and that BMAD is v6.x, before activating the connection. Blocking messages with documentation links on failure.
+- **FR-1: Repository Connection via URL** — User can connect a GitHub Repository by providing its URL. Platform uses the user's GitHub OAuth access token (authorized with `repo` scope at sign-in) to validate and establish the connection. URL input field only; no token entry. Validates write access. Descriptive error on failure (permission, org restriction). OAuth token stored encrypted at rest. Redirect to Project Map on success.
+- **FR-2: BMAD Initialization Validation** — Platform validates that the connected Repository contains `_bmad/`, `_bmad-output/`, `.claude/` before activating. BMAD v6.x only. Blocking message if absent. Empty `_bmad-output/` acceptable. Version check with blocking message if outside v6.x. Skills presence check (`.claude/skills/` must have at least one Skill file).
+- **FR-3: Commit Attribution per User** — Commits produced in a user's session are attributed to the user's GitHub OAuth identity (name and primary email). Injected into Sandbox git config at session init. Fallback to `{github_username}@users.noreply.github.com` if no primary email. OAuth token used for HTTPS transport only; not in git commit record. Distinct author identities for different users.
+- **FR-4: Credential Health Monitoring** — Platform monitors stored credentials and surfaces re-auth prompt when expired/revoked. 401 updates credential health to `failed` within one operation cycle. 403 classified (rate limit, org restriction, permission denial) — does not mark credential as failed. Project Map displays re-auth notification. Re-authorize flow without disconnecting. Background operation failures don't silently drop errors.
+- **FR-5: Repository State on Page Load** — Platform reads current `_bmad-output/` state on page load and manual refresh. Project Map reflects latest committed state. Manual refresh control visible. No real-time push detection in MVP.
 
-FR3: Commit Attribution per User — Commits produced through Conversations are attributed to the individual user's GitHub OAuth identity (name/email, injected into Sandbox git config at session init), not a shared platform credential.
+#### Feature 4.2: Project Map
 
-FR4: Credential Health Monitoring — Platform monitors stored Repository credentials; any git operation returning 401 updates credential health to `failed` within one operation cycle; 403 responses are classified (rate limit, org restriction, permission denial) without marking the credential as failed; Project Map shows a re-auth notification with a re-authorize flow.
+- **FR-6: Project Map Artifact List** — Authenticated user with connected Repository sees Project Map as home screen: list of Artifacts from `_bmad-output/`, organized by type and status. Artifacts listed with type, title, status (completed/in-progress). In-progress Artifacts visually distinguished. Developer-produced and platform-produced Artifacts appear alongside. Empty state prompt to start first Conversation.
+- **FR-7: Manual Refresh** — User can manually refresh Project Map. Refresh re-reads `_bmad-output/`. Does not interrupt active Conversations. Refresh indicator visible during read.
+- **FR-8: Navigation from Project Map** — Clicking completed Artifact opens Artifact Browser. Clicking in-progress Artifact with active Conversation navigates to that Conversation. Clicking in-progress Artifact without active Conversation opens read-only Artifact Browser.
 
-FR5: Repository State on Page Load — Platform reads current `_bmad-output/` state on page load and manual refresh; no real-time push detection in MVP.
+#### Feature 4.3: Conversations
 
-FR6: Project Map Artifact List — Authenticated user with a connected Repository sees a list of Artifacts from `_bmad-output/` organized by type and status (completed/in-progress), with empty-state prompt.
+- **FR-9: Conversation Initiation** — User can open new Conversation from Project Map. Skills derived from `.claude/skills/` directory, presented as slash-command suggestions. New Conversation via "New Conversation" action or side navigation button. Typing `/` displays filterable Skill list. No Skill selection required before first message. No permanent URL until first message sent. Sandbox provisioned and Repository cloned as background operation when page opens. Spinner and "Starting session…" label during provisioning. Chat input disabled until Sandbox ready. Chat ready within 10 seconds (NFR-P2). Blocked with upgrade prompt for users exceeding Seat allocation.
+- **FR-10: Streaming Chat Interface** — Agent responses stream token-by-token with Markdown rendering. First token within 1,500 ms (NFR-P1). Multi-line auto-growing textarea. Enter submits, Shift+Enter newline. Send button secondary. Stop button visible during processing — terminates LLM response and tool/Bash process, not the Sandbox. Copy-to-clipboard per message and per code block. Scroll-to-bottom button. Auto-scroll during streaming unless user scrolled up. Timestamps (relative "just now" for recent, wall-clock for older). Draft message persisted across refreshes, cleared on send.
+- **FR-11: Concurrent Conversations** — Multiple Conversations active concurrently, each at own stable URL. Each has independent Sandbox and chat history. 2–5 word semantic title. Per-user maximum of 10 concurrent active Conversations. "Session limit reached" message beyond limit.
+- **FR-12: Tool Call Visibility and Semantic Recognition** — All agent tool calls produce Tool Pills inline at position where action occurred. `git commit` promoted to Semantic Pill displayed as "Progress saved" with Artifact type, title, and "View" link. Semantic Pill emitted only after confirmed commit success. Failed `git commit` produces error-state Tool Pill. Clicking "View" opens Artifact Browser. Multiple recognized actions produce distinct Semantic Pills. `git commit` is the only Semantic Pill action for MVP. Failed tool calls appear as error-state Tool Pills with error description. No automatic retry.
+- **FR-13: Conversation Persistence** — Conversation always resumable. Navigating to Conversation restores full chat history. Platform manages session re-initialization transparently with loading indicator.
+- **FR-14: Working Tree State Indicator** — Persistent status indicator in chat input area showing committed/uncommitted state. `● Unsaved changes` (amber) when dirty, `✓ All saved` (muted) or hidden when clean. Updates after each agent action or manual save.
+- **FR-15: Manual Commit** — User can commit working tree on demand via Save control. Status indicator clickable when dirty. Confirmation labeled "Save" — no git vocabulary. Executes platform-level commit inside Sandbox, bypassing Agent. Does not execute while agent turn is in progress — fires when agent next idle. Commit message format `chore(platform-save): checkpoint [<ISO8601 UTC>]`. On success: Semantic Pill and indicator resets. On failure: error-state Tool Pill, indicator remains dirty, no partial state. Save control disabled during save operation. No-op if working tree clean.
 
-FR7: Manual Refresh — User can manually refresh the Project Map to reflect recently committed Artifacts without interrupting active Conversations; refresh indicator shown during the read.
+#### Feature 4.4: Artifact Browser
 
-FR8: Navigation from Project Map — Clicking a completed Artifact opens the Artifact Browser; clicking an in-progress Artifact with an open Conversation page brings that page into focus, otherwise opens read-only in the Artifact Browser.
+- **FR-16: Artifact Rendering** — User can view committed Artifacts from `_bmad-output/` as rendered Markdown. Single page with two layout states: full-width flat list (direct access) and list + rendered Artifact (selected). Reverse commit-date order. Content read from Repository at latest committed revision. Standard Markdown rendering. Read-only. Loads within 2 seconds (NFR-P4).
+- **FR-17: Artifact Access Points** — Artifact Browser accessible from Project Map and Semantic Pills in Conversation chat. Both entry points resolve to same rendered view. "Back" navigation returns to entry point.
 
-FR9: Conversation Initiation — User opens a new Conversation from the Project Map or side nav; Skills derived from `.claude/skills/` are presented as slash-command suggestions; Sandbox is provisioned and Repository cloned as a background operation on page open; chat ready within 10 seconds (NFR-P2); blocked with upgrade prompt if Seat allocation exceeded.
+#### Feature 4.5: Authentication & Access Control
 
-FR10: Streaming Chat Interface — Agent responses stream token-by-token with Markdown rendering; thinking indicator and distinct tool-execution indicator; first token within 1,500ms (NFR-P1); auto-growing textarea; Enter to send, Shift+Enter for newline; Stop button while processing; per-message and per-code-block copy actions; scroll-to-bottom button; timestamps; persisted unsent draft restored on refresh.
+- **FR-18: Platform Authentication** — User authenticates via GitHub OAuth. Only auth path. Session persists across browser refreshes until logout or expiry. Minimum 8-hour session lifetime.
+- **FR-19: Access Control** — All platform access requires authenticated account. All MVP users auto-enrolled in full-access plan with no expiry. No paywall, trial expiry, or billing enforcement. Unauthenticated requests redirect to sign-in. All authenticated users have unrestricted access. Concurrent session limits (FR-11) enforced regardless.
 
-FR11: Concurrent Conversations — User can have up to 10 concurrent active Conversations, each with independent Sandbox/chat history and a stable URL; each Conversation gets a 2–5 word semantic title; "session limit reached" message beyond the cap.
-
-FR12: Tool Call Visibility and Semantic Recognition — Every agent tool call produces an inline Tool Pill at the point of occurrence; `git commit` is promoted to a "Progress saved" Semantic Pill (with artifact type/title and a View link) only after confirmed commit success; failed tool calls produce an error-state Tool Pill with no automatic retry.
-
-FR13: Conversation Persistence — A Conversation is always resumable; navigating to it restores full chat history; underlying Sandbox re-initialization is handled transparently with a loading indicator.
-
-FR14: Working Tree State Indicator — A persistent status indicator in the chat input area shows `● Unsaved changes` (amber) when the working tree is dirty, or `✓ All saved`/hidden when clean; updates after each agent action or manual save.
-
-FR15: Manual Commit — User can commit the current working tree state on demand via a Save control; confirmation labeled "Save" (no git vocabulary); executes a platform-level commit inside the Sandbox bypassing the Agent; does not run mid-agent-turn (fires when next idle); message format `chore(platform-save): checkpoint [<ISO8601 UTC>]`; success shows a Semantic Pill and resets indicator; failure shows an error-state Tool Pill and indicator remains dirty.
-
-FR16: Artifact Rendering — User can view any committed Artifact from `_bmad-output/` as rendered Markdown; single page with two layout states (full-width list vs. list + selected artifact); content read at latest committed revision; read-only; loads within 2 seconds (NFR-P4).
-
-FR17: Artifact Access Points — Artifact Browser is accessible from the Project Map and from Semantic Pills in Conversation chat; both resolve to the same rendered view; "Back" navigation returns to the entry point.
-
-FR18: Platform Authentication — User authenticates via GitHub OAuth, the only sign-up/sign-in path; session persists across refreshes until logout or expiry (minimum 8 hours preferred).
-
-FR19: Access Control — All platform access requires authentication; unauthenticated requests redirect to sign-in; in MVP all authenticated users have unrestricted access to all features (no paywall/trial/billing enforcement); concurrent session limits (FR11) enforced regardless of access status.
-
-**Total FRs: 19.** None of FR1–FR19 describe deployment/infrastructure mechanics directly — they are product-feature requirements. Epic 4 has no direct FR owner; its mandate is inferred entirely from the Additional Requirements (sourced from architecture.md's Infrastructure & Deployment section) and Cross-Cutting NFRs. This is the expected and correct boundary — the PRD stays deployment-agnostic by design.
+**Total FRs: 19**
 
 ### Non-Functional Requirements
 
-**Security**
+#### Security
 
-- NFR-S1: Sandbox credential and network isolation — Platform-internal credentials must not be injected into a Sandbox; only the user's OAuth access token is permitted inside for git transport; the Sandbox network must have no accessible routes to the agent backend's internal service endpoints.
-- NFR-S2: Credential isolation — Repository OAuth access tokens must never be resolved across users; every git credential lookup must pass a tenant authorization check at the service layer before resolution.
-- NFR-S3: Active sandbox termination on deactivation — When a user account is deactivated, all active Sandboxes for that user must be terminated immediately. (Deferred to post-MVP per architecture — no in-app deactivation flow exists in MVP scope.)
-- NFR-S4: OAuth token storage — GitHub OAuth access tokens are encrypted (AES-256-GCM) when stored and never returned to the client after initial submission.
+- **NFR-S1 (Sandbox credential and network isolation):** Platform-internal credentials must not be injected into Sandbox. User's OAuth token explicitly permitted inside Sandbox for git transport. Sandbox network must not have routes to agent backend internal endpoints.
+- **NFR-S2 (Credential isolation):** Repository OAuth tokens must never be resolved across users. Every git credential lookup must pass through tenant authorization check before credential is resolved.
+- **NFR-S3 (Active sandbox termination on deactivation):** When user account is deactivated, all active Sandboxes for that user must be terminated immediately. Passive rejection of new sessions is insufficient.
+- **NFR-S4 (OAuth token storage):** GitHub OAuth tokens encrypted when stored and never returned to client after initial submission.
 
-**Performance**
+#### Performance
 
-- NFR-P1: First streamed token appears within 1,500ms of the user sending a message.
-- NFR-P2: Chat is ready for user input within 10 seconds of opening a Conversation page (applies to repositories under ~200MB).
-- NFR-P3: Project Map loads within 2 seconds of page open.
-- NFR-P4: Artifact Browser loads a committed Artifact within 2 seconds.
-- NFR-P5: Manual commit completes within 5 seconds of the save operation executing (exclusive of queue time).
+- **NFR-P1:** First streamed token appears within 1,500 ms of user sending a message.
+- **NFR-P2:** Chat is ready for user input within 10 seconds of opening a Conversation page (repos under ~200 MB).
+- **NFR-P3:** Project Map loads within 2 seconds of page open.
+- **NFR-P4:** Artifact Browser loads a committed Artifact within 2 seconds.
+- **NFR-P5 (Manual commit latency):** Platform-initiated commit completes within 5 seconds of save operation executing (exclusive of queue time).
 
-**Reliability**
+#### Reliability
 
-- NFR-R1: Credential health status must update within one git operation cycle of a 401 response; silent credential failures are not acceptable. A 403 is classified, not treated as a credential failure.
-- NFR-R2: Committed Artifacts are always recoverable from the Repository, independent of Sandbox state; uncommitted working tree state is not guaranteed to survive a Sandbox restart.
-- NFR-R3: The streaming transport must not silently drop events when the client is slow to consume; it must apply back-pressure and pause token emission until the client is ready.
-- **NFR-R4:** The streaming transport must support 10 concurrent agent SSE connections per browser session without connection starvation, matching the FR11 Conversation limit. Transport configuration imposing a lower browser-level connection limit is not acceptable. **Directly relevant to Epic 4** — architecture.md flags this requires an HTTP/2-capable path (HTTP/1.1 caps at 6 browser-level connections), which is Story 4.7's entire scope.
+- **NFR-R1 (Credential health):** Credential health status must update within one git operation cycle of a 401 response. 403 is not a credential failure — classified into rate limit, org restriction, or permission denial.
+- **NFR-R2 (Session recovery from git):** Committed Artifacts are always recoverable from the Repository. In-progress uncommitted working tree state is not guaranteed to survive Sandbox restart.
+- **NFR-R3 (SSE back-pressure):** Streaming transport must not silently drop events when client is slow. Must apply back-pressure and pause token emission until client is ready.
+- **NFR-R4 (SSE connection capacity):** Streaming transport must support 10 concurrent agent SSE connections per browser session without connection starvation.
 
-**Observability**
+#### Observability
 
-- **NFR-O1:** Platform must track per-user LLM spend via the Agent SDK's cost reporting from day one; budget alerting for anomalous per-user spending must be operational at launch. **Referenced by Epic 4** (Story 4.11's monitoring scope) but explicitly NOT owned by Epic 4 — Epic 3 Story 3.8 owns the spend-tracking implementation; Story 4.11 covers only platform-level uptime/health monitoring, not per-user spend.
+- **NFR-O1 (Spend monitoring):** Platform must track per-user LLM spend via Agent SDK's cost reporting from day one. Budget alerting for anomalous per-user spending must be operational at launch.
 
-**Total NFRs: 13** (4 Security, 5 Performance, 4 Reliability, 1 Observability).
+**Total NFRs: 13**
 
 ### Additional Requirements
 
-From **architecture.md** Infrastructure & Deployment section (lines 282–290):
+#### Constraints
 
-1. `apps/web` on Vercel.
-2. `apps/agent-be` (Docker) + Postgres on Railway, same platform.
-3. CI/CD via GitHub Actions: lint + all available test suites as a gate; deploy is a manual trigger, not automatic on merge.
-4. Environments: production only for MVP, no separate staging.
-5. Monitoring & logging: platform-native logging (Railway/Vercel) for MVP, plus NFR-O1 per-user LLM spend monitoring with budget alerting wired in from day one.
-6. Scaling: single-container ceiling for `apps/agent-be` is accepted for MVP.
-7. Deployment invariants: HTTP/2-capable reverse proxy (NFR-R4); NestJS shutdown hooks must drain SSE connections on deploy; every Daytona sandbox must have `networkAllowList` egress restriction at provision time.
+- Web application, modern browser only. No mobile native, PWA, or desktop client.
+- Page-based navigation with breadcrumbs one level deep. No in-app tab UI.
+- Persistent side navigation panel: last 5 Conversations, New Conversation button, Project Map and Artifact Browser links, user avatar → Settings (empty "coming soon" page).
+- Daytona Cloud medium isolation for MVP. Escalation to VM-level isolation if adversarial use detected.
+- Daytona Cloud is critical dependency. Daytona OSS self-hosting is continuity fallback.
+- Claude Agent SDK via API key, separate monthly credit pool.
+- Main branch only for all git writes. Last-write-wins for concurrent sessions.
+- Single container backend for MVP — no horizontal scaling.
+- GitHub only. Provider abstraction is post-MVP extension point.
+- BMAD v6.x only.
+- GitHub org OAuth App restrictions may block write access. No in-app workaround in MVP.
+- LLM model hardcoded: `claude-sonnet-4-6`.
+- EU Data Act compliance (data portability, switching rights) must be designed in from launch.
+- SOC 2 Type II is gating requirement for mid-market sales (~6 months post-launch).
 
-From **PRD §8** Constraints & Guardrails:
+#### Open Questions
 
-- Stateful platform backend: single container, no horizontal scaling.
-- Agent SDK credit billing (A-3): API key auth required, separate credit pool.
-- SOC 2: begin certification ~6 months post-launch; not launch-blocking for Epic 4.
-- EU Data Act: data portability must be designed in from launch; not a deployment mechanics concern.
+- **Q-1:** Repository size limit and NFR-P2 scope — architect to formally document size boundary.
+- **Q-2:** Daytona compute cost estimate — architect to provide cost estimate before launch pricing locked.
+
+#### Assumptions
+
+- **A-1:** Repository has `_bmad/`, `_bmad-output/`, `.claude/` initialized, BMAD v6.x.
+- **A-2:** Daytona Cloud Docker-level isolation acceptable for authenticated, non-adversarial users.
+- **A-3:** Claude Agent SDK billing via API key, separate credit pool.
+- **A-4:** Maximum 10 concurrent Conversations per user.
+- **A-5:** All MVP users auto-enrolled in full-access plan, no expiry.
+- **A-6:** GitHub OAuth App with `repo` scope. Broader than needed. GitHub App is post-MVP.
+- **A-7:** Daytona Cloud is MVP sandbox platform. Daytona OSS is fallback.
 
 ### PRD Completeness Assessment
 
-The PRD is a mature, approved document (approved 2026-07-02) with clear FR/NFR numbering and testable consequences. For Epic 4 specifically: the PRD is **silent by design** on deployment mechanics — it describes product behavior, not hosting topology — so there is no PRD gap to report for Epic 4. The two NFRs that touch deployment (NFR-R4, NFR-O1) are both correctly scoped in Epic 4's stories as "confirm platform capability only, not verify end-to-end" — appropriate given Epic 3's SSE/cost-tracking code doesn't exist yet. This is a sound boundary, not a gap.
+The PRD is well-structured and thorough:
+- 19 FRs across 5 feature areas, each with testable consequences
+- 13 NFRs across 4 categories (Security, Performance, Reliability, Observability)
+- Clear non-goals section preventing scope creep
+- Explicit assumptions indexed (A-1 through A-7)
+- Open questions documented with owners
+- Success metrics defined with targets and counter-metrics
+- Strategy and monetization deferred to companion documents
 
-## Epic Coverage Validation
+The PRD is approved (status: approved, by John, 2026-07-02). No completeness gaps identified at the PRD level.
 
-### Coverage Matrix — Epic 4's Claimed Scope vs. Its 12 Stories
+## Step 3: Epic Coverage Validation
 
-Epic 4 owns no FRs (confirmed: no FR1–FR19 is mapped to Epic 4 anywhere in `epics.md`). Its stated coverage is the **Additional Requirements** bullets "deployment infra" and "CI/CD manual deploy trigger" (`epics.md:234`), sourced from `architecture.md`'s Infrastructure & Deployment section (lines 282–290).
+### Epic FR Coverage Extracted
 
-| # | Requirement (source) | Epic 4 Story | Status |
-|---|---|---|---|
-| 1 | `apps/web` on Vercel (architecture.md:284) | Story 4.1 | ✓ Covered |
-| 2 | `apps/agent-be` (Docker) + Postgres on Railway (architecture.md:285) | Story 4.2, 4.3 | ✓ Covered |
-| 3 | Prisma migrations applied to the Railway instance | Story 4.4 | ✓ Covered |
-| 4 | Env vars/secrets on both platforms (including `ANTHROPIC_API_KEY`) | Story 4.5 | ✓ Covered (resolved — see note) |
-| 5 | CI/CD manual deploy trigger (architecture.md:286) | Story 4.6 | ✓ Covered |
-| 6 | HTTP/2-capable reverse proxy invariant (architecture.md:290, NFR-R4) | Story 4.7 | ✓ Covered |
-| 7 | Deploy failure recovery and rollback | Story 4.8 | ✓ Covered (new) |
-| 8 | Custom domain and stable production URL | Story 4.9 | ✓ Deferred for MVP (see note) |
-| 9 | Database backups and restore verification | Story 4.10 | ✓ Covered (new) |
-| 10 | Launch-window monitoring and alerting | Story 4.11 | ✓ Covered (new) |
-| 11 | Secret rotation reminder mechanism | Story 4.12 | ✓ Covered (new) |
-| — | NestJS shutdown-hook SSE draining (architecture.md:290) | *Not Epic 4 — Epic 3 Story 3.12* | ✓ Correctly excluded |
-| — | NFR-O1 per-user LLM spend monitoring | *Not Epic 4 — Epic 3 Story 3.8* | ✓ Correctly excluded (Story 4.11 covers only platform-level uptime, explicitly defers NFR-O1) |
+From the epics document's FR Coverage Map (lines 175-211):
 
-### Notes on Coverage
+| FR | Epic Coverage |
+|----|---------------|
+| FR1 | Epic 1 — Repository Connection via URL |
+| FR2 | Epic 1 — BMAD Initialization Validation |
+| FR3 | Epic 1 (Story 1.5 derives identity); end-to-end verification in Epic 3 (Story 3.10) |
+| FR4 | Epic 1 — Credential Health Monitoring (real-time SSE propagation wired in Epic 3) |
+| FR5 | Epic 2 — Repository State on Page Load |
+| FR6 | Epic 2 — Project Map Artifact List |
+| FR7 | Epic 2 — Manual Refresh |
+| FR8 | Epic 2 — Navigation from Project Map (focus open Conversation tab completed in Epic 3) |
+| FR9 | Epic 3 — Conversation Initiation |
+| FR10 | Epic 3 — Streaming Chat Interface |
+| FR11 | Epic 3 — Concurrent Conversations |
+| FR12 | Epic 3 — Tool Call Visibility and Semantic Recognition |
+| FR13 | Epic 3 — Conversation Persistence |
+| FR14 | Epic 3 — Working Tree State Indicator |
+| FR15 | Epic 3 — Manual Commit |
+| FR16 | Epic 2 — Artifact Rendering |
+| FR17 | Epic 2 — Artifact Access Points |
+| FR18 | Epic 1 — Platform Authentication |
+| FR19 | Epic 1 — Access Control |
 
-**Story 4.5 — `ANTHROPIC_API_KEY` (previously a Major finding, now resolved):**
+### NFR Coverage Extracted
 
-The 2026-07-03 report flagged this as a Major gap — `ANTHROPIC_API_KEY` had no owning story anywhere. Sprint Change Proposal `sprint-change-proposal-2026-07-03-sandbox-secrets-hardening.md` (approved) closed this finding. `ANTHROPIC_API_KEY` is now named in Story 4.5's Railway secrets AC, and Story 3.1's sandbox-init AC was amended to document injection at `daytona.create()` time with `networkAllowList` egress mitigation. Architecture was updated to document the key and the egress restriction. **This gap is fully closed.**
+| NFR | Epic Coverage |
+|-----|---------------|
+| NFR-S1 | Epic 3 — Sandbox credential/network isolation |
+| NFR-S2 | Epic 1 — Credential isolation (respected by Epic 3) |
+| NFR-S3 | Deferred to post-MVP — no in-app deactivation flow in MVP |
+| NFR-S4 | Epic 1 — OAuth token storage encryption |
+| NFR-P1 | Epic 3 — First streamed token latency |
+| NFR-P2 | Epic 3 — Chat ready within 10s |
+| NFR-P3 | Epic 2 — Project Map load time |
+| NFR-P4 | Epic 2 — Artifact Browser load time |
+| NFR-P5 | Epic 3 — Manual commit latency |
+| NFR-R1 | Epic 1 (update cycle); Epic 3 (real-time SSE propagation) |
+| NFR-R2 | Epic 3 — Session recovery from git |
+| NFR-R3 | Epic 3 — SSE back-pressure |
+| NFR-R4 | Epic 3 — SSE concurrent connection capacity |
+| NFR-O1 | Epic 3 — Per-user LLM spend monitoring |
 
-**Story 4.5 — `AGENT_BACKEND_JWT_SECRET` (stale, noted in story annotations):**
+### FR Coverage Analysis
 
-The 2026-07-11 annotation on Story 4.5 correctly identifies that `AGENT_BACKEND_JWT_SECRET` is stale — the boundary JWT implementation uses `AUTH_SECRET` for both signing and validation, not a separate key. The annotation instructs removing `AGENT_BACKEND_JWT_SECRET` from both env var lists. This is a documentation accuracy issue in the AC text, not a missing requirement — the implementation already uses `AUTH_SECRET`. **The AC text should be corrected before implementation begins.** See Minor Finding #1 below.
-
-**Story 4.9 — Deferred for MVP:**
-
-Story 4.9 (Custom Domain) carries a 2026-07-11 note: "Deferred for MVP. The `*.vercel.app` production URL from Story 4.1 is stable (does not change between deploys) and sufficient for OAuth callback, Auth.js sessions, and SSE." This is a sound decision — neither the architecture nor PRD requires a custom domain. The deferral is transparently documented. **No gap.**
+| FR | PRD Requirement | Epic Coverage | Status |
+|----|----------------|---------------|--------|
+| FR1 | Repository Connection via URL | Epic 1 (Story 1.3) | ✓ Covered |
+| FR2 | BMAD Initialization Validation | Epic 1 (Story 1.4) | ✓ Covered |
+| FR3 | Commit Attribution per User | Epic 1 (Story 1.5) + Epic 3 (Story 3.10) | ✓ Covered (split) |
+| FR4 | Credential Health Monitoring | Epic 1 (Story 1.6) + Epic 3 (Story 3.7) | ✓ Covered (split) |
+| FR5 | Repository State on Page Load | Epic 2 (Story 2.1) | ✓ Covered |
+| FR6 | Project Map Artifact List | Epic 2 (Story 2.2) | ✓ Covered |
+| FR7 | Manual Refresh | Epic 2 (Story 2.3) | ✓ Covered |
+| FR8 | Navigation from Project Map | Epic 2 (Story 2.6) + Epic 3 (Story 3.5) | ✓ Covered (split) |
+| FR9 | Conversation Initiation | Epic 3 (Story 3.1, 3.2) | ✓ Covered |
+| FR10 | Streaming Chat Interface | Epic 3 (Story 3.3) | ✓ Covered |
+| FR11 | Concurrent Conversations | Epic 3 (Story 3.11) | ✓ Covered |
+| FR12 | Tool Call Visibility and Semantic Recognition | Epic 3 (Story 3.4) | ✓ Covered |
+| FR13 | Conversation Persistence | Epic 3 (Story 3.5) | ✓ Covered |
+| FR14 | Working Tree State Indicator | Epic 3 (Story 3.6) | ✓ Covered |
+| FR15 | Manual Commit | Epic 3 (Story 3.6) | ✓ Covered |
+| FR16 | Artifact Rendering | Epic 2 (Story 2.4, 2.5) | ✓ Covered |
+| FR17 | Artifact Access Points | Epic 2 (Story 2.5) | ✓ Covered |
+| FR18 | Platform Authentication | Epic 1 (Story 1.2) | ✓ Covered |
+| FR19 | Access Control | Epic 1 (Story 1.7) | ✓ Covered |
 
 ### Missing Requirements
 
-None. All deployment-relevant requirements from architecture.md's Infrastructure & Deployment section and the PRD's §8 constraints are either covered by a story or correctly deferred to Epic 3 / post-MVP.
+None. All 19 FRs have traceable epic coverage.
+
+### NFR Coverage Analysis
+
+| NFR | Status |
+|-----|--------|
+| NFR-S1 | ✓ Covered (Epic 3, Story 3.8) |
+| NFR-S2 | ✓ Covered (Epic 1, Story 1.6) |
+| NFR-S3 | ⚠️ Deferred to post-MVP (explicitly documented — no in-app deactivation flow in MVP scope) |
+| NFR-S4 | ✓ Covered (Epic 1, Story 1.3) |
+| NFR-P1 | ✓ Covered (Epic 3, Story 3.3) |
+| NFR-P2 | ✓ Covered (Epic 3, Story 3.1) |
+| NFR-P3 | ✓ Covered (Epic 2, Story 2.2) |
+| NFR-P4 | ✓ Covered (Epic 2, Story 2.5) |
+| NFR-P5 | ✓ Covered (Epic 3, Story 3.6) |
+| NFR-R1 | ✓ Covered (Epic 1 Story 1.6 + Epic 3 Story 3.7) |
+| NFR-R2 | ✓ Covered (Epic 3, Story 3.5) |
+| NFR-R3 | ✓ Covered (Epic 3, Story 3.3) |
+| NFR-R4 | ✓ Covered (Epic 3, Story 3.11) |
+| NFR-O1 | ✓ Covered (Epic 3, Story 3.8) |
 
 ### Coverage Statistics
 
-- Deployment/CI/CD-relevant requirement items identified: 11 (7 from architecture.md's Infrastructure & Deployment bullets + 4 new operational stories added since the 2026-07-03 report: rollback, backups, monitoring, secret rotation)
-- Items with a clear story owner: 11 of 11
-- Items with no owner anywhere: 0
-- Items correctly excluded (owned by Epic 3): 2 (shutdown-hook draining, per-user spend monitoring)
-- Items deferred for MVP: 1 (custom domain — Story 4.9)
+- **Total PRD FRs:** 19
+- **FRs covered in epics:** 19
+- **FR coverage percentage:** 100%
+- **Total NFRs:** 13
+- **NFRs covered in epics:** 12 (NFR-S3 explicitly deferred to post-MVP with documented rationale)
+- **NFR coverage percentage:** 92% (100% of in-scope NFRs)
 
-## UX Alignment Assessment
+### Epic 5 Context
+
+Epic 5 ("UX Mockup Fidelity — Close Visual Drift") does not claim FR or NFR coverage in the traditional sense. It is a quality/polish epic that addresses 102 findings of visual drift between the authoritative UX mockups and the implemented application. Epic 5 contains 4 stories:
+
+- **Story 5.1:** Restore Missing Visual Containers Across Surfaces (sign-in, onboarding, settings, artifact browser, conversation)
+- **Story 5.2:** Fix Shared Shell and Page-Header Structural Drift (side nav, breadcrumbs, page headers)
+- **Story 5.3:** Fix Conversation Stream Structural Drift (inline pills, column centering, empty states, disabled button styling)
+- **Story 5.4:** Fix Token-Usage Drift and Token-Config Gaps (hover tokens, input backgrounds, scrollbar hiding, box-shadow token, font weight enforcement)
+
+Epic 5's work touches surfaces delivered by Epics 1-3 but does not introduce new functional requirements. It aligns existing implementations to the UX design spec (UX-DR1 through UX-DR20).
+
+## Step 4: UX Alignment
 
 ### UX Document Status
 
-Found: `ux-designs/ux-bmad-easy-2026-06-15/DESIGN.md` and `EXPERIENCE.md`.
+**Found** — two-file UX design set:
+- `ux-designs/ux-bmad-easy-2026-06-15/DESIGN.md` (visual identity: color tokens, typography, radii, spacing, component specs)
+- `ux-designs/ux-bmad-easy-2026-06-15/EXPERIENCE.md` (behavioral spec: information architecture, state patterns, interaction primitives, accessibility, key flows)
+- 7 HTML mockup files in `mockups/` subfolder
+
+### UX ↔ PRD Alignment
+
+| Area | UX Document | PRD | Status |
+|------|-------------|-----|--------|
+| User Journeys | EXPERIENCE.md Flows 1-3 (Sarah) | PRD UJ-1, UJ-2, UJ-3 | ✓ Aligned — protagonists and journeys match verbatim |
+| Onboarding Model | EXPERIENCE.md Flow 1: single Repository URL input, no PAT field | PRD FR-1: URL input, no token entry; PRD DL-7 correction | ✓ Aligned — reconciliation documented across all three documents |
+| Dark Mode | DESIGN.md: dark-mode-only for MVP | PRD: not explicit but not contradicted | ✓ Compatible — UX drives this decision |
+| Side Navigation | EXPERIENCE.md: 240px fixed, last 5 conversations, New Conversation button, PM + AB links, avatar Settings | PRD §8: same specification | ✓ Aligned |
+| Tool Pills / Semantic Pills | EXPERIENCE.md + DESIGN.md: inline at position, "Progress saved" for git commit | PRD FR-12: same specification | ✓ Aligned |
+| Working Tree Indicator | DESIGN.md + EXPERIENCE.md: dirty/clean/hidden states, specific copy | PRD FR-14: same specification | ✓ Aligned |
+| Manual Commit | EXPERIENCE.md: Save confirmation, no git vocabulary, queued behind agent turn | PRD FR-15: same specification | ✓ Aligned |
+| Streaming Chat | EXPERIENCE.md: token-by-token, Markdown, thinking/tool indicators | PRD FR-10: same specification | ✓ Aligned |
+| Concurrent Conversations | EXPERIENCE.md: 10 max, "session limit reached" | PRD FR-11: same specification | ✓ Aligned |
+| Artifact Browser | EXPERIENCE.md + DESIGN.md: two layout states, read-only, rendered Markdown | PRD FR-16, FR-17: same specification | ✓ Aligned |
+| Credential Health | EXPERIENCE.md: Credential Error Banner on PM, AB, and Conversation | PRD FR-4: re-auth notification on Project Map | ✓ Aligned — UX extends to Conversation (real-time, mid-session) |
+| Accessibility | EXPERIENCE.md: comprehensive accessibility floor (focus rings, keyboard nav, live regions, motion) | PRD: no explicit accessibility NFRs | ✓ Compatible — UX-DR16 in epics captures this; UX drives |
+| Scroll-to-Bottom | EXPERIENCE.md: bottom-center, new-message count | PRD FR-10: scroll-to-bottom button | ✓ Aligned |
+| Draft Persistence | EXPERIENCE.md: localStorage keyed by conversationId | PRD FR-10: draft persisted across refreshes | ✓ Aligned |
+
+### UX ↔ Architecture Alignment
+
+| Area | UX Requirement | Architecture Support | Status |
+|------|----------------|---------------------|--------|
+| SSE Streaming (FR-10) | Token-by-token streaming with Markdown | Architecture: SSE + AG-UI event bridge, circuit breaker, heartbeat | ✓ Supported |
+| 10 Concurrent SSE (NFR-R4) | 10 concurrent conversations | Architecture: HTTP/2-capable reverse proxy required | ✓ Supported |
+| First Token Latency (NFR-P1) | 1,500ms first token | Architecture: no buffering, low-latency SSE path | ✓ Supported |
+| Chat Ready in 10s (NFR-P2) | Sandbox ready on page open | Architecture: provision on page open, mandatory shallow clone (`--depth=1`) | ✓ Supported |
+| Credential Failure Propagation (NFR-R1) | Real-time banner mid-conversation | Architecture: `CREDENTIAL_FAILURE` event on SSE channel, `tool-pill-classifier.service.ts` | ✓ Supported |
+| Access Denied (403) Propagation | Access Notice component, no re-auth prompt | Architecture: `ACCESS_DENIED` event with `code` discriminator, `RATE_LIMITED`/`ORG_RESTRICTION`/`INSUFFICIENT_PERMISSION` | ✓ Supported |
+| Manual Commit (FR-15) | Platform-level commit, bypassing agent | Architecture: `ManualCommitService`, queued behind agent turn idle | ✓ Supported |
+| Component Library | shadcn/ui (Radix + Tailwind) | Architecture: shadcn/ui specified | ✓ Supported |
+| No Global Client State | Local React state for ephemeral UI only | Architecture: no Redux/Zustand/React Query, Server Components + Server Actions | ✓ Supported |
+| Draft Persistence | localStorage keyed by conversationId | Architecture: same specification | ✓ Supported |
+| No Client-Side Revalidation | Manual browser reload | Architecture: deliberate — eliminates SSE vs Postgres disagreement | ✓ Supported |
+| Session Start Timeout | Client-side timeout with Retry button | Architecture: distinct from server-side idle timeout, specified as a constraint | ✓ Supported |
+| Sandbox Idle Timeout | N/A (UX doesn't specify server-side timeout) | Architecture: 60s default, configurable | ✓ Compatible |
+| Circuit Breaker | "Agent stopped unexpectedly" system message | Architecture: terminate agent process via Daytona API, emit error event | ✓ Supported |
+| Dead Connection Detection | Heartbeat for stalled connections | Architecture: SSE heartbeat comments on fixed interval | ✓ Supported |
 
 ### Alignment Issues
 
-None for Epic 4. Epic 4 is pure infrastructure/deployment provisioning with **no user-facing surface** — it doesn't render a page, ship a component, or touch any of the 20 UX Design Requirements (UX-DR1–UX-DR20), all of which are already correctly mapped to Epics 1–3 (`epics.md:216`). Cross-checked: neither DESIGN.md nor EXPERIENCE.md references deployment status, environment indicators, or any operator-facing UI that Epic 4 would need to build.
+No misalignments found between UX, PRD, and Architecture. The one historical conflict (EXPERIENCE.md's original PAT-based onboarding flow) has been explicitly reconciled across all three documents per DL-7. The UX documents are well-integrated with both the PRD requirements and the architecture's technical decisions.
+
+### UX Requirements Not Explicitly in PRD (Extensions, Not Conflicts)
+
+- **Access Notice component** — derived from FR-4's 403 classification requirement and the architecture's `ACCESS_DENIED` event contract. UX specifies the visual treatment; PRD specifies the behavioral requirement; Architecture defines the event contract. All three are consistent.
+- **Session start timeout with Retry** — UX specifies a client-side timeout with retry affordance. PRD doesn't explicitly mention it. Epics Story 3.1 includes it as an acceptance criterion. Architecture lists it as a constraint. No conflict.
+- **UX-DR1 through UX-DR20** — 20 UX design requirements that elaborate how PRD FRs should be implemented visually. These are elaborations, not new functional requirements. All are mapped to epics (Epic 1: app shell DRs; Epic 2: PM/AB DRs; Epic 3: Conversation DRs).
 
 ### Warnings
 
-None. UX is not implied for Epic 4's scope, so its absence from Epic 4's stories is correct rather than a coverage gap. Story 4.11 (monitoring) configures external uptime checks (UptimeRobot) — no in-app UI is needed for this.
+None. UX documentation is complete, aligned with PRD and Architecture, and covers all user-facing surfaces.
 
-## Epic Quality Review — Epic 4 (Stories 4.1–4.12)
+## Step 5: Epic Quality Review
 
-### A. User Value Focus Check
+### Review Scope
 
-**Accepted exception — Epic 4 is a technical/infrastructure epic, not a user-value epic.**
+Primary focus: **Epic 5** (target epic). Context review of Epics 1-3 for dependency and structural validation.
 
-- **Epic Title:** "MVP Cloud Deployment Provisioning" — matches the checklist's own "Infrastructure Setup — not user-facing" red-flag example.
-- **Epic Goal:** "so the team has a live, working deployment" — the beneficiary is "the platform operator," not the PRD's actual persona (Sarah, the PM). All 12 stories are framed "As the platform operator" or "As a developer" — none deliver value to a non-dev seat holder directly.
-- **Value Proposition:** Indirect only — Epic 4 makes every other epic's user value *reachable* (nothing is live without it), but delivers nothing a user directly experiences.
+### Epic 5: UX Mockup Fidelity — Close Visual Drift
 
-**Mitigating context (why this is accepted, not blocking):** This is not an oversight — the Sprint Change Proposal explicitly considered folding this into Epic 1 and the user explicitly rejected it in favor of a dedicated epic, reasoning that burying deployment work in a changelog would make it undiscoverable as trackable work. It mirrors an already-accepted precedent: Epic 1's Story 1.1 ("Scaffold the Platform Monorepo and CI Pipeline") is the identical "As a developer... foundation to build on" pattern, already `done`. Operational/provisioning epics are a recognized, deliberate exception to the user-value rule in this project.
+#### A. User Value Focus Check
 
-**Recommendation:** Consider adding a standing "operational epic" exception note in `epics.md`'s conventions section if this pattern is repeated for future infra work (e.g., Epic 6).
+| Check | Finding |
+|-------|---------|
+| Epic Title | "UX Mockup Fidelity — Close Visual Drift" — implementation-centric framing, not user-centric |
+| Epic Goal | Closes visual drift between mockups and implementation across 7 surfaces |
+| Value Proposition | Users benefit from polished, consistent UI — visual drift undermines trust in a tool built for non-dev users |
 
-### B. Epic Independence Validation — ✓ Pass
+**Assessment:** Epic 5 is a quality/polish epic, not a feature epic. It delivers user value indirectly (visual consistency, professional appearance) rather than introducing new capabilities. The stories mitigate the implementation-centric framing with "As a user, I want..." openings. This is a **borderline case** — visual polish is genuine user value for a tool targeting non-dev users, but the epic's structure is technical debt remediation rather than feature delivery.
 
-Epic 4 does not require Epic 2 or Epic 3 to complete or to be tested:
+#### B. Epic Independence Validation
 
-- Story 4.7's AC is explicit that it "confirms only the platform-level transport capability" — actually exercising 10 concurrent SSE connections is deferred to Epic 3 Story 3.11.
-- The epic's own scope line explicitly excludes NFR-O1 verification (Epic 3 Story 3.8) and SSE-drain verification (Epic 3 Story 3.12) rather than silently assuming they'll exist.
-- Story 4.11 explicitly defers NFR-O1 per-user LLM spend monitoring to Epic 3 Story 3.8, covering only platform-level uptime monitoring.
-- Epic 4's only dependencies run *backward* to Epic 1 (Story 4.4 applies Epic 1's existing Prisma migrations; Story 4.5 wires `CREDENTIAL_ENCRYPTION_KEK` from Epic 1's envelope-encryption work) — backward dependencies on earlier epics are permitted by the standard.
+| Check | Finding |
+|-------|---------|
+| Forward dependencies | ✓ None — Epic 5 depends only on Epics 1-3 (backward) |
+| Circular dependencies | ✓ None |
+| Can function using prior epic outputs | ✓ — fixes drift on already-implemented surfaces |
 
-### C. Story Sizing & Acceptance Criteria — ✓ Pass
+#### C. Story Quality Assessment
 
-All 12 stories use consistent Given/When/Then structure and are independently sized (one platform/concern per story). Stories are well-scoped:
+##### Story 5.1: Restore Missing Visual Containers Across Surfaces
 
-- **Story 4.1** (Vercel project) — one platform, one concern. 2026-07-11 note confirms API automation is verified.
-- **Story 4.2** (Railway project + Postgres) — one platform, one concern. 2026-07-11 note confirms API automation.
-- **Story 4.3** (Dockerfile) — code-only, testable via local build + `/health`. Clean.
-- **Story 4.4** (Prisma migrations) — one operation, testable against the Railway DB.
-- **Story 4.5** (env vars/secrets) — one concern, both platforms. See Minor Finding #1 re: stale `AGENT_BACKEND_JWT_SECRET`.
-- **Story 4.6** (CI deploy job) — one CI file, one job. Clean.
-- **Story 4.7** (HTTP/2 confirmation) — one check, one result. Clean.
-- **Story 4.8** (failure recovery/rollback) — runbook + verification. Clean.
-- **Story 4.9** (custom domain) — deferred for MVP; transparently annotated.
-- **Story 4.10** (database backups) — one concern + restore test + runbook. Clean.
-- **Story 4.11** (monitoring) — external uptime checks + log retention confirmation. Clean.
-- **Story 4.12** (secret rotation reminders) — runbook + GitHub Actions cron + issue creation. Clean.
+| Check | Status |
+|-------|--------|
+| Clear user value | ✓ "As a user, I want each screen to match its designed visual container structure" |
+| Independent | ✓ No dependencies on other Epic 5 stories |
+| Given/When/Then format | ✓ All ACs use proper BDD structure |
+| Testable | ✓ Each AC references specific file paths and mockup line numbers |
+| Error/edge cases | ✓ Covers blocking states (BMAD-not-found, repository-not-found) |
+| Specific | ✓ References investigation file with exact line numbers |
 
-### D. Dependency Analysis — ✓ Pass
+**No issues found.**
 
-Within-epic sequencing is explicit and backward-only:
+##### Story 5.2: Fix Shared Shell and Page-Header Structural Drift
 
-- Story 4.2 acknowledges it precedes Story 4.3 ("service shell... pending Story 4.3's Dockerfile").
-- Story 4.4 and 4.5 explicitly consume Story 4.2's `DATABASE_URL` output.
-- Story 4.5's OAuth App callback URL depends on Story 4.1's Vercel URL.
-- Story 4.6 depends on Stories 4.1 and 4.2 existing (deploy targets).
-- Story 4.7 depends on Story 4.2 (agent-be deployed) and Story 4.3 (Docker image running).
-- Story 4.8 depends on Stories 4.1–4.6 (deploy mechanism exists before rollback can be tested).
-- Story 4.10 depends on Story 4.2 (Postgres instance exists).
-- Story 4.11 depends on Stories 4.1 and 4.2 (both services deployed).
-- Story 4.12 depends on Story 4.5 (secrets wired before rotation schedule makes sense).
+| Check | Status |
+|-------|--------|
+| Clear user value | ✓ "As a user navigating the platform, I want the shell and page headers to match the design" |
+| Independent | ✓ No dependencies on other Epic 5 stories |
+| Given/When/Then format | ✓ All ACs use proper BDD structure |
+| Testable | ✓ References specific components and mockup line numbers |
+| Error/edge cases | N/A — structural fixes, no error states |
+| Specific | ✓ References investigation findings |
 
-This is normal build-order sequencing within a single epic, not prohibited forward dependencies between epics. The recommended execution order (4.1/4.2 → 4.3 → 4.4/4.5 → 4.6 → 4.7 → 4.8 → 4.10 → 4.11 → 4.12, with 4.9 skipped) matches the ACs' internal references.
+**⚠️ Major Issue — Unresolved Design Decisions:**
 
-### E. Database/Entity Creation Timing — ✓ Pass (N/A)
+The Dev Notes flag that two shell findings "may be intentional redesigns rather than drift":
+1. Nav links relocated from a top-grouped cluster to bottom-pinned
+2. The "Settings" label removed leaving the avatar only
 
-Story 4.4 applies pre-existing migrations from Epic 1; it creates no new tables, so the "tables created only when first needed" rule doesn't apply.
+The story asks to "Confirm with design/PM whether the shell layout was deliberately changed from the mockup before 'fixing' the Settings-label or nav-link-placement items." This means some ACs (the "Settings" text label AC, the nav-link-placement AC) may be invalid if the changes were intentional. **This should be resolved before implementation begins** — implementing ACs that are then reversed wastes effort.
 
-### F. Best Practices Compliance Checklist — Epic 4
+##### Story 5.3: Fix Conversation Stream Structural Drift
 
-- [x] Epic delivers user value — **fails literally, accepted as a deliberate exception (see A)**
-- [x] Epic can function independently — pass (see B)
-- [x] Stories appropriately sized — pass (see C)
-- [x] No forward dependencies — pass (see D)
-- [x] Database tables created when needed — pass / N/A (see E)
-- [x] Clear acceptance criteria — pass, Given/When/Then throughout
-- [x] Traceability to FRs maintained — pass: Epic 4 has no FR owner by design (correct); all Additional Requirements from architecture.md are mapped to stories
+| Check | Status |
+|-------|--------|
+| Clear user value | ✓ "As a user in a conversation, I want the chat interface to match the design" |
+| Independent | ✓ No dependencies on other Epic 5 stories |
+| Given/When/Then format | ✓ All ACs use proper BDD structure |
+| Testable | ✓ References specific components and mockup line numbers |
+| Error/edge cases | N/A — structural fixes |
+| Specific | ✓ References investigation findings with line numbers |
 
-### Quality Assessment Documentation
+**⚠️ Major Issue — Architecturally Significant Change Disguised as Visual Drift:**
 
-#### 🟡 Minor Findings
+The first AC (inline tool/semantic pills within the agent's markdown stream) is not visual drift — it's a **data model change**. The Dev Notes acknowledge this: "It requires changing how `TOOL_CALL` and recognition events are stored and rendered — they must interleave within the agent's markdown stream at the position they occurred, rather than being emitted as separate standalone rows keyed off the message boundary."
 
-**Minor Finding #1 — Stale `AGENT_BACKEND_JWT_SECRET` in Story 4.5 AC text:**
+This change affects:
+- How `TOOL_CALL` events are stored (message-boundary-keyed → position-interleaved)
+- How the frontend renders them (standalone rows → inline within markdown)
+- Cross-check needed against Story 3.4 and UX-DR5
 
-Story 4.5's AC text lists `AGENT_BACKEND_JWT_SECRET` as a required env var on both Vercel and Railway. The 2026-07-11 annotation on the story correctly identifies this as stale — the boundary JWT implementation (`boundary-jwt.guard.ts`, `streaming.controller.ts`) uses `AUTH_SECRET` for both signing and validation, not a separate key. The annotation instructs removing it, but the AC text itself has not been corrected.
-- **Impact:** Low — the annotation is clear and the implementation already uses `AUTH_SECRET`. A developer reading the AC text without the annotation would set an unused env var.
-- **Recommendation:** Correct the AC text to remove `AGENT_BACKEND_JWT_SECRET` from both lists and replace with a note that `AUTH_SECRET` (already listed) serves this purpose. Alternatively, fold the annotation into the AC text itself.
+**This should be either:**
+1. Split into its own story with explicit architectural scope, OR
+2. Have its AC elevated with a prominent warning (not buried in Dev Notes) that it requires a data model refactor
 
-**Minor Finding #2 — Stale cross-reference in the master Requirements Coverage Map (`epics.md:212`):**
+The remaining ACs in Story 5.3 (column centering, empty state, spinner placement, disabled button styling, micro-drift) are genuine visual drift fixes and are fine.
 
-> **Resolved (2026-07-11):** Upon re-reading `epics.md:212`, this issue was already corrected. The line now correctly attributes "CI/CD manual deploy trigger, deployment infra" to Epic 4, not Epic 1. The correction note at `epics.md:214` confirms this was applied on 2026-07-03. The 2026-07-03 report flagged this correctly at the time — it has since been fixed. **No action needed.**
+##### Story 5.4: Fix Token-Usage Drift and Token-Config Gaps
 
-**Minor Finding #3 — Story 4.3 Dockerfile AC omits `prisma generate` in the build stage:**
+| Check | Status |
+|-------|--------|
+| Clear user value | ⚠️ "As a developer maintaining the design system" — developer persona, not target user |
+| Independent | ✓ No dependencies on other Epic 5 stories |
+| Given/When/Then format | ✓ All ACs use proper BDD structure |
+| Testable | ✓ Each AC references specific token names and expected values |
+| Error/edge cases | N/A — token corrections |
+| Specific | ✓ References DESIGN.md line numbers, specific token names |
 
-Story 4.3's AC specifies a multi-stage build (install → `nx build agent-be` → slim runtime image) but does not mention a `prisma generate` step in the build stage. Story 4.1's AC (for `apps/web` on Vercel) explicitly includes "the build command includes a `prisma generate` step (from `libs/database-schemas`) before `nx build web`." Since `apps/agent-be` also imports `PrismaClient` from `@bmad-easy/database-schemas` (per project-context.md), the Dockerfile's build stage must also run `prisma generate` before `nx build agent-be`, or the build will fail.
-- **Impact:** Medium-low — a developer implementing Story 4.3 will likely discover this when the build fails, but it's an omission in the AC that should be explicit for consistency with Story 4.1.
-- **Recommendation:** Add an AC clause to Story 4.3: "And the build stage includes a `prisma generate` step (from `libs/database-schemas`) before `nx build agent-be`, so the shared Prisma client is available at build time."
+**Minor Concern — Developer Persona:**
 
-**Minor Finding #4 — Story 4.6 references "Story 1.1 AC-4" but the epics file uses a different numbering:**
+Story 5.4 uses "As a developer maintaining the design system" as the persona. This is honest (the story is about Tailwind config and design-token enforcement) but deviates from the project's target user personas (PMs, BAs, Delivery Leads). The user value is indirect — users benefit from correct tokens, but the story is framed as developer value. This is acceptable for a technical debt story, but should be acknowledged.
 
-Story 4.6's "So that" clause references "Story 1.1 AC-4's original policy intent." In `epics.md`, Story 1.1's acceptance criteria are not numbered (they use `**Given**/**When**/**Then**` blocks without AC-1/AC-2/AC-4 labels). The "AC-4" reference appears to come from the implementation-artifact file (`1-1-scaffold-the-platform-monorepo-and-ci-pipeline.md`) where ACs may have been numbered differently. This is a minor cross-reference inconsistency — a reader of `epics.md` alone cannot resolve "AC-4."
-- **Impact:** Very low — the intent is clear from context (the "manual trigger" clause). But it's a traceability gap for someone reading only `epics.md`.
-- **Recommendation:** Either number the ACs in Story 1.1's `epics.md` entry to match the implementation-artifact file, or change the reference to "Story 1.1's manual-trigger deploy clause" instead of "AC-4."
+**Good Practice Noted:** The Dev Notes for the `theme.extend` → `theme` override change provide excellent staging guidance ("grep the codebase for default-palette utilities first, migrate any real uses to design-system tokens, then switch to full overrides so the change is a guardrail, not a regression").
 
-**Minor Finding #5 — Story 4.10 backup retention policy may exceed Railway's API capabilities:**
+#### D. Dependency Analysis
 
-Story 4.10's AC specifies "retention policy of at least daily backups retained for 7 days and weekly backups retained for 4 weeks." The 2026-07-11 annotation on the story itself flags this uncertainty: "verify whether Railway's API supports configuring backup retention policy (daily/7d, weekly/4w) or just triggering ad-hoc backups — if retention config is dashboard-only, that specific sub-step remains manual." This is a known unknown that should be resolved before implementation, but the story transparently documents it.
-- **Impact:** Low — the story is aware of the risk and has a fallback (manual dashboard configuration). No action needed on the story text itself; the uncertainty should be resolved at implementation time.
-- **Recommendation:** No change to the story text. Resolve the uncertainty during implementation and update the AC if Railway's API doesn't support retention configuration.
+| Check | Status |
+|-------|--------|
+| Within-epic dependencies | ✓ Stories 5.1-5.4 are independently completable |
+| Cross-epic dependencies | ✓ Backward only (Epic 5 depends on Epics 1-3) |
+| Forward dependencies | ✓ None |
+| Database creation timing | ✓ N/A — no database changes in Epic 5 |
 
-#### Accepted Exceptions
+#### E. Best Practices Compliance Checklist (Epic 5)
 
-**Accepted Exception #1 — Technical/infrastructure epic (no direct user value):**
+| Check | Status |
+|-------|--------|
+| Epic delivers user value | ⚠️ Borderline — visual polish is user value, but epic is structured as technical debt remediation |
+| Epic can function independently | ✓ Depends only on prior epics |
+| Stories appropriately sized | ✓ Each story covers a coherent drift category |
+| No forward dependencies | ✓ |
+| Database tables created when needed | ✓ N/A |
+| Clear acceptance criteria | ✓ Specific with line references |
+| Traceability to FRs maintained | ⚠️ Indirect — Epic 5 doesn't claim FR coverage but aligns to UX-DRs |
 
-Epic 4 is a technical/infrastructure epic with no direct user-facing value. This is a deliberate, already-approved decision from the Sprint Change Proposal (2026-07-03), not an oversight. See Epic Quality Review §A for full context.
+### Context Review: Epics 1-3
 
-**Accepted Exception #2 — Manual/human-executed steps within stories:**
+#### Epic 1: Authentication & Repository Connection
 
-Several stories require manual cloud-console access or human-only actions:
-- Story 4.5: GitHub OAuth App callback URL update (no API exists for OAuth App management — transparently documented).
-- Story 4.9: DNS configuration and OAuth App settings (deferred for MVP).
+| Check | Status |
+|-------|--------|
+| User value | ✓ "A new user can sign in with GitHub, connect their team's BMAD-enabled repository" |
+| Independence | ✓ Stands alone |
+| Starter template story | ✓ Story 1.1 scaffolds the Nx workspace |
+| Database creation | ✓ Story 1.1 creates initial Prisma schema (User model) |
+| Forward dependencies | ⚠️ Story 1.3 redirects to Project Map (wired in Epic 2); Story 1.5 defers git-config injection to Epic 3; Story 1.6 defers UI display to Epic 2 — all explicitly documented |
+| Story personas | ⚠️ Stories 1.1 ("As a developer"), 1.5 ("As the platform"), 1.9 ("As the platform operator") use non-user personas — acceptable for platform/infra stories |
 
-The 2026-07-11 annotations on Stories 4.1, 4.2, 4.8, and 4.10 confirm that API automation is verified for Vercel and Railway — a coding agent can execute these stories autonomously via the respective APIs. This supersedes the 2026-07-03 report's finding that Stories 4.1 and 4.2 lacked explicit "manual" annotations. **The original Minor finding from the 2026-07-03 report is resolved** — the 2026-07-11 notes provide the necessary clarity.
+**No critical violations.** Forward dependencies are explicitly documented and each story delivers value independently.
+
+#### Epic 2: Project Map & Artifact Browser
+
+| Check | Status |
+|-------|--------|
+| User value | ✓ "A user can see what BMAD work the team has produced and what is in progress" |
+| Independence | ✓ Depends only on Epic 1 |
+| Database creation | ✓ Story 2.1 creates `Artifact` table when first needed |
+| Forward dependencies | ⚠️ Story 2.6 defers "bring open Conversation tab into focus" to Epic 3 — explicitly documented; story delivers value without it |
+
+**No critical violations.**
+
+#### Epic 3: Conversations
+
+| Check | Status |
+|-------|--------|
+| User value | ✓ "A user can open a Conversation, invoke BMAD Skills via slash command..." |
+| Independence | ✓ Depends on Epics 1 & 2 |
+| Database creation | ✓ Story 3.1 creates `Conversation` and `Turn` tables when first needed |
+| Forward dependencies | ✓ None |
+| Prerequisites | ⚠️ Stories 3.11 and 3.12 carry "Prerequisites (deferred items absorbed from prior story reviews)" — technical debt from prior implementation. These are transparent and documented, but indicate that prior stories shipped with known issues |
+
+**No critical violations.** The prerequisite baggage in Stories 3.11/3.12 is transparent and well-documented.
+
+### Quality Findings Summary
+
+#### 🔴 Critical Violations
+
+None.
+
+#### 🟠 Major Issues
+
+1. **Story 5.3, AC 1 — Architecturally significant change disguised as visual drift.** The inline tool/semantic pills AC requires a data model change (how `TOOL_CALL` events are stored and rendered), not just a visual fix. The Dev Notes acknowledge this but the AC reads as a simple visual alignment. **Recommendation:** Either split this AC into its own story with explicit architectural scope, or add a prominent warning at the AC level (not just Dev Notes) that it requires a data model refactor. Cross-check against Story 3.4 and UX-DR5 before implementation.
+
+2. **Story 5.2 — Unresolved design decisions.** The Dev Notes flag that two shell findings "may be intentional redesigns rather than drift." Some ACs (Settings text label, nav-link placement) may be invalid if the changes were deliberate. **Recommendation:** Resolve with design/PM before implementation. If the changes were intentional, remove the corresponding ACs. If they were drift, confirm and proceed.
+
+#### 🟡 Minor Concerns
+
+1. **Epic 5 framing.** The epic is structured as technical debt remediation ("Close Visual Drift") rather than user value delivery. Visual polish IS user value for a tool targeting non-dev users, but the epic's title and description are implementation-centric. The stories mitigate this with user-centric openings.
+
+2. **Story 5.4 persona.** Uses "As a developer maintaining the design system" — honest but deviates from target user personas. Acceptable for a technical debt story.
+
+3. **ACs reference external investigation file.** Epic 5's ACs heavily reference `_bmad-output/implementation-artifacts/investigations/ux-visual-drift-investigation.md` with specific line numbers. While good for traceability, the ACs are not fully self-contained — they require reading the investigation to understand the full context. The investigation file should be verified to still exist and be current at implementation time.
+
+4. **Epic 4 reserved.** Epic 4 is "reserved and intentionally unused." This is noted and harmless, but creates a gap in epic numbering. No action needed.
+
+5. **Stories 3.11/3.12 prerequisites.** These stories carry deferred technical debt from prior story reviews. While transparent and well-documented, they indicate that prior stories shipped with known issues that were deferred rather than fixed inline. This is a process observation, not a structural defect.
 
 ## Summary and Recommendations
 
 ### Overall Readiness Status
 
-**READY** — Epic 4's structure, sequencing, story-level acceptance criteria, and scope boundaries are sound. The epic has grown from 7 stories (2026-07-03) to 12 stories, adding operational hardening coverage (rollback, backups, monitoring, secret rotation) that was missing from the original assessment. The previously-flagged Major finding (`ANTHROPIC_API_KEY` gap) is fully resolved. All 3 actionable minor issues (stale `AGENT_BACKEND_JWT_SECRET`, missing `prisma generate` AC, unclear "AC-4" reference) have been fixed. Finding #2 was found to be already resolved. Finding #5 is a known uncertainty to resolve at implementation time. Stories 4.1–4.8 and 4.10–4.12 can be picked up immediately; Story 4.9 is deferred for MVP.
+**READY WITH CONDITIONS**
+
+The planning artifacts for bmad-easy are in excellent shape. The PRD is approved, FR/NFR coverage is 100% (19/19 FRs, 12/13 NFRs with 1 explicitly deferred), UX documentation is complete and aligned with both PRD and Architecture, and the architecture fully supports all UX and PRD requirements. Epic 5 (the target epic) is well-structured with clear, traceable acceptance criteria referencing specific investigation findings.
+
+Two major issues in Stories 5.2 and 5.3 should be resolved before those specific stories are implemented. Stories 5.1 and 5.4 can proceed immediately without any blockers.
 
 ### Critical Issues Requiring Immediate Action
 
-None.
+1. **Story 5.3, AC 1 — Architectural change disguised as visual drift.** The inline tool/semantic pills AC requires changing how `TOOL_CALL` events are stored and rendered (from standalone rows to position-interleaved within the agent's markdown stream). This is a data model change, not a visual fix. **Action:** Before implementing Story 5.3, either (a) split this AC into its own story with explicit architectural scope and a cross-check against Story 3.4 / UX-DR5, or (b) add a prominent warning at the AC level that it requires a data model refactor. The Dev Notes mention this but the AC itself reads as a simple visual alignment.
 
-### Minor Issues to Address Before Implementation
-
-1. **Story 4.5 AC text — remove stale `AGENT_BACKEND_JWT_SECRET`** (Minor Finding #1). **FIXED (2026-07-11):** Both Vercel and Railway AC clauses corrected — `AGENT_BACKEND_JWT_SECRET` removed, `AUTH_SECRET` remains as the sole JWT signing/validation key.
-
-2. **`epics.md:212` master coverage map — remove "CI/CD, deployment infra" from Epic 1's entry** (Minor Finding #2). **Already resolved** — the line was corrected on 2026-07-03. No action needed.
-
-3. **Story 4.3 AC — add `prisma generate` to the Dockerfile build stage** (Minor Finding #3). **FIXED (2026-07-11):** New AC clause added requiring `prisma generate` before `nx build agent-be` in the Dockerfile build stage.
-
-4. **Story 4.6 — clarify "AC-4" reference** (Minor Finding #4). **FIXED (2026-07-11):** Changed "Story 1.1 AC-4's original policy intent" to "Story 1.1's manual-trigger deploy policy" — resolvable from `epics.md` alone without cross-file AC lookup.
-
-5. **Story 4.10 — resolve Railway backup retention API uncertainty at implementation time** (Minor Finding #5). No story text change needed; the uncertainty is transparently documented. Resolve during implementation.
+2. **Story 5.2 — Unresolved design decisions.** The Dev Notes flag that two shell findings (nav-link placement, Settings text label) "may be intentional redesigns rather than drift." Some ACs may be invalid if the shell layout was deliberately changed from the mockup. **Action:** Confirm with design/PM whether the shell layout was deliberately changed before implementing Story 5.2. If intentional, remove the corresponding ACs. If drift, confirm and proceed.
 
 ### Recommended Next Steps
 
-1. ~~Apply the 3 one-line/two-line documentation fixes (Findings #1, #2, #4)~~ — **Done (2026-07-11).** Findings #1, #3, and #4 fixed via sub-agents. Finding #2 was already resolved.
-2. ~~Add the `prisma generate` AC clause to Story 4.3 (Finding #3)~~ — **Done (2026-07-11).**
-3. Begin implementation in the recommended order: 4.1/4.2 → 4.3 → 4.4/4.5 → 4.6 → 4.7 → 4.8 → 4.10 → 4.11 → 4.12. Skip 4.9 (deferred for MVP).
-4. Resolve the Story 4.10 Railway backup retention API question during implementation (Finding #5) — if the API doesn't support retention configuration, document the manual step.
-5. No action required on the Epic 4 user-value/technical-epic finding — it's a conscious, already-approved trade-off (Accepted Exception #1). Consider a standing "operational epic" exception note in `epics.md`'s conventions if this pattern repeats (e.g., Epic 6).
+1. **Resolve Story 5.2 design decisions** — Confirm with design/PM whether the nav-link placement and Settings-label removal were intentional redesigns or drift. Update the ACs accordingly before implementation.
 
-### What's Strong
+2. **Scope Story 5.3's inline pills AC** — Cross-check against Story 3.4 and UX-DR5. Determine whether the data model change (TOOL_CALL events interleaved in markdown stream vs. standalone rows) should be a separate story. If kept in Story 5.3, elevate the warning from Dev Notes to AC level.
 
-- **Scope boundaries are precise.** Epic 4 explicitly excludes SSE-drain verification (Story 3.12) and spend monitoring (Story 3.8), correctly deferring them to Epic 3 where the underlying code lives. Story 4.7 confirms platform-level HTTP/2 capability only, not end-to-end SSE behavior. Story 4.11 explicitly defers NFR-O1 to Epic 3 Story 3.8. These boundaries prevent false confidence — each story owns only what it can actually verify.
+3. **Verify investigation file currency** — Epic 5's ACs reference `_bmad-output/implementation-artifacts/investigations/ux-visual-drift-investigation.md` with specific line numbers. Verify this file still exists and is current before implementation, as the ACs depend on its findings.
 
-- **The 2026-07-11 annotations are excellent.** They verify API automation for Stories 4.1, 4.2, 4.8, and 4.10 (superseding the 2026-07-03 "human-executed" notes), identify the stale `AGENT_BACKEND_JWT_SECRET`, confirm the existing OAuth App and secrets, and transparently defer Story 4.9. These annotations show active story maintenance and reduce implementation ambiguity.
+4. **Begin with Stories 5.1 and 5.4** — These stories have no blockers and can proceed immediately. Story 5.1 (missing visual containers) and Story 5.4 (token-usage drift and config gaps) are self-contained and well-specified.
 
-- **Operational hardening is now comprehensive.** The expansion from 7 to 12 stories closes the gap between "provision the deployment" and "operate it safely." Stories 4.8 (rollback), 4.10 (backups), 4.11 (monitoring), and 4.12 (secret rotation) address the operational realities that the 2026-07-03 report implicitly flagged by their absence. The PRD's SOC 2 and EU Data Act guardrails don't have launch-blocking actions tied to Epic 4, and the stories don't pretend they do.
+5. **Stage Story 5.4's `theme.extend` → `theme` override carefully** — Follow the Dev Notes guidance: grep for default-palette utilities first, migrate real uses to design-system tokens, then switch to full overrides. This prevents regressions.
 
-- **No forward dependencies.** Every within-epic dependency runs backward (4.2 → 4.3, 4.2 → 4.4/4.5, 4.1 → 4.5, 4.1/4.2 → 4.6/4.7, etc.). No story in Epic 4 requires Epic 2 or Epic 3 to be complete. The epic can be worked in parallel with Epic 6 (pending proposal) without blocking either.
+### Assessment Statistics
 
-- **The `ANTHROPIC_API_KEY` gap is fully closed.** The 2026-07-03 Major finding is resolved by the approved sandbox-secrets-hardening Sprint Change Proposal. Architecture, Story 3.1 ACs, and Story 4.5 ACs all now reflect the correct sourcing and the `networkAllowList` egress mitigation.
+| Category | Count |
+|----------|-------|
+| Total FRs in PRD | 19 |
+| FRs covered in epics | 19 (100%) |
+| Total NFRs in PRD | 13 |
+| NFRs covered in epics | 12 (92%; 1 explicitly deferred to post-MVP) |
+| UX design requirements (UX-DRs) | 20 |
+| UX-DRs mapped to epics | 20 (100%) |
+| Critical violations | 0 |
+| Major issues | 2 |
+| Minor concerns | 5 |
 
 ### Final Note
 
-This assessment identified 5 minor issues and 2 accepted exceptions, all scoped to Epic 4. None block starting implementation. The 3 documentation fixes (Findings #1, #2, #4) are quick edits that should land alongside the first story pickup. The `prisma generate` AC addition (Finding #3) prevents a likely build failure. The Story 4.10 uncertainty (Finding #5) is transparently documented and should be resolved at implementation time. Epics 1–3 were not re-assessed here — see the 2026-07-02 report for that coverage. Epic 6 (Sandbox-Based Agent Execution) is a pending proposal not yet in `epics.md` and was not assessed.
+This assessment identified **7 issues** across **3 severity categories** (0 critical, 2 major, 5 minor). The planning artifacts are thorough, well-structured, and internally consistent. The PRD is approved. FR and NFR coverage is complete. UX documentation is aligned with both PRD and Architecture. Architecture supports all UX and PRD requirements.
+
+The 2 major issues are both in Epic 5 and both are resolvable before implementation of their respective stories — neither blocks the epic as a whole. Stories 5.1 and 5.4 are ready to implement immediately.
+
+**Assessor:** Implementation Readiness Reviewer (automated)
+**Date:** 2026-07-11
+**Target:** Epic 5 — UX Mockup Fidelity — Close Visual Drift

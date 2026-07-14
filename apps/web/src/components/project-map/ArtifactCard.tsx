@@ -50,7 +50,7 @@ export function ArtifactCard({ type, title, status, href, onClick }: ArtifactCar
       aria-label={`${typeLabel}: ${title} — ${statusLabel}`}
       className={cn(
         'bg-surface-raised border border-border rounded-lg p-3 px-4 flex items-center justify-between max-w-[720px]',
-        'hover:border-text-3 transition-colors',
+        'hover:border-accent transition-colors',
         'focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
       )}
     >

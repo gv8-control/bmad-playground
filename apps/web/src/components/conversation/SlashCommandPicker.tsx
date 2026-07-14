@@ -34,6 +34,9 @@ export function SlashCommandPicker({
       role="listbox"
       id="skill-listbox"
     >
+      <div role="presentation" className="text-text-2 text-xs px-3 py-2 border-b border-border">
+        Skills — type to filter
+      </div>
       {skills.map((skill, index) => (
         <button
           key={skill.name}

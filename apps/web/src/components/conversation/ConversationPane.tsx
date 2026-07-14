@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { SkillInfo } from '@bmad-easy/shared-types';
-import { SessionStartSpinner } from './SessionStartSpinner';
 import { SlashCommandPicker } from './SlashCommandPicker';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
@@ -12,18 +11,80 @@ import type { WorkingTreeState } from './WorkingTreeIndicator';
 import { useDraftPersistence } from './useDraftPersistence';
 import { useConversationPresence } from '@/hooks/use-conversation-presence';
 import { CredentialErrorBanner } from '@/components/project-map/CredentialErrorBanner';
-import type { ChatMessage } from './types';
+import type { ChatMessage, ToolCallData } from './types';
 
 type SessionState = 'init' | 'provisioning' | 'ready' | 'error' | 'timeout' | 'reconnecting' | 'limit-reached';
 type AgentState = 'idle' | 'thinking' | 'tool-executing' | 'streaming';
 
 const CLIENT_TIMEOUT_MS = 30_000;
 
+function safeUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function buildManualSaveToolCall(
+  id: string,
+  status: 'completed' | 'error',
+  errorMessage?: string,
+): ToolCallData {
+  if (status === 'completed') {
+    return {
+      toolCallId: id,
+      toolName: 'Save',
+      status,
+      input: '',
+      output: '',
+      semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
+    };
+  }
+  return {
+    toolCallId: id,
+    toolName: 'Save',
+    status,
+    input: '',
+    output: '',
+    errorMessage: errorMessage ?? 'Save failed',
+  };
+}
+
+function insertManualSaveSegment(
+  toolCall: ToolCallData,
+  streamingMessageId: string | null,
+): (prev: ChatMessage[]) => ChatMessage[] {
+  return (prev) => {
+    const targetId = streamingMessageId ?? prev.findLast((m) => m.role === 'assistant')?.id;
+    if (targetId) {
+      return prev.map((m) => {
+        if (m.id !== targetId) return m;
+        if (!m.segments) {
+          return { ...m, segments: [{ type: 'tool_call' as const, toolCall }] };
+        }
+        const existingIdx = m.segments.findIndex(
+          (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCall.toolCallId,
+        );
+        if (existingIdx >= 0) return m;
+        return { ...m, segments: [...m.segments, { type: 'tool_call' as const, toolCall }] };
+      });
+    }
+    return [...prev, {
+      id: `msg-${Date.now()}`,
+      role: 'assistant' as const,
+      content: '',
+      createdAt: new Date(),
+      segments: [{ type: 'tool_call' as const, toolCall }],
+    }];
+  };
+}
+
 export interface ConversationPaneProps {
   boundaryJwt: string;
   apiUrl: string;
   initialConversationId?: string;
   initialMessages?: ChatMessage[];
+  placeholder?: string;
 }
 
 export function ConversationPane({
@@ -31,6 +92,7 @@ export function ConversationPane({
   apiUrl,
   initialConversationId,
   initialMessages = [],
+  placeholder = 'Message bmad-easy…',
 }: ConversationPaneProps) {
   const router = useRouter();
   const [state, setState] = useState<SessionState>('init');
@@ -60,7 +122,7 @@ export function ConversationPane({
   const retryingRef = useRef(false);
   const unmountedRef = useRef(false);
 
-  const { draft, setDraft, clearDraft } = useDraftPersistence(
+  const { draft, setDraft, clearDraft, quotaExceeded } = useDraftPersistence(
     conversationIdRef.current,
   );
 
@@ -81,6 +143,7 @@ export function ConversationPane({
         clearTimeout(timeoutRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: startSession is a component function that changes every render; adding it would re-run the effect and create duplicate EventSource connections
   }, []);
 
   useEffect(() => {
@@ -103,6 +166,7 @@ export function ConversationPane({
     if (state === 'ready' && conversationIdRef.current) {
       void fetchSkills(conversationIdRef.current);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchSkills is a component function; effect should only fire when state transitions to 'ready', not on every render
   }, [state]);
 
   useEffect(() => {
@@ -113,6 +177,7 @@ export function ConversationPane({
         setNewMessageCount((prev) => prev + 1);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally depends on messages.length only; using messages would re-fire on every streaming content update and inflate newMessageCount
   }, [messages.length]);
 
   async function startSession() {
@@ -149,7 +214,7 @@ export function ConversationPane({
             setState('limit-reached');
             setErrorMessage(
               message ??
-                "You've reached the limit of active conversations. Return to one of your existing conversations, or try again later.",
+                "You've reached the limit of 10 active conversations. Return to one of your existing conversations, or try again later.",
             );
             return;
           }
@@ -249,7 +314,7 @@ export function ConversationPane({
         setMessages((prev) => {
           if (prev.some((m) => m.id === messageId)) {
             return prev.map((m) =>
-              m.id === messageId ? { ...m, content: '', isStreaming: true } : m,
+              m.id === messageId ? { ...m, isStreaming: true } : m,
             );
           }
           return [
@@ -260,6 +325,7 @@ export function ConversationPane({
               content: '',
               createdAt: new Date(),
               isStreaming: true,
+              segments: [{ type: 'text' as const, content: '', id: safeUUID() }],
             },
           ];
         });
@@ -275,10 +341,23 @@ export function ConversationPane({
         const messageId = streamingMessageIdRef.current;
         if (messageId) {
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === messageId ? { ...m, content: m.content + delta } : m,
-            ),
+            prev.map((m) => {
+              if (m.id !== messageId) return m;
+              if (!m.segments) return { ...m, content: m.content + delta, segments: [{ type: 'text' as const, content: m.content + delta, id: safeUUID() }] };
+              const newSegments = [...m.segments];
+              const last = newSegments[newSegments.length - 1];
+              if (last && last.type === 'text') {
+                newSegments[newSegments.length - 1] = { type: 'text' as const, content: last.content + delta, id: last.id ?? safeUUID() };
+              } else {
+                newSegments.push({ type: 'text' as const, content: delta, id: safeUUID() });
+              }
+              return { ...m, content: m.content + delta, segments: newSegments };
+            }),
           );
+        } else if (delta) {
+          // Defense-in-depth: TEXT_MESSAGE_CONTENT should always follow TEXT_MESSAGE_START.
+          // Silent drop indicates an upstream protocol violation (or a race with EventSource reconnect).
+          console.warn('[ConversationPane] TEXT_MESSAGE_CONTENT delta dropped — no streamingMessageIdRef set');
         }
       } catch {
         // ignore parse errors
@@ -301,33 +380,44 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const toolCallName = data.toolCallName ?? 'unknown';
-        const toolCallId = data.toolCallId ?? `tc-${Date.now()}`;
+        const toolCallId = data.toolCallId ?? safeUUID();
         setAgentState('tool-executing');
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === toolCallId)) {
-            return prev.map((m) =>
-              m.id === toolCallId && m.toolCall
-                ? { ...m, toolCall: { ...m.toolCall, input: '', output: '', status: 'running' as const } }
-                : m,
+        const streamingId = streamingMessageIdRef.current;
+        if (streamingId) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== streamingId) return m;
+              const segs = m.segments ?? [{ type: 'text' as const, content: '', id: safeUUID() }];
+              const existingIdx = segs.findIndex(
+                (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+              );
+              if (existingIdx >= 0) return m;
+              return {
+                ...m,
+                segments: [...segs, { type: 'tool_call' as const, toolCall: { toolCallId, toolName: toolCallName, status: 'running' as const, input: '', output: '' } }],
+              };
+            }),
+          );
+        } else {
+          const newMsgId = `msg-${Date.now()}`;
+          setMessages((prev) => {
+            const hasToolCall = prev.some(
+              (m) => m.segments?.some((s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId),
             );
-          }
-          return [
-            ...prev,
-            {
-              id: toolCallId,
+            if (hasToolCall) return prev;
+            return [...prev, {
+              id: newMsgId,
               role: 'assistant' as const,
               content: '',
               createdAt: new Date(),
-              toolCall: {
-                toolCallId,
-                toolName: toolCallName,
-                status: 'running',
-                input: '',
-                output: '',
-              },
-            },
-          ];
-        });
+              segments: [
+                { type: 'text' as const, content: '', id: safeUUID() },
+                { type: 'tool_call' as const, toolCall: { toolCallId, toolName: toolCallName, status: 'running' as const, input: '', output: '' } },
+              ],
+            }];
+          });
+          streamingMessageIdRef.current = newMsgId;
+        }
       } catch {
         // ignore parse errors
       }
@@ -339,11 +429,18 @@ export function ConversationPane({
         const { toolCallId, delta } = data;
         if (!toolCallId) return;
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === toolCallId && m.toolCall
-              ? { ...m, toolCall: { ...m.toolCall, input: m.toolCall.input + (delta ?? '') } }
-              : m,
-          ),
+          prev.map((m) => {
+            if (!m.segments) return m;
+            let found = false;
+            const newSegments = m.segments.map((s) => {
+              if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                found = true;
+                return { ...s, toolCall: { ...s.toolCall, input: s.toolCall.input + (delta ?? '') } };
+              }
+              return s;
+            });
+            return found ? { ...m, segments: newSegments } : m;
+          }),
         );
       } catch {
         // ignore parse errors
@@ -356,11 +453,19 @@ export function ConversationPane({
         const { toolCallId } = data;
         if (toolCallId) {
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === toolCallId && m.toolCall
-                ? { ...m, toolCall: { ...m.toolCall, status: 'completed' as const } }
-                : m,
-            ),
+            prev.map((m) => {
+              if (!m.segments) return m;
+              let found = false;
+              const newSegments = m.segments.map((s) => {
+                if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                  found = true;
+                  const nextStatus: 'error' | 'completed' = s.toolCall.status === 'error' ? 'error' : 'completed';
+                  return { ...s, toolCall: { ...s.toolCall, status: nextStatus } };
+                }
+                return s;
+              });
+              return found ? { ...m, segments: newSegments } : m;
+            }),
           );
           setAgentState('thinking');
         }
@@ -381,19 +486,26 @@ export function ConversationPane({
               /Command exited with code [1-9]/.test(content) ||
               /failed to push/i.test(content)));
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === toolCallId && m.toolCall
-              ? {
-                  ...m,
+          prev.map((m) => {
+            if (!m.segments) return m;
+            let found = false;
+            const newSegments = m.segments.map((s) => {
+              if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                found = true;
+                return {
+                  ...s,
                   toolCall: {
-                    ...m.toolCall,
+                    ...s.toolCall,
                     output: content ?? '',
-                    status: isError ? ('error' as const) : m.toolCall.status,
-                    errorMessage: isError ? content : m.toolCall.errorMessage,
+                    status: isError ? ('error' as const) : s.toolCall.status,
+                    errorMessage: isError ? content : s.toolCall.errorMessage,
                   },
-                }
-              : m,
-          ),
+                };
+              }
+              return s;
+            });
+            return found ? { ...m, segments: newSegments } : m;
+          }),
         );
       } catch {
         // ignore parse errors
@@ -406,18 +518,25 @@ export function ConversationPane({
         const { toolCallId, artifactType, artifactTitle, viewHref } = data;
         if (!toolCallId) return;
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === toolCallId && m.toolCall
-              ? {
-                  ...m,
+          prev.map((m) => {
+            if (!m.segments) return m;
+            let found = false;
+            const newSegments = m.segments.map((s) => {
+              if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                found = true;
+                return {
+                  ...s,
                   toolCall: {
-                    ...m.toolCall,
+                    ...s.toolCall,
                     status: 'completed' as const,
                     semantic: { artifactType, artifactTitle, viewHref },
                   },
-                }
-              : m,
-          ),
+                };
+              }
+              return s;
+            });
+            return found ? { ...m, segments: newSegments } : m;
+          }),
         );
       } catch {
         // ignore parse errors
@@ -487,31 +606,13 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId } = data;
-        const id = toolCallId || `manual-save-${Date.now()}`;
+        const id = toolCallId || safeUUID();
         if (saveFallbackTimeoutRef.current) {
           clearTimeout(saveFallbackTimeoutRef.current);
           saveFallbackTimeoutRef.current = null;
         }
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === id)) return prev;
-          return [
-            ...prev,
-            {
-              id,
-              role: 'assistant' as const,
-              content: '',
-              createdAt: new Date(),
-              toolCall: {
-                toolCallId: id,
-                toolName: 'Save',
-                status: 'completed' as const,
-                input: '',
-                output: '',
-                semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
-              },
-            },
-          ];
-        });
+        const toolCall = buildManualSaveToolCall(id, 'completed');
+        setMessages(insertManualSaveSegment(toolCall, streamingMessageIdRef.current));
         setWorkingTreeState('clean');
       } catch {
         // ignore parse errors
@@ -522,31 +623,13 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId, error } = data;
-        const id = toolCallId || `manual-save-${Date.now()}`;
+        const id = toolCallId || safeUUID();
         if (saveFallbackTimeoutRef.current) {
           clearTimeout(saveFallbackTimeoutRef.current);
           saveFallbackTimeoutRef.current = null;
         }
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === id)) return prev;
-          return [
-            ...prev,
-            {
-              id,
-              role: 'assistant' as const,
-              content: '',
-              createdAt: new Date(),
-              toolCall: {
-                toolCallId: id,
-                toolName: 'Save',
-                status: 'error' as const,
-                input: '',
-                output: '',
-                errorMessage: error ?? 'Save failed',
-              },
-            },
-          ];
-        });
+        const toolCall = buildManualSaveToolCall(id, 'error', error);
+        setMessages(insertManualSaveSegment(toolCall, streamingMessageIdRef.current));
         setWorkingTreeState('dirty');
       } catch {
         // ignore parse errors
@@ -557,20 +640,29 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId } = data;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.toolCall && m.toolCall.toolCallId === toolCallId
-              ? {
-                  ...m,
-                  toolCall: {
-                    ...m.toolCall,
-                    status: 'error' as const,
-                    errorMessage: 'GitHub credentials have expired or been revoked.',
-                  },
+        if (toolCallId) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (!m.segments) return m;
+              let found = false;
+              const newSegments = m.segments.map((s) => {
+                if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                  found = true;
+                  return {
+                    ...s,
+                    toolCall: {
+                      ...s.toolCall,
+                      status: 'error' as const,
+                      errorMessage: 'GitHub credentials have expired or been revoked.',
+                    },
+                  };
                 }
-              : m,
-          ),
-        );
+                return s;
+              });
+              return found ? { ...m, segments: newSegments } : m;
+            }),
+          );
+        }
       } catch {
         // ignore parse errors
       }
@@ -581,21 +673,30 @@ export function ConversationPane({
       try {
         const data = JSON.parse((event as MessageEvent).data);
         const { toolCallId, code, retryAfter } = data;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.toolCall && m.toolCall.toolCallId === toolCallId
-              ? {
-                  ...m,
-                  toolCall: {
-                    ...m.toolCall,
-                    status: 'error' as const,
-                    errorMessage: 'Access denied.',
-                    accessNotice: { code, retryAfter },
-                  },
+        if (toolCallId) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (!m.segments) return m;
+              let found = false;
+              const newSegments = m.segments.map((s) => {
+                if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
+                  found = true;
+                  return {
+                    ...s,
+                    toolCall: {
+                      ...s.toolCall,
+                      status: 'error' as const,
+                      errorMessage: 'Access denied.',
+                      accessNotice: { code, retryAfter },
+                    },
+                  };
                 }
-              : m,
-          ),
-        );
+                return s;
+              });
+              return found ? { ...m, segments: newSegments } : m;
+            }),
+          );
+        }
       } catch {
         // ignore parse errors
       }
@@ -891,51 +992,44 @@ export function ConversationPane({
         onScrollToBottom={handleScrollToBottom}
         onScrollPositionChange={handleScrollPositionChange}
         isThinking={isThinking}
+        showSpinner={showSpinner}
+        spinnerLabel={state === 'reconnecting' ? 'Reconnecting…' : undefined}
+        errorMessage={errorMessage}
+        showRetry={state === 'timeout' || state === 'error'}
+        onRetry={handleRetry}
       />
-      {errorMessage && (
-        <p className="px-8 text-negative text-sm" role="alert">
-          {errorMessage}
-        </p>
-      )}
-      {(state === 'timeout' || state === 'error') && (
-        <button
-          onClick={handleRetry}
-          className="mx-8 mb-2 rounded-md bg-accent px-4 py-2 text-sm text-bg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface"
-        >
-          Retry
-        </button>
-      )}
-      <div className="flex-shrink-0 border-t border-border px-8 py-4">
-        {showSpinner && (
-          state === 'reconnecting' ? (
-            <SessionStartSpinner label="Reconnecting…" />
-          ) : (
-            <SessionStartSpinner />
-          )
-        )}
-        <WorkingTreeIndicator state={effectiveWorkingTreeState} onSave={handleSave} />
-        <div ref={pickerContainerRef} className="relative">
-          {pickerOpen && (
-            <SlashCommandPicker
-              skills={filteredSkills}
-              selectedIndex={pickerSelectedIndex}
-              onSelect={handleSelectSkill}
-            />
+      <div className="flex-shrink-0 border-t border-border">
+        <div className="px-8 py-4 max-w-[824px] mx-auto w-full">
+          {quotaExceeded && (
+            <p className="text-negative text-sm mb-2" role="alert">
+              Draft could not be saved — browser storage is full.
+            </p>
           )}
-          {state !== 'limit-reached' && (
-            <ChatInput
-              value={draft}
-              onChange={handleInputChange}
-              onSubmit={handleSubmit}
-              onStop={handleStop}
-              disabled={inputDisabled}
-              isProcessing={isProcessing}
-              onKeyDown={handleKeyDown}
-              inputRef={inputRef}
-              ariaActivedescendant={pickerOpen && filteredSkills.length > 0 ? `skill-option-${pickerSelectedIndex}` : undefined}
-              ariaControls={pickerOpen ? 'skill-listbox' : undefined}
-            />
-          )}
+          <div ref={pickerContainerRef} className="relative">
+            {pickerOpen && (
+              <SlashCommandPicker
+                skills={filteredSkills}
+                selectedIndex={pickerSelectedIndex}
+                onSelect={handleSelectSkill}
+              />
+            )}
+            {state !== 'limit-reached' && (
+              <ChatInput
+                value={draft}
+                onChange={handleInputChange}
+                onSubmit={handleSubmit}
+                onStop={handleStop}
+                disabled={inputDisabled}
+                isProcessing={isProcessing}
+                placeholder={placeholder}
+                onKeyDown={handleKeyDown}
+                inputRef={inputRef}
+                ariaActivedescendant={pickerOpen && filteredSkills.length > 0 ? `skill-option-${pickerSelectedIndex}` : undefined}
+                ariaControls={pickerOpen ? 'skill-listbox' : undefined}
+                workingTreeIndicator={<WorkingTreeIndicator state={effectiveWorkingTreeState} onSave={handleSave} />}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ export default async function OnboardingPage() {
 
   const existing = await getPrisma().repoConnection.findUnique({
     where: { userId },
+    select: { id: true },
   });
   if (existing) {
     redirect('/project-map');

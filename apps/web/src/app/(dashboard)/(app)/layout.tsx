@@ -18,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const repoConnection = await getPrisma().repoConnection.findUnique({
     where: { userId },
+    select: { id: true },
   });
 
   if (!repoConnection) {

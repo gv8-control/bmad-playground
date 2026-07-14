@@ -20,13 +20,13 @@ jest.mock('next/link', () => ({
   ),
 }));
 
-describe('SemanticPill', () => {
-  const defaultProps = {
-    artifactType: 'prd',
-    artifactTitle: 'Product Requirements Document',
-    viewHref: '/artifacts?id=art-1',
-  };
+const defaultProps = {
+  artifactType: 'prd',
+  artifactTitle: 'Product Requirements Document',
+  viewHref: '/artifacts?id=art-1',
+};
 
+describe('SemanticPill', () => {
   describe('[P0] AC-2 — Content rendering', () => {
     it('renders "Progress saved" label', () => {
       render(<SemanticPill {...defaultProps} />);
@@ -99,6 +99,33 @@ describe('SemanticPill', () => {
       render(<SemanticPill artifactType="" artifactTitle="" viewHref="" />);
       const status = screen.getByRole('status');
       expect(status).toHaveAttribute('aria-live', 'polite');
+    });
+  });
+});
+
+// ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
+//
+// GREEN PHASE: tests are active for Story 5.3 implementation.
+//
+// AC-5: Semantic pill separator uses 0.4 alpha, not full opacity
+
+describe('SemanticPill — Story 5.3 structural drift', () => {
+  describe('[P0] AC-5 — Separator uses 0.4 alpha', () => {
+    it('separator span after "Progress saved" uses 0.4 alpha (text-positive/40)', () => {
+      render(<SemanticPill {...defaultProps} />);
+      const separators = document.querySelectorAll('span[aria-hidden="true"]');
+      expect(separators.length).toBeGreaterThan(0);
+      separators.forEach((sep) => {
+        expect(sep.className).toContain('text-positive/40');
+      });
+    });
+
+    it('separator does not use full opacity (no opacity-100)', () => {
+      render(<SemanticPill {...defaultProps} />);
+      const separators = document.querySelectorAll('span[aria-hidden="true"]');
+      separators.forEach((sep) => {
+        expect(sep.className).not.toContain('opacity-100');
+      });
     });
   });
 });

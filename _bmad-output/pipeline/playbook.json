@@ -97,9 +97,11 @@
       "stage": "review",
       "skill": "bmad-code-review",
       "agent": "planner",
-      "prompt": "Review the story implementation. Spec file: {implementation_artifacts}/`<epic>-<story>-*.md` (Tier 1); diff baseline = its frontmatter `baseline_commit`, or all uncommitted changes if absent — resolve without asking. Chunk automatically if over threshold (take first chunk, note rest for follow-up) — do not wait for confirmation. Skip the pre-review checkpoint. For decision-needed findings, consult @_bmad-output/decision-policy.md: if a rule covers it, decide and continue (if deferring, write a one-line reason instead of asking). HALT only for decisions no rule covers. After triage, choose 'apply every patch' (no per-finding confirmation) and end — no next-steps menu.",
+      "prompt": "Review the story implementation. Spec file: {implementation_artifacts}/`<epic>-<story>-*.md` (Tier 1); diff baseline = its frontmatter `baseline_commit`, or all uncommitted changes if absent — resolve without asking. Chunk automatically if over threshold for internal organization only — review every chunk sequentially before finishing, starting from the first. Do not wait for confirmation between chunks. Skip the pre-review checkpoint. For decision-needed findings, consult @_bmad-output/decision-policy.md: if a rule covers it, decide and continue (if deferring, write a one-line reason instead of asking). HALT only for decisions no rule covers. After triage, choose 'apply every patch' (no per-finding confirmation) and end — no next-steps menu.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-13T16:33:16.990Z",
+      "updatedByRun": "5.5-a2-20260713T125945"
     },
     {
       "id": "review-tests",
@@ -107,11 +109,11 @@
       "stage": "review",
       "skill": "bmad-testarch-test-review",
       "agent": "planner",
-      "prompt": "run Validate mode. Search all test directories in the project and all test file types (including component test files), not just the story's own test files. Flag skipped story-related tests for un-skipping or removal (with reason). For always-skipped tests with no condition that cannot run in any CI tier, remove them directly or convert to conditional skips — do not just flag them, as they persist as dead code across runs when only flagged. Fix stale transitional markers directly wherever found during the search, including those from earlier stories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation. Treat empty placeholder test stubs (active tests with no assertions, only a comment or empty body) as transitional artifacts — remove them directly wherever found during the search, including those from earlier stories, since an empty test that passes trivially inflates the count without verifying behavior.",
+      "prompt": "run Validate mode. Search all test directories in the project and all test file types (including component test files), not just the story's own test files. Flag skipped story-related tests for un-skipping or removal (with reason). When the skip reason is no longer applicable — the behavior is covered by other tests, the environmental dependency is permanent with no planned fix, or the test body is empty — remove the skipped test directly rather than only flagging it, since a skipped test that will never be un-skipped is a transitional artifact that inflates the count without verifying behavior. Fix stale transitional markers directly wherever found during the search, including those from earlier stories in the same directories — comments/headers claiming tests are skipped/disabled/red-phase when they're actually active must be updated to reflect current state. Do not defer out-of-scope markers to a separate validation. Treat empty placeholder test stubs (active tests with no assertions, only a comment or empty body) as transitional artifacts — remove them directly wherever found during the search, including those from earlier stories in the same directories, since an empty test that passes trivially inflates the count without verifying behavior.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-13T11:15:48.883Z",
-      "updatedByRun": "4.6-a1-20260713T093042"
+      "updatedAt": "2026-07-14T00:00:00.000Z",
+      "updatedByRun": "merge-epic-5-into-main"
     },
     {
       "id": "review-nfrs",
@@ -119,7 +121,7 @@
       "stage": "review",
       "skill": "bmad-testarch-nfr",
       "agent": "reviewer",
-      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section. For any MEDIUM or higher finding that is not fixed in this step, record it in @_bmad-output/implementation-artifacts/deferred-work.md so a future story whose scope touches the affected code can pick it up.",
+      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section. For findings you determine were introduced by the current story and that have a straightforward remediation (e.g., a missing class or attribute the story should have applied to a location it touched), apply the fix directly rather than only documenting it; for findings that are pre-existing or require complex remediation, document them as before. For any MEDIUM or higher finding that is not fixed in this step, record it in @_bmad-output/implementation-artifacts/deferred-work.md so a future story whose scope touches the affected code can pick it up.",
       "enabled": true,
       "origin": "core",
       "updatedAt": "2026-07-13T11:15:48.883Z",

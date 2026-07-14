@@ -1,11 +1,12 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { tmpdir } from 'os';
-import type { IAgentService, AgentRunParams } from '@bmad-easy/shared-types';
+import type { IAgentService, AgentRunParams, MessageSegment } from '@bmad-easy/shared-types';
 import { query, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { EventType } from '@ag-ui/core';
 import type { ISandboxService } from '@bmad-easy/shared-types';
 import { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
+import type { Prisma } from '@bmad-easy/database-schemas';
 import { SessionEventsService } from './session-events.service';
 import { ToolPillClassifierService } from './tool-pill-classifier.service';
 import { CostTrackingService } from '../cost-tracking/cost-tracking.service';
@@ -70,6 +71,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     });
 
     let accumulatedText = '';
+    const segments: MessageSegment[] = [{ type: 'text', content: '' }];
     let lastCostData: {
       totalCostUsd: number;
       sessionId: string;
@@ -123,7 +125,16 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         }
         if (result.done) break;
         this.resetCircuitBreakerTimer(conversationId);
-        accumulatedText += this.processSdkMessage(result.value, conversationId, userId);
+        const textDelta = this.processSdkMessage(result.value, conversationId, userId, segments);
+        accumulatedText += textDelta;
+        if (textDelta) {
+          const lastSeg = segments[segments.length - 1];
+          if (lastSeg && lastSeg.type === 'text') {
+            lastSeg.content += textDelta;
+          } else {
+            segments.push({ type: 'text', content: textDelta });
+          }
+        }
 
         if (result.value.type === 'result') {
           const resultMsg = result.value as {
@@ -176,13 +187,18 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       }
 
       if (!abortController.signal.aborted) {
-        if (accumulatedText.length > 0) {
+        const hasToolCalls = segments.some((s) => s.type === 'tool_call');
+        if (accumulatedText.length > 0 || hasToolCalls) {
+          const cleanSegments = segments.filter(
+            (s) => s.type !== 'text' || s.content.length > 0,
+          );
           try {
             await this.prisma.turn.create({
               data: {
                 conversationId,
                 role: 'assistant',
                 content: accumulatedText,
+                segments: (cleanSegments.length > 0 ? cleanSegments : segments) as unknown as Prisma.InputJsonValue,
               },
               select: { id: true },
             });
@@ -352,9 +368,9 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     this.circuitBreakerTimers.delete(conversationId);
   }
 
-  private processSdkMessage(sdkMessage: SDKMessage, conversationId: string, userId: string): string {
+  private processSdkMessage(sdkMessage: SDKMessage, conversationId: string, userId: string, segments: MessageSegment[]): string {
     if (sdkMessage.type === 'stream_event') {
-      return this.processStreamEvent(sdkMessage.event, conversationId);
+      return this.processStreamEvent(sdkMessage.event, conversationId, segments);
     }
     if (sdkMessage.type === 'result') {
       return '';
@@ -363,12 +379,12 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       return this.processAssistantMessage(sdkMessage, conversationId);
     }
     if (sdkMessage.type === 'user') {
-      return this.processUserMessage(sdkMessage, conversationId, userId);
+      return this.processUserMessage(sdkMessage, conversationId, userId, segments);
     }
     return '';
   }
 
-  private processStreamEvent(event: unknown, conversationId: string): string {
+  private processStreamEvent(event: unknown, conversationId: string, segments: MessageSegment[]): string {
     const e = event as { type: string; [key: string]: unknown };
     if (e.type === 'content_block_start') {
       const contentBlock = e.content_block as { type: string; id?: string; name?: string; text?: string };
@@ -393,6 +409,15 @@ export class AgentService implements IAgentService, OnModuleDestroy {
           toolName: toolCallName,
           input: '',
         });
+        const existingSeg = segments.find(
+          (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+        );
+        if (!existingSeg) {
+          segments.push({
+            type: 'tool_call',
+            toolCall: { toolCallId, toolName: toolCallName, status: 'running', input: '', output: '' },
+          });
+        }
         this.sessionEvents.emit(conversationId, {
           event: EventType.TOOL_CALL_START,
           data: { toolCallId, toolCallName, parentMessageId: null },
@@ -416,6 +441,12 @@ export class AgentService implements IAgentService, OnModuleDestroy {
           if (toolCallInfo) {
             toolCallInfo.input += delta.partial_json;
           }
+          const seg = segments.find(
+            (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+          );
+          if (seg && seg.type === 'tool_call') {
+            seg.toolCall.input += delta.partial_json;
+          }
           this.sessionEvents.emit(conversationId, {
             event: EventType.TOOL_CALL_ARGS,
             data: { toolCallId, delta: delta.partial_json },
@@ -427,6 +458,12 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       if (blockType === 'tool_use') {
         const toolCallId = this.currentToolCallIds.get(conversationId);
         if (toolCallId) {
+          const seg = segments.find(
+            (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+          );
+          if (seg && seg.type === 'tool_call' && seg.toolCall.status !== 'error') {
+            seg.toolCall.status = 'completed';
+          }
           this.sessionEvents.emit(conversationId, {
             event: EventType.TOOL_CALL_END,
             data: { toolCallId },
@@ -483,7 +520,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     return '';
   }
 
-  private processUserMessage(message: SDKMessage, conversationId: string, userId: string): string {
+  private processUserMessage(message: SDKMessage, conversationId: string, userId: string, segments: MessageSegment[]): string {
     const msg = message as {
       type: string;
       message?: {
@@ -525,6 +562,17 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         },
       });
 
+      const resultSeg = segments.find(
+        (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+      );
+      if (resultSeg && resultSeg.type === 'tool_call') {
+        resultSeg.toolCall.output = resultContent;
+        if (block.is_error) {
+          resultSeg.toolCall.status = 'error';
+          resultSeg.toolCall.errorMessage = resultContent;
+        }
+      }
+
       const toolCalls = this.activeToolCalls.get(conversationId);
       const toolCallInfo = toolCalls?.get(toolCallId);
       if (!toolCallInfo) {
@@ -541,6 +589,35 @@ export class AgentService implements IAgentService, OnModuleDestroy {
         )
         .then((result) => {
           if (!result) return;
+          if (result.type === 'TOOL_CALL_PROMOTED') {
+            const seg = segments.find(
+              (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+            );
+            if (seg && seg.type === 'tool_call') {
+              seg.toolCall.semantic = {
+                artifactType: result.artifactType,
+                artifactTitle: result.artifactTitle,
+                viewHref: result.viewHref,
+              };
+            }
+          } else if (result.type === 'CREDENTIAL_FAILURE') {
+            const seg = segments.find(
+              (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+            );
+            if (seg && seg.type === 'tool_call') {
+              seg.toolCall.status = 'error';
+              seg.toolCall.errorMessage = 'GitHub credentials have expired or been revoked.';
+            }
+          } else if (result.type === 'ACCESS_DENIED') {
+            const seg = segments.find(
+              (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
+            );
+            if (seg && seg.type === 'tool_call') {
+              seg.toolCall.status = 'error';
+              seg.toolCall.errorMessage = 'Access denied.';
+              seg.toolCall.accessNotice = { code: result.code, retryAfter: result.retryAfter };
+            }
+          }
           this.sessionEvents.emit(conversationId, {
             event: result.type,
             data: result,

@@ -38,7 +38,9 @@ test.describe.serial('Story 1.8 — App Shell', () => {
       await page.goto('/project-map');
       await page.getByRole('link', { name: /new conversation/i }).click();
       await expect(page).toHaveURL(/\/conversations\/new/);
-      await expect(page.getByRole('heading', { level: 1, name: /new conversation/i })).toBeVisible();
+      // h1 is visually-hidden (sr-only) after Story 5.3 AC-6 — assert it exists in
+      // the DOM for route-focus management, not that it is visible.
+      await expect(page.getByRole('heading', { level: 1, name: /new conversation/i })).toBeAttached();
     });
 
     test('[P1] Settings avatar link highlighted on /settings', async ({ page, withRepoConnection }) => {
@@ -184,10 +186,9 @@ test.describe.serial('Story 1.8 — App Shell', () => {
       await expect(page.getByRole('navigation', { name: /breadcrumb/i })).not.toBeVisible();
     });
 
-    test('[P1] breadcrumb visible on /conversations/new (depth-1 page)', async ({ page, withRepoConnection }) => {
+    test('[P1] no breadcrumb on /conversations/new (header removed by Story 5.3 AC-6)', async ({ page, withRepoConnection }) => {
       await page.goto('/conversations/new');
-      await expect(page.getByRole('navigation', { name: /breadcrumb/i })).toBeVisible();
-      await expect(page.getByRole('link', { name: /← project map/i })).toBeVisible();
+      await expect(page.getByRole('navigation', { name: /breadcrumb/i })).not.toBeVisible();
     });
 
     test('[P1] breadcrumb link navigates to /project-map', async ({ page, withRepoConnection }) => {

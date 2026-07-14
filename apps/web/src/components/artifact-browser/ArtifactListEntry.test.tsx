@@ -1,8 +1,13 @@
 /**
  * ATDD — Story 2.5: View a Single Artifact's Rendered Content
+ * Story 5.4: Fix Token-Usage Drift (AC-5: hover:bg-surface-raised, text-text-3)
  * Component unit tests for ArtifactListEntry (Server Component, presentational).
  * Covers AC-1 (clickable list entry with selected state) and UX-DR16
  * (non-color state signaling, ARIA roles/labels, focus rings).
+ *
+ * GREEN PHASE: implementation complete. Story 2.4 delivered the base
+ * component; Story 2.5 adds `href` and `selected` props and changes the
+ * root element from `<div>` to `<Link>`. Story 5.4 fixes token-usage drift.
  *
  * Priority tags: P0 for AC coverage, P1 for edge cases.
  */
@@ -100,10 +105,26 @@ describe('ArtifactListEntry — link and selected state (AC-1, Story 2.5)', () =
     expect(item.className).toContain('border-accent');
   });
 
-  it('[P0] applies hover classes when not selected', () => {
+  // Story 5.4, AC-5: hover uses full surface-raised, type label and dates use text-text-3
+  it('[P0] applies hover:bg-surface-raised (no /60 opacity) when not selected (Story 5.4, AC-5)', () => {
     render(<ArtifactListEntry {...COMPLETED_ENTRY} />);
     const item = screen.getByRole('listitem');
-    expect(item.className).toContain('hover:bg-surface-raised/60');
+    expect(item.className).toContain('hover:bg-surface-raised');
+    expect(item.className).not.toContain('hover:bg-surface-raised/60');
+  });
+
+  it('[P0] type label uses text-text-3, not text-text-2 (Story 5.4, AC-5)', () => {
+    render(<ArtifactListEntry {...COMPLETED_ENTRY} />);
+    const typeLabel = screen.getByText('PRD');
+    expect(typeLabel.className).toContain('text-text-3');
+    expect(typeLabel.className).not.toContain('text-text-2');
+  });
+
+  it('[P0] date uses text-text-3, not text-text-2 (Story 5.4, AC-5)', () => {
+    render(<ArtifactListEntry {...COMPLETED_ENTRY} />);
+    const date = screen.getByText('Jun 14');
+    expect(date.className).toContain('text-text-3');
+    expect(date.className).not.toContain('text-text-2');
   });
 
   it('[P0] preserves role="listitem" and aria-label behavior with href', () => {

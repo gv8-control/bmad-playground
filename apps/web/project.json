@@ -9,6 +9,14 @@
     "build": {
       "dependsOn": ["^generate"]
     },
+    "dev": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/web",
+        "command": "next dev --port 3000"
+      }
+    },
     "lint": {
       "executor": "@nx/eslint:lint",
       "options": {
@@ -21,6 +29,12 @@
       "options": {
         "jestConfig": "apps/web/jest.config.ts",
         "passWithNoTests": true
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p apps/web/tsconfig.json"
       }
     }
   }

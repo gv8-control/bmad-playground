@@ -1,0 +1,275 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_at": "2026-07-13T19:30:00.000Z",
+  "repo": "bmad-easy",
+  "collection_mode": "manual",
+  "collection_status": "COLLECTED",
+  "inventory_basis": "acceptance_criteria",
+  "gate_basis": "priority_thresholds",
+  "source_sha": "8b0896d678da553d8bd4d7f083f88f8deafc5246",
+  "target": {
+    "type": "epic",
+    "id": "epic-5",
+    "label": "Epic 5: UX Mockup Fidelity — Close Visual Drift"
+  },
+  "decision_mode": "deterministic",
+  "evaluator": "Marius",
+  "confidence": "high",
+  "oracle": {
+    "resolution_mode": "formal_requirements",
+    "confidence": "high",
+    "sources": [
+      "_bmad-output/planning-artifacts/epics.md",
+      "_bmad-output/implementation-artifacts/5-1 through 5-5 story files",
+      "_bmad-output/test-artifacts/atdd-checklist-5-1 through 5-5",
+      "_bmad-output/test-artifacts/automate-validation-report-5-1 through 5-5",
+      "_bmad-output/test-artifacts/nfr-assessment-5-1.md",
+      "_bmad-output/test-artifacts/nfr-assessment-5-4.md",
+      "_bmad-output/implementation-artifacts/bug-hunt-epic-5-story-5-5-interleaved-pills.md",
+      "_bmad-output/project-context.md"
+    ],
+    "external_pointer_status": "not_used",
+    "synthetic": false
+  },
+  "coverage": {
+    "inventory": {
+      "covered": 48,
+      "total": 48,
+      "pct": 100
+    },
+    "priority_breakdown": {
+      "P0": {
+        "total": 46,
+        "covered": 46,
+        "pct": 100
+      },
+      "P1": {
+        "total": 2,
+        "covered": 2,
+        "pct": 100
+      },
+      "P2": {
+        "total": 0,
+        "covered": 0,
+        "pct": 100
+      },
+      "P3": {
+        "total": 0,
+        "covered": 0,
+        "pct": 100
+      }
+    },
+    "by_level": {
+      "e2e": {
+        "tests": 105,
+        "criteria_covered": 18
+      },
+      "component": {
+        "tests": 155,
+        "criteria_covered": 48
+      },
+      "unit": {
+        "tests": 15,
+        "criteria_covered": 15
+      },
+      "other": {
+        "tests": 0,
+        "criteria_covered": 0
+      }
+    }
+  },
+  "tests": {
+    "files": 28,
+    "cases": 165,
+    "skipped_cases": 0,
+    "fixme_cases": 0,
+    "pending_cases": 0
+  },
+  "risk_summary": {
+    "critical_open": 0,
+    "high_open": 0,
+    "medium_open": 3,
+    "low_open": 11
+  },
+  "heuristics": {
+    "endpoint_gaps": 0,
+    "auth_negative_path_status": "not_applicable",
+    "error_path_status": "present",
+    "ui_journey_status": "present",
+    "ui_state_status": "present"
+  },
+  "blockers": [],
+  "concerns": [
+    {
+      "id": "FIXED-CONCERN-5.4-AC7",
+      "severity": "FIXED",
+      "ac": "5.4-AC7",
+      "description": "no-scrollbar class was missing from full-width artifact list pane (artifacts/page.tsx:124). FIXED in 2026-07-13 bug-hunt: class added + test added at artifacts/page.test.tsx:265-269. Was the primary driver of the prior 2026-07-12 CONCERNS decision.",
+      "remediation": "Completed"
+    },
+    {
+      "id": "CONCERN-5.5-M1",
+      "severity": "MEDIUM",
+      "ac": "5.5-AC1, 5.5-AC10",
+      "description": "AC-1 inline-position tests use textContent.contains() — verifies string presence but not RELATIVE ORDER. AC contract is 'at the EXACT POSITION the tool call occurred'. A future regression randomizing segment order would not be caught. Backend test agent.service.unit.spec.ts:1374-1380 DOES verify order via segmentTypes.indexOf('tool_call') with adjacent text segments — frontend should mirror this approach.",
+      "remediation": "Replace toContain(...) with DOTALL regex toMatch(/Before.*Bash.*After/s) or compareDocumentPosition DOM walking in ConversationPane.test.tsx (4 tests) and AgentMessage.test.tsx (1 test)"
+    },
+    {
+      "id": "CONCERN-5.5-M2",
+      "severity": "MEDIUM",
+      "ac": "5.5-AC8",
+      "description": "TOOL_CALL_END handler (ConversationPane.tsx:389-413) unconditionally overwrites tool_call segment status to 'completed' — could mask an already-set 'error' state if TOOL_CALL_RESULT arrives out-of-order. Currently unreachable via AG-UI protocol (content_block_stop precedes tool_result), but real — defense-in-depth missing.",
+      "remediation": "Add guard: status: s.toolCall.status === 'error' ? 'error' : 'completed' as const"
+    },
+    {
+      "id": "CONCERN-5.5-M3",
+      "severity": "MEDIUM",
+      "ac": "5.5-AC9",
+      "description": "AgentServiceFake (agent-service.fake.ts:186-203) awaits working tree check inline, while production agent.service.ts:638-660 fires it as fire-and-forget promise pushed to pendingClassifierPromises. Test-seam divergence — fake is more deterministic than production. Timing-dependent bugs would pass in fake-based tests but fail in production.",
+      "remediation": "Mirror pendingClassifierPromises pattern in fake's runTurn loop"
+    },
+    {
+      "id": "CONCERN-5.3-AC5",
+      "severity": "LOW",
+      "ac": "5.3-AC5",
+      "description": "Branded placeholder 'Message bmad-easy...' not wired up by parent component. Implementation sets default to 'Message...' (tested), but branded variant is never passed. Implementation gap, not test gap. Deferred per DP-5.",
+      "remediation": "Wire placeholder prop on ChatInput in new-conversation context"
+    },
+    {
+      "id": "CONCERN-5.2-AC10",
+      "severity": "LOW",
+      "ac": "5.2-AC10",
+      "description": "Tests cover only zero-conversation case for top-clustered nav links. jsdom cannot test scroll behavior with conversations filling the viewport.",
+      "remediation": "Add E2E layout test with conversations if needed"
+    },
+    {
+      "id": "CONCERN-NFR-5.4",
+      "severity": "MEDIUM",
+      "ac": "NFR",
+      "description": "NFR-5.4 PASS WITH CONCERNS: 1 remaining Medium finding (missing select projection on repoConnection.findUnique — pre-existing, not introduced by Epic 5). The AC-7 full-width pane gap finding is now FIXED.",
+      "remediation": "Add select projection to repoConnection.findUnique call"
+    },
+    {
+      "id": "CONCERN-5.5-L1",
+      "severity": "LOW",
+      "ac": "5.5-AC9",
+      "description": "AgentServiceFake segments persistence test (agent.service.spec.ts:184-202) asserts only shape (toHaveProperty('segments') + Array.isArray), not contents. A regression persisting empty segments: [] would still pass.",
+      "remediation": "Extend test to assert segment contents match script events"
+    },
+    {
+      "id": "CONCERN-5.5-L2",
+      "severity": "LOW",
+      "ac": "5.5-AC9",
+      "description": "agent.service.unit.spec.ts:1413 uses shallow toHaveProperty('status') instead of toBe('completed'). A regression to 'running' or undefined would still pass.",
+      "remediation": "Replace toHaveProperty('status') with expect(toolCallSegment.toolCall.status).toBe('completed')"
+    },
+    {
+      "id": "CONCERN-5.5-L3",
+      "severity": "LOW",
+      "ac": "5.5-AC8",
+      "description": "TEXT_MESSAGE_CONTENT handler (ConversationPane.tsx:280-304) silently drops delta when streamingMessageIdRef.current is null (if messageId guard fails). Unreachable in normal AG-UI flow. Defense-in-depth missing.",
+      "remediation": "Optional: log console.warn when guard fails, or create empty streaming message on delta-without-START"
+    },
+    {
+      "id": "CONCERN-5.5-L4",
+      "severity": "LOW",
+      "ac": "5.5-AC9",
+      "description": "Resume path (conversations/[conversationId]/page.tsx:44) casts DB JSON to MessageSegment[] without runtime validation. Per Story 5.5 DP-3 decision, no runtime validation needed for MVP. Defense-in-depth missing — malformed persisted data would crash AgentMessage.tsx:131.",
+      "remediation": "Add Array.isArray guard: segments: Array.isArray(turn.segments) ? (turn.segments as MessageSegment[]) : undefined"
+    },
+    {
+      "id": "CONCERN-5.5-L5",
+      "severity": "LOW",
+      "ac": "5.5-AC10",
+      "description": "AgentMessage.tsx:99 uses index-based React keys (key={`text-${index}`}) for text segments. Anti-pattern — unstable when array is reordered or inserted at non-end positions. Currently inert (segments are append-only).",
+      "remediation": "Use stable id (crypto.randomUUID()) or composite key derived from content"
+    },
+    {
+      "id": "CONCERN-5.5-L6",
+      "severity": "LOW",
+      "ac": "5.5-AC6",
+      "description": "MANUAL_SAVE_SUCCEEDED and MANUAL_SAVE_FAILED handlers (ConversationPane.tsx:543-693) contain ~150 lines of duplicated structure. Only differences: status, semantic, errorMessage. Code-quality concern — divergence risk on future edits.",
+      "remediation": "Extract buildManualSaveSegment(toolCallId, status, semantic?, errorMessage?) helper"
+    },
+    {
+      "id": "CONCERN-EPIC5-L6",
+      "severity": "LOW",
+      "ac": "5.4-AC7",
+      "description": "no-scrollbar panels (SideNavigation, ChatMessageList, artifacts/page) lack keyboard scrollability — no tabIndex={0} or role=region with aria-label. Pre-existing accessibility gap.",
+      "remediation": "Add tabIndex={0}, role=region, aria-label to scrollable panels"
+    },
+    {
+      "id": "CONCERN-EPIC5-L8",
+      "severity": "LOW",
+      "ac": "5.3-AC9",
+      "description": "SlashCommandPicker header uses role=presentation — may benefit from role=heading. Pre-existing ARIA concern.",
+      "remediation": "Evaluate appropriate ARIA role for the picker header"
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "HIGH",
+      "action": "Fix M-new-1 (AC-1 false-green tests) — replace textContent.contains with DOTALL regex or compareDocumentPosition in ConversationPane.test.tsx (4 tests) and AgentMessage.test.tsx (1 test)",
+      "requirements": ["5.5-AC1", "5.5-AC10"]
+    },
+    {
+      "priority": "HIGH",
+      "action": "Commit the bug-hunt fixes (uncommitted in working tree): no-scrollbar class + test, ChatMessageList auto-scroll deps + aria-live assertion, RepositoryUrlForm maxLength test",
+      "requirements": []
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Fix M-new-2 (TOOL_CALL_END status overwrite) — add guard to preserve 'error' state if already set",
+      "requirements": ["5.5-AC8"]
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Fix M-new-3 (AgentServiceFake divergence) — mirror pendingClassifierPromises pattern in fake's runTurn loop",
+      "requirements": ["5.5-AC9"]
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Run E2E test suite against running dev server + database + sandbox infrastructure to verify all 4 E2E files (including story-5-5-inline-pills with 7 active tests) pass",
+      "requirements": []
+    },
+    {
+      "priority": "LOW",
+      "action": "Wire up branded placeholder 'Message bmad-easy...' on ChatInput in new-conversation context (AC-5, Story 5.3)",
+      "requirements": ["5.3-AC5"]
+    },
+    {
+      "priority": "LOW",
+      "action": "Address pre-existing NFR finding: add select projection to repoConnection.findUnique",
+      "requirements": []
+    },
+    {
+      "priority": "LOW",
+      "action": "Add keyboard scrollability to no-scrollbar panels (tabIndex=0, role=region, aria-label)",
+      "requirements": []
+    },
+    {
+      "priority": "LOW",
+      "action": "Address Story 5.5 bug-hunt Low findings (L1 shallow spec test, L2 shallow status assertion, L3 silent drop, L4 unvalidated JSON cast, L5 index-based React keys, L6 manual-save handler duplication) as backlog items",
+      "requirements": []
+    }
+  ],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix-epic-5.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  },
+  "gate_status": "PASS",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "100%",
+    "p0_status": "MET",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "100%",
+    "p1_status": "MET",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "100%",
+    "overall_status": "MET"
+  }
+}

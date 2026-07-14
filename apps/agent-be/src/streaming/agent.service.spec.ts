@@ -6,6 +6,9 @@
  * Covers: AC-1 (agent response persisted as Turn on RUN_FINISHED),
  * AC-3 (stopAgent stops the run — returns stopped:true, emits RUN_FINISHED),
  * error handling (RUN_ERROR).
+ * Story 5.5 covers: AC-9 (AgentServiceFake segments persistence — fake builds
+ * segments array alongside accumulatedText, persists segments to Turn row).
+ * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { Test } from '@nestjs/testing';
 import { ConversationsService } from '../conversations/conversations.service';
@@ -168,6 +171,46 @@ describe('AgentService (via ConversationsService integration)', () => {
       const result = await service.stopAgent('conv-1', 'user-1');
 
       expect(result).toEqual({ conversationId: 'conv-1', stopped: true });
+    });
+  });
+
+  // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
+  //
+  // GREEN PHASE: tests are active and passing.
+  //
+  // AC-9: AgentServiceFake persists segments alongside content
+
+  describe('[P0] Story 5.5 — AgentServiceFake segments persistence', () => {
+    it('[P0] persists segments alongside content in Turn row', async () => {
+      await provisionAndWait();
+
+      agentFake.setToolCallScript('Bash', 'git status', 'nothing to commit');
+
+      await service.sendTurn('conv-1', 'user-1', 'check the repo');
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      const assistantTurnCall = mockPrisma.turn.create.mock.calls.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (call: any[]) => call[0]?.data?.role === 'assistant',
+      );
+
+      expect(assistantTurnCall).toBeDefined();
+      expect(assistantTurnCall[0].data).toHaveProperty('content');
+      expect(assistantTurnCall[0].data).toHaveProperty('segments');
+      expect(Array.isArray(assistantTurnCall[0].data.segments)).toBe(true);
+      expect(assistantTurnCall[0].data.segments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'tool_call',
+            toolCall: expect.objectContaining({
+              toolName: 'Bash',
+              input: 'git status',
+              output: 'nothing to commit',
+            }),
+          }),
+        ]),
+      );
     });
   });
 });

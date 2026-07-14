@@ -23,6 +23,7 @@ export default async function ArtifactsPage({
 
   const repoConnection = await getPrisma().repoConnection.findUnique({
     where: { userId: session.userId },
+    select: { id: true },
   });
 
   if (!repoConnection) {
@@ -81,14 +82,16 @@ export default async function ArtifactsPage({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex-shrink-0">
-        <Breadcrumb />
-        <h1 tabIndex={-1} className="px-8 text-xl font-semibold text-text-1">Artifact Browser</h1>
+      <header className="flex-shrink-0 border-b border-surface-raised pt-6 pb-4 px-8">
+        <div className="flex items-center gap-3">
+          <Breadcrumb />
+          <h1 tabIndex={-1} className="text-xl font-semibold text-text-1">Artifact Browser</h1>
+        </div>
       </header>
       {credentialFailed && <CredentialErrorBanner />}
       {selectedArtifactId ? (
         <div className="flex flex-1 overflow-hidden">
-          <div className="w-[280px] flex-shrink-0 border-r border-border-subtle overflow-y-auto">
+          <div className="w-[280px] flex-shrink-0 border-r border-surface-raised overflow-y-auto no-scrollbar" tabIndex={0} role="region" aria-label="Artifacts list">
             {renderArtifacts.length === 0 ? (
               <p className="text-text-2 text-sm">
                 Start your first conversation to create an artifact.
@@ -118,7 +121,7 @@ export default async function ArtifactsPage({
           )}
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-8 pb-8">
+        <div className="flex-1 overflow-y-auto no-scrollbar px-8 pb-8" tabIndex={0} role="region" aria-label="Artifacts list">
           {renderArtifacts.length === 0 ? (
             <p className="text-text-2 text-sm">
               Start your first conversation to create an artifact.
