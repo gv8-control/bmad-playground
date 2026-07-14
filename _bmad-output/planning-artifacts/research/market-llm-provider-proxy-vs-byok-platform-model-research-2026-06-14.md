@@ -496,4 +496,4 @@ Common pattern: BYOK is available but not promoted; accessible via settings or e
 **Source Verification:** All major claims cited with current sources
 **Confidence Level:** High for strategic direction; Medium for specific financial targets
 
-_This research document informs the monetization and integration architecture decisions for bmad-easy and should be read alongside the PRD (`_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md`) and the token cost research (`_bmad-output/planning-artifacts/research/technical-bmad-session-token-consumption-and-cost-claude-sonnet-4-6-research-2026-06-14.md`)._
+_This research document informs the monetization and integration architecture decisions for bmad-easy and should be read alongside the PRD (`_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md`)._

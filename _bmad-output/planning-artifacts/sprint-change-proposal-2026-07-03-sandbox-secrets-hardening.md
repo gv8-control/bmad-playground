@@ -58,8 +58,8 @@ None yet — Epic 3 and Epic 4 are both still `backlog`; no code exists to migra
 
 **Location:** frontmatter, after line 15.
 
-**OLD (last two frontmatter entries):**
-> `- '_bmad-output/planning-artifacts/research/technical-docker-per-session-daytona-ai-agent-isolation-research-2026-06-12.md'`
+**OLD (last frontmatter entry):**
+> `- '_bmad-output/planning-artifacts/research/technical-programmatic-claude-code-agent-sdk-research-2026-06-11.md'`
 
 **NEW (append):**
 > `- '_bmad-output/planning-artifacts/research/technical-network-security-between-agent-be-and-daytona-sandbox-research-2026-06-16.md'`
