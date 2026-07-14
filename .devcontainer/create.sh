@@ -9,8 +9,8 @@ npm install -g nx pm2 opencode-ai @playwright/cli@latest n8n@2.26.8
 playwright-cli install --skills
 npx playwright install chrome
 
-curl -fsSL https://github.com/daytonaio/daytona/releases/latest/download/daytona-linux-amd64 -o /usr/local/bin/daytona
-chmod +x /usr/local/bin/daytona
+sudo curl -fsSL https://github.com/daytonaio/daytona/releases/latest/download/daytona-linux-amd64 -o /usr/local/bin/daytona
+sudo chmod +x /usr/local/bin/daytona
 # Authenticate Daytona CLI (for MCP server) — key comes from .env
 set -a; . .env; [ -f .env.local ] && . .env.local; set +a
 if [ -n "$DAYTONA_API_KEY" ]; then
