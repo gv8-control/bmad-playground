@@ -202,6 +202,7 @@ describe('ConversationPage — conversation rendering (AC-4)', () => {
     expect(mockTurnFindMany).toHaveBeenCalledWith({
       where: { conversationId: 'conv-1' },
       orderBy: { createdAt: 'asc' },
+      take: 100,
       select: { id: true, role: true, content: true, segments: true, createdAt: true },
     });
   });

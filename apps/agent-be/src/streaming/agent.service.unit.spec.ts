@@ -34,6 +34,7 @@ import { AgentService } from './agent.service';
 import type { SandboxServiceFake } from '../../test/helpers/sandbox-service.fake';
 
 import type { Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { MessageSegment } from '@bmad-easy/shared-types';
 import {
   createMockQuery,
   makeQueryFromGenerator,
@@ -195,12 +196,12 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     };
   }
 
-  function makeToolResultUserMessage(toolCallId: string, content: string): SDKMessage {
+  function makeToolResultUserMessage(toolCallId: string, content: string, isError = false): SDKMessage {
     return {
       type: 'user',
       message: {
         role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: toolCallId, content }],
+        content: [{ type: 'tool_result', tool_use_id: toolCallId, content, is_error: isError }],
       },
       parent_tool_use_id: null,
     };
@@ -416,6 +417,28 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(resultCalls).toHaveLength(1);
       expect(resultCalls[0][1].data).toHaveProperty('toolCallId', 'tc-1');
       expect(resultCalls[0][1].data).toHaveProperty('content', 'nothing to commit');
+    });
+
+    it('preserves error status when TOOL_CALL_RESULT arrives before TOOL_CALL_END (out-of-order)', async () => {
+      setupMockQuery([
+        makeToolUseBlockStart('tc-1', 'Bash'),
+        makeToolResultUserMessage('tc-1', 'command failed', true),
+        makeContentBlockStop(),
+      ]);
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(mockPrisma.turn.create).toHaveBeenCalledTimes(1);
+      const persistedSegments = mockPrisma.turn.create.mock.calls[0][0].data.segments as MessageSegment[];
+      const toolCallSeg = persistedSegments.find((s) => s.type === 'tool_call');
+      expect(toolCallSeg).toBeDefined();
+      expect(toolCallSeg).toHaveProperty('toolCall.status', 'error');
     });
   });
 

@@ -32,9 +32,20 @@ describe('ConversationLoading — skeleton (AC-4, route-focus management)', () =
     expect(skeleton).toBeInTheDocument();
   });
 
-  it('[P1] does not render interactive elements (loading state, not runtime state)', () => {
+  it('[P1] does not render buttons (loading state, not runtime state)', () => {
     render(<ConversationLoading />);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('[P0] renders Breadcrumb link in header (canonical depth-1 page header pattern)', () => {
+    render(<ConversationLoading />);
+    expect(screen.getByRole('link', { name: /Project Map/ })).toBeInTheDocument();
+  });
+
+  it('[P0] header has border-b border-surface-raised (canonical header pattern)', () => {
+    const { container } = render(<ConversationLoading />);
+    const header = container.querySelector('header');
+    expect(header?.className).toContain('border-b');
+    expect(header?.className).toContain('border-surface-raised');
   });
 });

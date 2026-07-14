@@ -55,6 +55,7 @@ export function AppShell({ user, conversations, children }: AppShellProps) {
     observer.observe(main, { childList: true, subtree: true });
 
     return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- route-change effect only; adding drawerOpen would re-run focus management and MutationObserver setup on every drawer toggle
   }, [pathname]);
 
   return (

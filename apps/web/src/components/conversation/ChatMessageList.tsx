@@ -72,6 +72,8 @@ export function ChatMessageList({
         className="h-full overflow-y-auto px-8 pt-6 pb-4 max-w-[824px] mx-auto w-full no-scrollbar"
         role="log"
         aria-live="polite"
+        aria-label="Conversation messages"
+        tabIndex={0}
         data-testid="chat-message-list"
       >
         {messages.length === 0 && !showSpinner && !errorMessage && (

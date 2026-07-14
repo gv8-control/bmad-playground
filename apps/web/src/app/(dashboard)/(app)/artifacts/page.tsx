@@ -91,7 +91,7 @@ export default async function ArtifactsPage({
       {credentialFailed && <CredentialErrorBanner />}
       {selectedArtifactId ? (
         <div className="flex flex-1 overflow-hidden">
-          <div className="w-[280px] flex-shrink-0 border-r border-surface-raised overflow-y-auto no-scrollbar">
+          <div className="w-[280px] flex-shrink-0 border-r border-surface-raised overflow-y-auto no-scrollbar" tabIndex={0} role="region" aria-label="Artifacts list">
             {renderArtifacts.length === 0 ? (
               <p className="text-text-2 text-sm">
                 Start your first conversation to create an artifact.
@@ -121,7 +121,7 @@ export default async function ArtifactsPage({
           )}
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto no-scrollbar px-8 pb-8">
+        <div className="flex-1 overflow-y-auto no-scrollbar px-8 pb-8" tabIndex={0} role="region" aria-label="Artifacts list">
           {renderArtifacts.length === 0 ? (
             <p className="text-text-2 text-sm">
               Start your first conversation to create an artifact.

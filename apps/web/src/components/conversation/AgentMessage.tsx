@@ -96,7 +96,7 @@ function renderSegment(segment: MessageSegment, index: number) {
   if (segment.type === 'text') {
     if (!segment.content) return null;
     return (
-      <Markdown key={`text-${index}`} remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      <Markdown key={segment.id ?? `text-${index}`} remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {segment.content}
       </Markdown>
     );

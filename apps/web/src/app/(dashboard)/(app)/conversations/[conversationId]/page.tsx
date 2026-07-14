@@ -33,6 +33,7 @@ export default async function ConversationPage({
   const turns = await getPrisma().turn.findMany({
     where: { conversationId },
     orderBy: { createdAt: 'asc' },
+    take: 100,
     select: { id: true, role: true, content: true, segments: true, createdAt: true },
   });
 
@@ -41,7 +42,11 @@ export default async function ConversationPage({
     role: turn.role as 'user' | 'assistant',
     content: turn.content,
     createdAt: turn.createdAt,
-    segments: Array.isArray(turn.segments) ? (turn.segments as MessageSegment[]) : undefined,
+    segments: Array.isArray(turn.segments)
+      ? (turn.segments as MessageSegment[]).map((s) =>
+          s.type === 'text' && !s.id ? { ...s, id: crypto.randomUUID() } : s
+        )
+      : undefined,
   }));
 
   const boundaryJwt = await mintBoundaryJwt(userId);

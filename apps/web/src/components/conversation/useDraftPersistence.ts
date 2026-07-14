@@ -11,11 +11,14 @@ function clampDraft(value: string): string {
 export function useDraftPersistence(conversationId: string | null) {
   const [draft, setDraft] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
   const loadedForIdRef = useRef<string | null | undefined>(undefined);
+  const skipNextSaveRef = useRef(false);
 
   const setDraftBounded = useCallback(
     (value: string | ((prev: string) => string)) => {
       setDraft((prev) => clampDraft(typeof value === 'function' ? value(prev) : value));
+      setQuotaExceeded(false);
     },
     [],
   );
@@ -52,13 +55,20 @@ export function useDraftPersistence(conversationId: string | null) {
   useEffect(() => {
     if (!loaded) return;
     if (loadedForIdRef.current !== conversationId) return;
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
     try {
       const key = conversationId
         ? `conversation-${conversationId}-draft`
         : 'new-conversation';
       localStorage.setItem(key, clampDraft(draft));
-    } catch {
-      // storage unavailable
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+        console.warn('[useDraftPersistence] localStorage quota exceeded — draft not saved');
+        setQuotaExceeded(true);
+      }
     }
   }, [draft, conversationId, loaded]);
 
@@ -71,8 +81,10 @@ export function useDraftPersistence(conversationId: string | null) {
     } catch {
       // storage unavailable
     }
+    skipNextSaveRef.current = true;
     setDraft('');
+    setQuotaExceeded(false);
   }
 
-  return { draft, setDraft: setDraftBounded, clearDraft } as const;
+  return { draft, setDraft: setDraftBounded, clearDraft, quotaExceeded } as const;
 }

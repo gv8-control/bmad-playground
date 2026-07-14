@@ -54,7 +54,7 @@ describe('OnboardingPage redirect logic', () => {
     mockAuth.mockResolvedValue(SESSION);
     mockFindUnique.mockResolvedValue(null);
     await OnboardingPage();
-    expect(mockFindUnique).toHaveBeenCalledWith({ where: { userId: SESSION.userId } });
+    expect(mockFindUnique).toHaveBeenCalledWith({ where: { userId: SESSION.userId }, select: { id: true } });
   });
 
   it('[P1] does not query the database when session is missing', async () => {

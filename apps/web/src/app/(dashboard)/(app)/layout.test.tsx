@@ -87,7 +87,7 @@ describe('AppLayout repo-connection guard', () => {
     mockAuth.mockResolvedValue(SESSION);
     mockFindUnique.mockResolvedValue(null);
     await expect(AppLayout({ children: CHILDREN })).rejects.toThrow('NEXT_REDIRECT');
-    expect(mockFindUnique).toHaveBeenCalledWith({ where: { userId: SESSION.userId } });
+    expect(mockFindUnique).toHaveBeenCalledWith({ where: { userId: SESSION.userId }, select: { id: true } });
   });
 
   it('[P1] does not query the database when session is missing', async () => {

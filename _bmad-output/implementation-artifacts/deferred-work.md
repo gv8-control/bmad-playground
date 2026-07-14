@@ -220,7 +220,7 @@ Chunk 1 of 4 — agent-be backend core. Failed layers: Edge Case Hunter (empty),
 
 ## Deferred from: code review of UX spec drift fixes (2026-07-05)
 
-- `Date.now()`-based message IDs (`msg-${Date.now()}`, `error-${Date.now()}`, `stream-error-${Date.now()}`, `user-${Date.now()}`) can collide when two SSE events land in the same millisecond, causing duplicate React keys and potential message overwrites. Story 5.5 replaced `tc-${Date.now()}` and `manual-save-${Date.now()}` with `crypto.randomUUID()` (via `safeUUID()` helper), but the remaining 4 patterns persist. See also line 373 for the `msg-${Date.now()}` subset tracked from Story 5.5's review. Pre-existing. [`apps/web/src/components/conversation/ConversationPane.tsx`]
+- `Date.now()`-based message IDs (`msg-${Date.now()}`, `error-${Date.now()}`, `stream-error-${Date.now()}`, `user-${Date.now()}`) can collide when two SSE events land in the same millisecond, causing duplicate React keys and potential message overwrites. Story 5.5 replaced `tc-${Date.now()}` and `manual-save-${Date.now()}` with `crypto.randomUUID()` (via `safeUUID()` helper), but the remaining 4 patterns persist. Pre-existing. [`apps/web/src/components/conversation/ConversationPane.tsx`]
 - `ChatMessage.createdAt` typed as `Date` but may arrive as ISO string from JSON serialization across the server→client boundary, producing "Invalid Date" in `Intl.DateTimeFormat.format()`. Pre-existing — not caused by this change. [`apps/web/src/components/conversation/AgentMessage.tsx`, `UserMessage.tsx`]
 - Multiple system messages in a single render produce multiple `role="status"` live regions, causing repeated screen-reader announcements. Pre-existing — not caused by this change. [`apps/web/src/components/conversation/ChatMessageList.tsx`]
 
@@ -350,11 +350,7 @@ Four Playwright specs created (uncommitted) for the new real-service / multi-con
 - **AC-10 tests cover only zero-conversation case** — `SideNavigation.test.tsx` AC-10 tests use `conversations={[]}` exclusively. The top-clustered guarantee is most important when the conversation list is long, but no test exercises that scenario. jsdom cannot test scroll behavior; an E2E test with many conversations is needed. Deferred — real test gap but requires E2E layout testing.
 - **pm2 restart failure not checked** — `.devcontainer/import-workflows.sh:13` runs `pm2 restart n8n n8n-worker` without checking `$?`. If pm2 is not running, the healthz loop never succeeds (compounds the timeout issue). Out of scope for story 5.2 (devcontainer config, DP-5).
 - **EXTERNAL_HOOK_FILES path becomes stale for existing .env** — `.devcontainer/create.sh` uses `cp --update=none .env.example .env` which skips when `.env` exists. An existing `.env` retains its stale `EXTERNAL_HOOK_FILES` path after the `sed` line was removed. Out of scope for story 5.2 (devcontainer config, DP-5).
-- **`conversations/[conversationId]/loading.tsx` header doesn't match the canonical depth-1 page header structure** — uses `<header className="flex-shrink-0 px-8 py-6">` without `border-b border-surface-raised`, without `pt-6 pb-4` padding, without the `flex items-center gap-3` wrapper, and without rendering `<Breadcrumb />`. The `artifacts/loading.tsx` was updated during Story 5.2 review but this file was missed (NFR finding in story artifact, not previously transferred to deferred-work). Violates the canonical depth-1 page header pattern (project-context.md) and the loading.tsx skeleton-matching rule. [`apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/loading.tsx:4-6`]
-
 ## Deferred from: code review of 5-4-fix-token-usage-drift-and-token-config-gaps (2026-07-12)
-
-- `.no-scrollbar` panels not keyboard-scrollable — `SideNavigation.tsx:42`, `artifacts/page.tsx:93`, `ChatMessageList.tsx:75` hide scrollbars via `.no-scrollbar` but lack `tabIndex={0}` or `role="region"` on the scroll container. Keyboard-only users cannot scroll directly (only via focus-into-view on descendants). Pre-existing — panels never had keyboard scroll support before Story 5.4; AC-7 explicitly lists wheel/trackpad/touch, not keyboard. Hiding the scrollbar removes the visual affordance that more content exists below the fold, slightly worsening the pre-existing gap.
 
 ### Pattern violations surfaced by project-context.md update (2026-07-12)
 
@@ -370,7 +366,6 @@ Story 5.4 established design-system patterns now documented in `project-context.
 
 ## Deferred from: code review of story-5-5-interleave-tool-and-semantic-pills-within-the-agent-markdown-stream (2026-07-13)
 
-- **`msg-${Date.now()}` message ID collisions** — Multiple SSE events within the same millisecond produce duplicate `id` values for new ChatMessage entries (TOOL_CALL_START fallback, MANUAL_SAVE_SUCCEEDED/FAILED new-message paths). React keys derived from `msg.id` collide, breaking reconciliation. Spec Task 4.10 fixed tool-call segment keys (`tc-${Date.now()}` → `crypto.randomUUID()`) but the broader `msg-${Date.now()}` pattern for message IDs was explicitly deferred per DP-5. [`apps/web/src/components/conversation/ConversationPane.tsx:559,738,804`]
 - **Tool calls via SDK assistant message path never reach segments** — `processAssistantMessage` registers tool_use in `activeToolCalls` map but doesn't push a `{ type: 'tool_call' }` segment. If the SDK delivers tool_use via assistant message snapshots (not streaming events), the tool call is not captured in segments and the turn may not be persisted (guard `accumulatedText.length > 0 || hasToolCalls` fails). Scope boundary in spec prevents changing SSE event emission logic. Pre-existing gap — before Story 5.5, these tool calls were also not rendered. [`apps/agent-be/src/streaming/agent.service.ts:processAssistantMessage`]
 - **Turn not persisted on RUN_ERROR / circuit-breaker / non-abort exception** — `prisma.turn.create` is inside the try block; the catch block only emits RUN_ERROR. All streamed segments and accumulated text are lost. Pre-existing — before Story 5.5, accumulated text was also lost. More impactful now that segments carry tool pills. Fix: persist in a `finally` block. [`apps/agent-be/src/streaming/agent.service.ts:189-227`]
 - **Multiple text content blocks create separate chat bubbles during streaming but persist as one Turn** — `TEXT_MESSAGE_START` creates a new ChatMessage per content block. The backend persists one Turn with all segments. On reload, `AgentMessage` renders all segments in one bubble. UI differs before vs after reload. Pre-existing behavior, complex fix (requires turn-boundary tracking or message merging). [`apps/web/src/components/conversation/ConversationPane.tsx:244-271`]
@@ -381,3 +376,20 @@ Story 5.4 established design-system patterns now documented in `project-context.
 ## Deferred from: code review of story-5.5 second run (2026-07-13)
 
 - **Save pill renders SemanticPill with empty strings** — Manual save segments are created with `semantic: { artifactType: '', artifactTitle: '', viewHref: '' }`. Since `semantic` is a non-null object (truthy), `AgentMessage.renderSegment` renders `SemanticPill` with empty data instead of `ToolPill`. Pre-existing from original code (before Story 5.5), carried over through the rendering path change. Fix: use `semantic` only when `artifactType` is non-empty, or don't set `semantic` for manual saves. [`apps/web/src/components/conversation/ConversationPane.tsx` MANUAL_SAVE_SUCCEEDED handler]
+
+## Deferred from: Epic 5 Wave-1+2 closeout assessment (2026-07-13)
+
+Items from the consolidated open-issues register (`docs/open-issues.md`, deleted 2026-07-14) that are not tracked elsewhere. DW1-DW17 are tracked above in their original code-review sections. CF4 is tracked in Epic 6 Story 6.3 dev notes. CF3 audit findings (F1-F5) are tracked in Epic 6 Stories 6.1 and 6.4 dev notes. P2 (pattern-establishment all-files map) is tracked as an Epic 6 process note. P4 and P5 are tracked in Epic 6 Story 6.5 dev notes. The items below have no other home.
+
+### Medium Priority
+
+- **`messages.map()` unbound rendering (M3)** — `messages.map()` renders all messages with no bound. Story 5.5 amplifies this slightly — multiple Markdown instances per agent message (one per text segment). Architectural fix requires `react-window` or equivalent virtualization (1-2 day effort). Long-term; not Epic 6 blocking. [`apps/web/src/components/conversation/ChatMessageList.tsx:98-130`]
+
+### Low Priority
+
+- **`SlashCommandPicker` header `role="presentation"` inside `role="listbox"` (L7)** — A `role="presentation"` div is a non-permitted child of `role="listbox"` (which only permits `role="option"` and `role="group"` children). Theoretical ARIA violation — screen readers that honor `role="presentation"` will not see the header. Fix: restructure the picker so the header is a sibling of (not a child of) the `role="listbox"` element, or document as an accepted deviation. Low priority; no behavioral impact today. [`apps/web/src/components/conversation/SlashCommandPicker.tsx:37`]
+- **5.3 AC-5 branded placeholder not wired up (L9)** — Story 5.3 AC-5 specifies two placeholder states: "Message..." (active) and "Message bmad-easy..." (branded). The implementation defaults to "Message..." but the parent component never passes the branded variant on the new-conversation surface. Deferred per DP-5. Fix: wire the branded placeholder in the `conversations/new` page. [`apps/web/src/components/conversation/ChatInput.tsx` / `ConversationPane.tsx`]
+
+### Process and Infrastructure
+
+- **Story 5.2 missing test-review-validation report (P3)** — Stories 5.1, 5.3, 5.4, 5.5 all have test-review-validation reports. Story 5.2 does not. Fix: run `bmad-testarch-test-review` against the Story 5.2 test files. Low priority. Owner: Murat (Master Test Architect).

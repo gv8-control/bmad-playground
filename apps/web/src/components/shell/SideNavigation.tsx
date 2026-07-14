@@ -39,7 +39,7 @@ export function SideNavigation({ user, conversations = [] }: SideNavigationProps
       </Link>
 
       <div className="flex-1 flex flex-col overflow-hidden py-1">
-        <div data-testid="conversation-list" className="flex flex-col gap-1 overflow-y-auto no-scrollbar py-1">
+        <div data-testid="conversation-list" className="flex flex-col gap-1 overflow-y-auto no-scrollbar py-1" tabIndex={0} role="region" aria-label="Side navigation">
           {conversations
             .filter((c) => c.title !== null)
             .map((c) => (

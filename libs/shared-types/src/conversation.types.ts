@@ -23,5 +23,5 @@ export interface ToolCallData {
 }
 
 export type MessageSegment =
-  | { type: 'text'; content: string }
+  | { type: 'text'; content: string; id?: string }
   | { type: 'tool_call'; toolCall: ToolCallData };

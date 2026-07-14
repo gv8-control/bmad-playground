@@ -105,6 +105,7 @@ export class AgentServiceFake implements IAgentService {
     let accumulatedText = '';
     const segments: MessageSegment[] = [{ type: 'text', content: '' }];
     let currentToolName: string | null = null;
+    const pendingPromises: Promise<unknown>[] = [];
 
     for (const event of this.script) {
       if (event.event === EventType.TEXT_MESSAGE_CONTENT) {
@@ -147,7 +148,7 @@ export class AgentServiceFake implements IAgentService {
           const seg = segments.find(
             (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
           );
-          if (seg && seg.type === 'tool_call') {
+          if (seg && seg.type === 'tool_call' && seg.toolCall.status !== 'error') {
             seg.toolCall.status = 'completed';
           }
         }
@@ -156,12 +157,17 @@ export class AgentServiceFake implements IAgentService {
       if (event.event === EventType.TOOL_CALL_RESULT) {
         const toolCallId = (event.data as { toolCallId?: string }).toolCallId;
         const content = (event.data as { content?: string }).content ?? '';
+        const isError = (event.data as { isError?: boolean }).isError === true;
         if (toolCallId) {
           const seg = segments.find(
             (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
           );
           if (seg && seg.type === 'tool_call') {
             seg.toolCall.output = content;
+            if (isError) {
+              seg.toolCall.status = 'error';
+              seg.toolCall.errorMessage = content;
+            }
           }
         }
       }
@@ -184,27 +190,34 @@ export class AgentServiceFake implements IAgentService {
       this.sessionEvents.emit(params.conversationId, event);
 
       if (event.event === EventType.TOOL_CALL_RESULT && currentToolName && FILE_MODIFYING_TOOLS.has(currentToolName)) {
-        try {
-          const status = await this.sandboxService.getWorkingTreeStatus(params.sandboxId);
-          if (status.dirty) {
-            this.sessionEvents.emit(params.conversationId, {
-              event: 'WORKING_TREE_DIRTY',
-              data: { files: status.files },
-            });
-          } else {
-            this.sessionEvents.emit(params.conversationId, {
-              event: 'WORKING_TREE_CLEAN',
-              data: {},
-            });
-          }
-        } catch {
-          // working tree check failure does not crash the fake run
-        }
+        const workingTreePromise = this.sandboxService
+          .getWorkingTreeStatus(params.sandboxId)
+          .then((status) => {
+            if (status.dirty) {
+              this.sessionEvents.emit(params.conversationId, {
+                event: 'WORKING_TREE_DIRTY',
+                data: { files: status.files },
+              });
+            } else {
+              this.sessionEvents.emit(params.conversationId, {
+                event: 'WORKING_TREE_CLEAN',
+                data: {},
+              });
+            }
+          })
+          .catch(() => {
+            // working tree check failure does not crash the fake run
+          });
+        pendingPromises.push(workingTreePromise);
       }
 
       if (this.streamDelay > 0) {
         await new Promise((r) => setTimeout(r, this.streamDelay));
       }
+    }
+
+    if (pendingPromises.length > 0) {
+      await Promise.allSettled(pendingPromises);
     }
 
     const hasRunFinished = this.script.some((e) => e.event === EventType.RUN_FINISHED);

@@ -214,3 +214,118 @@ describe('useDraftPersistence — MAX_DRAFT_SIZE guard', () => {
     expect(store['conversation-conv-1-draft']).toHaveLength(MAX_DRAFT_SIZE);
   });
 });
+
+// ─── L8: QuotaExceededError surfacing ──────────────────────────────────────
+//
+// When localStorage.setItem throws QuotaExceededError, the hook should
+// surface a user-facing flag instead of silently swallowing the error.
+
+describe('useDraftPersistence — QuotaExceededError handling', () => {
+  let store: Record<string, string>;
+
+  beforeEach(() => {
+    store = {};
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementation((key: string) => store[key] ?? null);
+    jest.spyOn(Storage.prototype, 'removeItem').mockImplementation((key: string) => {
+      delete store[key];
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('[P0] sets quotaExceeded to true when setItem throws QuotaExceededError', async () => {
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota exceeded', 'QuotaExceededError');
+    });
+
+    const { result } = renderHook(() => useDraftPersistence('conv-1'));
+
+    await waitFor(() => {
+      expect(result.current.draft).toBe('');
+    });
+
+    act(() => {
+      result.current.setDraft('some text');
+    });
+
+    await waitFor(() => {
+      expect(result.current.quotaExceeded).toBe(true);
+    });
+  });
+
+  it('[P0] resets quotaExceeded to false when setDraft is called after quota error', async () => {
+    let shouldThrow = true;
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string, value: string) => {
+      if (shouldThrow) {
+        throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      }
+      store[key] = value;
+    });
+
+    const { result } = renderHook(() => useDraftPersistence('conv-1'));
+
+    await waitFor(() => {
+      expect(result.current.draft).toBe('');
+    });
+
+    act(() => {
+      result.current.setDraft('some text');
+    });
+
+    await waitFor(() => {
+      expect(result.current.quotaExceeded).toBe(true);
+    });
+
+    shouldThrow = false;
+
+    act(() => {
+      result.current.setDraft('more text');
+    });
+
+    await waitFor(() => {
+      expect(result.current.quotaExceeded).toBe(false);
+    });
+  });
+
+  it('[P0] quotaExceeded is false by default', async () => {
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string, value: string) => {
+      store[key] = value;
+    });
+
+    const { result } = renderHook(() => useDraftPersistence('conv-1'));
+
+    await waitFor(() => {
+      expect(result.current.draft).toBe('');
+    });
+
+    expect(result.current.quotaExceeded).toBe(false);
+  });
+
+  it('clearDraft resets quotaExceeded to false', async () => {
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota exceeded', 'QuotaExceededError');
+    });
+
+    const { result } = renderHook(() => useDraftPersistence('conv-1'));
+
+    await waitFor(() => {
+      expect(result.current.draft).toBe('');
+    });
+
+    act(() => {
+      result.current.setDraft('some text');
+    });
+
+    await waitFor(() => {
+      expect(result.current.quotaExceeded).toBe(true);
+    });
+
+    act(() => {
+      result.current.clearDraft();
+    });
+
+    expect(result.current.quotaExceeded).toBe(false);
+  });
+});

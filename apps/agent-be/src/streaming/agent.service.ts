@@ -461,7 +461,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
           const seg = segments.find(
             (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
           );
-          if (seg && seg.type === 'tool_call') {
+          if (seg && seg.type === 'tool_call' && seg.toolCall.status !== 'error') {
             seg.toolCall.status = 'completed';
           }
           this.sessionEvents.emit(conversationId, {

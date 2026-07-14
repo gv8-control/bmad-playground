@@ -11,7 +11,7 @@ import type { WorkingTreeState } from './WorkingTreeIndicator';
 import { useDraftPersistence } from './useDraftPersistence';
 import { useConversationPresence } from '@/hooks/use-conversation-presence';
 import { CredentialErrorBanner } from '@/components/project-map/CredentialErrorBanner';
-import type { ChatMessage } from './types';
+import type { ChatMessage, ToolCallData } from './types';
 
 type SessionState = 'init' | 'provisioning' | 'ready' | 'error' | 'timeout' | 'reconnecting' | 'limit-reached';
 type AgentState = 'idle' | 'thinking' | 'tool-executing' | 'streaming';
@@ -23,6 +23,60 @@ function safeUUID(): string {
     return crypto.randomUUID();
   }
   return `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function buildManualSaveToolCall(
+  id: string,
+  status: 'completed' | 'error',
+  errorMessage?: string,
+): ToolCallData {
+  if (status === 'completed') {
+    return {
+      toolCallId: id,
+      toolName: 'Save',
+      status,
+      input: '',
+      output: '',
+      semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
+    };
+  }
+  return {
+    toolCallId: id,
+    toolName: 'Save',
+    status,
+    input: '',
+    output: '',
+    errorMessage: errorMessage ?? 'Save failed',
+  };
+}
+
+function insertManualSaveSegment(
+  toolCall: ToolCallData,
+  streamingMessageId: string | null,
+): (prev: ChatMessage[]) => ChatMessage[] {
+  return (prev) => {
+    const targetId = streamingMessageId ?? prev.findLast((m) => m.role === 'assistant')?.id;
+    if (targetId) {
+      return prev.map((m) => {
+        if (m.id !== targetId) return m;
+        if (!m.segments) {
+          return { ...m, segments: [{ type: 'tool_call' as const, toolCall }] };
+        }
+        const existingIdx = m.segments.findIndex(
+          (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCall.toolCallId,
+        );
+        if (existingIdx >= 0) return m;
+        return { ...m, segments: [...m.segments, { type: 'tool_call' as const, toolCall }] };
+      });
+    }
+    return [...prev, {
+      id: `msg-${Date.now()}`,
+      role: 'assistant' as const,
+      content: '',
+      createdAt: new Date(),
+      segments: [{ type: 'tool_call' as const, toolCall }],
+    }];
+  };
 }
 
 export interface ConversationPaneProps {
@@ -68,7 +122,7 @@ export function ConversationPane({
   const retryingRef = useRef(false);
   const unmountedRef = useRef(false);
 
-  const { draft, setDraft, clearDraft } = useDraftPersistence(
+  const { draft, setDraft, clearDraft, quotaExceeded } = useDraftPersistence(
     conversationIdRef.current,
   );
 
@@ -89,6 +143,7 @@ export function ConversationPane({
         clearTimeout(timeoutRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: startSession is a component function that changes every render; adding it would re-run the effect and create duplicate EventSource connections
   }, []);
 
   useEffect(() => {
@@ -111,6 +166,7 @@ export function ConversationPane({
     if (state === 'ready' && conversationIdRef.current) {
       void fetchSkills(conversationIdRef.current);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchSkills is a component function; effect should only fire when state transitions to 'ready', not on every render
   }, [state]);
 
   useEffect(() => {
@@ -121,6 +177,7 @@ export function ConversationPane({
         setNewMessageCount((prev) => prev + 1);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally depends on messages.length only; using messages would re-fire on every streaming content update and inflate newMessageCount
   }, [messages.length]);
 
   async function startSession() {
@@ -268,7 +325,7 @@ export function ConversationPane({
               content: '',
               createdAt: new Date(),
               isStreaming: true,
-              segments: [{ type: 'text' as const, content: '' }],
+              segments: [{ type: 'text' as const, content: '', id: safeUUID() }],
             },
           ];
         });
@@ -286,13 +343,13 @@ export function ConversationPane({
           setMessages((prev) =>
             prev.map((m) => {
               if (m.id !== messageId) return m;
-              if (!m.segments) return { ...m, content: m.content + delta, segments: [{ type: 'text' as const, content: m.content + delta }] };
+              if (!m.segments) return { ...m, content: m.content + delta, segments: [{ type: 'text' as const, content: m.content + delta, id: safeUUID() }] };
               const newSegments = [...m.segments];
               const last = newSegments[newSegments.length - 1];
               if (last && last.type === 'text') {
-                newSegments[newSegments.length - 1] = { type: 'text' as const, content: last.content + delta };
+                newSegments[newSegments.length - 1] = { type: 'text' as const, content: last.content + delta, id: last.id ?? safeUUID() };
               } else {
-                newSegments.push({ type: 'text' as const, content: delta });
+                newSegments.push({ type: 'text' as const, content: delta, id: safeUUID() });
               }
               return { ...m, content: m.content + delta, segments: newSegments };
             }),
@@ -330,7 +387,7 @@ export function ConversationPane({
           setMessages((prev) =>
             prev.map((m) => {
               if (m.id !== streamingId) return m;
-              const segs = m.segments ?? [{ type: 'text' as const, content: '' }];
+              const segs = m.segments ?? [{ type: 'text' as const, content: '', id: safeUUID() }];
               const existingIdx = segs.findIndex(
                 (s) => s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId,
               );
@@ -354,7 +411,7 @@ export function ConversationPane({
               content: '',
               createdAt: new Date(),
               segments: [
-                { type: 'text' as const, content: '' },
+                { type: 'text' as const, content: '', id: safeUUID() },
                 { type: 'tool_call' as const, toolCall: { toolCallId, toolName: toolCallName, status: 'running' as const, input: '', output: '' } },
               ],
             }];
@@ -554,67 +611,8 @@ export function ConversationPane({
           clearTimeout(saveFallbackTimeoutRef.current);
           saveFallbackTimeoutRef.current = null;
         }
-        setMessages((prev) => {
-          const streamingId = streamingMessageIdRef.current;
-          const targetId = streamingId ?? prev.findLast((m) => m.role === 'assistant')?.id;
-          if (targetId) {
-            return prev.map((m) => {
-              if (m.id !== targetId) return m;
-              if (!m.segments) {
-                return {
-                  ...m,
-                  segments: [{
-                    type: 'tool_call' as const,
-                    toolCall: {
-                      toolCallId: id,
-                      toolName: 'Save',
-                      status: 'completed' as const,
-                      input: '',
-                      output: '',
-                      semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
-                    },
-                  }],
-                };
-              }
-              const existingIdx = m.segments.findIndex(
-                (s) => s.type === 'tool_call' && s.toolCall.toolCallId === id,
-              );
-              if (existingIdx >= 0) return m;
-              return {
-                ...m,
-                segments: [...m.segments, {
-                  type: 'tool_call' as const,
-                  toolCall: {
-                    toolCallId: id,
-                    toolName: 'Save',
-                    status: 'completed' as const,
-                    input: '',
-                    output: '',
-                    semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
-                  },
-                }],
-              };
-            });
-          }
-          const newMsg: ChatMessage = {
-            id: `msg-${Date.now()}`,
-            role: 'assistant' as const,
-            content: '',
-            createdAt: new Date(),
-            segments: [{
-              type: 'tool_call' as const,
-              toolCall: {
-                toolCallId: id,
-                toolName: 'Save',
-                status: 'completed' as const,
-                input: '',
-                output: '',
-                semantic: { artifactType: '', artifactTitle: '', viewHref: '' },
-              },
-            }],
-          };
-          return [...prev, newMsg];
-        });
+        const toolCall = buildManualSaveToolCall(id, 'completed');
+        setMessages(insertManualSaveSegment(toolCall, streamingMessageIdRef.current));
         setWorkingTreeState('clean');
       } catch {
         // ignore parse errors
@@ -630,67 +628,8 @@ export function ConversationPane({
           clearTimeout(saveFallbackTimeoutRef.current);
           saveFallbackTimeoutRef.current = null;
         }
-        setMessages((prev) => {
-          const streamingId = streamingMessageIdRef.current;
-          const targetId = streamingId ?? prev.findLast((m) => m.role === 'assistant')?.id;
-          if (targetId) {
-            return prev.map((m) => {
-              if (m.id !== targetId) return m;
-              if (!m.segments) {
-                return {
-                  ...m,
-                  segments: [{
-                    type: 'tool_call' as const,
-                    toolCall: {
-                      toolCallId: id,
-                      toolName: 'Save',
-                      status: 'error' as const,
-                      input: '',
-                      output: '',
-                      errorMessage: error ?? 'Save failed',
-                    },
-                  }],
-                };
-              }
-              const existingIdx = m.segments.findIndex(
-                (s) => s.type === 'tool_call' && s.toolCall.toolCallId === id,
-              );
-              if (existingIdx >= 0) return m;
-              return {
-                ...m,
-                segments: [...m.segments, {
-                  type: 'tool_call' as const,
-                  toolCall: {
-                    toolCallId: id,
-                    toolName: 'Save',
-                    status: 'error' as const,
-                    input: '',
-                    output: '',
-                    errorMessage: error ?? 'Save failed',
-                  },
-                }],
-              };
-            });
-          }
-          const newMsg: ChatMessage = {
-            id: `msg-${Date.now()}`,
-            role: 'assistant' as const,
-            content: '',
-            createdAt: new Date(),
-            segments: [{
-              type: 'tool_call' as const,
-              toolCall: {
-                toolCallId: id,
-                toolName: 'Save',
-                status: 'error' as const,
-                input: '',
-                output: '',
-                errorMessage: error ?? 'Save failed',
-              },
-            }],
-          };
-          return [...prev, newMsg];
-        });
+        const toolCall = buildManualSaveToolCall(id, 'error', error);
+        setMessages(insertManualSaveSegment(toolCall, streamingMessageIdRef.current));
         setWorkingTreeState('dirty');
       } catch {
         // ignore parse errors
@@ -1061,6 +1000,11 @@ export function ConversationPane({
       />
       <div className="flex-shrink-0 border-t border-border">
         <div className="px-8 py-4 max-w-[824px] mx-auto w-full">
+          {quotaExceeded && (
+            <p className="text-negative text-sm mb-2" role="alert">
+              Draft could not be saved — browser storage is full.
+            </p>
+          )}
           <div ref={pickerContainerRef} className="relative">
             {pickerOpen && (
               <SlashCommandPicker
