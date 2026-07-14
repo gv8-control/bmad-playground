@@ -20,7 +20,7 @@ inputDocuments:
   - '_bmad-output/test-artifacts/traceability/gate-decision-epic-5.json'
   - '_bmad-output/implementation-artifacts/bug-hunt-epic-5-ux-mockup-fidelity-close-visual-drift.md'
   - '_bmad-output/test-artifacts/test-fidelity-audit-2026-07-12.md'
-  - '_bmad-output/test-artifacts/nfr-assessment-full-20260707.md'
+  - '_bmad-output/test-artifacts/nfr-assessment.md'
   - '_bmad-output/test-artifacts/nfr-assessment-5-1.md'
   - '_bmad-output/test-artifacts/nfr-assessment-5-4.md'
   - '_bmad-output/project-context.md'
@@ -83,11 +83,11 @@ Tier-based load from `tea-index.csv`:
 - Gate decision: `traceability/gate-decision-epic-5.json` (epic gate = CONCERNS)
 - Bug hunt: `bug-hunt-epic-5-...md` (L3 — conversation loading skeleton drift; also "NFR-5.2 LOW")
 - Test fidelity audit: `test-fidelity-audit-2026-07-12.md` (epic verdict PASS)
-- Epic-level NFR assessment for Epics 1-3: `nfr-assessment-full-20260707.md` (consolidated source of NFR thresholds)
+- Epic-level NFR assessment for Epics 1-3: `nfr-assessment.md` (consolidated source of NFR thresholds)
 - Per-story NFR siblings: `nfr-assessment-5-1.md` (PASS), `nfr-assessment-5-4.md` (PASS-WITH-CONCERNS)
 - Project context: `_bmad-output/project-context.md` (testing conventions, security headers, `select` projections, take limits)
 
-### NFR Thresholds (inherited from `nfr-assessment-full-20260707.md`)
+### NFR Thresholds (inherited from `nfr-assessment.md`)
 
 | NFR | Threshold | Source | Status for Story 5.2 |
 | --- | --- | --- | --- |
@@ -122,7 +122,7 @@ Epic 5 is a visual-drift-fix epic. Story 5.2 is exclusively presentational: CSS 
 
 - `conversation.findFirst` at `conversations/[conversationId]/page.tsx:23-26` is tenant-scoped: `where: { id: conversationId, userId }`. The `userId` filter IS the tenant authorization check (NFR-S2). PASS.
 - No new authentication, authorization, or session management changes. Open-redirect prevention on sign-in page (assessed in NFR-5.1) is untouched.
-- No security headers (`main.ts`, `middleware.ts`, `next.config.js`) modified. The platform-wide `helmet()`/CSP/HSTS gap (documented in `nfr-assessment-full-20260707.md` Security Evidence, line 260-262) is pre-existing, project-wide, and out of scope for Story 5.2.
+- No security headers (`main.ts`, `middleware.ts`, `next.config.js`) modified. The platform-wide `helmet()`/CSP/HSTS gap (documented in `nfr-assessment.md` Security Evidence, line 260-262) is pre-existing, project-wide, and out of scope for Story 5.2.
 - No user input surfaces modified — Story 5.2 changes neither form inputs nor Server Action argument handling.
 - No credential / token handling modified.
 
@@ -286,7 +286,7 @@ None. No CRITICAL or HIGH priority issues found.
 
 ## Monitoring Hooks
 
-Story 5.2 is presentational — no monitoring hooks specific to it. The project-wide gaps documented in `nfr-assessment-full-20260707.md` (no APM, no `/metrics`, no distributed tracing, no MTTR tracking) are inherited and not duplicated here.
+Story 5.2 is presentational — no monitoring hooks specific to it. The project-wide gaps documented in `nfr-assessment.md` (no APM, no `/metrics`, no distributed tracing, no MTTR tracking) are inherited and not duplicated here.
 
 ## Fail-Fast Mechanisms
 
@@ -365,7 +365,7 @@ nfr_assessment:
 - **PRD:** `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md`
 - **Architecture:** `_bmad-output/planning-artifacts/architecture.md`
 - **Epics:** `_bmad-output/planning-artifacts/epics.md`
-- **NFR Siblings:** `nfr-assessment-5-1.md` (PASS), `nfr-assessment-5-4.md` (PASS-WITH-CONCERNS), `nfr-assessment-full-20260707.md` (CONCERNS — Epics 1-3 baseline)
+- **NFR Siblings:** `nfr-assessment-5-1.md` (PASS), `nfr-assessment-5-4.md` (PASS-WITH-CONCERNS), `nfr-assessment.md` (CONCERNS — Epics 1-3 baseline)
 - **Evidence Sources:**
   - Test Results: `yarn nx test web` (853 tests, 65 suites, 0 skipped, 0 failed — fresh 2026-07-12 run per traceability matrix)
   - Source code: `apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/page.tsx`, `artifacts/page.tsx`, `conversations/[conversationId]/loading.tsx`, `SideNavigation.tsx`, `Breadcrumb.tsx`

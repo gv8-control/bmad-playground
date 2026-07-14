@@ -18,7 +18,6 @@ inputDocuments:
   - _bmad-output/planning-artifacts/architecture.md
   - _bmad-output/planning-artifacts/epics.md
   - _bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md
-  - _bmad-output/test-artifacts/nfr-assessment-full-20260707.md
   - _bmad-output/test-artifacts/test-fidelity-audit-2026-07-06.md
   - _bmad-output/test-artifacts/traceability-matrix.md
   - _bmad-output/test-artifacts/test-design-architecture.md
@@ -328,7 +327,7 @@ Playwright CLI not used — this is a codebase audit, not a live running applica
 
 | Criterion | Evidence | Status |
 |-----------|----------|--------|
-| Test coverage | 92% overall (P0 100%, P1 95%) per previous gate-decision.json. 68 Jest test files, 28 Playwright E2E specs. 59 files with P0 tests, 44 with P1 tests. | ✅ PASS |
+| Test coverage | 92% overall (P0 100%, P1 95%) per previous traceability/gate-decision.json. 68 Jest test files, 28 Playwright E2E specs. 59 files with P0 tests, 44 with P1 tests. | ✅ PASS |
 | Coverage enforcement | No coverage threshold gate in CI pipeline. Coverage measured but not enforced. | ⚠️ CONCERNS |
 | Test fidelity | Originally FAIL (3 blockers per `test-fidelity-audit-2026-07-06.md`). All blockers addressed: `sdk-contract-replay.spec.ts`, `mock-query.ts`, `record-session.ts`, `sdk-session-replay.jsonl` fixture implemented. `as SDKMessage` bypass removed. | ✅ PASS (resolved) |
 | Lint | `yarn nx run-many --target=lint` — clean (0 errors). | ✅ PASS |
@@ -847,7 +846,7 @@ nfr_assessment:
 - **Test Design:** `_bmad-output/test-artifacts/test-design-architecture.md`
 - **Test Fidelity Audit:** `_bmad-output/test-artifacts/test-fidelity-audit-2026-07-06.md`
 - **Bug Hunt Report:** `_bmad-output/implementation-artifacts/bug-hunt-epic-3-conversations-running-bmad-skills-with-the-agent.md`
-- **Previous NFR Assessment:** `_bmad-output/test-artifacts/nfr-assessment-full-20260707.md`
+- **Previous NFR Assessment:** Consolidated into this file (supersedes `nfr-assessment-full-20260707.md`)
 - **Per-story NFR Assessments:** 15 files in `_bmad-output/test-artifacts/nfr-assessment-*.md`
 - **NFR Performance Test:** `playwright/e2e/real-service/nfr-performance.spec.ts`
 - **CI Pipeline:** `.github/workflows/test.yml`

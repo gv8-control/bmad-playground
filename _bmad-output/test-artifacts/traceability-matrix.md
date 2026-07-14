@@ -89,7 +89,7 @@ From `resources/tea-index.csv` / `resources/knowledge/`, the following fragments
 | `_bmad-output/test-artifacts/test-design-architecture.md` | System-level test design (levels, scope)                               |
 | `_bmad-output/test-artifacts/test-design-qa.md`           | QA coverage plan                                                       |
 | `_bmad-output/project-context.md`          | Testing conventions: P0=100% / P1≥95% gates, co-located tests, Jest + Playwright stack |
-| Prior trace artifacts (2026-07-07)         | `traceability-matrix.md`, `e2e-trace-summary.json`, `gate-decision.json` — prior run PASS, used for delta |
+| Prior trace artifacts (2026-07-07)         | `traceability-matrix.md`, `traceability/e2e-trace-summary.json`, `traceability/gate-decision.json` — prior run PASS, used for delta |
 
 ### Sprint Status (from `sprint-status.yaml`, last_updated 2026-07-06T20:00:00Z)
 

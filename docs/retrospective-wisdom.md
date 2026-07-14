@@ -132,7 +132,7 @@ Traps that looked reasonable and weren't. The trap's shape is the most portable 
 
 **What we did instead:** Re-opened the "mitigated" status. The gap should have read "open — mitigation designed, not implemented" until the nightly tier was built and running.
 
-**Source:** Epic 3 — `bmad-easy-handoff.md` prescribed nightly smoke tier; `nfr-assessment-full-20260707.md` marked Finding 5 "mitigated"; no nightly tier exists in the codebase.
+**Source:** Epic 3 — `bmad-easy-handoff.md` prescribed nightly smoke tier; `nfr-assessment.md` marked Finding 5 "mitigated"; no nightly tier exists in the codebase.
 
 **Recurrence:** Not yet re-evaluated.
 

@@ -34,8 +34,7 @@ jest.mock('next-auth/providers/github', () => ({
 }));
 
 const mockEncryptToken = jest.fn();
-// virtual: true because crypto.ts does not exist until Task 2.1 is implemented.
-jest.mock('./crypto', () => ({ encryptToken: (...args: unknown[]) => mockEncryptToken(...args) }), { virtual: true });
+jest.mock('./crypto', () => ({ encryptToken: (...args: unknown[]) => mockEncryptToken(...args) }));
 
 jest.mock('next-auth', () => ({
   __esModule: true,

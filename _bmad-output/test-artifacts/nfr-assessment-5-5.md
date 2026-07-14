@@ -101,7 +101,7 @@ Note: This audit summarizes existing implementation evidence. It does not run th
 
 ### NFR Thresholds (inherited from `architecture.md` + `test-design-architecture.md`)
 
-The thresholds matrix lives in `nfr-assessment-full-20260707.md` (lines 158–231) and the epic-level assessment (`nfr-assessment-5-epic.md`). Re-summarized above in the NFR Matrix for Story 5.5-relevant categories only. No new thresholds were introduced.
+The thresholds matrix lives in `nfr-assessment.md` (lines 158–231) and the epic-level assessment (`nfr-assessment-5-epic.md`). Re-summarized above in the NFR Matrix for Story 5.5-relevant categories only. No new thresholds were introduced.
 
 ## Evidence Gathered
 

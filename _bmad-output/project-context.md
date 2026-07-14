@@ -1,7 +1,7 @@
 ---
 project_name: 'bmad-easy'
 user_name: 'Marius'
-date: '2026-07-13'
+date: '2026-07-14'
 sections_completed:
   [
     'technology_stack',
@@ -13,7 +13,7 @@ sections_completed:
     'critical_rules',
   ]
 status: 'complete'
-rule_count: 185
+rule_count: 186
 optimized_for_llm: true
 ---
 
@@ -223,6 +223,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Integration tests** in `apps/agent-be/test/integration/` with a separate Jest config (`apps/agent-be/test/jest-integration.config.ts`).
 - Test file naming: `*.spec.ts` for unit, `*.test.tsx` for React component tests, `*.integration.spec.ts` for integration.
 - **Operational script testability (`scripts/*.ts`):** scripts with testable functions (especially security invariants like `describeDatabase()`) export those functions and guard `main()` with `if (require.main === module)` so unit tests can import without side effects. Unit tests in `apps/agent-be/test/` import from `scripts/` via relative path with `// eslint-disable-next-line @nx/enforce-module-boundaries` (since `scripts/` is not an Nx project). See `scripts/run-migrations.ts` + `apps/agent-be/test/unit/run-migrations.spec.ts` (Story 4.4).
+- **Testing CLI scripts that call `process.exit()` via `execSync`:** scripts that intentionally call `process.exit()` (e.g., GitHub Actions helper scripts in `.github/scripts/` that must exit with specific codes) cannot be imported directly — importing terminates the test process. Test via `child_process.execSync('node <script> <args>')`, capture stdout, parse the JSON output. Use temp config files for test-specific inputs and clean up in `finally`. This is the alternative to the export+guard pattern above for scripts where `process.exit()` is intentional, not a side effect to guard against. See `.github/scripts/check-rotations.js` + `apps/agent-be/test/unit/check-rotations.spec.ts` (Story 4.12).
 - **Testing GitHub Actions workflow YAML files via Jest + js-yaml:** parse `.github/workflows/*.yml` with `js-yaml` in a Jest test at `apps/agent-be/test/unit/`, assert on parsed structure (triggers, permissions, job config, step contents). ALSO assert on raw text for things YAML parsing normalizes away (e.g. `on: workflow_dispatch` string form vs object form — YAML parses both identically). `js-yaml` imported via `require()` with minimal type assertion when `@types/js-yaml` is unavailable. Follows the non-Nx-project test location pattern. See `deploy-workflow.spec.ts` (Story 4.6).
 
 #### Test Priority Tags

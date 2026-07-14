@@ -30,7 +30,7 @@ inputDocuments:
   - '_bmad-output/test-artifacts/nfr-assessment-5-3.md'
   - '_bmad-output/test-artifacts/nfr-assessment-5-4.md'
   - '_bmad-output/test-artifacts/nfr-assessment-5-5.md'
-  - '_bmad-output/test-artifacts/nfr-assessment-full-20260707.md'
+  - '_bmad-output/test-artifacts/nfr-assessment.md'
   - '_bmad-output/project-context.md'
 ---
 
@@ -40,7 +40,7 @@ inputDocuments:
 **Author:** TEA Master Test Architect (Murat)
 **Scope:** Epic 5 — Stories 5.1 through 5.5 (all 5 done) + Story 5.5 bug-hunt quick-win fixes applied during this audit
 **Standard:** ADR Quality Readiness Checklist (8 categories, 29 criteria) + Epic 5-specific NFR scope from the architecture
-**NFR Sources:** `architecture.md` (NFR-S1–S4, NFR-P1–P5, NFR-R1–R4, NFR-O1), `epics.md` (UX-DR16 accessibility floor, UX-DR5 inline chip contract), `nfr-assessment-full-20260707.md` (consolidated baseline thresholds)
+**NFR Sources:** `architecture.md` (NFR-S1–S4, NFR-P1–P5, NFR-R1–R4, NFR-O1), `epics.md` (UX-DR16 accessibility floor, UX-DR5 inline chip contract), `nfr-assessment.md` (consolidated baseline thresholds)
 **Overall Status:** PASS-WITH-CONCERNS
 
 ---
@@ -86,7 +86,7 @@ Tier-based load from `tea-index.csv`:
 
 ### Epic 5-Relevant Thresholds (inherited from prior assessment)
 
-Per step 0 of the workflow, thresholds are sourced from `test-design-architecture.md` (NFR Testability Requirements) as the primary source. The full threshold matrix lives in `nfr-assessment-full-20260707.md` (lines 158–231 of that file).
+Per step 0 of the workflow, thresholds are sourced from `test-design-architecture.md` (NFR Testability Requirements) as the primary source. The full threshold matrix lives in `nfr-assessment.md` (lines 158–231 of that file).
 
 | NFR | Threshold | Source | Epic 5 (with Story 5.5) Relevance |
 |-----|-----------|--------|------------------|
@@ -167,7 +167,7 @@ The prior Wave-1 + bug-hunt-epic-5 mappings carry forward; Story 5.5's bug-hunt 
 
 | NFR | Evidence | Status |
 |-----|----------|--------|
-| NFR-P1 (first token ≤ 1,500 ms) | Not exercised by Epic 5. Pre-existing CONCERNS from `nfr-assessment-full-20260707.md` — no k6/Artillery in CI; no empirical validation. | NOT AFFECTED by Epic 5. Standing CONCERNS. |
+| NFR-P1 (first token ≤ 1,500 ms) | Not exercised by Epic 5. Pre-existing CONCERNS from `nfr-assessment.md` — no k6/Artillery in CI; no empirical validation. | NOT AFFECTED by Epic 5. Standing CONCERNS. |
 | NFR-P2 (chat ready ≤ 10 s) | Indirectly related — Story 5.3's spinner relocation affects visible UX during the wait. Story 5.5 rewrites SSE event handlers; per-event processing cost grows linearly with segment count but is far below 1ms/event at MVP scale. | NOT AFFECTED by Epic 5. Standing CONCERNS. |
 | NFR-P3 (Project Map ≤ 2 s) | Story 5.4 modifies `ArtifactCard` CSS only (negligible render cost). | PASS-WITH-CONCERNS in pre-existing only. |
 | NFR-P4 (Artifact Browser ≤ 2 s) | Pre-existing `take: 100` and `select` projections on `artifacts/page.tsx` queries preserved. Pre-existing `select` gap on `repoConnection.findUnique` (Low). Story 5.5 added `segments Json?` column to `Turn` model — adds a JSONB column read on the resume-path `turn.findMany`. The `turn.findMany` adds `segments: true` to `select`, increasing per-row payload. | LOW CONCERN added — see NFR-P4 change below. |
@@ -277,7 +277,7 @@ The prior Wave-1 + bug-hunt-epic-5 mappings carry forward; Story 5.5's bug-hunt 
   - **Security:** 0 Medium / High new findings; one LOW pre-existing gap (per-segment narrowing on `Json?` reads — DP-3 deferred). All critical security NFRs (S1, S2, S4) untouched.
   - **Performance:** 4 findings (2 Medium from prior — unbounded `messages.map()` + pre-existing missing `take` limit on `turn.findMany`; 2 Low — pre-existing `repoConnection.findUnique` missing `select` projection AND Story 5.5 multiple Markdown instances per agent message).
   - **Reliability:** 1 NEW Story 5.5 finding (M3-new Medium fake divergence) plus 1 TP-5 brand-new sub-finding (TS narrowing bug — FIXED in this audit). 1 Low (`QuotaExceededError` silent swallow pre-existing), 1 Low defense-in-depth story-introduced (TEXT_MESSAGE_CONTENT silent drop — FIXED in this audit).
-  - **Scalability:** 0 new findings; pre-existing project-wide CONCERNS (single-container deploy, no rate limiting, no SLA) inherited from `nfr-assessment-full-20260707.md` and not addressed by Epic 5.
+  - **Scalability:** 0 new findings; pre-existing project-wide CONCERNS (single-container deploy, no rate limiting, no SLA) inherited from `nfr-assessment.md` and not addressed by Epic 5.
 
 ### Domain Risk Breakdown
 
@@ -296,7 +296,7 @@ The prior Wave-1 + bug-hunt-epic-5 mappings carry forward; Story 5.5's bug-hunt 
 
 | NFR | Category | Status | Evidence |
 |-----|----------|--------|----------|
-| NFR-S1 | Security | ✅ PASS (not affected) | Story does not touch sandbox. Pre-existing PASS from `nfr-assessment-full-20260707.md`. |
+| NFR-S1 | Security | ✅ PASS (not affected) | Story does not touch sandbox. Pre-existing PASS from `nfr-assessment.md`. |
 | NFR-S2 | Security | ✅ PASS | All Prisma queries on files modified by Epic 5 enforce `userId`-scope (incl. Story 5.5's `turn.findMany`). Verified in all per-story assessments. |
 | NFR-S3 | Security | ⬜ N/A (not affected) | Deferred to post-MVP — no deactivation flow exists. |
 | NFR-S4 | Security | ✅ PASS (not affected) | Story does not touch token storage. |
@@ -393,7 +393,7 @@ The prior Wave-1 + bug-hunt-epic-5 mappings carry forward; Story 5.5's bug-hunt 
 - 20–25/29 (69-86%) = Room for improvement
 - <20/29 (<69%) = Significant gaps
 
-**20/29 (69%) = Room for improvement** — but the 9 CONCERNS are pre-existing project-wide gaps (DR, scalability, monitoring, deployability coverage gate) explicitly accepted as MVP trade-offs in `nfr-assessment-full-20260707.md`. Epic 5 closed 4 prior LOW concerns (auto-scroll regression M1, `no-scrollbar` full-width pane M2, `parseFrontmatter` quote-stripping M3, `maxLength` defense-in-depth L7, `Intl.DateTimeFormat` hoisting L4, ArtifactViewer focus ring L5, `aria-live` assertion L2) and added 2 (Story 5.5 test-seam fake divergence M3-new, Story 5.5 `web` typecheck gap L7-new); the remaining 7 are standing project-wide gaps unchanged from the prior epic-level.
+**20/29 (69%) = Room for improvement** — but the 9 CONCERNS are pre-existing project-wide gaps (DR, scalability, monitoring, deployability coverage gate) explicitly accepted as MVP trade-offs in `nfr-assessment.md`. Epic 5 closed 4 prior LOW concerns (auto-scroll regression M1, `no-scrollbar` full-width pane M2, `parseFrontmatter` quote-stripping M3, `maxLength` defense-in-depth L7, `Intl.DateTimeFormat` hoisting L4, ArtifactViewer focus ring L5, `aria-live` assertion L2) and added 2 (Story 5.5 test-seam fake divergence M3-new, Story 5.5 `web` typecheck gap L7-new); the remaining 7 are standing project-wide gaps unchanged from the prior epic-level.
 
 ### Gate YAML Snippet
 
@@ -516,7 +516,7 @@ nfr_assessment:
     - 'Add Story 5.5 M2-new regression test (out-of-order TOOL_CALL_RESULT → TOOL_CALL_END preserves error status)'
     - 'Plan message-list windowing as a backlog item (architectural — not one-line) — would close NFR-5.3-2 and the Story 5.5 Markdown-instance amplification cross-domain risk'
     - 'Document the conversation-length boundary for MVP (mirrors NFR-P2 200MB repository boundary)'
-    - 'Standing project-wide CONCERNS (DR, scalability, monitoring, deployability coverage gate, HTTP/2 deployment invariant) addressed in nfr-assessment-full-20260707.md — not blocked by Epic 5'
+    - 'Standing project-wide CONCERNS (DR, scalability, monitoring, deployability coverage gate, HTTP/2 deployment invariant) addressed in nfr-assessment.md — not blocked by Epic 5'
 ```
 
 ### Quick Wins
@@ -572,7 +572,7 @@ None. No CRITICAL or HIGH priority issues found in Epic 5.
 
 ### Monitoring Hooks
 
-Epic 5 is mostly presentational — no live monitoring hooks specific to it. The project-wide gaps documented in `nfr-assessment-full-20260707.md` (no Sentry/error tracking, no `/metrics`, no distributed tracing, no MTTR tracking) are inherited and not duplicated here. Story 5.5 added a console.warn defense-in-depth path on `ConversationPane.tsx:280-305` for dropped TEXT_MESSAGE_CONTENT deltas — improves diagnosability but no production sink.
+Epic 5 is mostly presentational — no live monitoring hooks specific to it. The project-wide gaps documented in `nfr-assessment.md` (no Sentry/error tracking, no `/metrics`, no distributed tracing, no MTTR tracking) are inherited and not duplicated here. Story 5.5 added a console.warn defense-in-depth path on `ConversationPane.tsx:280-305` for dropped TEXT_MESSAGE_CONTENT deltas — improves diagnosability but no production sink.
 
 ### Fail-Fast Mechanisms
 
@@ -604,7 +604,7 @@ Epic 5 is mostly presentational — no live monitoring hooks specific to it. The
 - **Test Fidelity Audit:** `_bmad-output/test-artifacts/test-fidelity-audit-2026-07-12.md` (PASS)
 - **Traceability Matrix:** `_bmad-output/test-artifacts/traceability/traceability-matrix-epic-5.md` (100% AC coverage; gate = CONCERNS)
 - **Gate Decision:** `_bmad-output/test-artifacts/traceability/gate-decision-epic-5.json`
-- **Epic 1-3 Baseline:** `_bmad-output/test-artifacts/nfr-assessment-full-20260707.md` (CONCERNS — 18/29 criteria; Epic 5 inherits standing gaps)
+- **Epic 1-3 Baseline:** `_bmad-output/test-artifacts/nfr-assessment.md` (CONCERNS — 18/29 criteria; Epic 5 inherits standing gaps)
 - **Project Context:** `_bmad-output/project-context.md`
 - **CI Pipeline:** `.github/workflows/test.yml`
 - **Source code verified:** all files in `nfr-assessment-5-5.md` and `apps/web/src/components/conversation/*` (incl. `ConversationPane.tsx`, `ChatMessageList.tsx`, `AgentMessage.tsx`, `UserMessage.tsx`, `useDraftPersistence.ts`), `apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/page.tsx`, `apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/loading.tsx`, `apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx`, `apps/agent-be/src/streaming/agent.service.ts`, `apps/agent-be/test/helpers/agent-service.fake.ts`, `libs/shared-types/src/conversation.types.ts`, `libs/database-schemas/src/prisma/schema.prisma`, `libs/database-schemas/src/prisma/migrations/20260713120000_add_turn_segments/migration.sql`
@@ -619,7 +619,7 @@ Epic 5 is mostly presentational — no live monitoring hooks specific to it. The
 
 **Low Priority:** 7 (de-duplicated). Most pre-existing; 3 new from Story 5.5 (L5 index-based keys, L6 handler duplication, L7 `web` typecheck target). All addressable in a single ~1.5-hour "Epic 5 NFR hardening story."
 
-**Standing project-wide CONCERNS (not Epic 5):** Disaster Recovery (0/3 criteria), Scalability (2/4), Monitorability (2/4), Deployability coverage gate (2/3) — accepted as MVP trade-offs in `nfr-assessment-full-20260707.md`. Not addressed by Epic 5 (it is a visual-drift-fix epic with one architectural segment-model story) and not regressions caused by Epic 5.
+**Standing project-wide CONCERNS (not Epic 5):** Disaster Recovery (0/3 criteria), Scalability (2/4), Monitorability (2/4), Deployability coverage gate (2/3) — accepted as MVP trade-offs in `nfr-assessment.md`. Not addressed by Epic 5 (it is a visual-drift-fix epic with one architectural segment-model story) and not regressions caused by Epic 5.
 
 **Next Steps:** Proceed to release. Book NFR-5.5-M3-new as a separate small task (mirror pendingClassifierPromises in AgentServiceFake — 2 hours). Add the M2-new regression test (30 minutes) and the `web` typecheck target (5 minutes). Bundle the remaining 6 Low findings into a single hardening story.
 

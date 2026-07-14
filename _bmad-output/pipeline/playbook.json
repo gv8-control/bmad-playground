@@ -41,11 +41,11 @@
       "stage": "pre-implementation",
       "skill": "bmad-testarch-atdd",
       "agent": "coder",
-      "prompt": "Create tests. After applying TDD red-phase scaffolding (adding skipped test blocks to new or existing files, adding test seams, or creating stub files), update the story file's tasks to reflect what was already done — tasks that instruct the dev to create scaffolding that prepare-tests has already applied should be amended to instruct activation of the existing scaffolding instead, so the story does not contradict the codebase state. Before deferring E2E coverage, verify no browser-level mock pattern can simulate the scenario — only defer if no mock covers the ACs, and record the check in the ATDD checklist. When creating regression guards for code that executes external commands with user-controlled input, apply a uniform guard template to every call site: exercise both credential-isolation invariants (no credentials leak via command arguments or environment variables) and input-injection invariants (malicious input is safely quoted and cannot alter the command's behavior). For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
+      "prompt": "Create tests. After applying TDD red-phase scaffolding (adding skipped test blocks to new or existing files, adding test seams, or creating stub files), update the story file's tasks to reflect what was already done — tasks that instruct the dev to create scaffolding that prepare-tests has already applied should be amended to instruct activation of the existing scaffolding instead, so the story does not contradict the codebase state. Before deferring E2E coverage, verify no browser-level mock pattern can simulate the scenario — only defer if no mock covers the ACs, and record the check in the ATDD checklist. When creating regression guards for code that executes external commands with user-controlled input, apply a uniform guard template to every call site: exercise both credential-isolation invariants (no credentials leak via command arguments or environment variables) and input-injection invariants (malicious input is safely quoted and cannot alter the command's behavior). Before creating regression guard tests, consult sibling test files in the same directory for established guard patterns and regex conventions — patterns corrected during prior code reviews may exist in sibling files and should be applied rather than reintroduced. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-06T12:26:33.858Z",
-      "updatedByRun": "3.11-a1-20260706T082713"
+      "updatedAt": "2026-07-14T16:35:00.741Z",
+      "updatedByRun": "4.11-a1-20260714T123043"
     },
     {
       "id": "validate-story-2",
@@ -87,9 +87,11 @@
       "stage": "test-generation",
       "skill": "bmad-qa-generate-e2e-tests",
       "agent": "planner",
-      "prompt": "",
+      "prompt": "Before generating E2E tests, check the story's ATDD checklist for any E2E deferral decision. If E2E coverage was deferred by prepare-tests because no browser-level mock can simulate the acceptance criteria, confirm the deferral is still valid and complete the step without generating tests or asking for direction. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-14T16:35:00.740Z",
+      "updatedByRun": "4.11-a1-20260714T123043"
     },
     {
       "id": "review-code",

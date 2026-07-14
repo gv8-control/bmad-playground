@@ -21,7 +21,7 @@ inputDocuments:
   - '_bmad-output/test-artifacts/traceability/gate-decision-epic-5.json'
   - '_bmad-output/implementation-artifacts/bug-hunt-epic-5-ux-mockup-fidelity-close-visual-drift.md'
   - '_bmad-output/test-artifacts/test-fidelity-audit-2026-07-12.md'
-  - '_bmad-output/test-artifacts/nfr-assessment-full-20260707.md'
+  - '_bmad-output/test-artifacts/nfr-assessment.md'
   - '_bmad-output/test-artifacts/nfr-assessment-5-1.md'
   - '_bmad-output/test-artifacts/nfr-assessment-5-4.md'
   - '_bmad-output/project-context.md'
@@ -86,11 +86,11 @@ Tier-based load from `tea-index.csv`:
 - Gate decision: `traceability/gate-decision-epic-5.json` (epic gate = CONCERNS)
 - Bug hunt: `bug-hunt-epic-5-...md` (M1 auto-scroll regression, L2 missing aria-live assertion, L4 Intl.DateTimeFormat per-render, L8 SlashCommandPicker ARIA structure)
 - Test fidelity audit: `test-fidelity-audit-2026-07-12.md` (epic verdict PASS, Finding 2 ConversationPane fabricated event shapes)
-- Epic-level NFR assessment for Epics 1-3: `nfr-assessment-full-20260707.md` (consolidated source of NFR thresholds)
+- Epic-level NFR assessment for Epics 1-3: `nfr-assessment.md` (consolidated source of NFR thresholds)
 - Per-story NFR siblings: `nfr-assessment-5-1.md` (PASS), `nfr-assessment-5-4.md` (PASS-WITH-CONCERNS)
 - Project context: `_bmad-output/project-context.md` (testing conventions, security headers, focus rings, role="log" + aria-live pair)
 
-### NFR Thresholds (inherited from `nfr-assessment-full-20260707.md`)
+### NFR Thresholds (inherited from `nfr-assessment.md`)
 
 | NFR | Threshold | Source | Status for Story 5.3 |
 | --- | --- | --- | --- |
@@ -149,7 +149,7 @@ No Prisma queries were added or modified by this story. No SSE transport changes
 - No open-redirect changes (sign-in page untouched).
 - No new user-input handling: the `ChatInput` textarea receives user text but it was already wired to the agent conversation — Story 5.3 only changed CSS classes, the placeholder string, and added an arrow icon. No new unbounded input length risk.
 - No Server Action arguments modified. The `connectRepository` Server Action is not touched by Story 5.3.
-- No security headers (`main.ts`, `middleware.ts`, `next.config.js`) modified. The platform-wide `helmet()`/CSP/HSTS gap (documented in `nfr-assessment-full-20260707.md` Security Evidence) is pre-existing, project-wide, and out of scope.
+- No security headers (`main.ts`, `middleware.ts`, `next.config.js`) modified. The platform-wide `helmet()`/CSP/HSTS gap (documented in `nfr-assessment.md` Security Evidence) is pre-existing, project-wide, and out of scope.
 - No credential / token handling modified.
 
 ### Accessibility (UX-DR16) — verified because the NFR threshold touches it
@@ -201,7 +201,7 @@ The Wave-1 fidelity audit `_bmad-output/test-artifacts/test-fidelity-audit-2026-
 | NFR-O1 | Observability | Per-user LLM spend | **Not applicable**. | PASS (N/A) |
 | UX-DR16 | Accessibility | Focus rings, keyboard nav, aria-live, role="log" | **Primary** — AC-7 adds `role="log"`. The container also retains `aria-live="polite"` (verified). The regression test does not assert `aria-live` (Finding 4, Low, M). | PASS (with Finding 4) |
 | Local performance pattern | Performance | Avoid per-render allocations (project-context.md equitable with `cn`/constant hoist pattern) | **Primary** — `Intl.DateTimeFormat` instantiated per render in `AgentMessage.tsx:87-91` and `UserMessage.tsx:11-15`. Pre-existing. Story 5.3 modified both files for `mb-6`/focus-ring changes and could have hoisted it. | CONCERNS (Finding 3) |
-| Message list rendering | Performance / Reliability | Bound list rendering (project convention from `nfr-assessment-full-20260707.md` resource usage) | **Primary** — `messages.map()` at `ChatMessageList.tsx:98-130` renders all messages with no bound. Pre-existing pattern but the file is heavily modified by 5.3. | CONCERNS (Finding 2) |
+| Message list rendering | Performance / Reliability | Bound list rendering (project convention from `nfr-assessment.md` resource usage) | **Primary** — `messages.map()` at `ChatMessageList.tsx:98-130` renders all messages with no bound. Pre-existing pattern but the file is heavily modified by 5.3. | CONCERNS (Finding 2) |
 | Auto-scroll effect deps | Reliability | Effect must re-fire on the inputs it consumes (React hooks rule) | **Primary** — `useEffect` deps `[messages, isThinking]` exclude `errorMessage`/`showRetry`/`showSpinner` after AC-3 relocated those renders into the scrollable container. Bug-hunt M1. Story-introduced regression (medium severity). | CONCERNS (Finding 1) |
 | localStorage resilience | Reliability | Handle `QuotaExceededError` distinctly from "storage unavailable" (project convention from `error-handling.md`) | **Primary** — `useDraftPersistence.ts:33, 47, 58` try/catch swallows all errors. Story 5.3 added a migration step in the load effect that piggybacks on the same try/catch. | CONCERNS (Finding 5) |
 
@@ -376,7 +376,7 @@ None. No CRITICAL or HIGH priority issues found.
 
 ## Monitoring Hooks
 
-Story 5.3 is mostly presentational — no monitoring hooks specific to it. The project-wide gaps documented in `nfr-assessment-full-20260707.md` (no APM, no `/metrics`, no distributed tracing, no MTTR tracking) are inherited and not duplicated here. The Finding 1 auto-scroll regression would surface in production as a frozen UI with no Retry button — a Sentry error-tracking hook would catch it as a "user reports frozen conversation" pattern.
+Story 5.3 is mostly presentational — no monitoring hooks specific to it. The project-wide gaps documented in `nfr-assessment.md` (no APM, no `/metrics`, no distributed tracing, no MTTR tracking) are inherited and not duplicated here. The Finding 1 auto-scroll regression would surface in production as a frozen UI with no Retry button — a Sentry error-tracking hook would catch it as a "user reports frozen conversation" pattern.
 
 ## Fail-Fast Mechanisms
 
@@ -474,7 +474,7 @@ nfr_assessment:
 - **PRD:** `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md`
 - **Architecture:** `_bmad-output/planning-artifacts/architecture.md`
 - **Epics:** `_bmad-output/planning-artifacts/epics.md`
-- **NFR Siblings:** `nfr-assessment-5-1.md` (PASS), `nfr-assessment-5-2.md` (PASS-WITH-CONCERNS), `nfr-assessment-5-4.md` (PASS-WITH-CONCERNS), `nfr-assessment-full-20260707.md` (CONCERNS — Epics 1-3 baseline)
+- **NFR Siblings:** `nfr-assessment-5-1.md` (PASS), `nfr-assessment-5-2.md` (PASS-WITH-CONCERNS), `nfr-assessment-5-4.md` (PASS-WITH-CONCERNS), `nfr-assessment.md` (CONCERNS — Epics 1-3 baseline)
 - **Evidence Sources:**
   - Test Results: `yarn nx test web` (853 tests, 65 suites, 0 skipped, 0 failed — fresh 2026-07-12 run per traceability matrix)
   - Source code: `ChatMessageList.tsx`, `AgentMessage.tsx`, `UserMessage.tsx`, `useDraftPersistence.ts`, `SlashCommandPicker.tsx`, `ChatInput.tsx`, `ConversationPane.tsx`, `ScrollToBottomButton.tsx`, `SemanticPill.tsx`, `SessionStartSpinner.tsx`, `conversations/new/page.tsx`
