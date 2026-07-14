@@ -88,7 +88,7 @@ describe('syncArtifactsAction — happy path', () => {
     await syncArtifactsAction();
 
     expect(mockAuth).toHaveBeenCalled();
-    expect(mockFindUniqueRepoConnection).toHaveBeenCalledWith({ where: { userId: SESSION.userId } });
+    expect(mockFindUniqueRepoConnection).toHaveBeenCalledWith({ where: { userId: SESSION.userId }, select: { id: true, repoUrl: true } });
     expect(mockResolveOAuthToken).toHaveBeenCalledWith(SESSION.userId);
     expect(mockSyncArtifacts).toHaveBeenCalledWith(
       DECRYPTED_TOKEN,

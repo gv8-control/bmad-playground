@@ -1,4 +1,3 @@
-import { Breadcrumb } from '@/components/shell/Breadcrumb';
 import { auth } from '@/lib/auth';
 import { mintBoundaryJwt } from '@/lib/boundary-jwt';
 import { ConversationPane } from '@/components/conversation/ConversationPane';
@@ -16,12 +15,9 @@ export default async function NewConversationPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex-shrink-0">
-        <Breadcrumb />
-        <h1 tabIndex={-1} className="px-8 text-xl font-semibold text-text-1">New Conversation</h1>
-      </header>
+      <h1 tabIndex={-1} className="sr-only">New Conversation</h1>
       <div className="flex-1 overflow-hidden">
-        <ConversationPane boundaryJwt={boundaryJwt} apiUrl={apiUrl} initialMessages={[]} />
+        <ConversationPane boundaryJwt={boundaryJwt} apiUrl={apiUrl} initialMessages={[]} placeholder="Message bmad-easy…" />
       </div>
     </div>
   );

@@ -1,0 +1,95 @@
+{
+  "story": "5.5",
+  "runId": "5.5-a2-20260713T125945",
+  "observations": [
+    {
+      "fingerprint": "infra-concurrent-attempt-execution",
+      "summary": "Attempt 2 (a2) was launched while attempt 1 (a1) was still mid-playbook, causing two runs to modify the same files concurrently; a2 never completed (no story_end, last event is step_start for review-nfrs at index 10)",
+      "evidence": "Journal story_start for a1 at 2026-07-13T11:53:16 (attempt 1); journal story_start for a2 at 2026-07-13T12:59:46 (attempt 2) while a1 was still in implement-story (a1 implement-story step_end not until 13:10:51). Journal shows interleaved step events: a2 unit-tests (step 6) ended 14:16:35 marking 10 E2E tests as expected-to-fail, then a1 e2e-tests (step 7) ended 15:45:42 finding only 3 of those markers remaining, then a1 review-tests (step 9) removed the 3, then a2 review-tests (step 9) found 0 — the runs interfered on the same test file. grep '5.5-a2' journal.jsonl | grep story_end returns NO STORY_END FOR A2. a2's last recorded event is step_start for review-nfrs (index 10) at 16:24:06; steps 11-12 and story_end are absent. a1 completed all 12 steps and committed (465ea50) at 16:28:16.",
+      "grade": "confirmed"
+    },
+    {
+      "fingerprint": "infra-opencode-timeout",
+      "summary": "Both e2e-tests steps (a1 and a2) timed out with rc:124 and salvaged output classified as success — 6th and 7th occurrence across stories (2.3, 3.9, 3.11, 5.1, 5.3, 5.5x2)",
+      "evidence": "runner-errors.jsonl line 6: {\"ts\":\"2026-07-13T14:45:43Z\",\"source\":\"opencode-runner\",\"context\":\"E2E tests (5.5) / initial run\",\"rc\":124,\"salvagedOutput\":\"yes\"}. runner-errors.jsonl line 7: {\"ts\":\"2026-07-13T15:46:36Z\",\"source\":\"opencode-runner\",\"context\":\"E2E tests (5.5) / initial run\",\"rc\":124,\"salvagedOutput\":\"yes\"}. Journal step_end for a2 e2e-tests: status success, durationMs 5402246, responseExcerpt is mid-stream narration ('Now let me run the `on_complete` step from the workflow customization.') — not a completion summary. Journal step_end for a1 e2e-tests: status success, durationMs 8999505 (max for this step), responseExcerpt starts with 'Let me verify the checklist:' — also mid-stream narration. Both steps were classified as COMPLETE despite salvaged output. Prior occurrences: ledger entries 41 (3.9), 56 (3.11), 70 (5.1), 86 (5.2 non-recurrence), 90 (5.3), 97 (5.3), 110 (5.4 non-recurrence).",
+      "grade": "confirmed"
+    },
+    {
+      "fingerprint": "infra-phantom-halt",
+      "summary": "3 halts across story 5.5, all phantom: a1 e2e-tests halt was timeout-triggered (confirms 5.3 validate-story pattern); a1 and a2 create-story halts had no runner-error and no question in the responseExcerpt (same class as the 5.3 e2e-tests hypothesized halt, still unconfirmable without traces)",
+      "evidence": "a1 e2e-tests: halts:1, outcomeHistory ['COMPLETE'], responseExcerpt 'Let me verify the checklist:' (mid-stream narration, no question), runner-errors line 6 rc:124 — CONFIRMED timeout-triggered phantom halt, same as ledger entry 89 (5.3 validate-story). a1 create-story: halts:1, outcomeHistory ['COMPLETE'], responseExcerpt 'Confirmed — Story 5.5 stays as-is...' (completion summary, no question), no runner-error, duration 650432ms (within normal range) — matches 5.3 e2e-tests hypothesized pattern (ledger entry 91). a2 create-story: halts:1, outcomeHistory ['COMPLETE'], responseExcerpt 'Understood — keeping the existing story as-is. No changes made. Bye Marius! 👋' (completion summary, no question), no runner-error, duration 1782599ms (elevated but not extreme) — same pattern. Trends haltsPerStory: 5.5:3. No traces exist for this run (ls _bmad-output/pipeline/traces/ returns NO TRACES DIR). Prior hypothesized observation (ledger entries 91, 103) has nextStep pointing to traces/5.3-a1-20260712T095855/e2e-tests.json — trace-view reports no trace, traces directory does not exist. The 5.5 create-story halts provide new data points for the non-timeout phantom halt hypothesis but cannot confirm the cause without traces.",
+      "grade": "hypothesized",
+      "hypothesis": "The a1 and a2 create-story phantom halts were triggered by classifier ambiguity — the response was neither clearly COMPLETE nor QUESTION at some mid-stream point, causing the halt form to fire spuriously. The a1 e2e-tests halt was timeout-triggered (confirmed). The non-timeout create-story halts match the 5.3 e2e-tests pattern but the cause remains unconfirmable without traces.",
+      "nextStep": "When trace recording is enabled, widen into traces/5.5-a2-20260713T125945/create-story.json with --grep 'HALT' or --grep 'QUESTION' to find the mid-stream point where the halt form fired; check whether a genuine question was posed or whether the halt was triggered by classifier ambiguity. Cross-reference with traces/5.5-a1-20260713T115316/create-story.json for the same step."
+    },
+    {
+      "fingerprint": "review-code-chunks-remaining-unreviewed",
+      "summary": "Both review-code runs reviewed only chunk 1 of 3; chunks 2 (tests) and 3 (other changes) were noted for follow-up but never reviewed — no follow-up step exists in the playbook",
+      "evidence": "Story file line 559: 'Chunks 2 (tests) and 3 (other changes) noted for follow-up review.' Story file line 566: 'Code review of Story 5.5 chunk 1 (production code). Chunk 2 (tests) and chunk 3 (other changes) noted for follow-up.' Journal step_end for a1 review-code: 'Review Summary — Story 5.5 (Chunk 1: Production Code)' — 8 patches, 7 deferred, 5 dismissed. Journal step_end for a2 review-code: 'Chunk: 1 of 3 (production code, 983 lines)' — 8 patches, 1 deferred, 12 dismissed. Playbook review-code prompt: 'Chunk automatically if over threshold (take first chunk, note rest for follow-up) — do not wait for confirmation.' The agent followed the prompt (noted remaining chunks) but no subsequent step in the playbook reviews the remaining chunks. Trends show review-code-chunks-remaining-unreviewed: distinctRuns 1 (prior occurrence). This is the 2nd occurrence.",
+      "grade": "confirmed"
+    },
+    {
+      "fingerprint": "stale-atdd-red-phase-headers",
+      "summary": "Prior confirmed observation (ledger entries through 104, Stories 3.4 through 5.4, 10 occurrences) — the pattern did NOT recur in 5.5: the 3.12 update_step to implement-story continues to work, as both review-tests runs found 0 stale markers and confirmed all GREEN PHASE markers accurately reflect current state",
+      "evidence": "Journal step_end for a1 review-tests: 'All GREEN PHASE markers across conversation test files are accurate (not stale).' Journal step_end for a2 review-tests: 'Stale transitional markers: 0 found — No RED PHASE markers; all GREEN PHASE markers accurately state tests un-skipped and passing.' Playbook implement-story prompt updatedAt: 2026-07-06T15:31:43.986Z (updatedByRun: 3.12-a1-20260706T122634) — the 3.12 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "implement-step-skips-nfr-hardening",
+      "summary": "Prior confirmed observation (ledger entries through 105, Stories 2.2 through 5.4, 9 occurrences) — the pattern did NOT recur in 5.5: the 3.9 update_step continues to work, as both implement-story runs proactively verified NFR patterns and review-nfrs found 0 blockers (1 Medium patched, 3 Low deferred — none are documented patterns in project-context.md)",
+      "evidence": "Journal step_end for a1 implement-story: 'NFR patterns from project-context.md: all applicable patterns verified present.' Journal step_end for a2 implement-story: 'NFR patterns from project-context.md: all applicable patterns verified present.' Journal step_end for a1 review-nfrs: 4 findings (1 Medium select projection PATCH APPLIED, 3 Low deferred — all pre-existing or complex remediation, none are missing documented patterns). Playbook implement-story prompt updatedAt: 2026-07-06T05:41:22.969Z (updatedByRun: 3.9-a1-20260706T022258) — the 3.9 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "prepare-tests-scaffolding-not-reflected-in-story",
+      "summary": "Prior confirmed observation (ledger entries through 106, Stories 3.8 through 5.4, 6 occurrences) — the pattern did NOT recur in 5.5: the 3.11 update_step continues to work, as a1 prepare-tests amended Task 8 subtasks from 'create scaffolding' to 'activate existing scaffolding' and a2 prepare-tests found tasks already amended",
+      "evidence": "Journal step_end for a1 prepare-tests: 'Story file updated: Task 8 subtasks amended from create scaffolding to activate existing scaffolding (remove it.skip()).' Journal step_end for a2 prepare-tests: 'Story file tasks already amended — Tasks 8.2-8.7 say Scaffolding applied and instruct activation, matching the codebase state.' Playbook prepare-tests prompt updatedAt: 2026-07-06T12:26:33.858Z (updatedByRun: 3.11-a1-20260706T082713) — the 3.11 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "atdd-step-opts-out-of-e2e-prematurely",
+      "summary": "Prior observation (ledger entries through 107, Stories 3.7 through 5.4, 7 occurrences) — the pattern did NOT recur in 5.5: the 3.7 update_step continues to work, as a1 prepare-tests performed the mock-feasibility check and documented it in the ATDD checklist before deferring E2E",
+      "evidence": "Journal step_end for a1 prepare-tests: 'DP-3: E2E deferred — MockEventSource (browser-level SSE mock) covers all ACs. Recorded in checklist.' Playbook prepare-tests prompt updatedAt: 2026-07-06T08:27:13.232Z (updatedByRun: 3.10-a1-20260706T055517) — includes the 3.7 mock-feasibility check amendment.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "atdd-incomplete-regression-guards",
+      "summary": "Prior confirmed observation (ledger entries through 108, Stories 3.8 through 5.4, 7 occurrences) — the pattern did NOT recur in 5.5: the 3.10 update_step continues to work, as a1 prepare-tests correctly checked the scope and determined it does not apply (Story 5.5 has no external command execution with user-controlled input)",
+      "evidence": "Journal step_end for a1 prepare-tests: 'External command regression guards: not applicable (story doesn't execute external commands with user-controlled input).' Playbook prepare-tests prompt updatedAt: 2026-07-06T08:27:13.232Z (updatedByRun: 3.10-a1-20260706T055517) — the 3.10 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "review-tests-empty-placeholder-stubs-unresolved",
+      "summary": "Prior confirmed observation (ledger entries through 109, Stories 3.10 through 5.4, 6 occurrences) — the pattern did NOT recur in 5.5: the 3.11 update_step continues to work, as both review-tests runs found 0 empty placeholder stubs across all 32 test files in scope",
+      "evidence": "Journal step_end for a1 review-tests: 'No empty placeholder test stubs found in any searched file.' Journal step_end for a2 review-tests: 'Empty placeholder stubs: 0 found — Brace-depth-tracking script stripped comments and checked for empty bodies — zero matches.' Playbook review-tests prompt updatedAt: 2026-07-12T09:58:55.031Z (updatedByRun: 5.2-a1-20260712T074239) — the 3.11 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "skipped-tests-from-prior-stories-persist",
+      "summary": "Prior confirmed observation (ledger entries through 101, Stories 5.2 through 5.4, 4 occurrences) — the pattern did NOT recur in 5.5: the 5.2 update_step to review-tests (changing 'flag' to 'remove directly') fired, removing 3 expected-to-fail tests, and a2 review-tests confirmed 0 skipped tests across all 32 files",
+      "evidence": "Journal step_end for a1 review-tests: 'Skipped tests removed (3 test.fixme → removed directly) — all had behavior covered by active component tests AND environmental dependencies with no planned fix.' Journal step_end for a2 review-tests: 'Skipped tests: 0 found — Searched test.skip, test.fixme, it.skip, describe.skip, test.todo, xit, xtest, xdescribe — zero matches across all 32 files.' grep -c 'test.fixme|test.skip|it.skip' playwright/e2e/conversation/story-5-5-inline-pills.spec.ts returns 0. Playbook review-tests prompt updatedAt: 2026-07-12T09:58:55.031Z (updatedByRun: 5.2-a1-20260712T074239) — the 5.2 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "ac-implementation-gap-left-unresolved",
+      "summary": "Prior confirmed observation (ledger entry 100, Story 5.4) — the pattern did NOT recur in 5.5: the 5.4 update_step to review-nfrs is working, as review-nfrs applied a patch directly (Finding 1 — missing select projection on AgentServiceFake) rather than only documenting it, and all 8 code review patches from each run were applied rather than deferred",
+      "evidence": "Journal step_end for a1 review-nfrs: 'Finding 1 — Missing select projection on AgentServiceFake: PATCH APPLIED.' Journal step_end for a1 review-code: 8 patches applied (P1 take:100, P2 error states, P3-P8 various). Journal step_end for a2 review-code: 8 patches applied. Story file line 559: all 8 patches marked applied. Playbook review-nfrs prompt updatedAt: 2026-07-12T17:03:00.862Z (updatedByRun: 5.4-a1-20260712T150150) — the 5.4 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "infra-e2e-env-config-missing",
+      "summary": "Prior confirmed observation (ledger entry 57, Story 3.11; ledger entries 78, 87, 98, 111 — Stories 5.1 through 5.4 deduced non-recurrence) — the pattern did NOT recur in 5.5: E2E tests ran (a1: 8 passed, 3 expected-to-fail; a2: timed out), indicating the auth.setup.ts seed-user issue remains resolved; the 3 expected-to-fail tests are due to test-infrastructure timing issues, not global env config",
+      "evidence": "Journal step_end for a1 e2e-tests: '8 passed, 3 skipped (test.fixme with documented reasons).' The 3 expected-to-fail tests are due to 'Dev server compilation timing (20-30s)', 'setMessages/Playwright assertion timing' — test-infrastructure issues, not the global env config issue that blocked ALL E2E test execution in 3.11. Compare to ledger entry 57 (Story 3.11): 'no .env.local exists with DATABASE_URL/AUTH_SECRET/CREDENTIAL_ENCRYPTION_KEK — this blocks ALL E2E test execution.' 8 tests passing indicates the global env issue is resolved.",
+      "grade": "deduced"
+    }
+  ],
+  "amendments": [
+    {
+      "type": "update_step",
+      "stepId": "review-code",
+      "prompt": "Review the story implementation. Spec file: {implementation_artifacts}/`<epic>-<story>-*.md` (Tier 1); diff baseline = its frontmatter `baseline_commit`, or all uncommitted changes if absent — resolve without asking. Chunk automatically if over threshold for internal organization only — review every chunk sequentially before finishing, starting from the first. Do not wait for confirmation between chunks. Skip the pre-review checkpoint. For decision-needed findings, consult @_bmad-output/decision-policy.md: if a rule covers it, decide and continue (if deferring, write a one-line reason instead of asking). HALT only for decisions no rule covers. After triage, choose 'apply every patch' (no per-finding confirmation) and end — no next-steps menu.",
+      "rationale": "review-code reviews only chunk 1 of multi-chunk diffs and notes the rest for follow-up, but no follow-up step exists in the playbook — chunks 2 and 3 go permanently unreviewed; changing the prompt to review all chunks sequentially eliminates the gap without adding a step."
+    }
+  ],
+  "guardReports": []
+}

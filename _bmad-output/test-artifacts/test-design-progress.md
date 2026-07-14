@@ -4,7 +4,7 @@ totalSteps: 5
 stepsCompleted: ['step-01-detect-mode', 'step-02-load-context', 'step-03-risk-and-testability', 'step-04-coverage-plan', 'step-05-generate-output']
 lastStep: 'step-05-generate-output'
 nextStep: ''
-lastSaved: '2026-06-17'
+lastSaved: '2026-07-13'
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
@@ -331,3 +331,179 @@ System-level estimate across the full MVP scope, before epic/story breakdown:
 - B-04: NFR-O1 alert threshold (PM, pending Q-2 cost estimate)
 
 **Workflow complete.** All 5 steps executed. Next step for the team: review and approve Quick Guide items, assign owners, then run `bmad-testarch-atdd` for P0 acceptance test generation per story.
+
+## Post-Epic-5 Update (2026-07-12, EDIT mode)
+
+**Trigger:** Epic 5 ("UX Mockup Fidelity — Close Visual Drift", 4 stories 5.1–5.4) completed; wave-1 (bug hunt, fidelity audit, traceability gate, NFR audit) and wave-2 (per-epic NFR aggregation) assessment artefacts landed. This section records the post-epic reality so the system-level progress file matches `sprint-status.yaml` and the Epic 5 traceability matrix. The original Steps 1–5 above are preserved verbatim for auditability.
+
+**Autonomous decisions (in place of halting at the skill's checkpoints):**
+
+1. **Mode determination:** chose `[E] Edit` per the task brief; the system-level plan already exists and only surgical edits are needed.
+2. **Target selection (step-01-assess #1):** targeted the existing test-plan files — `test-design-architecture.md`, this file, `test-design-qa.md`, `bmad-easy-handoff.md`, plus a minimal note on the stale `automation-summary.md`. Did not create duplicate artefacts. Left the hydration-gap files (`test-design-progress-hydration-gap.md`, `test-design-epic-hydration-gap.md`) untouched — they are scoped to a separate post-incident design and stand on their own.
+3. **Confirmation gates (step-01-assess #3, step-02-apply-edit #1):** proceeded without halting; recorded this decision here per the unattended-operation guideline.
+
+### Current Project State (2026-07-12)
+
+| Epic | Status (per `sprint-status.yaml`) | Stories | Test Artefacts |
+|---|---|---|---|
+| Epic 1 (Authentication & Repository Connection) | done | 9 (1.1–1.9) | ATDD + automate-validation + test-review (where applicable); epic-1-retrospective done |
+| Epic 2 (Project Map & Artifact Browser) | done | 6 (2.1–2.6) | ATDD + automate-validation + test-review; epic-2-retrospective done |
+| Epic 3 (Conversations — Running BMAD Skills with the Agent) | done | 12 (3.1–3.12) | ATDD + automate-validation + test-review + NFR per story; epic-3-retrospective done |
+| Epic 5 (UX Mockup Fidelity — Close Visual Drift) | in-progress in yaml but **all 4 stories done** (5.1–5.4) | 4 | ATDD + automate-validation + 3 of 4 test-reviews (5.2's missing — Low evidence gap) + per-story + epic-level NFR; bug-hunt + fidelity audit + traceability gate complete |
+| Epic 6 (Sandbox-Based Agent Execution) | backlog | 5 (6.1–6.5) | None yet — see "Epic 6 forward-look" below |
+| Epic 4 | (no Epic 4 — numbering skips per `epics.md`) | — | — |
+
+**Note on Epic 5 status field:** `sprint-status.yaml` still lists `epic-5: in-progress` even though all four stories are `done`. Traceability-matrix-epic-5.md flagged the same. The epic status field is a manual-transition item — not a coverage or quality gap.
+
+### Epic 5 Test Outcomes
+
+- **Traceability gate:** `CONCERNS` (per `traceability/gate-decision-epic-5.json`). 38/38 ACs at FULL coverage; P0 100% (36/36), P1 100% (2/2); 0 critical-open items; 853 tests passing across 65 Jest suites plus 3 active Playwright visual-container specs; 0 skipped.
+- **Test fidelity audit (2026-07-12):** PASS. 2 LOW Gap-C findings (bounded; both downstream of the prior agent-be SSE contract blocker) + 1 INFO coverage note (`withArtifacts` Playwright fixture broken; hover-token E2E for 5.4 AC-1/AC-5 reduced to className-only unit tests).
+- **NFR assessment (epic-level, 2026-07-12):** PASS-WITH-CONCERNS. 24 PASS, 5 CONCERNS (de-duplicated: 1 Medium + 4 Low), 0 FAIL. The 1 Medium is story-introduced: NFR-5.3-1 auto-scroll effect deps after Story 5.3 AC-3 spinner relocation (bug-hunt M1). Roughly 9 quick-win fixes (~1 hour total) identified for a follow-up hardening story.
+- **Bug hunt (2026-07-12):** 11 findings (0 critical, 0 high, 3 medium, 8 low). The 3 mediums: M1 auto-scroll regression; M2 `no-scrollbar` missing on full-width artifact list pane (5.4-AC7 gap); M3 `parseFrontmatter` renders quoted YAML values with quotes (deferred DP-5 hardening).
+- **Deferred work:** pruned clean (0 orphaned items across Epic 5 stories).
+
+### New Test-Plan Items Tee'd Up for the Known Gaps
+
+These items close the wave-1+2 findings without re-scoping the original system-level coverage matrix. They are tracked in detail in `test-design-qa.md` "Post-Epic-5 Gap Closure Plan":
+
+- **P1-014** — Auto-scroll regression test on `SESSION_TIMEOUT` while scrolled up (closes bug-hunt M1 / NFR-5.3-1).
+- **P1-015** — Type-checked `connectRepository` mock factory + `.catch()` path test (closes fidelity-audit Finding 1).
+- **P1-016** — 5.4-AC7 full-width artifact-list pane `no-scrollbar` + test case (closes bug-hunt M2 / NFR-5.4-2 / traceability concern 1).
+- **P1-017** — Tighten ChatInput AC-4 disabled-state test to assert the `disabled:` variant scoping + a positive enabled-button assertion (closes bug-hunt L1 false-green test).
+- **P2-008** — Restore `withArtifacts` Playwright fixture and the 5.4 AC-1 / AC-5 hover-token E2E blocks (closes fidelity-audit Finding 3, INFO).
+- **P2-009** — Loading-skeleton header parity E2E: every `loading.tsx` renders the same header as its companion `page.tsx` (closes bug-hunt L3 + NFR-5.2-3).
+- **P2-010** — Supplement 5.2-AC10 conversation-list scroll behaviour E2E (closes traceability concern 4; jsdom cannot test scroll).
+- **P3-001** — NFR quick-wins bundle (~9 fixes) — landed as a single follow-up hardening story (closes `nfr-assessment-5-epic.md` Quick Wins list and most of the bug-hunt L-tier findings).
+
+### Epic 6 Forward-Look (Backlog, Not Started)
+
+Epic 6 migrates agent execution from the host process (host-based SDK `query()` per Story 3.3 DP-2) back into the Daytona sandbox per PRD §3 and architecture.md data flow. Five stories (6.1–6.5). The testability needs the test plan must tee up before Epic 6 enters implementation are recorded in `test-design-architecture.md` § "Epic 6 (Sandbox-Based Agent Execution) — Forward-Looking Testability Preview". Headline items:
+
+- New test seam `IAguiEventBridgeService` / `AGUI_EVENT_BRIDGE_SERVICE` for the new `agui-event-bridge.service.ts` (Story 6.2) — delivered with the service, not bolted on after (B-01 lesson).
+- Possible `ISandboxService` extension for `getSessionCommandLogs` streaming so the event bridge can be integration-tested without real Daytona.
+- P0-010 (sandbox-agent bridge killed mid-session → backend terminates the orphaned agent process) becomes fully testable — tighten the assertion to verify the Daytona process session actually terminates.
+- Story 6.5 Real-Service E2E is the Tier-3 real-service tier made mandatory, not a deferred enhancement — NFR-P1/P2 timing depends on the real Daytona + Claude path the new sandbox-based execution exercises.
+- `networkAllowList` egress control (Story 6.1) extends P0-014 with a network-route assertion.
+- `ANTHROPIC_API_KEY` becomes required in `apps/agent-be/src/config/env.validation.ts`; `AGENT_WORKDIR` becomes dead config.
+
+### Files Edited This Run
+
+- `_bmad-output/test-artifacts/test-design-architecture.md` — status line, GA Launch bullet, "Post-Epic-5 Update" + "Epic 6 Forward-Looking Testability Preview" sections, Risk Summary effort note.
+- `_bmad-output/test-artifacts/test-design-progress.md` — `lastSaved`, this Post-Epic-5 Update section.
+- `_bmad-output/test-artifacts/test-design-qa.md` — status line, exit criteria, Post-Epic-5 Gap Closure Plan + Epic 6 Forward-Look sections.
+- `_bmad-output/test-artifacts/test-design/bmad-easy-handoff.md` — `generatedAt`, purpose, Epic-5-done + Epic-6-backlog blocks, Phase Transition table.
+- `_bmad-output/test-artifacts/automation-summary.md` — minimal stale-data note pointing to per-story automate-validation reports.
+
+## Post-Story-5.5 Update (2026-07-13, EDIT mode)
+
+**Trigger:** Story 5.5 ("Interleave Tool and Semantic Pills Within the Agent Markdown Stream" — architectural, reverted out of Story 5.3 because it requires a data-model change, not a CSS fix) implemented after the 2026-07-12 post-Epic-5 update. Story 5.5 changed the `ChatMessage` data model (added `segments?: MessageSegment[]` discriminated union), rewrote every SSE event handler in `ConversationPane.tsx` to insert/update segments inside the streaming agent message (rather than pushing flat entries to the `messages` array), added a Prisma migration (`20260713120000_add_turn_segments` — `Turn.segments JSONB`), updated `AgentMessage.tsx` to render interleaved text + tool_call segments, and updated `AgentService` + `AgentServiceFake` to build/persist segments alongside `accumulatedText`. This section records the post-Story-5.5 reality. The 2026-07-12 Post-Epic-5 Update section above and the original Steps 1–5 are preserved verbatim for auditability.
+
+**Autonomous decisions (in place of halting at the skill's step-01-confirm and step-02-confirm gates):**
+
+1. **Mode determination:** chose `[E] Edit` per the task brief; the system-level plan already exists and only surgical edits are needed. Same approach as the 2026-07-12 Post-Epic-5 update.
+2. **Target selection (step-01-assess #1):** targeted the same five test-plan files as the 2026-07-12 run — `test-design-architecture.md`, this file, `test-design-qa.md`, `bmad-easy-handoff.md`, and `automation-summary.md`. Did not create duplicate artefacts. The hydration-gap files remained untouched (scoped to a separate post-incident design and unchanged by Story 5.5).
+3. **Confirmation gates (step-01-assess #3, step-02-apply-edit #1):** proceeded without halting; recorded this decision here per the unattended-operation guideline.
+
+### Current Project State (2026-07-13, post-Story-5.5)
+
+| Epic | Status | Stories | Test Artefacts |
+|---|---|---|---|
+| Epic 1 (Authentication & Repository Connection) | done | 9 (1.1–1.9) | ATDD + automate-validation + test-review (where applicable); epic-1-retrospective done |
+| Epic 2 (Project Map & Artifact Browser) | done | 6 (2.1–2.6) | ATDD + automate-validation + test-review; epic-2-retrospective done |
+| Epic 3 (Conversations — Running BMAD Skills with the Agent) | done | 12 (3.1–3.12) | ATDD + automate-validation + test-review + NFR per story; epic-3-retrospective done |
+| Epic 5 (UX Mockup Fidelity — Close Visual Drift) | **done** in artifacts; `sprint-status.yaml` field still says `in-progress` but all **5** stories (5.1–5.5) are `done` | **5** (added 5.5) | ATDD + automate-validation for all 5 stories + test-review for 4 (5.2's missing — Low evidence gap) + per-story + epic-level NFR for all 5; **bug-hunt + traceability + NFR all re-run for Story 5.5 on 2026-07-13** |
+| Epic 6 (Sandbox-Based Agent Execution) | backlog | 5 (6.1–6.5) | None yet — see "Epic 6 forward-look" below; Story 5.5's segments model is now the substrate Epic 6 builds on |
+
+**Note on Epic 5 status field:** `sprint-status.yaml` still lists `epic-5: in-progress` even though all five stories are `done`. The epic status field is a manual-transition item — not a coverage or quality gap.
+
+### Test Counts (fresh 2026-07-13 verification)
+
+| Type | Count |
+|---|---|
+| Jest test files (`apps/web`) | 65 suites |
+| Jest tests passing (`apps/web`) | 894 |
+| Jest test files (`apps/agent-be`) | 16 suites |
+| Jest tests passing (`apps/agent-be`) | 307 |
+| Story 5.5 Playwright E2E tests (`playwright/e2e/conversation/story-5-5-inline-pills.spec.ts`) | 7 (0 skipped, 0 fixme) |
+| **Total tests across the bmad-easy repo** | **1,201 Jest + 7 Story 5.5 E2E** (post-bug-hunt quick-wins + post-NFR-audit quick-wins applied and re-verified by `yarn nx test web`, `yarn nx test agent-be`, `npx tsc --noEmit -p apps/web/tsconfig.json`) |
+
+Was 853 across 65 suites after Epic 5 (4 stories); +41 web tests + 1 Playwright E2E spec (7 cases) + 307 agent-be tests (already existed; the prior 2026-07-12 entry only counted Web + active visual-container specs) → 1,201 Jest tests + 7 Story 5.5 E2E tests.
+
+### Epic 5 Test Outcomes (post-Story-5.5)
+
+- **Traceability gate (2026-07-13):** `PASS` (per `traceability/gate-decision-epic-5.json`, `evaluated_at: 2026-07-13T19:30:00.000Z`, `gate_status: PASS`). 48/48 ACs at FULL coverage across all 5 stories; P0 100% (46/46), P1 100% (2/2); 0 critical-open, 0 high-open, 3 medium-open (all test-seam or test-fidelity, none production-reachable), 11 low-open. **The 2026-07-12 CONCERNS field was driven primarily by the AC-7 (5.4) full-width artifact list pane missing the `no-scrollbar` class. That concern is now FIXED** — the 2026-07-13 bug-hunt applied a quick-win fix adding the class to `artifacts/page.tsx:124` and added a test assertion at `artifacts/page.test.tsx:265-269`. All previously-documented weaknesses (see 2026-07-12 section above) are either resolved or re-categorized as residual concerns that do not block the gate.
+- **Story 5.5 acceptance criteria:** 10 ACs (AC-1 through AC-10), all FULL coverage. Test evidence:
+  - **Component tests:** 9 ConversationPane tests (AC-1 / AC-2 / AC-3 / AC-4 / AC-5 / AC-6 SUCCEEDED + FAILED / AC-8 surrogate / AC-9 resume variant / AC-1 multi-tool variant) + 5 AgentMessage tests (AC-1, AC-10 narrative ordering).
+  - **Backend persistence tests:** 3 tests in `agent.service.unit.spec.ts` (segments persisted; segments ordered; tool_call fields captured) + 1 strengthened `agent.service.spec.ts:184-202` test (segment contents asserted via `arrayContaining`).
+  - **E2E:** 7 tests in `playwright/e2e/conversation/story-5-5-inline-pills.spec.ts` (covering AC-1, AC-2, AC-3, AC-4, AC-5, multi-tool AC-1 variant, AC-2 expand/collapse variant).
+- **Story 5.5 NFR assessment (`nfr-assessment-5-5.md`, 2026-07-13):** PASS-WITH-CONCERNS. 8 PASS, 4 CONCERNS (1 Medium + 3 Low), 0 FAIL. The 1 Medium is `M3-new` (`AgentServiceFake` diverges from production `pendingClassifierPromises` pattern — test-seam fidelity violation; production code is correct). 3 Lows: `L5-new` index-based React keys for text segments (`AgentMessage.tsx:99`), `L6-new` `MANUAL_SAVE_SUCCEEDED/FAILED` handler duplication (~150 lines), `L7-new` `apps/web/project.json` lacks a `typecheck` nx target (surfaced by the M2-new TS narrowing bug fixed during the audit).
+- **Epic 5 NFR assessment (`nfr-assessment-5-epic.md`, 2026-07-13 revision):** PASS-WITH-CONCERNS. 23 PASS, 6 CONCERNS (de-duplicated: 3 Medium + 3 Low), 0 FAIL. Two of the three Mediums are pre-existing project-wide (`turn.findMany` missing `take` limit — NFR-5.2-1, amplified by Story 5.5's `segments` JSONB column read; `messages.map()` unbound rendering — NFR-5.3-2, amplified by Story 5.5's multi-`Markdown` per agent message). The third Medium (`M3-new`) is the only NEW Epic-5-introduced finding — see NFR Story 5.5 above.
+- **Story 5.5 bug-hunt (`bug-hunt-epic-5-story-5-5-interleaved-pills.md`, 2026-07-13):** 9 findings (0 critical, 0 high, 3 medium, 6 low) against 18 source files + 13 co-located test files and the committed changes (commit `465ea50` plus related quick-win commit `11f470f`). Profile reflects Story 5.5's architectural scope — zero critical/high (no production-reachable data-loss or security regressions introduced); mediums concentrated in (i) false-green tests asserting segment presence without verifying the relative ORDER that AC-1's "at the EXACT POSITION" contract requires, and (ii) one real-but-normally-unreachable status-overwrite bug in `TOOL_CALL_END`. The 3-layer bug-hunt (TFA → ECH → CR) ran sequentially in subagent-fallback mode (single-session inline execution — same precedence as the 2026-07-12 hunt).
+
+### Prior Bug-Hunt Findings Carried Forward + Closed in Story 5.5's Bug-Hunt
+
+| Prior ID | Title | Status (2026-07-13) |
+|---|---|---|
+| Prior bug-hunt M1 | Auto-scroll effect deps regression from Story 5.3 | **FIXED** — quick-win applied during Story 5.5 bug-hunt (`ChatMessageList.tsx:45` deps array extended to `[messages, isThinking, errorMessage, showRetry, showSpinner]`). Closes the P1-014 test-plan item and NFR-5.3-1. |
+| Prior bug-hunt M2 | `no-scrollbar` missing on full-width artifact pane | **FIXED** — quick-win applied during Story 5.5 bug-hunt (`artifacts/page.tsx:124`); test added at `artifacts/page.test.tsx:265-269`. Closes the P1-016 test-plan item, NFR-5.4-2, and traceability concern 1. This is the single fix that upgraded the traceability gate from CONCERNS → PASS. |
+| Prior bug-hunt M3 | `parseFrontmatter` renders quoted YAML with quotes | **FIXED before Story 5.5 audit** — `ArtifactViewer.tsx:22` strips surrounding quotes; tests cover it at `ArtifactViewer.test.tsx:204-241` |
+| Prior bug-hunt L1 | False-green `disabled:` variant test (ChatInput) | Still OPEN — different file; out of Story 5.5 scope. Test-plan item P1-017 remains. |
+| Prior bug-hunt L2 | Missing `aria-live="polite"` assertion | **FIXED** — assertion added at `ChatMessageList.test.tsx:201` during Story 5.5 bug-hunt. Closes P3-001 quick-wins bundle item #5. |
+| Prior bug-hunt L3 | Loading skeleton header drift | Still OPEN — out of Story 5.5 scope. P2-009 test-plan item remains. |
+| Prior bug-hunt L4 | `Intl.DateTimeFormat` per-render allocation | **FIXED before Story 5.5 audit** — both `UserMessage.tsx:10-14` and `AgentMessage.tsx:27-31` use module scope. Closes P3-001 quick-wins bundle item #4. |
+| Prior bug-hunt L5 | `ArtifactViewer` `<a>` focus ring missing | **FIXED before Story 5.5 audit** — `ArtifactViewer.tsx:91-94` has focus ring classes. |
+| Prior bug-hunt L6 | `no-scrollbar` panels lack keyboard scrollability (`tabIndex={0}` + `role="region"`) | Still OPEN — out of Story 5.5 scope. P3-001 quick-wins bundle item #7 remains. |
+| Prior bug-hunt L7 | `RepositoryUrlForm` input missing `maxLength` | **FIXED before Story 5.5 audit** + test added during bug-hunt — `RepositoryUrlForm.tsx:55` has `maxLength={MAX_REPOSITORY_URL_LENGTH}`; test added at `RepositoryUrlForm.test.tsx:324`. Closes P3-001 quick-wins bundle item #8. |
+| Prior bug-hunt L8 | `SlashCommandPicker.header` `role="presentation"` | Still OPEN — out of Story 5.5 scope. |
+
+### Story 5.5 Bug-Hunt New Findings + NFR-Audit Quick-Win Fixes
+
+| New ID | Title | Status |
+|---|---|---|
+| `M1-new` | AC-1 inline-position narrative-ordering tests use `textContent.contains()` — does not enforce relative order ("at the EXACT position") | **FIXED** at audit time — 4 ConversationPane tests + 1 AgentMessage test replaced `toContain` chains with DOTALL regex `toMatch(/Before.*Bash.*After/s)`. The AC-9 resume-variant was the last to fall — fixed during the NFR audit (single `toMatch` replaced 3 separate `toContain` calls). Closes the test-fidelity false-green. |
+| `M2-new` | `TOOL_CALL_END` handler unconditionally overwrites `tool_call` segment status to `'completed'` — silent overwrite of `'error'` state if `TOOL_CALL_RESULT` (with `isError: true`) arrived out-of-order | **FIXED** at audit time — `ConversationPane.tsx:402-406` now preserves `'error'` state via `const nextStatus: 'error' \| 'completed' = s.toolCall.status === 'error' ? 'error' : 'completed'`. Production-reachability is currently bounded by AG-UI protocol (content_block_stop precedes tool_result) but the defense-in-depth guard is in place. Regression test for the out-of-order case still pending — added as test-plan item **P1-019** below. |
+| `M3-new` | `AgentServiceFake` awaits `getWorkingTreeStatus` inline, while production `agent.service.ts:630-660` fires it as a fire-and-forget promise pushed to `pendingClassifierPromises`. Test-seam parity violation per `project-context.md:138` | **OPEN (Medium)** — production code is correct today; the fake is more deterministic than production. Timing-dependent bugs (e.g. `WORKING_TREE_DIRTY` emitted before a subsequent `TEXT_MESSAGE_*` delta) would pass fake-based tests but fail in production. Fix is a ~20-line refactor of the fake's `runTurn` loop mirroring `pendingClassifierPromises`. Booked as new test-plan item **P1-018** below. |
+| `L1-new` | `agent.service.spec.ts:184-202` segments persistence test asserts only shape (`toHaveProperty('segments')` + `Array.isArray`), not contents | **FIXED** during NFR audit — added `expect(...segments).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'tool_call', toolCall: expect.objectContaining({ toolName: 'Bash', input: 'git status', output: 'nothing to commit' }) })]))` |
+| `L2-new` | `agent.service.unit.spec.ts:1413` uses shallow `toHaveProperty('status')` instead of `toBe('completed')` | **FIXED** before NFR audit — uses `.toBe('completed')` value comparison |
+| `L3-new` | `TEXT_MESSAGE_CONTENT` handler silently drops delta when `streamingMessageIdRef.current` is null | **FIXED** during NFR audit — added `else if (delta) console.warn('[ConversationPane] TEXT_MESSAGE_CONTENT delta dropped — no streamingMessageIdRef set')` defense-in-depth. Production user-visible behavior unchanged (delta still dropped on protocol violation) but now diagnosable. |
+| `L4-new` | Resume path casts DB JSON to `MessageSegment[]` without runtime validation (Story 5.5 spec DP-3) | **FIXED** before NFR audit — `conversations/[conversationId]/page.tsx:44` adds `Array.isArray(turn.segments) ? (turn.segments as MessageSegment[]) : undefined` guard. Per-segment narrowing deferred per DP-3 (deeper validation requires coordinated MessageSegment runtime validation story). |
+| `L5-new` | `AgentMessage.tsx:99` uses index-based React keys (`key={`text-${index}`}`) for text segments. Anti-pattern — unstable when array is reordered or inserted mid-array. Currently inert because segments are append-only. | **OPEN (Low)** — coordinate with deferred MessageSegment runtime validation story (DP-3). Carried as P3-002 hardening bundle item. |
+| `L6-new` | `MANUAL_SAVE_SUCCEEDED/FAILED` handler duplication (~150 lines) in `ConversationPane.tsx:543-693`. Only diff: `status` / `semantic` / `errorMessage`. Refactor risk on future edits. | **OPEN (Low)** — extract `buildManualSaveSegment(toolCallId, status, semantic?, errorMessage?)` helper; both handlers shrink to ~10 lines. Carried as P3-002 hardening bundle item. |
+| `L7-new` (NEW from NFR audit) | `apps/web/project.json` lacks a `typecheck` nx target; `nx.json:38-41` defines a `typecheck` task template that `apps/web/project.json` does not expose. `apps/agent-be/project.json` has it. The M2-new fix introduced a TS narrowing bug that silently passed `yarn nx test web` (jest/babel) and `yarn nx lint web` (eslint) — only direct `npx tsc --noEmit -p apps/web/tsconfig.json` surfaced the error. Other pre-existing TS errors may be silently accumulating without detection. | **OPEN (Low)** — gated add `typecheck` target mirroring `agent-be`. Sub-finding (M2-new TS narrowing bug) was fixed during the NFR audit by extracting `const nextStatus: 'error' \| 'completed'`. Carried as new test-plan item **P1-020** below. |
+
+### Aggregate Effect on the System-Level Gap-Closure Plan
+
+| Test-Plan ID | Status Change (since 2026-07-12 entry) |
+|---|---|
+| P1-014 | **CLOSED** — auto-scroll regression quick-win fix applied (ChatMessageList deps array extended during Story 5.5 bug-hunt). No new test needed for the regression case in P0/P1 — the existing tests assert `useEffect` behavior via component mount state. |
+| P1-015 | Still OPEN (out of Story 5.5 scope — different file/fidelity-audit-cited shape). |
+| P1-016 | **CLOSED** — `no-scrollbar` class + test added at `artifacts/page.tsx:124` + `artifacts/page.test.tsx:265-269` during Story 5.5 bug-hunt. (Was the primary driver of the 2026-07-12 CONCERNS gate decision.) |
+| P1-017 | Still OPEN (out of Story 5.5 scope). |
+| P2-008 | Still OPEN (`withArtifacts` Playwright fixture restoration deferred). |
+| P2-009 | Still OPEN (out of Story 5.5 scope). |
+| P2-010 | Still OPEN. |
+| P3-001 | **~6 of 9 quick-wins CLOSED** in the Story 5.5 bug-hunt + NFR audit cycle: (1) `take: 100` on `turn.findMany` — **STILL OPEN** (NFR-5.2-1 — Medium — bundled into P3-002 epic-hardening-story scope, not a one-liner); (2) `select: { id: true }` on `repoConnection.findUnique` — **STILL OPEN** (Low — P3-002); (3) `no-scrollbar` on full-width pane — **CLOSED**; (4) `Intl.DateTimeFormat` hoist — **CLOSED**; (5) `aria-live` assertion — **CLOSED**; (6) loading.tsx canonical header — **STILL OPEN** (P2-009); (7) `tabIndex={0}` + `role="region"` on three `no-scrollbar` panels — **STILL OPEN** (P3-002); (8) `maxLength` — **CLOSED** (production + test); (9) `MAX_DRAFT_SIZE` guard — partially applied pre-Story-5.5 (silent-swallow pattern still present — see NFR-5.3-5). |
+| **P1-018 (NEW)** | Mirror `pendingClassifierPromises` pattern in `AgentServiceFake` to close `M3-new` test-seam divergence. ~20-line refactor of the fake's `runTurn` loop. P1 because it is the only NEW Medium test-seam finding Epic 5/introduced; not a production bug; the production code is correct today. (See `test-design-qa.md` Post-Story-5.5 Gap Closure Update.) |
+| **P1-019 (NEW)** | Story 5.5 `M2-new` regression test — emit `TOOL_CALL_RESULT` (with `isError: true`) before `TOOL_CALL_END` and assert the tool_call segment's `status` remains `'error'` after the END handler fires. Closes the M2-new structural-fix verification gap. The fix itself (production guard) is applied; this is the test-only follow-up. |
+| **P1-020 (NEW)** | Add `typecheck` nx target to `apps/web/project.json` mirroring `apps/agent-be/project.json`. Closes `L7-new`. Surfaced by the `M2-new` TS narrowing bug that passed CI silently until the NFR audit ran `npx tsc --noEmit` directly. ~5-minute task. Wire into CI workflow alongside `lint` and `test`. |
+| **P3-002 (NEW)** | Epic-5 NFR hardening bundle (post-Story-5.5) — closes the remaining Low findings + bundles the 6 Low NFR findings from Story 5.5 (L1-new [fixed], part of L4-new per-segment narrowing, L5-new index-based React keys, L6-new handler duplication, L7-new typecheck target [if not done as P1-020]) + carryover pre-existing Lows (`turn.findMany` take limit Medium; `repoConnection.findUnique` select projection Low; `conversations/[conversationId]/loading.tsx` drift Low; `no-scrollbar` keyboard scrollability Low; `QuotaExceededError` silent swallow Low). Bundled into a single ~1.5–2-hour hardening story. Supersedes/expands the scope of the original P3-001 bundle. |
+
+### Epic 6 Forward-Look (Updated for Story 5.5 Substrate)
+
+Story 5.5 produced a structural change to the data model that flows directly into Epic 6's testability preview (see `test-design-architecture.md` § "Epic 6 Forward-Looking Testability Preview" for the original five-story scope):
+
+- **Segments model is now the substrate for Epic 6's agent execution migration.** Story 5.5's `MessageSegment` discriminated-union + `Turn.segments` JSONB column + `ConversationPane` handlers became the canonical shape for how tool calls and recognized actions interleave with agent text. Epic 6's new `agui-event-bridge.service.ts` (Story 6.2) will receive the sandbox-agent normalized event stream via Daytona's `getSessionCommandLogs` API and re-encode to AG-UI events — those AG-UI events feed the same `ConversationPane` handlers epid by Story 5.5. The test seam must be designed against the **post-Story-5.5** handler behavior (segments-shaped events), not the pre-5.5 flat-`messages`-array behavior.
+- **`pendingClassifierPromises` pattern is the test-seam parity reference.** The `M3-new` finding above means the `AguiEventBridgeServiceFake` (the new test double Story 6.2 will introduce) must mirror the production `void`-returned-promise + `Promise.allSettled(promises)` pattern from the start. The Story 5.5 lesson: a fake that is "more deterministic than production" masks timing-dependent bugs.
+- **Status-overwrite lesson generalizes.** The `M2-new` defense-in-depth guard (preserve `'error'` state if a later event arrives with conflicting status) is a pattern the new event bridge must follow for any stateful AG-UI event type that has both "streaming-end" and "result" semantics. The recommended P1-019 regression test (out-of-order `TOOL_CALL_RESULT` → `TOOL_CALL_END`) is the template for similar out-of-order assertions Epic 6 should add.
+- **Segment-payload sizing feeds NFR-P2 / NFR-P4 budgeting.** Story 5.5 added a `segments: Json?` column to the `Turn` schema; the resume-path `turn.findMany` reads it (with no `take` limit — pre-existing Medium NFR-5.2-1, amplified because the JSONB payload per row grows). Epic 6's real-service timing tests (Story 6.5) must account for this — NFR-P2/P4 budgets now load interleaved segment JSONB, not just flat text.
+
+These items are recorded so that when Epic 6 enters implementation, its per-story ATDD + test-design work begins from a pre-identified testability surface — now including the segments-model substrate Story 5.5 produced.
+
+### Files Edited This Run
+
+- `_bmad-output/test-artifacts/test-design-progress.md` — `lastSaved` updated to 2026-07-13; this Post-Story-5.5 Update section appended after the 2026-07-12 Post-Epic-5 Update section. All earlier content (Post-Epic-5 Update, Steps 1–5) preserved verbatim.
+- `_bmad-output/test-artifacts/test-design-architecture.md` — `lastSaved`; status line; new "Post-Story-5.5 Update (2026-07-13)" subsection extending the 2026-07-12 Post-Epic-5 Update with the segments-substrate context; new architectural concerns from the Story 5.5 bug-hunt (`M3-new` test-seam divergence + `L7-new` `web` typecheck target gap) folded into "Testability Concerns and Architectural Gaps"; Epic 6 forward-look paragraphs extended with Story 5.5 substrate references.
+- `_bmad-output/test-artifacts/test-design-qa.md` — `lastSaved`; status line + Executive Summary test counts (853 → 1201 total); Exit Criteria P0/P1 thresholds (matches the PASS gate decision); Story 5.5 IC scenarios added to the coverage matrix in the Conversations feature area; Post-Epic-5 Gap Closure Plan extended with a "Post-Story-5.5 Gap Closure Update" that closes P1-014 + P1-016 + parts of P3-001 and adds new items P1-018, P1-019, P1-020, P3-002; Epic 6 forward-look paragraphs extended with Story 5.5 substrate references.
+- `_bmad-output/test-artifacts/test-design/bmad-easy-handoff.md` — `generatedAt` extended with revised-2026-07-13; Post-Story-5.5 Update section; Phase Transition table updated (Implements Test Automation → Release line for Epic 5: CONCERNS → PASS for the gate status; Story-9-5.5 segments-model substrate noted in Risk-to-Story mapping and Epic 6 Forward-Look).
+- `_bmad-output/test-artifacts/automation-summary.md` — minimal stale-data note refreshed; test counts updated (853 → 1201 total + 7 Story 5.5 E2E); gate decision updated (CONCERNS → PASS). Retained as historical reference; per-story automate-validation reports remain the source of truth.

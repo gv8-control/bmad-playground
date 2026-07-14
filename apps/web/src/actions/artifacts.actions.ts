@@ -21,6 +21,7 @@ export async function syncArtifactsAction(): Promise<SyncArtifactsResult> {
 
   const repoConnection = await getPrisma().repoConnection.findUnique({
     where: { userId: session.userId },
+    select: { id: true, repoUrl: true },
   });
 
   if (!repoConnection) {

@@ -31,6 +31,8 @@ inputDocuments:
 **Mode:** BMad-Integrated
 **Stack:** fullstack (Next.js frontend + NestJS backend)
 
+> **Note (2026-07-13 post-Story-5.5):** This file is the original Story-1.2/1.3/1.4-era automation summary (last saved 2026-06-24) and is retained for historical reference only. Per-story automate-validation reports (22+ files under `_bmad-output/test-artifacts/automate-validation-report-*.md`) are the source of truth for actual coverage. As of 2026-07-13, 1,201 Jest tests pass across 81 suites (894 web + 307 agent-be) plus 7 Story 5.5 E2E Playwright tests; Epic 5 traceability gate = **PASS** (was CONCERNS on 2026-07-12 — the `no-scrollbar` class fix landed during the Story 5.5 bug-hunt upgrading the gate; 48/48 ACs at FULL coverage, 0 critical-open; 3 medium-open all test-seam/test-fidelity only). The gap-filling tests described below (decryption tamper detection, `oAuthCredential.upsert` error resilience, malformed JSON in `_bmad/package.json`) shipped and remain part of the suite.
+
 ---
 
 ## Step 1: Preflight & Context

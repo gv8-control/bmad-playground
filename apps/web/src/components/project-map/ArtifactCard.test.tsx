@@ -1,9 +1,13 @@
 /**
  * ATDD — Story 2.2: View the Project Map (base component)
  * Story 2.6: Navigate from the Project Map to an Artifact (href prop, link behavior)
+ * Story 5.4: Fix Token-Usage Drift (AC-1: hover border uses hover:border-accent)
  * Component unit tests for ArtifactCard (Server Component, presentational).
  * Covers AC-1 (artifact list with cards), AC-2 (in-progress visual distinction),
  * UX-DR16 (non-color state signaling), and Story 2.6 AC-1/AC-2 (click-to-navigate).
+ *
+ * All tests are GREEN (component delivered as a <Link>
+ * with href, aria-label, and hover/focus styling).
  *
  * Priority tags: P0 for AC coverage, P1 for edge cases.
  */
@@ -139,10 +143,12 @@ describe('ArtifactCard — link behavior (AC-1, AC-2, Story 2.6)', () => {
     expect(item.className).toContain('focus:ring-offset-surface');
   });
 
-  it('[P0] has hover border classes', () => {
+  // Story 5.4, AC-1: hover border uses accent token, not text color token
+  it('[P0] has hover border using hover:border-accent (not hover:border-text-3) (Story 5.4, AC-1)', () => {
     render(<ArtifactCard {...COMPLETED_ARTIFACT} />);
     const item = screen.getByRole('listitem');
-    expect(item.className).toContain('hover:border-text-3');
+    expect(item.className).toContain('hover:border-accent');
+    expect(item.className).not.toContain('hover:border-text-3');
   });
 
   it('[P0] preserves role="listitem" on the link element', () => {

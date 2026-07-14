@@ -2,6 +2,8 @@
  * @jest-environment jsdom
  *
  * Story 3.6: Track and Manually Save Working Tree State
+ * Story 5.4: Fix Token-Usage Drift (AC-4: Save button text-accent-fg,
+ *            AC-9: shadow-floating not shadow-lg)
  * Unit tests for WorkingTreeIndicator component.
  *
  * Covers: AC-1 (indicator states, aria-live), AC-2 (save confirmation popover),
@@ -186,6 +188,40 @@ describe('WorkingTreeIndicator', () => {
       expect(
         screen.queryByText(/Unsaved changes are lost if you close this page/i),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  // ─── Story 5.4: Token-usage drift (AC-4, AC-9) ──────────────────────────────
+  //
+  // Story 5.4: AC-4: Save button uses text-accent-fg (not text-bg) on accent surface.
+  // AC-9: WorkingTreeIndicator uses shadow-floating (not shadow-lg).
+  // Tests are active (GREEN) after Story 5.4 implementation.
+
+  describe('[P0] Story 5.4, AC-4 — Save button text color', () => {
+    it('Save button uses text-accent-fg, not text-bg (AC-4)', () => {
+      renderIndicator('dirty');
+      fireEvent.click(screen.getByText(/Unsaved changes/));
+      const saveButton = screen.getByRole('button', { name: 'Save' });
+      expect(saveButton.className).toContain('text-accent-fg');
+      expect(saveButton.className).not.toContain('text-bg');
+    });
+  });
+
+  describe('[P0] Story 5.4, AC-9 — Floating shadow token', () => {
+    it('save popover uses shadow-floating, not shadow-lg (AC-9)', () => {
+      renderIndicator('dirty');
+      fireEvent.click(screen.getByText(/Unsaved changes/));
+      const popover = screen.getByRole('dialog');
+      expect(popover.className).toContain('shadow-floating');
+      expect(popover.className).not.toContain('shadow-lg');
+    });
+
+    it('info tooltip uses shadow-floating, not shadow-lg (AC-9)', () => {
+      renderIndicator('dirty');
+      fireEvent.click(screen.getByLabelText('Why does this matter?'));
+      const tooltip = screen.getByRole('tooltip');
+      expect(tooltip.className).toContain('shadow-floating');
+      expect(tooltip.className).not.toContain('shadow-lg');
     });
   });
 });

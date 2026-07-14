@@ -3,9 +3,11 @@ import { Breadcrumb } from '@/components/shell/Breadcrumb';
 export default function ArtifactsLoading() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex-shrink-0">
-        <Breadcrumb />
-        <h1 tabIndex={-1} className="px-8 text-xl font-semibold text-text-1">Artifact Browser</h1>
+      <header className="flex-shrink-0 border-b border-surface-raised pt-6 pb-4 px-8">
+        <div className="flex items-center gap-3">
+          <Breadcrumb />
+          <h1 tabIndex={-1} className="text-xl font-semibold text-text-1">Artifact Browser</h1>
+        </div>
       </header>
       <div className="flex-1 overflow-y-auto px-8 pb-8">
         <div className="flex flex-col">

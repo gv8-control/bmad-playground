@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth';
 import { getPrisma } from '@/lib/prisma';
 import { mintBoundaryJwt } from '@/lib/boundary-jwt';
 import { ConversationPane } from '@/components/conversation/ConversationPane';
-import type { ChatMessage } from '@/components/conversation/types';
+import type { ChatMessage, MessageSegment } from '@/components/conversation/types';
 
 export default async function ConversationPage({
   params,
@@ -33,7 +33,8 @@ export default async function ConversationPage({
   const turns = await getPrisma().turn.findMany({
     where: { conversationId },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, role: true, content: true, createdAt: true },
+    take: 100,
+    select: { id: true, role: true, content: true, segments: true, createdAt: true },
   });
 
   const initialMessages: ChatMessage[] = turns.map((turn) => ({
@@ -41,6 +42,11 @@ export default async function ConversationPage({
     role: turn.role as 'user' | 'assistant',
     content: turn.content,
     createdAt: turn.createdAt,
+    segments: Array.isArray(turn.segments)
+      ? (turn.segments as MessageSegment[]).map((s) =>
+          s.type === 'text' && !s.id ? { ...s, id: crypto.randomUUID() } : s
+        )
+      : undefined,
   }));
 
   const boundaryJwt = await mintBoundaryJwt(userId);
@@ -48,11 +54,13 @@ export default async function ConversationPage({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex-shrink-0">
-        <Breadcrumb />
-        <h1 tabIndex={-1} className="px-8 text-xl font-semibold text-text-1">
-          {conversation.title ?? 'Conversation'}
-        </h1>
+      <header className="flex-shrink-0 border-b border-surface-raised pt-6 pb-4 px-8">
+        <div className="flex items-center gap-3">
+          <Breadcrumb />
+          <h1 tabIndex={-1} className="text-xl font-semibold text-text-1">
+            {conversation.title ?? 'Conversation'}
+          </h1>
+        </div>
       </header>
       <div className="flex-1 overflow-hidden">
         <ConversationPane

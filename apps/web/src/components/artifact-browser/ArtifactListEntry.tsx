@@ -70,15 +70,15 @@ export function ArtifactListEntry({
         'focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface',
         selected
           ? 'bg-surface-raised border-l-2 border-accent'
-          : 'hover:bg-surface-raised/60 transition-colors',
+          : 'hover:bg-surface-raised transition-colors',
       )}
     >
-      <span className="text-xs text-text-2 uppercase tracking-wide font-medium">
+      <span className="text-xs text-text-3 uppercase tracking-wide font-medium">
         {typeLabel}
       </span>
       <span className="text-sm font-semibold text-text-1">{title}</span>
       <div className="flex items-center justify-between mt-1">
-        <span className="text-xs text-text-2">
+        <span className="text-xs text-text-3">
           {formatDate(lastModifiedAt)}
         </span>
         <span

@@ -3,6 +3,12 @@
  * Component unit tests for RepositoryUrlForm (Client Component).
  * Covers AC-1 (single URL input, no token field), AC-4 (inline error display,
  * per-cause messages), and UX-DR14/UX-DR16 accessibility requirements.
+ * Also covers Story 5.1 AC-2 (form panel) and AC-3 (BMAD-not-found panel).
+ * Also covers Story 5.4 AC-2/AC-3 (token-usage drift: bg-bg, text-text-1,
+ * ring-offset-bg, focus:border-accent, border-negative on error).
+ *
+ * GREEN PHASE: all tests are active. Story 1.3, Story 5.1, and Story 5.4
+ * implementation complete.
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
@@ -21,6 +27,16 @@ jest.mock('next/navigation', () => ({
 }));
 
 import { connectRepository } from '@/actions/repo-connection.actions';
+
+type ConnectResult = Awaited<ReturnType<typeof connectRepository>>;
+
+function mockConnectRepositoryResult(result: ConnectResult) {
+  (connectRepository as jest.Mock).mockResolvedValue(result);
+}
+
+function mockConnectRepositoryResultOnce(result: ConnectResult) {
+  (connectRepository as jest.Mock).mockResolvedValueOnce(result);
+}
 
 // ─── Initial render (AC-1, UX-DR14) ──────────────────────────────────────────
 
@@ -83,7 +99,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('[P0] shows inline error when Server Action returns INSUFFICIENT_PERMISSION (AC-4)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: "You don't have write access to this repository. bmad-easy requires write access.",
       errorCode: 'INSUFFICIENT_PERMISSION',
     });
@@ -94,7 +110,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P0] shows inline error when Server Action returns NOT_FOUND (AC-4)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'Repository not found. Check that the URL is correct and you have access to it.',
       errorCode: 'NOT_FOUND',
     });
@@ -105,7 +121,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P0] shows org-restriction error that explicitly names the org cause (AC-4)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'Your GitHub organization has OAuth App access restrictions enabled. Ask an org admin to approve bmad-easy.',
       errorCode: 'ORG_RESTRICTION',
     });
@@ -116,7 +132,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P1] error element has role="alert" for screen reader announcement (UX-DR16)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'Some error.',
       errorCode: 'UNKNOWN',
     });
@@ -127,7 +143,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P1] input has aria-describedby pointing to the error element when error is shown (UX-DR16)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({ error: 'Error.', errorCode: 'UNKNOWN' });
+    mockConnectRepositoryResult({ error: 'Error.', errorCode: 'UNKNOWN' });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
@@ -138,7 +154,7 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P0] submit button is re-enabled after an error so the user can retry', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({ error: 'Error.', errorCode: 'UNKNOWN' });
+    mockConnectRepositoryResult({ error: 'Error.', errorCode: 'UNKNOWN' });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
@@ -147,9 +163,8 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
   });
 
   it('[P1] error is cleared on the next submission attempt', async () => {
-    (connectRepository as jest.Mock)
-      .mockResolvedValueOnce({ error: 'Error.', errorCode: 'UNKNOWN' })
-      .mockResolvedValueOnce({ success: true });
+    mockConnectRepositoryResultOnce({ error: 'Error.', errorCode: 'UNKNOWN' });
+    mockConnectRepositoryResultOnce({ success: true });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     const button = screen.getByRole('button', { name: /connect repository/i });
@@ -159,6 +174,16 @@ describe('RepositoryUrlForm — error display (AC-4)', () => {
     await userEvent.click(button);
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
+
+  it('[P1] shows generic fallback when connectRepository rejects (.catch path)', async () => {
+    (connectRepository as jest.Mock).mockRejectedValue(new Error('network'));
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/unexpected error/i));
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /connect repository/i })).toBeEnabled();
+  });
 });
 
 // ─── Successful submission (AC-3) ─────────────────────────────────────────────
@@ -167,7 +192,7 @@ describe('RepositoryUrlForm — successful connection (AC-3)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('[P0] redirects to /project-map when the Server Action returns { success: true } (AC-3)', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({ success: true });
+    mockConnectRepositoryResult({ success: true });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
@@ -181,7 +206,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('[P0] shows documentation link when validation error includes documentationLink', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'BMAD initialization is incomplete. Missing: _bmad/.',
       errorCode: 'MISSING_DIRECTORY',
       documentationLink: 'https://docs.bmad-method.org',
@@ -194,7 +219,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P0] does NOT show documentation link for non-validation errors', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: "You don't have write access to this repository.",
       errorCode: 'INSUFFICIENT_PERMISSION',
     });
@@ -206,7 +231,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P0] shows error message for UNSUPPORTED_VERSION with detected version', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'BMAD version 5.9.9 is not supported. Only BMAD v6 is supported.',
       errorCode: 'UNSUPPORTED_VERSION',
       documentationLink: 'https://docs.bmad-method.org',
@@ -218,7 +243,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P0] shows error message for NO_SKILLS_FOUND', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'No BMAD Skills were found in .claude/skills/.',
       errorCode: 'NO_SKILLS_FOUND',
       documentationLink: 'https://docs.bmad-method.org',
@@ -230,7 +255,7 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P1] documentation link opens in new tab with noopener', async () => {
-    (connectRepository as jest.Mock).mockResolvedValue({
+    mockConnectRepositoryResult({
       error: 'Missing directory.',
       errorCode: 'MISSING_DIRECTORY',
       documentationLink: 'https://docs.bmad-method.org',
@@ -244,13 +269,12 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
   });
 
   it('[P1] documentation link is cleared on next submission', async () => {
-    (connectRepository as jest.Mock)
-      .mockResolvedValueOnce({
-        error: 'Missing directory.',
-        errorCode: 'MISSING_DIRECTORY',
-        documentationLink: 'https://docs.bmad-method.org',
-      })
-      .mockResolvedValueOnce({ success: true });
+    mockConnectRepositoryResultOnce({
+      error: 'Missing directory.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    mockConnectRepositoryResultOnce({ success: true });
     render(<RepositoryUrlForm />);
     await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
     const button = screen.getByRole('button', { name: /connect repository/i });
@@ -258,5 +282,156 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
     await screen.findByRole('link', { name: /bmad documentation/i });
     await userEvent.click(button);
     await waitFor(() => expect(screen.queryByRole('link')).not.toBeInTheDocument());
+  });
+});
+
+// ─── Story 5.4: Token-usage drift (AC-2, AC-3) ──────────────────────────────
+//
+// Story 5.4: AC-2: Input background is bg-bg (recessed), label uses text-text-1.
+// AC-3: Focus ring offset uses ring-offset-bg, border transitions on focus/error.
+// Tests are active (GREEN) after Story 5.4 implementation.
+
+describe('RepositoryUrlForm — token-usage drift (Story 5.4, AC-2, AC-3)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] input uses bg-bg (recessed), not bg-surface (raised) (AC-2)', () => {
+    render(<RepositoryUrlForm />);
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input.className).toContain('bg-bg');
+    expect(input.className).not.toMatch(/\bbg-surface\b/);
+  });
+
+  it('[P0] field label uses text-text-1, not text-text-2 (AC-2)', () => {
+    render(<RepositoryUrlForm />);
+    const label = screen.getByText(/repository url/i);
+    expect(label.className).toContain('text-text-1');
+    expect(label.className).not.toContain('text-text-2');
+  });
+
+  it('[P0] focus ring offset uses ring-offset-bg, not ring-offset-surface (AC-3)', () => {
+    render(<RepositoryUrlForm />);
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input.className).toContain('ring-offset-bg');
+    expect(input.className).not.toContain('ring-offset-surface');
+  });
+
+  it('[P0] input border transitions to border-accent on focus (AC-3)', () => {
+    render(<RepositoryUrlForm />);
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input.className).toContain('focus:border-accent');
+  });
+
+  it('[P0] input has maxLength attribute matching MAX_REPOSITORY_URL_LENGTH (bug-hunt L7)', () => {
+    render(<RepositoryUrlForm />);
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input).toHaveAttribute('maxLength', '2000');
+  });
+
+  it('[P0] input border transitions to border-negative on error, persists on focus (AC-3)', async () => {
+    mockConnectRepositoryResult({ error: 'Error.', errorCode: 'UNKNOWN' });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input.className).toContain('border-negative');
+    expect(input.className).toContain('focus:border-negative');
+    expect(input.className).not.toContain('focus:border-accent');
+  });
+});
+
+// ─── Story 5.1: Visual containers (AC-2, AC-3) ───────────────────────────────
+//
+// GREEN PHASE: tests are active for Tasks 2 and 3 implementation.
+// AC-2: Onboarding form panel wraps the Repository URL input.
+// The input and its supporting copy must sit inside a form panel
+// (bg-surface border border-border rounded-xl p-7).
+//
+// AC-3: Onboarding BMAD-not-found panel for blocking states.
+// BMAD-validation errors (with documentationLink) must render in a styled
+// panel (bg-negative-bg border border-negative rounded-lg p-4) with a
+// title/body split. Non-BMAD errors keep the inline error style.
+
+describe('RepositoryUrlForm — form panel container (Story 5.1, AC-2)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] wraps the form inner content in a panel with bg-surface border border-border rounded-xl p-7 (AC-2, Task 2.1)', () => {
+    render(<RepositoryUrlForm />);
+    const panel = document.querySelector('.bg-surface.border.border-border.rounded-xl.p-7');
+    expect(panel).toBeInTheDocument();
+  });
+
+  it('[P0] the form panel contains the label, input, and submit button (AC-2, Task 2.2)', () => {
+    render(<RepositoryUrlForm />);
+    const panel = document.querySelector('.bg-surface.border.border-border.rounded-xl.p-7');
+    expect(panel).toContainElement(screen.getByLabelText(/repository url/i));
+    expect(panel).toContainElement(
+      screen.getByRole('button', { name: /connect repository/i }),
+    );
+  });
+});
+
+describe('RepositoryUrlForm — BMAD-not-found panel (Story 5.1, AC-3)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('[P0] renders a styled panel (bg-negative-bg border border-negative rounded-lg p-4) for BMAD-validation errors with documentationLink (AC-3, Task 3.1)', async () => {
+    mockConnectRepositoryResult({
+      error: 'BMAD initialization is incomplete. Missing: _bmad/.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => {
+      const panel = document.querySelector('.bg-negative-bg.border.border-negative.rounded-lg.p-4');
+      expect(panel).toBeInTheDocument();
+    });
+  });
+
+  it('[P0] the BMAD-not-found panel has a title/body split layout (AC-3, Task 3.2)', async () => {
+    mockConnectRepositoryResult({
+      error: 'BMAD initialization is incomplete. Missing: _bmad/.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => {
+      const panel = document.querySelector('.bg-negative-bg.border.border-negative.rounded-lg.p-4');
+      expect(panel).toBeInTheDocument();
+    });
+    const panel = document.querySelector('.bg-negative-bg.border.border-negative.rounded-lg.p-4');
+    const link = await screen.findByRole('link', { name: /bmad documentation/i });
+    expect(panel).toContainElement(link);
+  });
+
+  it('[P0] keeps inline error style (no bg-negative-bg panel) for non-BMAD errors without documentationLink (AC-3, Task 3.3)', async () => {
+    mockConnectRepositoryResult({
+      error: "You don't have write access to this repository.",
+      errorCode: 'INSUFFICIENT_PERMISSION',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    const panel = document.querySelector('.bg-negative-bg.border.border-negative.rounded-lg.p-4');
+    expect(panel).not.toBeInTheDocument();
+  });
+
+  it('[P1] preserves role="alert" and aria-describedby wiring in the BMAD-not-found panel (AC-3, Task 3.4)', async () => {
+    mockConnectRepositoryResult({
+      error: 'BMAD initialization is incomplete. Missing: _bmad/.',
+      errorCode: 'MISSING_DIRECTORY',
+      documentationLink: 'https://docs.bmad-method.org',
+    });
+    render(<RepositoryUrlForm />);
+    await userEvent.type(screen.getByLabelText(/repository url/i), 'https://github.com/a/b');
+    await userEvent.click(screen.getByRole('button', { name: /connect repository/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    const input = screen.getByLabelText(/repository url/i);
+    const alert = screen.getByRole('alert');
+    expect(input.getAttribute('aria-describedby')).toBe(alert.id);
   });
 });

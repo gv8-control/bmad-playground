@@ -1,0 +1,89 @@
+{
+  "story": "5.4",
+  "runId": "5.4-a1-20260712T150150",
+  "observations": [
+    {
+      "fingerprint": "ac-implementation-gap-left-unresolved",
+      "summary": "implement-story applied a CSS utility to 3 of 4 scrollable panels (missing the full-width artifact list pane at line 123); the gap was caught by review-nfrs as a Medium finding but only documented, not fixed, and the story was committed as done with the gap unresolved",
+      "evidence": "NFR assessment _bmad-output/test-artifacts/nfr-assessment-5-4.md Finding 2 (lines 150-163): 'no-scrollbar not applied to full-width artifact list pane [artifacts/page.tsx:123] — Introduced by Story 5.4: Yes (AC-7 coverage gap) — Status: Open.' Story file review section line 459: '[NFR][Medium] no-scrollbar not applied to full-width artifact list pane [artifacts/page.tsx:123] — Introduced by Story 5.4 (AC-7 added no-scrollbar to line 93 but missed line 123).' deferred-work.md line 371: 'Scrollable panels missing .no-scrollbar — [artifacts/page.tsx:123] (full-width artifact list pane — noted as NFR finding in story but not previously transferred here).' Committed code (git show 360fccc:apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx line 123): className=\"flex-1 overflow-y-auto px-8 pb-8\" — no no-scrollbar class. Journal step_end for implement-story: 'AC-7: .no-scrollbar utility added to global.css, applied to 3 scrollable panels.' Journal step_end for review-nfrs: 'Finding 2: Medium, QoE, no-scrollbar missing on full-width artifact list pane (line 123) — AC-7 coverage gap; test only covers two-pane layout. Introduced by 5.4.' Journal step_end for unit-tests: '11/11 ACs have P0 test coverage' — but page.test.tsx:461 only covers the two-pane layout. Journal step_end for review-code: 2 patches applied (borderRadius DEFAULT, focus:border-accent specificity) — AC-7 gap not caught. Ledger entry for 5.3 (ac-implementation-gap-left-unresolved): 'the pattern did NOT recur in 5.3: implement-story left an AC-5 gap, but unit-tests caught it and review-code fixed it.' In 5.4 the gap slipped through unit-tests and review-code, was caught by review-nfrs but only documented.",
+      "grade": "confirmed"
+    },
+    {
+      "fingerprint": "skipped-tests-from-prior-stories-persist",
+      "summary": "Prior confirmed observation (ledger entries 79, 89 — Stories 5.2, 5.3, 4 occurrences) — the pattern did NOT recur in 5.4: the 5.2 update_step to review-tests (changing 'flag' to 'remove directly') fired, removing 8 skipped tests (2 from Story 5.4, 6 from Story 5.1 that had persisted through 5.2 and 5.3) because the visual-containers directory was in scope for 5.4",
+      "evidence": "Journal step_end for review-tests: 'Skipped Tests Removed (8 total) — Story 5.4 E2E: 2 skipped tests removed; Story 5.1 E2E: 6 skipped tests removed (earlier story in same directory).' Test review report _bmad-output/test-artifacts/test-review-validation-report-5-4.md line 16: 'Skipped tests removed: 8 (2 from Story 5.4, 6 from Story 5.1).' Git diff for 360fccc: story-5-1-visual-containers.spec.ts shows 176 lines deleted (6 skipped describe.skip/test.skip blocks removed). Grep for skip patterns in committed Story 5.1 E2E file: 0 matches. Playbook review-tests prompt updatedAt: 2026-07-12T09:58:55.031Z (updatedByRun: 5.2-a1-20260712T074239) — the 5.2 amendment was active for this run. Ledger entry 89 (Story 5.3): '3 skipped Story 5.1 E2E test blocks still persist — the 5.2 update_step did not fire because the file is in a directory not touched by Story 5.3.' In 5.4 the directory was in scope (5.4 created story-5-4-token-usage-drift.spec.ts in visual-containers/), so the update_step fired.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "infra-broken-e2e-test-fixture",
+      "summary": "The withArtifacts E2E test fixture is broken (POST /api/internal/test/artifacts returns 500 due to unique constraint violations on [repoConnectionId, path]), causing e2e-tests to create skipped tests that review-tests then removes in the same run — a create-skip-remove cycle that has persisted across Stories 5.1, 5.2, and 5.4",
+      "evidence": "Journal step_end for e2e-tests: 'Pre-existing Issue Discovered — The withArtifacts fixture is broken — POST /api/internal/test/artifacts returns 500 due to unique constraint violations on [repoConnectionId, path]. This affects ALL tests using withArtifacts, including the existing Story 2.2 project-map.spec.ts. The AC-1 and AC-7 artifact pane tests are skipped with documented comments.' Journal step_end for review-tests: 'Story 5.4 E2E — 2 skipped tests removed: AC-1 describe.skip (withArtifacts fixture broken with no planned fix), AC-7 P1 test.skip (empty body).' Ledger entry 78 (Story 5.1): '6 tests remain skipped due to different pre-existing environment issues (Server Action mocking, artifact rendering, EventSource mock).' Ledger entry 87 (Story 5.2): 'AC-8 on /artifacts deferred — the page Server Component hangs in the E2E environment (GitHub API timeout with fake repo).' The fixture breakage is a distinct infrastructure issue from the auth.setup.ts seed-user issue (infra-e2e-env-config-missing, resolved in 5.1). runner-errors.jsonl has no entry for this run (5.4) — the fixture breakage is a test-environment issue, not a runner failure.",
+      "grade": "confirmed"
+    },
+    {
+      "fingerprint": "infra-phantom-halt",
+      "summary": "Prior hypothesized observation (ledger entry 90, Story 5.3 e2e-tests) — the hypothesis remains unconfirmable: no traces exist for any run (the traces directory does not exist), so the pointer cannot be followed; 5.4 had 0 halts so the pattern did not recur this run",
+      "evidence": "Ledger entry 90 (Story 5.3): 'e2e-tests recorded halts:1 with outcomeHistory [COMPLETE] and no question in the responseExcerpt — no runner-error and normal duration, so the cause cannot be determined without a trace. nextStep: When traces become available for this run, widen into traces/5.3-a1-20260712T095855/e2e-tests.json with --grep HALT or --grep QUESTION.' trace-view.mjs 5.3-a1-20260712T095855 e2e-tests: 'no trace for this step.' ls _bmad-output/pipeline/traces/: 'NO_TRACES_DIR' — the traces directory does not exist. Journal story_end for 5.4: all 12 steps status success, 0 halts. Trends haltsPerStory: 5.1:1, 5.3:2 — 5.4 not listed (0 halts).",
+      "grade": "hypothesized",
+      "hypothesis": "The 5.3 e2e-tests halt was either a classifier ambiguity (response was neither clearly COMPLETE nor QUESTION at some mid-stream point) or a genuine question posed and resolved before the final outcome — but without traces, the cause cannot be determined. The 5.1 validate-story phantom halt was confirmed in 5.3 as runner-timeout-triggered (ledger entry 86), but the 5.3 e2e-tests halt had no runner-error and normal duration, distinguishing it from the timeout pattern.",
+      "nextStep": "When trace recording is enabled and traces become available, widen into traces/5.3-a1-20260712T095855/e2e-tests.json with --grep 'HALT' or --grep 'QUESTION' to find the mid-stream point where the halt form fired; check whether a genuine question was posed or whether the halt was triggered by a classifier ambiguity. Until traces exist, this hypothesis cannot be confirmed or refuted."
+    },
+    {
+      "fingerprint": "stale-atdd-red-phase-headers",
+      "summary": "Prior confirmed observation (ledger entries 23, 32, 36, 42, 51, 58, 64, 72, 80, 91 — Stories 3.4 through 5.3, 10 occurrences) — the pattern did NOT recur in 5.4: the 3.12 update_step to implement-story continues to work, as review-tests found 0 stale markers and fixed 4 stale cross-references in test file headers",
+      "evidence": "Journal step_end for review-tests: 'Stale Transitional Markers Fixed (4 total) — Story 5.4 header: removed Skipped section, moved AC-1/AC-7 P1 to NOT covered here, fixed stale Story 5.1 AC-5 skipped cross-reference; Story 5.1 header: moved AC-3/AC-5 to Not covered here; Story 5.1 serial-mode comment: fixed AC-2/AC-3 to AC-2.' Test review report line 23: 'Verdict: PASS — No stale transitional markers remain.' Journal step_end for implement-story: 'After green, remove the test skip marker and update any test-file headers.' Playbook implement-story prompt updatedAt: 2026-07-06T15:31:43.986Z (updatedByRun: 3.12-a1-20260706T122634) — the 3.12 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "implement-step-skips-nfr-hardening",
+      "summary": "Prior confirmed observation (ledger entries 5, 37, 43, 52, 59, 66, 73, 81, 92 — Stories 2.2 through 5.3, 9 occurrences) — the pattern did NOT recur in 5.4: the 3.9 update_step is working, as implement-story proactively verified NFR patterns and review-nfrs found 0 blockers (2 Medium, 3 Low, all either pre-existing or AC coverage gaps rather than missing documented patterns)",
+      "evidence": "Journal step_end for implement-story: 'Verification: 853 tests pass (0 skipped), 0 lint errors, production build succeeds.' Journal step_end for review-nfrs: 'Gate Decision: PASS WITH CONCERNS — 0 blockers, 2 Medium, 3 Low findings.' NFR assessment: Finding 1 (Medium, missing select projection) pre-existing; Finding 2 (Medium, no-scrollbar coverage gap) AC implementation gap not NFR pattern gap; Findings 3-5 (Low) pre-existing or accessibility extensions. Playbook implement-story prompt updatedAt: 2026-07-06T05:41:22.969Z (updatedByRun: 3.9-a1-20260706T022258) — the 3.9 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "prepare-tests-scaffolding-not-reflected-in-story",
+      "summary": "Prior confirmed observation (ledger entries 38, 55, 63, 74, 82, 93 — Stories 3.8 through 5.3, 6 occurrences) — the pattern did NOT recur in 5.4: the 3.11 update_step is working, as prepare-tests amended story tasks to instruct activation of existing scaffolding rather than creation",
+      "evidence": "Journal step_end for prepare-tests: 'Story tasks amended — all test-creation tasks now instruct activation of existing scaffolding (remove it.skip()) instead of creating tests from scratch.' Playbook prepare-tests prompt updatedAt: 2026-07-06T12:26:33.858Z (updatedByRun: 3.11-a1-20260706T082713) — the 3.11 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "atdd-step-opts-out-of-e2e-prematurely",
+      "summary": "Prior observation (ledger entries 33, 61, 65, 68, 76, 83, 94 — Stories 3.7 through 5.3, 7 occurrences) — the pattern did NOT recur in 5.4: the 3.7 update_step is working, as prepare-tests performed the mock-feasibility check and documented it in the ATDD checklist before deferring E2E scaffolding, and the e2e-tests step subsequently created 9 E2E tests (7 passed, 2 skipped) regardless of the deferral",
+      "evidence": "Journal step_end for prepare-tests: 'E2E deferred — all ACs are className/token assertions; component unit tests provide the same assertion at lower cost and higher determinism. No browser-level mock adds value. Recorded in checklist.' Journal step_end for e2e-tests: '7 passed, 2 skipped.' Playbook prepare-tests prompt updatedAt: 2026-07-06T08:27:13.232Z (updatedByRun: 3.10-a1-20260706T055517) — includes the 3.7 mock-feasibility check amendment.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "atdd-incomplete-regression-guards",
+      "summary": "Prior confirmed observation (ledger entries 39, 45, 48, 53, 60, 77, 84, 95 — Stories 3.8 through 5.3, 7 occurrences) — the pattern did NOT recur in 5.4: the 3.10 update_step is working, as prepare-tests correctly checked the scope and determined it does not apply (Story 5.4 is CSS/Tailwind token drift with no external command execution)",
+      "evidence": "Journal step_end for prepare-tests: 'External command regression guards — not applicable (no external command execution in this story).' Playbook prepare-tests prompt updatedAt: 2026-07-06T08:27:13.232Z (updatedByRun: 3.10-a1-20260706T055517) — the 3.10 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "review-tests-empty-placeholder-stubs-unresolved",
+      "summary": "Prior confirmed observation (ledger entries 49, 54, 62, 65, 75, 85, 96 — Stories 3.10 through 5.3, 6 occurrences) — the pattern did NOT recur in 5.4: the 3.11 update_step is working, as review-tests found and removed 2 empty placeholder stubs (1 from Story 5.4, 1 from Story 5.1)",
+      "evidence": "Journal step_end for review-tests: 'Dead Code Removed — rscActionPayload() function and BMAD_DOCS_URL constant (only used by removed AC-3 describe.skip block).' Test review report line 17: 'Empty placeholder stubs removed: 2 (1 from Story 5.4, 1 from Story 5.1).' Playbook review-tests prompt updatedAt: 2026-07-12T09:58:55.031Z (updatedByRun: 5.2-a1-20260712T074239) — the 3.11 amendment was active for this run.",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "infra-opencode-timeout",
+      "summary": "Prior confirmed observation (ledger entries 41, 56, 70, 86, 97 — Stories 3.9, 3.11, 5.1, 5.3, 5 occurrences) — the pattern did NOT recur in 5.4: no runner errors recorded for this run; all 12 steps completed successfully with no salvaged output or timeouts",
+      "evidence": "runner-errors.jsonl has 5 entries, all from prior runs (2.3, 3.9, 3.11, 5.1, 5.3) — no entry for 5.4. Journal story_end: status success. All 12 step_end events have status: success with halts: 0 and outcomeHistory: ['COMPLETE'].",
+      "grade": "deduced"
+    },
+    {
+      "fingerprint": "infra-e2e-env-config-missing",
+      "summary": "Prior confirmed observation (ledger entry 57, Story 3.11; ledger entries 78, 87, 98 — Stories 5.1, 5.2, 5.3 deduced non-recurrence) — the pattern did NOT recur in 5.4: 7 E2E tests passed (2 skipped due to broken withArtifacts fixture, not env config), indicating the auth.setup.ts seed-user issue remains resolved",
+      "evidence": "Journal step_end for e2e-tests: '7 passed, 2 skipped.' The 2 skipped tests are due to the broken withArtifacts fixture (infra-broken-e2e-test-fixture), not the global env config issue that blocked ALL E2E test execution in 3.11. Compare to ledger entry 57 (Story 3.11): 'no .env.local exists with DATABASE_URL/AUTH_SECRET/CREDENTIAL_ENCRYPTION_KEK — this blocks ALL E2E test execution.' 7 tests passing indicates the global env issue is resolved.",
+      "grade": "deduced"
+    }
+  ],
+  "amendments": [
+    {
+      "type": "update_step",
+      "stepId": "review-nfrs",
+      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section. For findings you determine were introduced by the current story and that have a straightforward remediation (e.g., a missing class or attribute the story should have applied to a location it touched), apply the fix directly rather than only documenting it; for findings that are pre-existing or require complex remediation, document them as before.",
+      "rationale": "review-nfrs catches AC implementation gaps introduced by the current story but only documents them; applying straightforward fixes would prevent the gap from being committed as-is, as happened with the AC-7 no-scrollbar coverage gap at artifacts/page.tsx:123."
+    }
+  ],
+  "guardReports": []
+}

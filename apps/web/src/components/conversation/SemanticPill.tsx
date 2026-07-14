@@ -41,13 +41,13 @@ export function SemanticPill({ artifactType, artifactTitle, viewHref }: Semantic
       <span className="font-medium">Progress saved</span>
       {artifactType && (
         <>
-          <span aria-hidden="true">·</span>
+          <span aria-hidden="true" className="text-positive/40">·</span>
           <span>{typeLabel(artifactType)}</span>
         </>
       )}
       {artifactTitle && (
         <>
-          <span aria-hidden="true">·</span>
+          <span aria-hidden="true" className="text-positive/40">·</span>
           <span className="text-positive/80">{artifactTitle}</span>
         </>
       )}
