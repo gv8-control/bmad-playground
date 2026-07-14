@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-13T11:46:35.434Z",
+  "updatedAt": "2026-07-14T20:37:13.672Z",
   "createdAt": "2026-06-21T12:41:40.926Z",
   "id": "3D8Jw6GicWiwBQc6",
   "name": "BMAD Outcome",
@@ -29,7 +29,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=--- Start Input ---\n{{ $json.response }}\n--- End Input ---\n\nTask: evaluate the message. Respond only with the classifier that you chose.\nIF it:\n  - asks for input before proceeding\n  - reports an error\n  - indicates that work should not proceed before addressing important issues \nTHEN respond only with 'QUESTION';\nIF it:\n  - confirms a successful operation\n  - indicates only minor issues and does not indicate critical issues\n  - politely asks for next steps following successful completion\nTHEN respond with 'COMPLETE';\n\nExamples:\n- 'what task do you want to do next?' -> 'COMPLETE'\n- 'do you want to solve these issues move onto next task?' -> 'QUESTION'\n\nOutput:",
+        "text": "=--- Start Input ---\n{{ $json.response }}\n--- End Input ---\n\nTask: evaluate the message. Respond only with the classifier that you chose.\nIF it:\n  - asks for input before proceeding\n  - reports an error\n  - indicates that work should not proceed before addressing important issues \nTHEN respond only with QUESTION;\nIF it:\n  - confirms a successful operation\n  - indicates only minor issues and does not indicate critical issues\n  - politely asks for next steps following successful completion\nTHEN respond only with COMPLETE;\n\nExamples:\n- 'what task do you want to do next?' -> COMPLETE\n- 'do you want to solve these issues move onto next task?' -> QUESTION\n\nOutput: Respond with only the word COMPLETE or QUESTION. No quotes, no punctuation, no other text.",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -43,7 +43,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const outcomes = ['COMPLETE', 'QUESTION'];\nconst agentOutcome = $input.first().json.output;\n\nif (!outcomes.includes(agentOutcome)) {\n  throw new Error(`Invalid outcome: ${agentOutcome}`);\n}\n\nreturn { outcome: agentOutcome };"
+        "jsCode": "const outcomes = ['COMPLETE', 'QUESTION'];\nconst raw = $input.first().json.output;\nconst agentOutcome = (raw || '')\n  .trim()\n  .replace(/^[\\'\\\"\\u201c\\u201d]+|[\\'\\\"\\u201c\\u201d.!?;]+$/g, '')\n  .trim()\n  .toUpperCase();\n\nif (!outcomes.includes(agentOutcome)) {\n  return { outcome: 'QUESTION', rawOutcome: raw, classificationFallback: true };\n}\n\nreturn { outcome: agentOutcome };"
       },
       "id": "45d22c63-30ba-45aa-afa5-a729229361e9",
       "name": "Validate Classification",
@@ -56,16 +56,16 @@
     },
     {
       "parameters": {
-        "model": "voxtral-small-latest",
+        "model": "mistral-small-latest",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
       "typeVersion": 1,
       "position": [
         400,
-        208
+        192
       ],
-      "id": "5cd1d87f-d283-44df-9bcf-b79a54591cc8",
+      "id": "ee5118c9-bec3-46fd-a26c-32c81f3fed9d",
       "name": "Mistral Cloud Chat Model",
       "credentials": {
         "mistralCloudApi": {
@@ -133,29 +133,29 @@
       }
     ]
   },
-  "versionId": "cc28fa3e-a229-4b91-9ba9-3995e98be055",
-  "activeVersionId": "59ba344a-aedd-40c5-b836-28b4dda4321c",
-  "versionCounter": 57,
+  "versionId": "fc1c7cdf-ad21-408a-b339-599ba6f90e4c",
+  "activeVersionId": "2d1c2049-e054-4976-a45e-b4afee1fa120",
+  "versionCounter": 58,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-11T20:37:28.309Z",
-      "createdAt": "2026-07-11T20:37:28.309Z",
+      "updatedAt": "2026-07-01T03:43:25.204Z",
+      "createdAt": "2026-07-01T03:43:25.204Z",
       "role": "workflow:owner",
       "workflowId": "3D8Jw6GicWiwBQc6",
-      "projectId": "xflJlWtrjEQ5puMs",
+      "projectId": "AYEhcVrohjJ82DQg",
       "project": {
-        "updatedAt": "2026-07-11T19:23:49.915Z",
-        "createdAt": "2026-07-11T19:23:36.685Z",
-        "id": "xflJlWtrjEQ5puMs",
+        "updatedAt": "2026-06-30T18:07:25.243Z",
+        "createdAt": "2026-06-30T17:25:02.325Z",
+        "id": "AYEhcVrohjJ82DQg",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "b027469e-7495-45c3-9419-cdbe393bdcd2"
+        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
       }
     }
   ],
