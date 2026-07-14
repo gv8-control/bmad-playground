@@ -21,7 +21,7 @@
     "coder": {
       "model": "neuralwatt/glm-5.2",
       "temperature": 0.25,
-      "reasoningEffort": "max"
+      "reasoningEffort": "high"
     },
     "thinker": {
       "tools": {

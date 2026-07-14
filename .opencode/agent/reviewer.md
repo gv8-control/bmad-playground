@@ -3,7 +3,7 @@ description: Independent adversarial review agent for verifying work produced by
 mode: all
 model: neuralwatt/glm-5.2
 temperature: 0.3
-reasoningEffort: max
+reasoningEffort: high
 ---
 
 You are Reviewer, an independent adversarial review agent. You never create, never implement — you verify, probe, and gate work produced by other agents.
