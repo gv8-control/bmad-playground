@@ -730,7 +730,7 @@ glm-5.2 (neuralwatt/glm-5.2)
 - 2026-07-04: Automate validation run — zero skipped tests in Story 3.6 scope, all 7 ACs covered, all tests pass. 3 out-of-scope E2E skips (Story 1.2/1.3) and integration test config gap deferred per DP-5. Validation report at `_bmad-output/test-artifacts/automate-validation-report-3-6.md`.
 - 2026-07-04: Code review complete — 13 patch findings fixed, 12 deferred, 2 dismissed. See Review Findings below.
 - 2026-07-04: Code review patches applied — focus trap in save popover (Tab/Shift+Tab cycling + aria-modal), tooltip outside-click fix (tooltipRef), role="button"+aria-haspopup on trigger span, ellipsis character per AC-3, setWorkingTreeState moved inside try/catch, fallback toolCallId for malformed SSE payloads, flushPendingCommit race fix (executingCommits Set + tail-flush), git add -A exit code check, logger.warn spy assertion, Save button disabled assertion, outside-click test, handleSave fetch mock fix, stale TDD header comments removed. All 728 tests pass (agent-be: 106, web: 622), lint and typecheck clean.
-- 2026-07-04: NFR evidence audit complete — 0 NFR patches applied (all 11 NFR-specific patches verified in place from implementation/code-review); 8 deferred findings documented in NFR Evidence Audit section. Overall status: CONCERNS (20/29 ADR criteria, 0 FAIL, 0 blockers). Report at `_bmad-output/test-artifacts/nfr-assessment-3-6.md`.
+- 2026-07-04: NFR evidence audit complete — 0 NFR patches applied (all 11 NFR-specific patches verified in place from implementation/code-review); 8 deferred findings documented in NFR Evidence Audit section. Overall status: CONCERNS (20/29 ADR criteria, 0 FAIL, 0 blockers).
 
 ### Review Findings
 
@@ -769,7 +769,6 @@ glm-5.2 (neuralwatt/glm-5.2)
 
 **Audit date:** 2026-07-04
 **Overall Status:** CONCERNS (20/29 ADR criteria; 0 FAIL, 0 blockers)
-**Report:** `_bmad-output/test-artifacts/nfr-assessment-3-6.md`
 
 **NFR patches applied this audit:** 0 — all NFR-specific patches were already applied during implementation and code review (11 verified in place):
 

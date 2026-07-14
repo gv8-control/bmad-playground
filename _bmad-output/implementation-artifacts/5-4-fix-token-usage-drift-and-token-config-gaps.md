@@ -442,7 +442,7 @@ No debug issues encountered. All red-green-refactor cycles completed cleanly on 
 ### Change Log
 
 - 2026-07-12: Story 5.4 implementation complete. All 11 ACs satisfied, all 12 tasks completed. 20 ATDD scaffolded tests activated and passing. Full test suite (853 tests) passes. Production build succeeds.
-- 2026-07-12: **Test automation validation complete.** 853 tests passed, 0 skipped, 0 failed. No skipped tests found (no `.skip()`/`.todo()`/`.fixme()`/`xit` patterns). All 11 ACs have P0 test coverage across 10 test files (20 Story 5.4-specific test cases). Production build succeeds (critical for AC-11 full-theme-override guardrail). No coverage gaps — Create/Resume mode not needed. No production code edits. No decisions required escalation (DP-4: test-only validation; DP-5: no scope expansion). Validation report: `_bmad-output/test-artifacts/automate-validation-report-5-4.md`.
+- 2026-07-12: **Test automation validation complete.** 853 tests passed, 0 skipped, 0 failed. No skipped tests found (no `.skip()`/`.todo()`/`.fixme()`/`xit` patterns). All 11 ACs have P0 test coverage across 10 test files (20 Story 5.4-specific test cases). Production build succeeds (critical for AC-11 full-theme-override guardrail). No coverage gaps — Create/Resume mode not needed. No production code edits. No decisions required escalation (DP-4: test-only validation; DP-5: no scope expansion).
 
 ### Review Findings
 

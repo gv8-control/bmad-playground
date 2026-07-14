@@ -20,7 +20,7 @@ Verified execution: `yarn nx test web` → 65 suites / 853 tests / 0 skipped / 0
 
 ## Verification Method
 
-- Loaded the SKILL workflow (`audit-test-fidelity.md`) and mirrored the structure of the prior audit (`test-fidelity-audit-2026-07-06.md`).
+- Loaded the SKILL workflow (`audit-test-fidelity.md`) and mirrored the structure of the prior audit.
 - Read all 4 ATDD checklists, all 4 automate-validation reports, the 3 available test-review-validation reports, both E2E spec files in `playwright/e2e/visual-containers/`, and the 4 story spec files.
 - Traced contract consumers outward from production source to tests (not the reverse), per the skill's prescribed approach.
 - Re-ran the full web Jest suite to confirm the green-test condition.
@@ -67,11 +67,11 @@ Verified execution: `yarn nx test web` → 65 suites / 853 tests / 0 skipped / 0
 
 **The gap:** The mock emits `JSON.stringify({ reason: 'mid-session' })` (MockEventSource.emit at `:84-90`, :2360-2364) — a hand-rolled shape that resembles what the real backend sends. The tests assert on the UI reaction (spinner placement, Retry button className) rather than on event parsing, so the gap is bounded. But if the real backend never emits `SESSION_TIMEOUT` with `reason: 'mid-session'` (e.g. it sends `reason: 'idle'` or omits the field), the UI reaction under test would never actually exercise this branch in production.
 
-**Mitigating:** The prior fidelity audit (Finding 3, `Query.interrupt()`, `test-fidelity-audit-2026-07-06.md`) already blocks on the agent-be SSE contract gap. Story 5.3's Gap-C concern is bounded to UI reaction under fabricated events; the deeper event-interpretation gap is owned at the agent-be layer.
+**Mitigating:** The prior fidelity audit (Finding 3, `Query.interrupt()`) already blocks on the agent-be SSE contract gap. Story 5.3's Gap-C concern is bounded to UI reaction under fabricated events; the deeper event-interpretation gap is owned at the agent-be layer.
 
 **What this hides:** A mismatch between the assumed event shape and the real AG-UI event stream — UI state machine code paths would pass green against fabricated events while production may never reach those states. Bounded because Story 5.3 only asserts on derived UI state, not event-parsing correctness.
 
-**Evidence:** `ConversationPane.test.tsx:56-96, 2260-2276, 2353-2374`; cross-reference `test-fidelity-audit-2026-07-06.md` Finding 3.
+**Evidence:** `ConversationPane.test.tsx:56-96, 2260-2276, 2353-2374`; cross-reference Finding 3 of the prior fidelity audit.
 
 **Severity:** LOW — Gap C (bounded scope, downstream of prior blocker).
 
@@ -81,7 +81,7 @@ Verified execution: `yarn nx test web` → 65 suites / 853 tests / 0 skipped / 0
 
 **Code path:** `apps/web/src/components/project-map/ArtifactCard.tsx` (hover border token), `apps/web/src/components/artifact-browser/ArtifactListEntry.tsx` (hover bg + date color token).
 
-**What happened:** `test-review-validation-report-5-4.md:42, 49-52` removed the skipped E2E blocks (`test.describe.skip('AC-1: ArtifactCard hover border')`, `test.describe.skip('AC-5…')`) and the Story 5.1 AC-5 E2E block (`:52`) because the `withArtifacts` Playwright fixture is broken (unique-constraint violations on `[repoConnectionId, path]`), with no planned fix. The behavioral coverage was deferred to co-located unit tests.
+**What happened:** the skipped E2E blocks (`test.describe.skip('AC-1: ArtifactCard hover border')`, `test.describe.skip('AC-5…')`) and the Story 5.1 AC-5 E2E block were removed because the `withArtifacts` Playwright fixture is broken (unique-constraint violations on `[repoConnectionId, path]`), with no planned fix. The behavioral coverage was deferred to co-located unit tests.
 
 **What remains:** `apps/web/src/components/project-map/ArtifactCard.test.tsx:147` asserts `hover:border-accent` is present and `hover:border-text-3` is absent on the rendered className. `apps/web/src/components/artifact-browser/ArtifactListEntry.test.tsx:109-123` asserts `hover:bg-surface-raised` (no `/60`) and `text-text-3`. Both render the real component and assert on real className strings — these are not fabricated-contract tests.
 
@@ -89,7 +89,7 @@ Verified execution: `yarn nx test web` → 65 suites / 853 tests / 0 skipped / 0
 
 **What this hides:** An integration defect in the Project Map → ArtifactCard composition (e.g. hovered class never applied because a parent overrides hover context, or the artifact-fetch pipeline never produces the data shape ArtifactCard expects under load). Not a contract fidelity gap per se.
 
-**Evidence:** `test-review-validation-report-5-4.md:42, 49-52`; `ArtifactCard.test.tsx:147`; `ArtifactListEntry.test.tsx:109-123`; `story-5-4-token-usage-drift.spec.ts:14-17, 22-23` (header comment documenting the deferral).
+**Evidence:** `ArtifactCard.test.tsx:147`; `ArtifactListEntry.test.tsx:109-123`; `story-5-4-token-usage-drift.spec.ts:14-17, 22-23` (header comment documenting the deferral).
 
 **Severity:** INFO — coverage decision, not a fabricated contract.
 
@@ -115,9 +115,9 @@ Verified execution: `yarn nx test web` → 65 suites / 853 tests / 0 skipped / 0
 
 ## Cross-References
 
-1. **`test-fidelity-audit-2026-07-06.md` Finding 2 — `as SDKMessage` type-assertion bypass.** Earlier finding blocked on the agent-be's `makeSdkMessage(partial: Partial<SDKMessage>): SDKMessage { return partial as SDKMessage; }` pattern that silences the compiler. Epic 5 surfaces do not repeat this pattern — the form-test mock `jest.fn()` is untyped, not type-cast, so the compiler would catch a mismatch if any test file imported the real `ConnectResult` type for the mock's return value. Worth tightening (see recommendation 1) but not a structural repeat of the prior finding.
+1. **Prior fidelity audit Finding 2 — `as SDKMessage` type-assertion bypass.** Earlier finding blocked on the agent-be's `makeSdkMessage(partial: Partial<SDKMessage>): SDKMessage { return partial as SDKMessage; }` pattern that silences the compiler. Epic 5 surfaces do not repeat this pattern — the form-test mock `jest.fn()` is untyped, not type-cast, so the compiler would catch a mismatch if any test file imported the real `ConnectResult` type for the mock's return value. Worth tightening (see recommendation 1) but not a structural repeat of the prior finding.
 
-2. **`test-fidelity-audit-2026-07-06.md` Finding 3 — `Query.interrupt()` contract never verified.** Finding 2 above extends this same blind-spot class to the conversation-pane SSE consumers — fabricated event shapes versus the real AG-UI contract. The blocker remains at the agent-be SSE-boundary layer; Epic 5's UI reaction tests are downstream consumers and are low-severity.
+2. **Prior fidelity audit Finding 3 — `Query.interrupt()` contract never verified.** Finding 2 above extends this same blind-spot class to the conversation-pane SSE consumers — fabricated event shapes versus the real AG-UI contract. The blocker remains at the agent-be SSE-boundary layer; Epic 5's UI reaction tests are downstream consumers and are low-severity.
 
 3. **`epics.md:117-118` — recorded BMAD session replay prescription.** Applies specifically to the `sandbox-agent` (JSONL→AG-UI bridge) and AG-UI packages, not to the Epic 5 UX surfaces. Not a fidelity gap for Epic 5; recorded in the cross-reference for completeness.
 
@@ -151,11 +151,11 @@ Closes both the shape-drift gap (compile-time) and the `.catch()`-path coverage 
 
 ### Recommendation 2 — Bound Finding 2 to the agent-be SSE contract owner
 
-Finding 2's risk is bounded to UI reaction under fabricated events; the deeper event-interpretation gap is already blocked on `test-fidelity-audit-2026-07-06.md` Finding 3 (the `Query.interrupt()` mock in `agent.service.unit.spec.ts`). Until the recorded-session replay fixture lands (per `architecture.md:80` / `docs/sdk-contract-testing-gap.md`), ConversationPane's fabricated-event tests are acceptable. When the JSONL replay fixture exists, port the Story 5.3 AC-3 and AC-11 tests to drive the real `MockEventSource` from a recorded fixture rather than from hand-rolled `emit(type, data)` calls.
+Finding 2's risk is bounded to UI reaction under fabricated events; the deeper event-interpretation gap is already blocked on the prior fidelity audit's Finding 3 (the `Query.interrupt()` mock in `agent.service.unit.spec.ts`). Until the recorded-session replay fixture lands (per `architecture.md:80` / `docs/sdk-contract-testing-gap.md`), ConversationPane's fabricated-event tests are acceptable. When the JSONL replay fixture exists, port the Story 5.3 AC-3 and AC-11 tests to drive the real `MockEventSource` from a recorded fixture rather than from hand-rolled `emit(type, data)` calls.
 
 ### Recommendation 3 — Restore `withArtifacts` E2E fixture (closes Finding 3)
 
-The `withArtifacts` Playwright fixture is broken on unique-constraint violations (`test-review-validation-report-5-4.md:42`). Track as a deferred-work item; when fixed, restore the removed E2E blocks for Story 5.4 AC-1 (ArtifactCard hover border → computed `borderColor`) and AC-5 (ArtifactListEntry hover → computed `backgroundColor`). Until then, Story 5.4 AC-2/3/6/7 computed-style E2E coverage is sufficient evidence that the Tailwind → computed-style chain works; the hover-only className unit tests are a reasonable holding pattern.
+The `withArtifacts` Playwright fixture is broken on unique-constraint violations. Track as a deferred-work item; when fixed, restore the removed E2E blocks for Story 5.4 AC-1 (ArtifactCard hover border → computed `borderColor`) and AC-5 (ArtifactListEntry hover → computed `backgroundColor`). Until then, Story 5.4 AC-2/3/6/7 computed-style E2E coverage is sufficient evidence that the Tailwind → computed-style chain works; the hover-only className unit tests are a reasonable holding pattern.
 
 ## Verdict
 

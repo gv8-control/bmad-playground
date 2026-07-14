@@ -415,7 +415,6 @@ For this story:
 - **Page tests** (`settings/page.test.tsx`, `artifacts/page.test.tsx`, `conversations/[conversationId]/page.test.tsx`): 4 scaffolds each. Activate the "Story 5.2 — Header structure (AC-7, AC-8)" describe blocks. Decision (DP-4): page-level tests added for AC-7/AC-8 despite original Task 11.3 saying "no page-level tests needed" — E2E covers behavior but not CSS class presence.
 - **E2E (`app-shell.spec.ts`)**: should pass without modification — see E2E Test Impact Analysis above.
 - Run `yarn nx test web` to execute all unit/component tests.
-- ATDD checklist: `_bmad-output/test-artifacts/atdd-checklist-5-2-fix-shared-shell-and-page-header-structural-drift.md`
 
 ### Project Structure Notes
 

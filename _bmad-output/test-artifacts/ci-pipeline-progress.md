@@ -179,7 +179,7 @@ existing PR tier.
 | CI platform | `github-actions` | existing `.github/workflows/test.yml` (UPDATE mode) |
 | Test stack type | `fullstack` | apps/web (Next.js) + apps/agent-be (NestJS) + shared libs |
 | Test framework | Playwright ^1.61 + Jest ~30.3 + @nestjs/testing | `playwright.config.ts`, `apps/agent-be/jest.config.ts`, `apps/agent-be/test/jest-integration.config.ts` |
-| Local test run | SKIP — out of scope | Task scope is config only (Tier split config + CI workflow); existing PR tier already green per `traceability/gate-decision.json` (PASS, 251/251 tests passing, 92% coverage) |
+| Local test run | SKIP — out of scope | Task scope is config only (Tier split config + CI workflow); existing PR tier already green (PASS, 251/251 tests passing, 92% coverage) |
 | Node version | 24 (v24.14.0 verified) | No `.nvmrc`; package manager pins via Corepack |
 | Package manager | Yarn Berry 4.17.0 | Corepack-pinned in `packageManager` |
 
@@ -228,7 +228,7 @@ The Tier-3 real-service tests need these as repo / environment secrets. `.env.lo
 
 ### Assumptions recorded (per project rule: "Ask, don't assume" — running unattended)
 
-- **Tests pass locally** — traceability/gate-decision.json (2026-07-07) confirms PASS, 251/251 tests passing, 92% coverage. Skipping the local run step to avoid invoking real services for not-yet-written real-service specs.
+- **Tests pass locally** — the 2026-07-07 gate decision confirms PASS, 251/251 tests passing, 92% coverage. Skipping the local run step to avoid invoking real services for not-yet-written real-service specs.
 - **Existing PR-tier e2e jobs** are kept verbatim — the only change to them is appending the nightly/weekly jobs above; preserved `(&)` background server startup, `wait-on`, 4-shard matrix, `fail-fast: false`, burn-in on PR + weekly. No fragment-level edit to the existing `e2e`, `unit`, `lint`, `typecheck`, `burn-in`, or `report` jobs.
 - **Real-service specs are out of scope** — explicit task instruction: "this task is only about establishing the tier split (config + CI workflow), not writing the actual test cases". The `real-service` Playwright project defines the project/tag, but no specs are produced in this pass. CI will skip gracefully (Playwright exits 0 with no tests found because `--grep @real-service` matches nothing yet) until specs land.
 - **Single workflow file** — adding jobs to the existing `test.yml` rather than splitting into a separate nightly.yml, because GitHub Actions concurrency groups and the SSoT principle favor one workflow per pipeline concern. Splitting is a possible future refactor if file length becomes a problem.

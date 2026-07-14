@@ -23,13 +23,6 @@ inputDocuments:
   - '_bmad-output/implementation-artifacts/bug-hunt-epic-5-ux-mockup-fidelity-close-visual-drift.md'
   - '_bmad-output/implementation-artifacts/bug-hunt-epic-5-story-5-5-interleaved-pills.md'
   - '_bmad-output/test-artifacts/test-fidelity-audit-2026-07-12.md'
-  - '_bmad-output/test-artifacts/traceability/traceability-matrix-epic-5.md'
-  - '_bmad-output/test-artifacts/traceability/gate-decision-epic-5.json'
-  - '_bmad-output/test-artifacts/nfr-assessment-5-1.md'
-  - '_bmad-output/test-artifacts/nfr-assessment-5-2.md'
-  - '_bmad-output/test-artifacts/nfr-assessment-5-3.md'
-  - '_bmad-output/test-artifacts/nfr-assessment-5-4.md'
-  - '_bmad-output/test-artifacts/nfr-assessment-5-5.md'
   - '_bmad-output/test-artifacts/nfr-assessment.md'
   - '_bmad-output/project-context.md'
 ---
@@ -121,12 +114,12 @@ Per step 0 of the workflow, thresholds are sourced from `test-design-architectur
 
 | Story | ACs | P0 | P1 | Status | Per-Story NFR Assessment |
 | --- | --- | --- | --- | --- | --- |
-| 5.1 | 6 | 4 | 2 | done | PASS ✅ — `nfr-assessment-5-1.md` (8 PASS, 2 LOW concerns, 2 INFO, 0 FAIL) |
-| 5.2 | 10 | 10 | 0 | done | PASS-WITH-CONCERNS — `nfr-assessment-5-2.md` (8 PASS, 3 CONCERNS: 1 Medium, 2 Low) |
-| 5.3 | 11 | 11 | 0 | done | PASS-WITH-CONCERNS — `nfr-assessment-5-3.md` — updated: prior Medium auto-scroll regression **FIXED** prior to Story 5.5 audit, leaving only the `QuotaExceededError` Low and pre-existing `messages.map()` Medium (down to 5/8 stories with PASSED concern in per-story map) |
-| 5.4 | 11 | 11 | 0 | done | PASS-WITH-CONCERNS — `nfr-assessment-5-4.md` — updated: full-width pane `no-scrollbar` fix applied; missing `maxLength` test added; production-side `maxLength` fix landed |
-| 5.5 | 10 | 10 | 0 | done | PASS-WITH-CONCERNS — `nfr-assessment-5-5.md` (NEW: 8 PASS, 4 CONCERNS: 1 Medium, 3 Low; 0 FAIL) — Story 5.5 bug-hunt found 9 findings; 5 were already fixed before/at audit time; 3 fixed during this NFR audit (AC-9 false-green test, L1-new shape-only test, L3-new silent-drop warn) + 1 TS narrowing bug also fixed; M3-new Medium fake divergence stays OPEN along with L5-new/L6-new/L7-new Lows |
-| **Total** | **48** | **46** | **2** | | traceability gate = CONCERNS (per `gate-decision-epic-5.json`) |
+| 5.1 | 6 | 4 | 2 | done | PASS ✅ (8 PASS, 2 LOW concerns, 2 INFO, 0 FAIL) |
+| 5.2 | 10 | 10 | 0 | done | PASS-WITH-CONCERNS (8 PASS, 3 CONCERNS: 1 Medium, 2 Low) |
+| 5.3 | 11 | 11 | 0 | done | PASS-WITH-CONCERNS — updated: prior Medium auto-scroll regression **FIXED** prior to Story 5.5 audit, leaving only the `QuotaExceededError` Low and pre-existing `messages.map()` Medium (down to 5/8 stories with PASSED concern in per-story map) |
+| 5.4 | 11 | 11 | 0 | done | PASS-WITH-CONCERNS — updated: full-width pane `no-scrollbar` fix applied; missing `maxLength` test added; production-side `maxLength` fix landed |
+| 5.5 | 10 | 10 | 0 | done | PASS-WITH-CONCERNS (NEW: 8 PASS, 4 CONCERNS: 1 Medium, 3 Low; 0 FAIL) — Story 5.5 bug-hunt found 9 findings; 5 were already fixed before/at audit time; 3 fixed during this NFR audit (AC-9 false-green test, L1-new shape-only test, L3-new silent-drop warn) + 1 TS narrowing bug also fixed; M3-new Medium fake divergence stays OPEN along with L5-new/L6-new/L7-new Lows |
+| **Total** | **48** | **46** | **2** | | traceability gate = CONCERNS |
 
 ### Wave-1 Cross-Reference + Story 5.5 Bug-Hunt Findings
 
@@ -510,7 +503,7 @@ nfr_assessment:
       category: 'Reliability'
       description: 'Per-segment narrowing of persisted Json? column (deferred per Story 5.5 spec DP-3)'
   recommendations:
-    - 'Proceed to release — no blockers; gate status: CONCERNS (per traceability/gate-decision-epic-5.json)'
+    - 'Proceed to release — no blockers; gate status: CONCERNS'
     - 'Bundle the 7 Low findings + Story 5.5 L5-new/L6-new + L7-new typecheck target into a single ~1.5-hour Epic-5-NFR hardening story'
     - 'Book NFR-5.5-M3-new (AgentServiceFake divergence) as a separate small task (~20-line refactor mirroring pendingClassifierPromises pattern in the fake)'
     - 'Add Story 5.5 M2-new regression test (out-of-order TOOL_CALL_RESULT → TOOL_CALL_END preserves error status)'
@@ -596,18 +589,15 @@ Epic 5 is mostly presentational — no live monitoring hooks specific to it. The
 
 - **Epic Source:** `_bmad-output/planning-artifacts/epics.md` (Epic 5, stories 5.1-5.5)
 - **Story Files:** `_bmad-output/implementation-artifacts/5-1 through 5-5`
-- **ATDD Checklists:** `_bmad-output/test-artifacts/atdd-checklist-5-1 through 5-4` (Story 5.5 did not register a separate ATDD checklist file)
-- **Automate Validation:** `_bmad-output/test-artifacts/automate-validation-report-5-1 through 5-4`
-- **Test Review:** `_bmad-output/test-artifacts/test-review-validation-report-5-1`, `5-3`, `5-4` (Story 5.2's report is missing; Story 5.5's recorded in this epic-level audit + `nfr-assessment-5-5.md`)
-- **Per-Story NFR Assessments:** `_bmad-output/test-artifacts/nfr-assessment-5-1.md` (PASS), `nfr-assessment-5-2.md` (PASS-WITH-CONCERNS), `nfr-assessment-5-3.md` (PASS-WITH-CONCERNS), `nfr-assessment-5-4.md` (PASS-WITH-CONCERNS), `nfr-assessment-5-5.md` (PASS-WITH-CONCERNS — NEW)
+- **ATDD Checklists:** Stories 5.1-5.4 had per-story checklists (Story 5.5 did not register a separate ATDD checklist file)
+- **Test Review:** Story 5.2's report is missing; Story 5.5's review is recorded in this epic-level audit
 - **Bug Hunts:** `_bmad-output/implementation-artifacts/bug-hunt-epic-5-ux-mockup-fidelity-close-visual-drift.md` + `_bmad-output/implementation-artifacts/bug-hunt-epic-5-story-5-5-interleaved-pills.md`
 - **Test Fidelity Audit:** `_bmad-output/test-artifacts/test-fidelity-audit-2026-07-12.md` (PASS)
-- **Traceability Matrix:** `_bmad-output/test-artifacts/traceability/traceability-matrix-epic-5.md` (100% AC coverage; gate = CONCERNS)
-- **Gate Decision:** `_bmad-output/test-artifacts/traceability/gate-decision-epic-5.json`
+- **Traceability Matrix:** 100% AC coverage; gate = CONCERNS
 - **Epic 1-3 Baseline:** `_bmad-output/test-artifacts/nfr-assessment.md` (CONCERNS — 18/29 criteria; Epic 5 inherits standing gaps)
 - **Project Context:** `_bmad-output/project-context.md`
 - **CI Pipeline:** `.github/workflows/test.yml`
-- **Source code verified:** all files in `nfr-assessment-5-5.md` and `apps/web/src/components/conversation/*` (incl. `ConversationPane.tsx`, `ChatMessageList.tsx`, `AgentMessage.tsx`, `UserMessage.tsx`, `useDraftPersistence.ts`), `apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/page.tsx`, `apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/loading.tsx`, `apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx`, `apps/agent-be/src/streaming/agent.service.ts`, `apps/agent-be/test/helpers/agent-service.fake.ts`, `libs/shared-types/src/conversation.types.ts`, `libs/database-schemas/src/prisma/schema.prisma`, `libs/database-schemas/src/prisma/migrations/20260713120000_add_turn_segments/migration.sql`
+- **Source code verified:** all files in `apps/web/src/components/conversation/*` (incl. `ConversationPane.tsx`, `ChatMessageList.tsx`, `AgentMessage.tsx`, `UserMessage.tsx`, `useDraftPersistence.ts`), `apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/page.tsx`, `apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/loading.tsx`, `apps/web/src/app/(dashboard)/(app)/artifacts/page.tsx`, `apps/agent-be/src/streaming/agent.service.ts`, `apps/agent-be/test/helpers/agent-service.fake.ts`, `libs/shared-types/src/conversation.types.ts`, `libs/database-schemas/src/prisma/schema.prisma`, `libs/database-schemas/src/prisma/migrations/20260713120000_add_turn_segments/migration.sql`
 
 ### Recommendations Summary
 
@@ -634,7 +624,7 @@ Epic 5 is mostly presentational — no live monitoring hooks specific to it. The
 - Concerns: 9 (7 pre-existing + 3 new from Story 5.5 — closed by 4 prior LOW findings since the prior epic-level assessment; net +1 Low + 1 Medium)
 - Evidence Gaps: 2 (carried forward: Story 5.2 test-review-report; E2E not executed)
 
-**Gate Status:** PASS-WITH-CONCERNS (matches traceability gate-decision-epic-5.json = CONCERNS)
+**Gate Status:** PASS-WITH-CONCERNS (matches traceability gate = CONCERNS)
 
 **Next Actions:**
 
@@ -647,7 +637,7 @@ Epic 5 is mostly presentational — no live monitoring hooks specific to it. The
 
 ## Autonomous Decisions
 
-In place of halting at checkpoints, the following autonomous decisions were made (in addition to those recorded in `nfr-assessment-5-5.md`):
+In place of halting at checkpoints, the following autonomous decisions were made (in addition to those recorded in the Story 5.5 NFR assessment):
 
 1. **Quick-win application policy:** Applied 3 test-strength quick-wins + 1 TS narrowing fix during this audit (verified by `yarn nx test web`, `yarn nx test agent-be`, `npx tsc --noEmit`). Did NOT apply bigger fixes (e.g. extract `buildManualSaveSegment` helper, mirror `pendingClassifierPromises` in fake, add `typecheck` project.json target) because each carries a small risk of behavior change that benefits from a focused PR — and applying them inline would expand this audit response.
 2. **Direct `tsc` invocation:** Ran `npx tsc --noEmit -p apps/web/tsconfig.json` to surface TS narrowing issues. Surfedaced the M2-new sub-bug; closed it.

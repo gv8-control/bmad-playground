@@ -11,7 +11,6 @@ workflowType: 'testarch-test-review'
 inputDocuments:
   - _bmad/tea/config.yaml
   - _bmad-output/implementation-artifacts/1-8-build-the-persistent-app-shell.md
-  - _bmad-output/test-artifacts/automate-validation-report-1-8.md
   - apps/web/src/components/ui/sheet.tsx
   - apps/web/src/components/ui/sheet.test.tsx
   - apps/web/src/components/shell/SideNavigation.tsx
@@ -729,8 +728,8 @@ test.describe.serial('Story 1.8 — App Shell')
 - **Source Implementation (AppShell)**: `apps/web/src/components/shell/AppShell.tsx` (75 lines)
 - **Source Implementation (Breadcrumb)**: `apps/web/src/components/shell/Breadcrumb.tsx` (14 lines)
 - **Source Implementation (Dashboard Layout)**: `apps/web/src/app/(dashboard)/layout.tsx` (26 lines)
-- **Automate Validation**: `_bmad-output/test-artifacts/automate-validation-report-1-8.md` — PASS (5 gaps identified, 2 filled, 3 deferred with low impact)
-- **Previous Review**: `_bmad-output/test-artifacts/test-reviews/test-review-1-7.md` — Story 1.7 review (99/100, Approve)
+- **Automate Validation**: PASS (5 gaps identified, 2 filled, 3 deferred with low impact)
+- **Previous Review**: Story 1.7 review (99/100, Approve)
 - **Playwright Config**: `playwright.config.ts` — setup project + chromium with storageState auth
 - **E2E Fixtures**: `playwright/support/custom-fixtures.ts` — `withRepoConnection` fixture
 
@@ -841,10 +840,10 @@ For coverage mapping, consult `trace` workflow outputs.
 
 | Story | File | Score | Grade | Critical | Status |
 |---|---|---|---|---|---|
-| 1.4 | `test-review-1-4.md` | 93/100 | A | 1 (cache isolation) | Request changes |
-| 1.5 | `test-review-1-5.md` | 98/100 | A | 0 | Approved with comments |
-| 1.6 | `test-review-1-6.md` | 99/100 | A | 0 | Approved |
-| 1.7 | `test-review-1-7.md` | 99/100 | A | 0 | Approved |
+| 1.4 | — | 93/100 | A | 1 (cache isolation) | Request changes |
+| 1.5 | — | 98/100 | A | 0 | Approved with comments |
+| 1.6 | — | 99/100 | A | 0 | Approved |
+| 1.7 | — | 99/100 | A | 0 | Approved |
 | 1.8 | `test-review-1-8.md` | 95/100 | A | 0 | Approved with comments |
 
 ---

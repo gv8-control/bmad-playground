@@ -12,9 +12,9 @@
 
 | Artifact | Path | Status |
 | --- | --- | --- |
-| Traceability matrix (MD) | `_bmad-output/test-artifacts/traceability/traceability-matrix-epic-1.md` | Present |
-| Trace summary (JSON) | `_bmad-output/test-artifacts/traceability/e2e-trace-summary-epic-1.json` | Present, valid JSON |
-| Gate decision (JSON) | `_bmad-output/test-artifacts/traceability/gate-decision-epic-1.json` | Present, valid JSON |
+| Traceability matrix (MD) | — | Present |
+| Trace summary (JSON) | — | Present, valid JSON |
+| Gate decision (JSON) | — | Present, valid JSON |
 | Gate YAML (CI/CD snippet) | — | **Missing** |
 | Stakeholder notification | — | **Missing** |
 
@@ -109,7 +109,7 @@
 
 ### Machine-Readable JSON Output — ✅ PASS
 
-- ✅ `e2e-trace-summary-epic-1.json` written, valid JSON.
+- ✅ Trace summary JSON written, valid JSON.
 - ✅ `schema_version` present (`0.1.0`).
 - ✅ `repo`, `collection_mode`, `collection_status`, `inventory_basis`, `source_sha` populated.
 - ✅ `gate_basis` populated (`priority_thresholds`).
@@ -128,7 +128,7 @@
 - ✅ `recommendations` array present (6 entries).
 - ✅ `links.trace_report_path` points to matrix file.
 - ✅ `links.trace_report_url`, `links.artifact_url`, `links.journey_evidence_url` present (empty — acceptable).
-- ✅ `gate-decision-epic-1.json` written with `evaluated_at`, `gate_basis`, `gate_status`, `rationale`, per-criterion status fields.
+- ✅ Gate decision JSON written with `evaluated_at`, `gate_basis`, `gate_status`, `rationale`, per-criterion status fields.
 
 ### Phase 1 Quality Assurance — ✅ PASS
 
@@ -248,8 +248,8 @@
 
 - ❌ Gate YAML snippet: NOT GENERATED. The template prescribes an integrated CI/CD-compatible YAML block. Only JSON was produced.
 - ❌ Stakeholder notification: NOT GENERATED.
-- ✅ Gate decision document saved (`gate-decision-epic-1.json`).
-- ✅ `e2e-trace-summary.json` saved.
+- ✅ Gate decision document saved.
+- ✅ Trace summary JSON saved.
 - ✅ Outputs valid and readable.
 - ⚠️ Status file update: not confirmed.
 
@@ -347,8 +347,8 @@
 - ❌ Quality evidence NOT gathered (test execution, NFR, code coverage, burn-in all missing).
 - ✅ Decision criteria (coverage) applied correctly.
 - ✅ Decision rationale documented.
-- ✅ `e2e-trace-summary.json` written and valid.
-- ✅ `gate-decision.json` written when gate-eligible.
+- ✅ Trace summary JSON written and valid.
+- ✅ Gate decision JSON written when gate-eligible.
 - ❌ Gate YAML not written.
 - ❌ Stakeholders not notified.
 - ❌ Decision based on coverage alone, not the full evidence set the gate requires.
@@ -402,7 +402,7 @@
 1. **Oracle quality**: Formal acceptance criteria used — highest-confidence oracle. 31 ACs correctly extracted.
 2. **Mapping accuracy**: File:line citations are specific and verifiable. Spot checks confirm evidence exists as cited.
 3. **Gap analysis depth**: The 1.6-AC2 tenant-isolation negative-path gap and the 1.2-AC1 skipped-test gap are exactly the kind of findings the heuristics checks are designed to catch — well identified.
-4. **JSON output quality**: `e2e-trace-summary-epic-1.json` and `gate-decision-epic-1.json` are well-formed, schema-compliant, and internally consistent.
+4. **JSON output quality**: Trace summary and gate decision JSON are well-formed, schema-compliant, and internally consistent.
 5. **Coverage math**: Percentages calculated correctly.
 6. **Recommendations actionable**: Specific file locations and concrete fix descriptions provided.
 
