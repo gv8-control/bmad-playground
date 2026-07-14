@@ -1116,6 +1116,8 @@ So that a production incident doesn't become a prolonged outage because no one k
 ### Story 4.9: Configure Custom Domain and Stable Production URL
 
 > *Note (2026-07-11): Deferred for MVP. The `*.vercel.app` production URL from Story 4.1 is stable (does not change between deploys) and sufficient for OAuth callback, Auth.js sessions, and SSE. A custom domain is a branding upgrade, not a functional requirement — neither the architecture nor PRD requires it. Skip this story unless a branded domain is needed before sharing the platform with non-dev users. If reactivated later, the only genuinely manual step is updating the GitHub OAuth App callback URL at `github.com/settings/developers` (no API exists for OAuth App management).*
+>
+> *Update (2026-07-14): Reactivated and completed. Runbook committed at `docs/runbooks/custom-domain-setup.md` with regression guard test at `apps/agent-be/test/unit/custom-domain-setup.spec.ts` (24 tests, all passing).*
 
 As the platform operator,
 I want a custom domain configured for the production deployment,

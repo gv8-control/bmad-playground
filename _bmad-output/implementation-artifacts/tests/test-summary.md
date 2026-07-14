@@ -1,6 +1,6 @@
 # Test Automation Summary
 
-**Last updated:** 2026-07-13 (Story 4.8 — Deploy Failure Recovery and Rollback; 31 unit tests verified passing, 0 E2E/API tests generated — documentation + verification story with no API endpoints or UI; all 4 ACs involve platform infrastructure behavior (Vercel/Railway deployment mechanisms, Postgres migration state, container health checks) that no browser mock can simulate; E2E explicitly deferred per story Testing Approach and ATDD checklist; existing 31 unit tests are runbook-structure regression guards providing complete coverage of all 4 ACs + Task 5 split-brain recovery + security invariants)
+**Last updated:** 2026-07-14 (Story 4.9 — Configure Custom Domain and Stable Production URL; 24 unit tests verified passing, 0 E2E/API tests generated — documentation + verification story with no API endpoints or UI; all 5 ACs involve platform infrastructure behavior (DNS configuration, Vercel domain management, TLS provisioning, GitHub OAuth App settings, OAuth flow) that no browser mock can simulate; E2E explicitly deferred per story Testing Approach and ATDD checklist; existing 24 unit tests are runbook-structure regression guards providing complete coverage of all 5 ACs + credential-isolation + input-injection security invariants)
 
 ---
 
@@ -3017,3 +3017,165 @@ All 31 Story 4.8 regression guard tests pass (included in the 456 agent-be tests
 - **No action required for Story 4.8** — all 4 ACs have test coverage at the appropriate level (unit runbook-structure regression guards). The story is a documentation + verification story with no API or UI surface.
 - **Re-verify Vercel/Railway rollback** manually (re-run the API/CLI checks and update `docs/runbooks/deploy-failure-recovery.md`) only if the deployment topology changes. Per DP-5, no CI regression guard for live platform checks — they are one-time verifications, not code regressions.
 - **Re-verify Prisma migration recovery** manually (re-run the local Docker Postgres validation) only if the migration set or `scripts/run-migrations.ts` changes significantly. The regression guard test validates the runbook's structure, not the live recovery procedure.
+
+---
+
+## Story 4.9: Configure Custom Domain and Stable Production URL
+
+**Reviewed:** 2026-07-14
+**Story status:** review
+**Decision:** No E2E or API tests generated
+
+---
+
+## Generated Tests
+
+### Unit Tests (Jest) — Runbook Regression Guards
+
+- [x] [apps/agent-be/test/unit/custom-domain-setup.spec.ts](../../../apps/agent-be/test/unit/custom-domain-setup.spec.ts) — runbook structure and content regression guard (24 tests, all [P0])
+
+This is a documentation + verification story. The primary deliverable is `docs/runbooks/custom-domain-setup.md` (10 KB). The regression guard test reads the committed runbook file and asserts on its structure and content — no live network calls. Follows the `deploy-failure-recovery.spec.ts` pattern (Story 4.8) and `http2-verification.spec.ts` pattern (Story 4.7).
+
+#### Test Inventory
+
+##### AC-1: DNS + Vercel domain + TLS documented (3 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook documents DNS configuration (A record or CNAME) | P0 | Runbook documents A record for apex domain, CNAME for subdomain |
+| runbook documents the Vercel API endpoint for adding a domain | P0 | Runbook records `api.vercel.com/v10/projects` for domain add |
+| runbook references TLS provisioning | P0 | Runbook documents Vercel automatic TLS (Let's Encrypt) |
+
+##### AC-2: AUTH_URL update documented (2 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook references AUTH_URL | P0 | Runbook documents updating AUTH_URL env var to custom domain |
+| runbook documents the Vercel API endpoint for env var management | P0 | Runbook records `api.vercel.com` + `env` for env var CRUD |
+
+##### AC-3: OAuth App callback URL update documented (3 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook references the OAuth App ID | P0 | Runbook records OAuth App ID `Ov23liwPSopCBFh9nMRN` |
+| runbook references github.com/settings/developers | P0 | Runbook documents the manual GitHub OAuth App settings page |
+| runbook references the callback URL path | P0 | Runbook records callback path `/api/auth/callback/github` |
+
+##### AC-4: End-to-end OAuth verification documented (1 test)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook documents the end-to-end OAuth verification procedure | P0 | Runbook documents the manual sign-in test against the custom domain |
+
+##### AC-5: Execution model documented (1 test)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook documents which steps are human-executed vs API-automatable | P0 | Runbook distinguishes human-executed (DNS, OAuth App) from API-automatable (Vercel domain add, AUTH_URL) steps |
+
+##### Runbook structure (8 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook file exists at docs/runbooks/custom-domain-setup.md | P0 | File presence regression guard |
+| runbook has a markdown heading | P0 | Well-formed markdown |
+| runbook is non-trivial (at least 10 lines) | P0 | Substantive content |
+| runbook contains section headings for all 5 steps | P0 | DNS, Vercel domain add, AUTH_URL, OAuth callback, verification sections present |
+| runbook contains a rollback procedure section | P0 | Rollback procedure documented |
+| runbook contains a date (YYYY-MM-DD format) | P0 | Verification record date present |
+| runbook contains the Vercel project ID | P0 | Records `prj_ih4UAxO759A1CHdrZ93j4rk3poYD` for operator reference |
+| runbook contains the current production URL | P0 | Records `bmad-easy.vercel.app` for operator reference |
+
+##### Security: credential-isolation regression guards (4 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook does not contain Vercel token values | P0 | No `vcp_*` token values in runbook |
+| runbook does not contain Bearer followed by a literal token value | P0 | `Bearer $VERCEL_TOKEN` (env var ref) allowed; `Bearer <literal>` rejected via negative lookahead `(?![$])` |
+| runbook does not contain database connection strings with passwords | P0 | No `postgresql://user:pass@host` in runbook |
+| runbook does not contain literal credential env-var assignments | P0 | No `VERCEL_TOKEN=...` literal assignments (env var refs `$VERCEL_TOKEN` and placeholders `<token>` allowed) |
+
+##### Security: input-injection regression guards (2 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| documented API commands use `<custom-domain>` placeholder, not hardcoded domain values | P0 | curl commands use `<custom-domain>` placeholder, not hardcoded domain |
+| curl commands reference VERCEL_TOKEN as env var, not literal value | P0 | `$VERCEL_TOKEN` env var reference in curl commands, not literal token values |
+
+---
+
+## Rationale
+
+Story 4.9 has no testable surface for E2E or API automation:
+
+| Check | Result |
+|---|---|
+| HTTP API endpoint | None — no new API surface; the story documents custom domain configuration procedures |
+| UI / browser interaction | None — "Custom domain configuration is an operational procedure, not a user-facing feature. The end-to-end OAuth verification (AC-4) is a manual sign-in test, not an automated browser test." (story Testing Approach) |
+| Live-network Jest tests for Vercel API | Explicitly excluded — "A Jest test that makes live Vercel API calls in CI would be flaky (transient network issues) and would test production infrastructure from CI runners (side effects on an external service)" (story Testing Approach, decision policy: must be escalated) |
+| Playwright E2E tests | Explicitly excluded — "No Playwright E2E tests. Custom domain configuration is an operational procedure, not a user-facing feature." (story Testing Approach) |
+| Browser-level mock feasibility | Verified by ATDD checklist — no browser mock can simulate DNS propagation, Vercel domain verification, TLS certificate provisioning, OAuth App settings, or the GitHub OAuth flow against a custom domain |
+| OAuth App callback URL update | Manual step at github.com/settings/developers — no API exists for OAuth App management (AC-3) |
+| End-to-end OAuth verification | Manual sign-in test — AC explicitly states "verified by a manual sign-in test" (AC-4) |
+
+The regression guard test validates the runbook's structure and content so that a future change (deleting or emptying the file) is caught by CI. The live Vercel API verification is a one-time manual step (per decision policy: external service calls with side effects must be escalated — the runbook documents the commands, the human executes them).
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| Unit | `custom-domain-setup.spec.ts` | 24 | 24 | 0 | **ALL PASSING** |
+| E2E | — | 0 | — | — | N/A (deferred — platform infrastructure, no browser interaction) |
+| API | — | 0 | — | — | N/A (no new endpoints) |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Unit Test(s) | Verification Method |
+|---|---|---|---|
+| AC-1 | DNS + Vercel domain + TLS — DNS records, Vercel domain add, TLS provisioning documented | DNS config, Vercel API endpoint, TLS reference (3 tests) | Live Vercel API verification (one-time, recorded in runbook) |
+| AC-2 | AUTH_URL update — env var updated to custom domain via Vercel API | AUTH_URL reference, env var API endpoint (2 tests) | Live Vercel API verification (one-time, recorded in runbook) |
+| AC-3 | OAuth App callback URL — updated at github.com/settings/developers (manual) | OAuth App ID, settings page, callback path (3 tests) | Manual GitHub OAuth App update (one-time, no API exists) |
+| AC-4 | End-to-end OAuth verification — manual sign-in test against custom domain | OAuth verification procedure (1 test) | Manual sign-in test (one-time, per AC) |
+| AC-5 | Execution model — human-executed vs API-automatable steps documented | Execution model documentation (1 test) | Documented in runbook (no live verification — procedure documentation) |
+
+---
+
+## Test Execution
+
+```bash
+yarn nx test agent-be -- --testPathPattern=custom-domain-setup
+```
+
+```
+Test Suites: 26 passed, 26 total
+Tests:       480 passed, 480 total
+```
+
+All 24 Story 4.9 regression guard tests pass (included in the 480 agent-be tests). 0 regressions.
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (documentation + verification story)
+- [x] E2E tests generated (if UI exists) — N/A: no UI surface exists (custom domain configuration is an operational procedure, not a user-facing feature)
+- [x] Tests use standard test framework APIs — Jest `test`/`expect` with `fs` and `path` for file reading
+- [x] Tests cover happy path — runbook exists with all 5 steps, all required commands and references present
+- [x] Tests cover 1-2 critical error cases — credential-isolation (4 tests: no token values, no Bearer literal, no connection strings, no literal assignments), input-injection (2 tests: `<custom-domain>` placeholder, `$VERCEL_TOKEN` env var reference)
+- [x] All generated tests run successfully — 24/24 pass
+- [x] Tests use proper locators (semantic, accessible) — N/A (file-structure validation, no DOM interaction)
+- [x] Tests have clear descriptions — all tagged [P0] with descriptive names and AC references
+- [x] No hardcoded waits or sleeps — N/A (synchronous file reads, no async operations)
+- [x] Tests are independent (no order dependency) — each test reads the file independently via `loadRunbook()`
+- [x] Test summary created — this document
+- [x] Tests saved to appropriate directories — `apps/agent-be/test/unit/` (follows `deploy-failure-recovery.spec.ts` pattern)
+
+---
+
+## Next Steps
+
+- **No action required for Story 4.9** — all 5 ACs have test coverage at the appropriate level (unit runbook-structure regression guards). The story is a documentation + verification story with no API or UI surface.
+- **Re-verify Vercel domain configuration** manually (re-run the API checks and update `docs/runbooks/custom-domain-setup.md`) only if the Vercel project or domain configuration changes. Per decision policy, no CI regression guard for live platform checks — they are one-time verifications, not code regressions.
+- **Re-verify OAuth App callback URL** manually (re-run the sign-in test) only if the OAuth App or custom domain changes. The regression guard test validates the runbook's structure, not the live OAuth flow.
