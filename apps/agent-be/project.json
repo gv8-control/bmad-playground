@@ -53,6 +53,7 @@
     },
     "test": {
       "executor": "@nx/jest:jest",
+      "dependsOn": ["^generate"],
       "options": {
         "jestConfig": "apps/agent-be/jest.config.ts",
         "passWithNoTests": true
@@ -62,7 +63,8 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "tsc --noEmit -p apps/agent-be/tsconfig.spec.json"
-      }
+      },
+      "dependsOn": ["^generate"]
     },
     "test-integration": {
       "executor": "nx:run-commands",

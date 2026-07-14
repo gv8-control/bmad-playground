@@ -7,8 +7,6 @@
  * Covers: AC-1 (running/completed/error states, expand/collapse),
  *         AC-3 (error-state on failed git commit),
  *         AC-4 (error-state on any failed tool call).
- *
- * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

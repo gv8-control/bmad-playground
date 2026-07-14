@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Git
+.git/
+
+# Build output
+dist/
+.next/
+out/
+
+# Nx cache
+.nx/
+
+# Environment files (secrets must never enter build context)
+.env*
+!.env.example
+
+# Generated Prisma client (build artifact — Dockerfile runs prisma generate)
+libs/database-schemas/src/generated/
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Deployment config
+.railway/
+.vercel/
+
+# BMAD and docs
+.claude/
+_bmad-output/
+docs/
+
+# Markdown files
+*.md

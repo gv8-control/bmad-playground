@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "yarn install --immutable",
+  "buildCommand": "yarn nx run database-schemas:generate && yarn nx build web",
+  "git": {
+    "deploymentEnabled": false
+  }
+}

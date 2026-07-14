@@ -10,8 +10,6 @@
  * - focus-conversation listener → window.focus()
  * - useOpenConversations tracking and deduplication
  * - SSR / unsupported browser no-op
- *
- * TDD GREEN PHASE: All tests un-skipped and passing.
  */
 
 import { renderHook, act } from '@testing-library/react';

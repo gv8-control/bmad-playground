@@ -7,7 +7,6 @@
  * Covers: AC-1 (cost recorded per turn from SDK cost reporting),
  *         AC-2 (budget alert fires when monthly spend exceeds threshold).
  *
- * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { CostTrackingService } from './cost-tracking.service';
 

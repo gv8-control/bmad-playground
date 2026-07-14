@@ -13,7 +13,6 @@
  * commits or MANUAL_SAVE_FAILED notification; executingCommits guard preserved;
  * async lifecycle hook).
  *
- * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { ManualCommitService } from './manual-commit.service';
 import { ConversationsModule } from './conversations.module';

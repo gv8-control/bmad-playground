@@ -8,9 +8,6 @@
  * AC-5 (loading skeleton data-fetching), page-load sync behavior, and
  * Story 2.6 AC-1/AC-2 (passes href to each ArtifactCard).
  *
- * GREEN PHASE: implementation complete. The page calls auth(), getPrisma(),
- * getCredentialHealthStatus(), and syncArtifactsAction() as expected.
- *
  * Child component rendering (ArtifactCard, CredentialErrorBanner) is verified
  * by their own co-located component tests. This page test focuses on
  * data-fetching decisions and inline content rendering. Child components are

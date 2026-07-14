@@ -7,8 +7,6 @@
  * Covers AC-4 (credential error banner with re-auth modal, UX-DR10, UX-DR16).
  * Story 3.7 added `callbackUrl` prop forwarding coverage (2 tests).
  *
- * TDD GREEN PHASE — all tests un-skipped and passing.
- *
  * Priority tags: P0 for AC coverage, P1 for edge cases.
  */
 

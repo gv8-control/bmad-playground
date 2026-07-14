@@ -5,6 +5,7 @@ export const envSchema = z.object({
   DAYTONA_API_URL: z.string().optional().default(''),
   DAYTONA_API_KEY: z.string().optional().default(''),
   AUTH_SECRET: z.string().min(1),
+  ANTHROPIC_API_KEY: z.string().min(1),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

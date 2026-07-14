@@ -49,6 +49,9 @@ test-results/
 .cache/
 .n8n/
 
+# Pipeline traces (session transcripts, not committed)
+_bmad-output/pipeline/traces/
+
 # Yarn
 .pnp.cjs
 .pnp.loader.mjs
@@ -60,3 +63,4 @@ yarn-error.log
 pm2.log
 pm2.pid
 dump.pm2
+.vercel
