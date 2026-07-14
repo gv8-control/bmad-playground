@@ -348,3 +348,19 @@ glm-5.2 (neuralwatt/glm-5.2)
 - `loadRunbook()` called redundantly — matches sibling test pattern, style issue
 - AC-2 retention verification not completed — **Decision (DP-5):** dev followed established pattern (Stories 4.9, 4.10) of documenting commands and noting verification as pending human execution; actual plan confirmation requires dashboard access
 - "Human-executed" guard doesn't verify association with monitor creation — adequate for current content
+
+### NFR Evidence Audit
+
+**Audit date:** 2026-07-14 | **Auditor model:** glm-5.2 | **Mode:** Create | **Focus:** NFR-specific issues only (reliability, security, maintainability)
+
+#### NFR Findings (applied directly — introduced by current story, straightforward remediation)
+
+- [x] [NFR][MEDIUM] **Reliability: No test guard for the `--fail` limitation note.** The runbook documents that `--fail` doesn't catch UptimeRobot API errors (HTTP 200 with `stat:fail`), but no test asserted this documentation persists. If the note is removed, operators get false confidence in API success — monitor creation can silently fail while the operator believes it succeeded. **Fix applied:** Added test `[P0] runbook documents the --fail limitation for UptimeRobot API (check stat field)` asserting the runbook contains `check.*stat.*field`. [apps/agent-be/test/unit/monitoring-setup.spec.ts]
+
+- [x] [NFR][LOW] **Reliability: Runbook doesn't document UptimeRobot rate limit.** The free tier has a 10 req/min rate limit (mentioned in story Dev Notes line 173 but absent from the runbook). An operator running multiple API commands in quick succession (e.g. creating both monitors back-to-back) could hit unexpected rate limit errors. **Fix applied:** Added rate limit note to Prerequisites section of runbook + added test `[P0] runbook documents the UptimeRobot API rate limit` asserting the runbook contains `rate.limit`. [docs/runbooks/monitoring-setup.md, apps/agent-be/test/unit/monitoring-setup.spec.ts]
+
+#### NFR Categories Assessed (no findings)
+
+- **Security:** Credential-isolation guards (no literal API keys, no Bearer+literal, no connection strings with passwords, no literal VAR=value) — comprehensive, patched by prior review. Input-injection guards (`<monitor-id>` placeholder, `$UPTIMEROBOT_API_KEY` env var, `<deployment-url>` placeholder) — comprehensive. curl `--fail` and `--max-time` on all commands — enforced by test. No findings.
+- **Maintainability:** 51 regression guard tests covering runbook structure, AC coverage, credential-isolation, input-injection, curl flags, `--fail` limitation, and rate limit. Follows sibling pattern (custom-domain-setup.spec.ts, db-restore.spec.ts). No findings.
+- **Performance:** Not applicable — documentation + verification story, no runtime code.

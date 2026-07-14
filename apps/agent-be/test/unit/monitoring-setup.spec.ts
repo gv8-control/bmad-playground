@@ -196,6 +196,14 @@ describe('Story 4.11 — Monitoring Setup Runbook', () => {
       const content = loadRunbook();
       expect(content).toMatch(/human.executed/i);
     });
+
+    // Reliability NFR: the operator must know about the UptimeRobot free tier
+    // rate limit (10 req/min) to avoid unexpected failures when running
+    // multiple API commands in quick succession.
+    test('[P0] runbook documents the UptimeRobot API rate limit', () => {
+      const content = loadRunbook();
+      expect(content).toMatch(/rate.limit/i);
+    });
   });
 
   describe('AC-2: Log access documented', () => {
@@ -399,6 +407,16 @@ describe('Story 4.11 — Monitoring Setup Runbook', () => {
       for (const block of curlBlocks) {
         expect(block).toMatch(/--max-time\b/);
       }
+    });
+
+    // Reliability NFR: UptimeRobot API v2 returns HTTP 200 even for API-level
+    // errors. The --fail flag only catches HTTP 4xx/5xx. The runbook must
+    // document this limitation so operators check the `stat` field rather
+    // than relying on --fail alone — otherwise monitor creation can silently
+    // fail (stat:fail) while the operator believes it succeeded.
+    test('[P0] runbook documents the --fail limitation for UptimeRobot API (check stat field)', () => {
+      const content = loadRunbook();
+      expect(content).toMatch(/check.*stat.*field/i);
     });
   });
 });

@@ -19,6 +19,7 @@ An operator reading this runbook should be able to configure monitoring and veri
 **UptimeRobot account details (operator reference):**
 
 - UptimeRobot free tier: 50 monitors, 5-minute intervals, email alerts
+- Rate limit: 10 API requests per minute on the free tier. If you run multiple API commands in quick succession (e.g. creating both monitors back-to-back), you may hit the rate limit. Space commands by a few seconds if you receive a rate limit error.
 - API v2 base URL: `https://api.uptimerobot.com/v2/`
 - `UPTIMEROBOT_API_KEY` must be present in `.env.local`. It was verified present on 2026-07-14 (see Verification Record). If missing, obtain it from the UptimeRobot dashboard: Integrations & API → API → Create Key (create a main API key) and add it to `.env.local`.
 - Export it before running curl commands: `export UPTIMEROBOT_API_KEY=$(grep '^UPTIMEROBOT_API_KEY=' .env.local | cut -d= -f2-)`
