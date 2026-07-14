@@ -164,8 +164,6 @@ When a user sends a message to the BMAD agent, Claude Agent SDK executes tools �
 
 The 2025–2026 security consensus is that **standard Docker containers alone are not sufficient isolation** for running LLM-generated commands in multi-tenant environments. A shared-kernel container is one kernel CVE away from host root. microVM-level isolation (Firecracker or Kata Containers) is the appropriate production baseline for a public BMAD web app.
 
-**For the full isolation technology hierarchy, platform comparison (E2B, Daytona, Fly.io Sprites, Docker), security hardening checklist, and decision matrix by scenario**, see the companion research report: [technical-docker-per-session-daytona-ai-agent-isolation-research-2026-06-12.md](technical-docker-per-session-daytona-ai-agent-isolation-research-2026-06-12.md).
-
 **Adopted decision (Pattern A — Entire SDK inside the sandbox):** The Claude Agent SDK process runs inside a Daytona sandbox per conversation. NestJS only manages sandbox lifecycle and proxies the AG-UI event stream — it never executes tool payloads locally. Daytona Cloud is the selected platform (~90 ms warm start, official TypeScript SDK, official Claude Agent SDK guide). The `sandbox-agent` binary (rivet-dev) running inside the sandbox handles event emission back to NestJS.
 
 The final NestJS architecture with isolation:

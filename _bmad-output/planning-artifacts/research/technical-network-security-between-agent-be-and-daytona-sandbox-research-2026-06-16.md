@@ -2,8 +2,6 @@
 stepsCompleted: [1, 2, 3, 4, 5, 6]
 inputDocuments:
   - '_bmad-output/planning-artifacts/architecture.md'
-  - '_bmad-output/planning-artifacts/research/technical-docker-per-session-daytona-ai-agent-isolation-research-2026-06-12.md'
-  - '_bmad-output/planning-artifacts/research/technical-claude-agent-sdk-sandboxed-tool-execution-research-2026-06-12.md'
   - '_bmad-output/planning-artifacts/research/technical-git-repository-authentication-multi-host-research-2026-06-13.md'
 workflowType: 'research'
 lastStep: 6
@@ -303,7 +301,6 @@ Post-MVP:   Evaluate host-mediated git credential handling if the prompt-injecti
 | [Managing Secrets on Railway - Railway Guides](https://docs.railway.com/guides/managing-secrets-on-railway) | Sealed/Shared Variable model for storing the Daytona API key |
 | [Zero-Trust Service-to-Service Auth in 2026 - The Backend Developers](https://thebackenddevelopers.substack.com/p/zero-trust-service-to-service-auth) | mTLS-vs-bearer-token framing applied to this integration |
 | `technical-git-repository-authentication-multi-host-research-2026-06-13.md` (this project) | Confirms `GITHUB_TOKEN` is injected as a sandbox env var — the existing decision this research's credential-exposure finding applies to |
-| `technical-docker-per-session-daytona-ai-agent-isolation-research-2026-06-12.md` (this project) | Confirms `ANTHROPIC_API_KEY` injection pattern; prior isolation-level decision (ADR A-2) this research builds on |
 
 ### Confidence
 
