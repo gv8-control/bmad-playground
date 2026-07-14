@@ -8,7 +8,6 @@
  * rendering — text segments via Markdown, tool_call segments via ToolPill/
  * SemanticPill/AccessNotice, fallback to content for legacy messages,
  * streaming cursor after last segment).
- * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { render, screen } from '@testing-library/react';
 
@@ -61,8 +60,6 @@ describe('AgentMessage', () => {
 
 // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
 //
-// GREEN PHASE: tests are active for Story 5.3 implementation.
-//
 // AC-5: Inter-message gap is 24px (mb-6), not 16px (mb-4)
 // AC-7: Markdown links have focus ring
 
@@ -91,8 +88,6 @@ describe('AgentMessage — Story 5.3 structural drift', () => {
 });
 
 // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
-//
-// GREEN PHASE: tests are active and passing.
 //
 // AC-7: ChatMessage data model supports interleaved tool calls (segments)
 // AC-10: AgentMessage renders interleaved pills at correct positions

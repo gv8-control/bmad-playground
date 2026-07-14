@@ -11,7 +11,6 @@
  * Story 2.4 delivered the list-only page; Story 2.5 adds searchParams
  * handling, selected-artifact query, two-column layout, and
  * ArtifactViewer/ArtifactLoadError rendering.
- * Story 5.2 and Story 5.4 tests are active and passing.
  *
  * Child component rendering (ArtifactListEntry, ArtifactViewer,
  * ArtifactLoadError, CredentialErrorBanner) is verified by their own

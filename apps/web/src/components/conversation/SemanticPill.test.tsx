@@ -105,8 +105,6 @@ describe('SemanticPill', () => {
 
 // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
 //
-// GREEN PHASE: tests are active for Story 5.3 implementation.
-//
 // AC-5: Semantic pill separator uses 0.4 alpha, not full opacity
 
 describe('SemanticPill — Story 5.3 structural drift', () => {

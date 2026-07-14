@@ -52,8 +52,6 @@ describe('UserMessage', () => {
 
 // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
 //
-// GREEN PHASE: tests are active for Story 5.3 implementation.
-//
 // AC-5: Inter-message gap is 24px (mb-6), not 16px (mb-4)
 // AC-5: User bubble padding is py-3 (12px), not py-2 (8px)
 

@@ -7,8 +7,6 @@
  * Also covers Story 5.4 AC-2/AC-3 (token-usage drift: bg-bg, text-text-1,
  * ring-offset-bg, focus:border-accent, border-negative on error).
  *
- * GREEN PHASE: all tests are active. Story 1.3, Story 5.1, and Story 5.4
- * implementation complete.
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
@@ -342,7 +340,6 @@ describe('RepositoryUrlForm — token-usage drift (Story 5.4, AC-2, AC-3)', () =
 
 // ─── Story 5.1: Visual containers (AC-2, AC-3) ───────────────────────────────
 //
-// GREEN PHASE: tests are active for Tasks 2 and 3 implementation.
 // AC-2: Onboarding form panel wraps the Repository URL input.
 // The input and its supporting copy must sit inside a form panel
 // (bg-surface border border-border rounded-xl p-7).

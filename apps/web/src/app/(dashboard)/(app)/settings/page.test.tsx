@@ -6,9 +6,6 @@
  * Covers AC-4 (Settings "coming soon" empty-state).
  * Story 5.2 covers: AC-7 (breadcrumb inline beside title), AC-8 (header bottom divider).
  *
- * GREEN PHASE: tests are active for Task 4 implementation.
- * Story 5.2 tests are active and passing.
- *
  * Uses the @jest-environment node + renderToStaticMarkup pattern from
  * project-map/page.test.tsx (Server Component test canonical pattern).
  * Breadcrumb is mocked as a render stub to isolate the page test.

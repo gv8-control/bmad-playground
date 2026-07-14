@@ -4,9 +4,9 @@
  * Component unit tests for ArtifactViewer (Server Component, synchronous).
  * Covers AC-1 (rendered Markdown content, read-only, role="main").
  *
- * GREEN PHASE: implementation complete. ArtifactViewer strips YAML
- * frontmatter and renders Markdown via react-markdown + remark-gfm with
- * component-level className overrides. Story 5.4 fixes hairline border tokens.
+ * ArtifactViewer strips YAML frontmatter and renders Markdown via
+ * react-markdown + remark-gfm with component-level className overrides.
+ * Story 5.4 fixes hairline border tokens.
  *
  * react-markdown is mocked as a render stub that captures props to isolate
  * the test from the markdown library's internals — frontmatter-stripping,
@@ -123,8 +123,6 @@ describe('ArtifactViewer — frontmatter stripping (AC-1)', () => {
 });
 
 // ─── Story 5.1: Visual containers (AC-5) ─────────────────────────────────────
-//
-// GREEN PHASE: tests are active for Task 5 implementation.
 //
 // AC-5: Artifact-browser frontmatter metadata badge.
 // When an artifact has YAML frontmatter, a metadata badge renders above

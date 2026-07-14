@@ -15,3 +15,4 @@
 {"ts":"2026-07-14T04:32:52Z","source":"opencode-runner","context":"Create story (4.9) / initial run","rc":1,"salvagedOutput":"yes","stderrTail":""}
 {"ts":"2026-07-14T04:33:37Z","source":"opencode-runner","context":"Create story (4.9) / follow-up run","rc":1,"salvagedOutput":"yes","stderrTail":""}
 {"ts":"2026-07-14T04:34:20Z","source":"opencode-runner","context":"Create story (4.9) / follow-up run","rc":1,"salvagedOutput":"yes","stderrTail":""}
+{"ts":"2026-07-14T12:12:01Z","source":"opencode-runner","context":"Code review (4.10) / initial run","rc":124,"salvagedOutput":"yes","stderrTail":""}

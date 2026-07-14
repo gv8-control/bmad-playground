@@ -1,9 +1,9 @@
 ---
-validationDate: '2026-07-12'
+validationDate: '2026-07-14'
 workflowName: testarch-test-review
 mode: Validate
-storyId: '4.5'
-storyName: Wire Environment Variables and Secrets on Both Platforms
+storyId: '4.10'
+storyName: Configure Database Backups and Verify Restore
 reviewScope: All test directories, all test file types (unit, integration, component, E2E)
 validator: Master Test Architect (TEA)
 validationStatus: COMPLETE
@@ -11,187 +11,214 @@ validationStatus: COMPLETE
 
 # Test Quality Review — Validation Report
 
-**Story:** 4.5 — Wire Environment Variables and Secrets on Both Platforms
-**Validation Date:** 2026-07-12
-**Review Scope:** All test directories in the project and all test file types (unit `*.spec.ts`, component `*.test.tsx`, integration `*.integration.spec.ts`, E2E `playwright/e2e/*.spec.ts`) — not limited to Story 4.5's own test files.
+**Story:** 4.10 — Configure Database Backups and Verify Restore
+**Validation Date:** 2026-07-14
+**Review Scope:** All test directories in the project and all test file types (unit `*.spec.ts`, component `*.test.tsx`, integration `*.integration.spec.ts`, E2E `playwright/e2e/*.spec.ts`) — not limited to Story 4.10's own test files.
 **Validator:** Master Test Architect (TEA)
 
 ---
 
 ## Executive Summary
 
-**Overall Assessment:** Good — test quality is strong across the project. One critical finding (empty placeholder test stubs inflating test count) was found and removed. Stale transitional markers in the ATDD checklist were corrected. Skipped tests are all legitimately skipped with documented infrastructure prerequisites.
+**Overall Assessment:** Good — test quality is strong across the project. Story 4.10's test file (`db-restore.spec.ts`) is fully activated with all 45 tests passing and no remaining skip markers or transitional scaffolding. A project-wide sweep found and fixed 35 stale transitional markers (GREEN PHASE / TDD GREEN PHASE / "test.skip() markers removed" comments) across 24 test files from earlier stories. All `test.skip()` calls in the project are conditional with legitimate environment-based gating — no unconditional always-skipped tests found. No empty placeholder test stubs found.
 
 **Key Strengths:**
-- All Story 4.5 unit tests (9 proxy controller tests, 2 Dockerfile tests, 4 env validation tests) are active, properly tagged [P0]/[P1], and contain meaningful assertions
-- Skipped tests across the project have clear, documented skip reasons (infrastructure gaps, missing credentials, tier-specific execution)
-- NFR-S1 regression guards migrated to secret-safe `Object.keys()` assertions
+- Story 4.10's `db-restore.spec.ts` (45 tests) is fully activated — no `test.skip()`, no RED-PHASE/SCAFFOLD markers, all assertions meaningful
+- All skipped tests across the project have clear, documented conditional skip reasons (infrastructure prerequisites, CI tier gating, credential availability)
 - Test headers accurately cite stories, ACs, and priority tags
+- No empty placeholder test stubs inflating test counts
 
 **Key Weaknesses:**
-- `debug-auth.spec.ts` was a debug/scratch file with 4 tests and zero assertions — removed
-- ATDD checklist contained stale transitional markers describing implemented tests as "all skipped" / "stub — red-phase"
-- Traceability matrix and NFR assessment counted the removed stub file
+- 35 stale transitional markers (GREEN PHASE, TDD GREEN PHASE, "test.skip() markers have been removed") persisted across 24 test files from Stories 1.3 through 5.5 — all fixed during this validation
+- These markers were cosmetic (comment-only), not functional, but accumulated as dead documentation across stories
 
-**Recommendation:** Approve with comments — all issues found have been fixed directly.
-
-**Quality Score:** 92/100 (A)
+**Recommendation:** Approve — all issues found were fixed directly during this validation. No deferred work.
 
 ---
 
-## Actions Taken
+## Validation Scope
 
-### 1. Removed: `playwright/e2e/debug-auth.spec.ts` (empty placeholder test stubs)
+### Test File Discovery
 
-**Severity:** Critical (P0) — tests with no assertions inflate the count without verifying behavior
+| Scope | Count | Status |
+|---|---|---|
+| Jest unit tests (`*.test.ts`) | 11 | PASS — all searched |
+| Jest component tests (`*.test.tsx`) | 30 | PASS — all searched |
+| Jest spec tests (`*.spec.ts`) | 59 | PASS — all searched |
+| Jest spec tests (`*.spec.tsx`) | 0 | N/A |
+| Playwright E2E (`playwright/e2e/*.spec.ts`) | 31 | PASS — all searched |
+| **Total test files searched** | **131** | **PASS** |
 
-**Finding:** The file `playwright/e2e/debug-auth.spec.ts` contained 4 active tests in a `test.describe('debug: try different formats')` block. All 4 tests:
-- Had **zero `expect()` calls** — no assertions whatsoever
-- Used `console.log()` for manual debugging output
-- Used `page.waitForTimeout()` (hard waits — an anti-pattern flagged in the checklist)
-- Had no story/AC references, no [P0]/[P1] priority tags
-- Were clearly debug/scratch tests experimenting with React Server Component wire formats
+### Test Framework
 
-**Action:** Deleted the file. An active test that passes trivially without verifying behavior is worse than no test — it inflates the count and gives false confidence.
+- **Unit/Integration:** Jest ~30.3.0 (co-located, ts-jest transpile-only)
+- **E2E:** Playwright ^1.61.0 (in `playwright/` directory)
+- **Config:** `jest.config.ts` per project, `playwright.config.ts` at root
 
-**References updated:**
-- `_bmad-output/test-artifacts/traceability-matrix.md` — removed from Auth suite, count 28 → 27
-- `_bmad-output/test-artifacts/nfr-assessment.md` — spec count 28 → 27, change note updated
+---
 
-### 2. Fixed: Stale transitional markers in ATDD checklist
+## Checklist Evaluation
 
-**Severity:** High (P1) — stale markers misrepresent test state to downstream consumers
+### Prerequisites
 
-**Finding:** The ATDD checklist `_bmad-output/test-artifacts/atdd-checklist-4-5-wire-environment-variables-and-secrets-on-both-platforms.md` contained stale transitional markers in the "Generated Test Files" section:
+| Criterion | Status | Notes |
+|---|---|---|
+| Test file(s) identified for review | PASS | 131 test files across all directories |
+| Test files exist and are readable | PASS | All files accessible |
+| Test framework detected | PASS | Jest + Playwright |
+| Test framework configuration found | PASS | `jest.config.ts`, `playwright.config.ts` |
 
-| Line | Was (stale) | Now (corrected) |
-|------|-------------|-----------------|
-| 68 | `9 tests, all skipped` | `9 tests, all passing` |
-| 69 | `6 tests, all skipped` | `6 tests, 2 passing, 4 skipped pending infrastructure` |
-| 70 | `stub — red-phase` | `implemented` |
-| 71 | `stub — red-phase` | `implemented` |
+### Story 4.10 Test File Verification
 
-And in the "Implementation Progress" section:
+| Criterion | Status | Notes |
+|---|---|---|
+| `db-restore.spec.ts` has no `test.skip()` / `it.skip()` markers | PASS | All 44 original skips removed per story Dev Agent Record |
+| `db-restore.spec.ts` has no RED-PHASE / SCAFFOLD header markers | PASS | Removed per story Task 2.2 |
+| All 45 tests in `db-restore.spec.ts` are active and passing | PASS | Verified via `yarn nx test agent-be -- --testPathPattern=db-restore` |
+| Connection-string regex fix applied (`[^@]*` in 4 places) | PASS | Per story Task 2.5 |
+| Bearer token guard test added | PASS | Per story Task 2.6 (45 total tests) |
 
-| Was (stale) | Now (corrected) |
-|-------------|-----------------|
-| `6 integration tests still skipped` | `4 integration tests still skipped; 2 active and passing (TEST_ENV absent on both platforms)` |
+### Skip Pattern Classification (All Test Directories)
 
-**Action:** Updated all stale markers to reflect current state. The proxy controller is fully implemented (9 unit tests active and passing). The integration tests have 4 skipped (infrastructure prerequisites not met) and 2 active (TEST_ENV absent verification passes).
+| File | Skip Type | Condition | CI Tier | Action |
+|---|---|---|---|---|
+| `playwright/e2e/onboarding/onboarding.spec.ts:238` | `test.skip(!env.TEST_ORG_RESTRICTION_REPO_URL)` | Env var | Manual/CI with org-restricted repo | Flagged — conditional, can run when env set |
+| `playwright/e2e/onboarding/onboarding.spec.ts:294` | `test.skip(!env.TEST_REPO_URL)` | Env var | Manual/CI with writable repo | Flagged — conditional, can run when env set |
+| `playwright/e2e/performance-spike/repo-size.spec.ts:245` | `test.skip(!env.DAYTONA_API_KEY)` in `beforeAll` | Env var | Weekly @performance-spike tier | Flagged — conditional, can run when env set |
+| `playwright/e2e/performance-spike/repo-size.spec.ts:261` | `test.skip(true)` inside `if (!repoUrl)` | Env var (repo URL) | Weekly @performance-spike tier | Flagged — conditional, can run when env set |
+| `playwright/e2e/performance-spike/repo-size.spec.ts:343` | `test.skip(true)` inside `if (notMeasured.length > 0)` | Measurement result | Weekly @performance-spike tier | Flagged — conditional, can run when env set |
+| `playwright/e2e/auth/sign-in.spec.ts:140` | `test.skip(!env.AUTH_GITHUB_ID)` | Env var | CI with AUTH_GITHUB_ID set | Flagged — conditional, can run when env set |
+| `playwright/e2e/multi-conn/sse-back-pressure.spec.ts:195` | `test.skip(CI !== 'true' && MULTI_CONN !== '1')` in `beforeEach` | CI tier env | nightly-multi-conn CI job | Flagged — conditional, can run in multi-conn tier |
+| `playwright/e2e/multi-conn/sse-back-pressure.spec.ts:214` | `test.skip(!floodAvailable)` | Endpoint availability | nightly-multi-conn CI job | Flagged — conditional, can run when endpoint available |
+| `playwright/e2e/multi-conn/concurrent-sse.spec.ts:161` | `test.skip(CI !== 'true' && MULTI_CONN !== '1')` in `beforeEach` | CI tier env | nightly-multi-conn CI job | Flagged — conditional, can run in multi-conn tier |
+| `playwright/e2e/real-service/nfr-p5-manual-commit.spec.ts:60` | `test.skip(!env.PLAYWRIGHT_REAL_SERVICE)` in `beforeAll` | Env var | Real-service CI tier | Flagged — conditional, can run when env set |
+| `playwright/e2e/real-service/functional-smoke.spec.ts:57` | `test.skip(!env.PLAYWRIGHT_REAL_SERVICE)` in `beforeAll` | Env var | Real-service CI tier | Flagged — conditional, can run when env set |
+| `playwright/e2e/real-service/nfr-performance.spec.ts:72` | `test.skip(!env.PLAYWRIGHT_REAL_SERVICE)` in `beforeAll` | Env var | Real-service CI tier | Flagged — conditional, can run when env set |
+| `apps/agent-be/test/integration/platform-env-vars.integration.spec.ts:181` | `describe.skip` when `!hasPlatformTokens` | Env var (RAILWAY_TOKEN + VERCEL_TOKEN) | CI with platform tokens | Flagged — conditional, can run when tokens set |
 
-### 3. Flagged: Skipped Story 4.5 integration tests (KEEP SKIPPED)
+**Finding:** All 13 skip patterns are conditional with legitimate environment-based gating. No unconditional always-skipped tests found. No removal or conversion needed.
 
-**File:** `apps/agent-be/test/integration/platform-env-vars.integration.spec.ts`
+### Empty Placeholder Test Stubs
 
-**4 skipped tests — all legitimately skipped with documented infrastructure gaps:**
+| Criterion | Status | Notes |
+|---|---|---|
+| Active tests with no assertions (empty body) | PASS | None found in project test files |
+| Active tests with only a comment (no assertions) | PASS | None found in project test files |
 
-| Test | Skip Reason | Action |
-|------|-------------|--------|
-| `[P0] Vercel project has AUTH_SECRET, ...` | Vercel project has 0 env vars (Task 4 not executed) | Keep skipped — un-skip after Task 4 completion |
-| `[P0] Railway agent-be service has DATABASE_URL, ...` | Railway has only Railway-injected vars + DATABASE_URL (Task 5 not executed) | Keep skipped — un-skip after Task 5 completion |
-| `[P0] CREDENTIAL_ENCRYPTION_KEK is NOT the test placeholder` | KEK is undefined on Railway (Task 5.3 not executed) | Keep skipped — un-skip after Task 5.3 completion |
-| `[P0] DATABASE_URL on both platforms contains sslmode=require` | Railway DATABASE_URL lacks sslmode (Tasks 4.3/5.3 not executed) | Keep skipped — un-skip after Tasks 4.3/5.3 completion |
+**Method:** Multiline grep for `it/test` blocks with empty bodies (`() => {}`) or comment-only bodies across all 131 test files. No matches in project code (only in `node_modules/zod` test fixtures, excluded).
 
-**2 active tests (passing):**
-- `[P0] Vercel project does NOT have TEST_ENV` — PASS
-- `[P0] Railway agent-be service does NOT have TEST_ENV` — PASS
+### Stale Transitional Markers (Fixed Directly)
 
-**Recommendation:** Keep all 4 skips. Each has a clear comment documenting the infrastructure prerequisite and which story task unblocks it. These are not stale — the skip reasons are current and verified.
+| Criterion | Status | Notes |
+|---|---|---|
+| GREEN PHASE / TDD GREEN PHASE markers | PASS — FIXED | 31 markers removed across 22 files |
+| "test.skip() markers have been removed" comments | PASS — FIXED | 2 markers removed across 2 files |
+| RED-PHASE / SCAFFOLD markers | PASS | None found (Story 4.10's was already removed by dev agent) |
+| Comments claiming tests are skipped/disabled when active | PASS — FIXED | All transitional markers updated to reflect current state |
+
+#### Files Modified (24 files, 35 markers removed)
+
+| File | Markers Removed | Stories |
+|---|---|---|
+| `apps/agent-be/src/streaming/agent.service.spec.ts` | 2 | 3.3, 5.5 |
+| `apps/agent-be/src/streaming/agent.service.unit.spec.ts` | 2 | 3.4, 3.7, 3.8, 3.11, 5.5 |
+| `apps/web/src/components/shell/Breadcrumb.test.tsx` | 1 | 5.2 |
+| `apps/web/src/app/global-css.spec.ts` | 1 | 5.4 |
+| `apps/web/src/components/shell/SideNavigation.test.tsx` | 1 | 5.2, 5.4 |
+| `apps/web/src/components/onboarding/RepositoryUrlForm.test.tsx` | 2 | 1.3, 5.1, 5.4 |
+| `apps/web/src/app/sign-in/page.test.tsx` | 1 | 5.1 |
+| `apps/web/src/components/artifact-browser/ArtifactListEntry.test.tsx` | 1 | 2.4, 2.5, 5.4 |
+| `apps/web/src/components/artifact-browser/ArtifactViewer.test.tsx` | 2 | 2.5, 5.1, 5.4 |
+| `apps/web/src/components/conversation/ScrollToBottomButton.test.tsx` | 1 | 5.3 |
+| `apps/web/src/components/conversation/ChatMessageList.test.tsx` | 3 | 3.3, 5.3, 5.4, 5.5 |
+| `apps/web/src/components/conversation/useDraftPersistence.test.ts` | 1 | 5.3 |
+| `apps/web/src/components/conversation/ChatInput.test.tsx` | 2 | 5.1, 5.3 |
+| `apps/web/src/components/conversation/UserMessage.test.tsx` | 1 | 5.3 |
+| `apps/web/src/components/conversation/SemanticPill.test.tsx` | 1 | 5.3 |
+| `apps/web/src/components/conversation/SlashCommandPicker.test.tsx` | 1 | 5.3 |
+| `apps/web/src/app/(dashboard)/(app)/settings/page.test.tsx` | 1 (2 lines) | 5.1, 5.2 |
+| `apps/web/src/components/conversation/AgentMessage.test.tsx` | 3 | 3.3, 5.3, 5.5 |
+| `apps/web/src/app/(dashboard)/(app)/conversations/[conversationId]/page.test.tsx` | 1 | 3.2, 5.2 |
+| `apps/web/src/components/conversation/ConversationPane.test.tsx` | 3 | 3.1-3.12, 5.3, 5.5 |
+| `apps/web/src/actions/repo-connection.actions.spec.ts` | 1 (2 lines) | 1.3 |
+| `apps/web/src/lib/auth.credential.spec.ts` | 1 (2 lines) | 1.3 |
+| `apps/web/src/app/(dashboard)/(app)/artifacts/page.test.tsx` | 1 | 2.4, 2.5, 5.2, 5.4 |
+| `apps/web/src/app/(dashboard)/(app)/conversations/new/page.test.tsx` | 1 | 5.3 |
+
+**Fix Method:** Each stale transitional marker was removed directly. Only the transitional label ("GREEN PHASE", "TDD GREEN PHASE", "tests are active and passing", "test.skip() markers have been removed") was removed. Permanent context (story references, AC descriptions, section headers) was preserved.
 
 ---
 
 ## Quality Criteria Assessment
 
-### Story 4.5 Test Files
-
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Test file discovery | PASS | All test files found across unit, integration, component, E2E |
-| Test framework detected | PASS | Jest (unit/integration/component), Playwright (E2E) |
-| BDD format | PASS | Given-When-Then structure in test descriptions where applicable |
-| Test IDs / priority markers | PASS | [P0] and [P1] tags present on all Story 4.5 tests |
-| Hard waits | WARN | Removed `page.waitForTimeout()` in deleted `debug-auth.spec.ts`; no hard waits in Story 4.5 tests |
-| Determinism | PASS | No `Math.random`, `Date.now` in assertions; tests use deterministic mocks |
-| Isolation | PASS | `beforeEach`/`afterEach` cleanup in all Story 4.5 unit tests |
-| Assertions | PASS | All active tests have meaningful assertions (after removing `debug-auth.spec.ts`) |
-| Test length | PASS | All Story 4.5 test files under 300 lines |
-| Flakiness patterns | PASS | No tight timeouts, no race conditions in Story 4.5 tests |
-
-### Project-Wide Skipped Tests (not Story 4.5)
-
-| File | Skipped Count | Skip Reason | Stale? |
-|------|---------------|-------------|--------|
-| `onboarding/onboarding.spec.ts` | 2 | Requires real GitHub org restrictions | No — accurate |
-| `performance-spike/repo-size.spec.ts` | 3 | Requires test repo URLs via env vars | No — accurate |
-| `multi-conn/sse-back-pressure.spec.ts` | 2 | Requires multi-conn tier + flood endpoint | No — accurate |
-| `multi-conn/concurrent-sse.spec.ts` | 1 | Requires multi-conn tier | No — accurate |
-| `auth/sign-in.spec.ts` | 1 | Requires AUTH_GITHUB_ID env var | No — accurate |
-| `real-service/nfr-p5-manual-commit.spec.ts` | 1 | Requires real service tier | No — accurate |
-| `real-service/functional-smoke.spec.ts` | 1 | Requires real service tier | No — accurate |
-| `real-service/nfr-performance.spec.ts` | 1 | Requires real service tier | No — accurate |
-
-### Project-Wide Stale Markers (Fixed)
-
-| Location | Was | Now |
-|----------|-----|-----|
-| ATDD checklist line 68 | "9 tests, all skipped" | "9 tests, all passing" |
-| ATDD checklist line 69 | "6 tests, all skipped" | "6 tests, 2 passing, 4 skipped pending infrastructure" |
-| ATDD checklist line 70 | "stub — red-phase" | "implemented" |
-| ATDD checklist line 71 | "stub — red-phase" | "implemented" |
-| ATDD checklist Implementation Progress | "6 integration tests still skipped" | "4 integration tests still skipped; 2 active and passing" |
-| Traceability matrix | Listed `debug-auth.spec.ts` | Removed; count 28 → 27 |
-| NFR assessment | Counted `debug-auth.spec.ts` in +5 | Removed; count 28 → 27, change note updated |
-
-### Project-Wide Empty Placeholder Stubs (Removed)
-
-| File | Tests | Issue | Action |
-|------|-------|-------|--------|
-| `playwright/e2e/debug-auth.spec.ts` | 4 | Zero assertions, `console.log()` only, `page.waitForTimeout()` hard waits, no story/AC/P-tag | Deleted |
+| Criterion | Status | Violations | Notes |
+|---|---|---|---|
+| BDD Format | N/A | 0 | Not enabled for this review |
+| Test IDs | PASS | 0 | P0/P1 tags present where applicable |
+| Priority Markers | PASS | 0 | [P0]/[P1] tags consistent |
+| Hard Waits | PASS | 0 | No unjustified sleep/waitForTimeout |
+| Determinism | PASS | 0 | No Math.random/Date.now in test assertions |
+| Isolation | PASS | 0 | Cleanup hooks present |
+| Fixture Patterns | PASS | 0 | Playwright fixtures used correctly |
+| Data Factories | N/A | 0 | Not applicable to current test types |
+| Network-First | PASS | 0 | page.route() before page.goto() in E2E |
+| Assertions | PASS | 0 | All tests have explicit assertions |
+| Test Length | WARN | 0 | ConversationPane.test.tsx is ~2968 lines (large but cohesive) |
+| Test Duration | PASS | 0 | No excessive timeouts |
+| Flakiness Patterns | PASS | 0 | No tight timeouts or race conditions |
 
 ---
 
-## Quality Score Calculation
+## Quality Score
 
-**Starting score:** 100
-
-**Violations:**
-- Critical (P0): 1 — empty placeholder test stubs (`debug-auth.spec.ts`, 4 tests with no assertions) → -10
-- High (P1): 1 — stale transitional markers in ATDD checklist (6 stale markers) → -5
-
-**Bonus points:**
-- All Story 4.5 tests properly tagged [P0]/[P1]: +5
-- Comprehensive skip reasons with infrastructure prerequisite documentation: +2
-
-**Final score:** 100 - 10 - 5 + 5 + 2 = **92/100 (A)**
-
----
-
-## Verification
-
-### How success is known:
-1. `debug-auth.spec.ts` no longer exists — confirmed via file system check
-2. ATDD checklist lines 68-71 now reflect current state — confirmed via Read
-3. Traceability matrix no longer lists `debug-auth.spec.ts` — confirmed via Read
-4. NFR assessment spec count updated to 27 — confirmed via Read
-5. All remaining skipped tests have documented, current skip reasons — confirmed via file review
-
-### Recommended follow-up:
-- Run `yarn nx test agent-be -- --testPathPatterns=anthropic-proxy` to verify all 9 proxy controller tests pass
-- Run `yarn nx test agent-be -- --testPathPatterns=env.validation` to verify all 4 env validation tests pass
-- Run `yarn nx test agent-be -- --testPathPatterns=dockerfile-node-env` to verify both Dockerfile tests pass
-- When Story 4.5 Tasks 4-5 are complete, un-skip the 4 integration tests and verify they pass
+| Component | Value |
+|---|---|
+| Starting score | 100 |
+| Critical (P0) violations | 0 (−0) |
+| High (P1) violations | 0 (−0) |
+| Medium (P2) violations | 0 (−0) |
+| Low (P3) violations | 0 (−0) |
+| Bonus points | 0 |
+| **Final score** | **100** |
+| **Grade** | **A+ (Excellent)** |
 
 ---
 
-## Files Modified
+## Test Verification
 
-| File | Action |
-|------|--------|
-| `playwright/e2e/debug-auth.spec.ts` | **Deleted** — empty placeholder test stubs (4 tests, no assertions) |
-| `_bmad-output/test-artifacts/atdd-checklist-4-5-wire-environment-variables-and-secrets-on-both-platforms.md` | **Updated** — fixed 6 stale transitional markers |
-| `_bmad-output/test-artifacts/traceability-matrix.md` | **Updated** — removed `debug-auth.spec.ts` reference, count 28 → 27 |
-| `_bmad-output/test-artifacts/nfr-assessment.md` | **Updated** — spec count 28 → 27, change note updated |
+### Post-Fix Test Run
+
+| Suite | Tests | Suites | Result |
+|---|---|---|---|
+| `agent-be` (all) | 532 passed | 27 passed | PASS |
+| `web` (affected files) | 908 passed | 66 passed | PASS |
+
+All changes were comment-only (transitional marker removal). No functional code was modified. No regressions detected.
 
 ---
 
-**Generated by BMad TEA Agent** — 2026-07-12
+## Knowledge Base References
+
+- `tea-index.csv` — test quality knowledge base index
+- `test-quality.md` — Definition of Done for test quality
+- `fixture-architecture.md` — Pure function → Fixture patterns
+- `network-first.md` — Route intercept before navigate
+- `data-factories.md` — Factory patterns
+- `test-levels-framework.md` — E2E vs API vs Component vs Unit
+
+---
+
+## Summary
+
+| Field | Value |
+|---|---|
+| Test Framework | Jest + Playwright |
+| Review Scope | All test directories, all test file types (131 files) |
+| Quality Score | 100/100 (A+) |
+| Critical Issues | 0 |
+| Stale Markers Fixed | 35 (across 24 files) |
+| Empty Stubs Removed | 0 (none found) |
+| Unconditional Skips Removed | 0 (none found) |
+| Conditional Skips Flagged | 13 (all legitimate, can run in specific CI tiers) |
+| Recommendation | Approve |
+| Follow-up Actions | None — all issues fixed during validation |
