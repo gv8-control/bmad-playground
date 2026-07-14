@@ -198,6 +198,7 @@ describe('ChatMessageList — Story 5.3 structural drift', () => {
 
       const list = screen.getByTestId('chat-message-list');
       expect(list).toHaveAttribute('role', 'log');
+      expect(list).toHaveAttribute('aria-live', 'polite');
     });
   });
 

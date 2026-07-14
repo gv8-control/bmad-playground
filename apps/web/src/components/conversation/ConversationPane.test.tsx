@@ -2453,10 +2453,7 @@ describe('ConversationPane', () => {
 
         const agentMessageContainers = document.querySelectorAll('.group.mb-6');
         expect(agentMessageContainers.length).toBe(1);
-        expect(agentMessageContainers[0].textContent).toContain('Before tool.');
-        expect(agentMessageContainers[0].textContent).toContain('Running');
-        expect(agentMessageContainers[0].textContent).toContain('Bash');
-        expect(agentMessageContainers[0].textContent).toContain('After tool.');
+        expect(agentMessageContainers[0].textContent).toMatch(/Before tool.*Running.*Bash.*After tool/s);
       });
     });
 
@@ -2586,8 +2583,7 @@ describe('ConversationPane', () => {
 
         const agentMessageContainers = document.querySelectorAll('.group.mb-6');
         expect(agentMessageContainers.length).toBe(1);
-        expect(agentMessageContainers[0].textContent).toContain('Trying.');
-        expect(agentMessageContainers[0].textContent).toContain('Bash');
+        expect(agentMessageContainers[0].textContent).toMatch(/Trying.*Bash/s);
       });
     });
 
@@ -2633,8 +2629,7 @@ describe('ConversationPane', () => {
 
         const agentMessageContainers = document.querySelectorAll('.group.mb-6');
         expect(agentMessageContainers.length).toBe(1);
-        expect(agentMessageContainers[0].textContent).toContain('Pushing.');
-        expect(agentMessageContainers[0].textContent).toContain('GitHub is rate-limiting');
+        expect(agentMessageContainers[0].textContent).toMatch(/Pushing.*GitHub is rate-limiting/s);
       });
     });
 
@@ -2935,9 +2930,7 @@ describe('ConversationPane', () => {
 
         const agentMessageContainers = document.querySelectorAll('.group.mb-6.justify-start');
         expect(agentMessageContainers.length).toBe(1);
-        expect(agentMessageContainers[0].textContent).toContain('Let me check');
-        expect(agentMessageContainers[0].textContent).toContain('Bash');
-        expect(agentMessageContainers[0].textContent).toContain('The task is complete');
+        expect(agentMessageContainers[0].textContent).toMatch(/Let me check.*Bash.*The task is complete/s);
       });
 
       it('[P0] initialMessages without segments fall back to content-only rendering (legacy)', async () => {

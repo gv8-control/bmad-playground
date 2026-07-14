@@ -151,9 +151,7 @@ describe('AgentMessage — Story 5.5 interleaved segments', () => {
 
       const { container } = render(<AgentMessage message={messageWithSegments} />);
 
-      expect(container.textContent).toContain('First.');
-      expect(container.textContent).toContain('Read');
-      expect(container.textContent).toContain('Second.');
+      expect(container.textContent).toMatch(/First.*Read.*Second/s);
     });
 
     it('[P0] falls back to content when segments is absent (legacy messages)', () => {

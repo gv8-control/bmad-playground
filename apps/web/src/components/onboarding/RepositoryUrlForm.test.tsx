@@ -321,6 +321,12 @@ describe('RepositoryUrlForm — token-usage drift (Story 5.4, AC-2, AC-3)', () =
     expect(input.className).toContain('focus:border-accent');
   });
 
+  it('[P0] input has maxLength attribute matching MAX_REPOSITORY_URL_LENGTH (bug-hunt L7)', () => {
+    render(<RepositoryUrlForm />);
+    const input = screen.getByLabelText(/repository url/i);
+    expect(input).toHaveAttribute('maxLength', '2000');
+  });
+
   it('[P0] input border transitions to border-negative on error, persists on focus (AC-3)', async () => {
     mockConnectRepositoryResult({ error: 'Error.', errorCode: 'UNKNOWN' });
     render(<RepositoryUrlForm />);

@@ -297,6 +297,10 @@ export function ConversationPane({
               return { ...m, content: m.content + delta, segments: newSegments };
             }),
           );
+        } else if (delta) {
+          // Defense-in-depth: TEXT_MESSAGE_CONTENT should always follow TEXT_MESSAGE_START.
+          // Silent drop indicates an upstream protocol violation (or a race with EventSource reconnect).
+          console.warn('[ConversationPane] TEXT_MESSAGE_CONTENT delta dropped — no streamingMessageIdRef set');
         }
       } catch {
         // ignore parse errors
@@ -398,7 +402,8 @@ export function ConversationPane({
               const newSegments = m.segments.map((s) => {
                 if (s.type === 'tool_call' && s.toolCall.toolCallId === toolCallId) {
                   found = true;
-                  return { ...s, toolCall: { ...s.toolCall, status: 'completed' as const } };
+                  const nextStatus: 'error' | 'completed' = s.toolCall.status === 'error' ? 'error' : 'completed';
+                  return { ...s, toolCall: { ...s.toolCall, status: nextStatus } };
                 }
                 return s;
               });

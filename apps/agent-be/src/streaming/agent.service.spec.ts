@@ -199,6 +199,18 @@ describe('AgentService (via ConversationsService integration)', () => {
       expect(assistantTurnCall[0].data).toHaveProperty('content');
       expect(assistantTurnCall[0].data).toHaveProperty('segments');
       expect(Array.isArray(assistantTurnCall[0].data.segments)).toBe(true);
+      expect(assistantTurnCall[0].data.segments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'tool_call',
+            toolCall: expect.objectContaining({
+              toolName: 'Bash',
+              input: 'git status',
+              output: 'nothing to commit',
+            }),
+          }),
+        ]),
+      );
     });
   });
 });

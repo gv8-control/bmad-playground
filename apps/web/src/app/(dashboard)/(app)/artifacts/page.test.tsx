@@ -262,6 +262,13 @@ describe('ArtifactsPage — two-column layout (AC-1, Story 2.5)', () => {
     expect(html).toContain('ArtifactListEntry:prd:bmad-easy PRD');
   });
 
+  it('[P0] full-width list pane has no-scrollbar class (bug-hunt M2)', async () => {
+    setupArtifacts(ARTIFACTS);
+
+    const html = await renderPage();
+    expect(html).toContain('no-scrollbar');
+  });
+
   it('[P0] each ArtifactListEntry receives href={`/artifacts?id=${a.id}`}', async () => {
     setupArtifacts(ARTIFACTS);
 

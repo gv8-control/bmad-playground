@@ -1410,7 +1410,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(toolCallSegment).toBeDefined();
       expect(toolCallSegment.toolCall).toHaveProperty('toolCallId', 'tc-1');
       expect(toolCallSegment.toolCall).toHaveProperty('toolName', 'Bash');
-      expect(toolCallSegment.toolCall).toHaveProperty('status');
+      expect(toolCallSegment.toolCall.status).toBe('completed');
     });
   });
 });

@@ -42,7 +42,7 @@ export function ChatMessageList({
     if (isAtBottomRef.current && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [messages, isThinking]);
+  }, [messages, isThinking, errorMessage, showRetry, showSpinner]);
 
   function handleScroll() {
     const container = containerRef.current;

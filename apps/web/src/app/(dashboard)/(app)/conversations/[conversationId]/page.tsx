@@ -41,7 +41,7 @@ export default async function ConversationPage({
     role: turn.role as 'user' | 'assistant',
     content: turn.content,
     createdAt: turn.createdAt,
-    segments: turn.segments as MessageSegment[] | null ?? undefined,
+    segments: Array.isArray(turn.segments) ? (turn.segments as MessageSegment[]) : undefined,
   }));
 
   const boundaryJwt = await mintBoundaryJwt(userId);

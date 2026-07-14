@@ -121,7 +121,7 @@ export default async function ArtifactsPage({
           )}
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-8 pb-8">
+        <div className="flex-1 overflow-y-auto no-scrollbar px-8 pb-8">
           {renderArtifacts.length === 0 ? (
             <p className="text-text-2 text-sm">
               Start your first conversation to create an artifact.
