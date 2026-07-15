@@ -145,7 +145,7 @@ jobs:
         run: yarn install --immutable
 
       - name: Run unit and integration tests
-        run: yarn nx run-many --target=test,test-integration --all --parallel=4 --passWithNoTests
+        run: yarn nx run-many --target=test,test-integration --all --parallel=2 --passWithNoTests
         env:
           CI: true
 
@@ -244,15 +244,27 @@ jobs:
         run: yarn nx run agent-be:build:development
 
       - name: Start agent-be
-        run: yarn nx run agent-be:serve &
+        run: |
+          yarn nx run agent-be:serve > /tmp/agent-be.log 2>&1 &
+          echo $! > /tmp/agent-be.pid
         env:
           PORT: 3001
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          # agent-be env validation (env.validation.ts) requires these at boot.
+          # Placeholders are sufficient — fake-backed E2E specs never reach
+          # real Daytona/Anthropic agent-run code paths.
+          DAYTONA_API_URL: https://e2e-placeholder.daytona.io
+          DAYTONA_API_KEY: e2e-placeholder-daytona-key
+          ANTHROPIC_API_KEY: e2e-placeholder-anthropic-key
 
       - name: Wait for services
         run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
+
+      - name: Print agent-be logs on failure
+        if: failure()
+        run: cat /tmp/agent-be.log || echo "No agent-be log file found"
 
       - name: Run E2E tests (shard ${{ matrix.shard }}/4)
         run: yarn playwright test --shard=${{ matrix.shard }}/4
@@ -354,15 +366,27 @@ jobs:
         run: yarn nx run agent-be:build:development
 
       - name: Start agent-be
-        run: yarn nx run agent-be:serve &
+        run: |
+          yarn nx run agent-be:serve > /tmp/agent-be.log 2>&1 &
+          echo $! > /tmp/agent-be.pid
         env:
           PORT: 3001
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          # agent-be env validation (env.validation.ts) requires these at boot.
+          # Placeholders are sufficient — fake-backed burn-in specs never reach
+          # real Daytona/Anthropic agent-run code paths.
+          DAYTONA_API_URL: https://e2e-placeholder.daytona.io
+          DAYTONA_API_KEY: e2e-placeholder-daytona-key
+          ANTHROPIC_API_KEY: e2e-placeholder-anthropic-key
 
       - name: Wait for services
         run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
+
+      - name: Print agent-be logs on failure
+        if: failure()
+        run: cat /tmp/agent-be.log || echo "No agent-be log file found"
 
       - name: Run burn-in loop (10 iterations)
         env:
@@ -515,13 +539,16 @@ jobs:
           BASE_URL: http://localhost:3000
           # Enables /api/internal/test/* endpoints used by withRepoConnection fixture.
           TEST_ENV: ci
-          # Agent-be env validation requires DATABASE_URL + AUTH_SECRET.
+          # Agent-be env validation (env.validation.ts) requires these at boot.
           # CREDENTIAL_ENCRYPTION_KEK is needed because EncryptionService is
           # instantiated eagerly via CredentialsModule. No real Daytona/Claude
           # calls — the tested code paths never reach agent-run code.
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          DAYTONA_API_URL: https://e2e-placeholder.daytona.io
+          DAYTONA_API_KEY: e2e-placeholder-daytona-key
+          ANTHROPIC_API_KEY: e2e-placeholder-anthropic-key
           # OAuth placeholders are sufficient — multi-conn specs don't exercise
           # the OAuth redirect flow (same convention as the PR-tier e2e job).
           AUTH_GITHUB_ID: e2e-placeholder-client-id
@@ -775,6 +802,9 @@ jobs:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          DAYTONA_API_URL: https://e2e-placeholder.daytona.io
+          DAYTONA_API_KEY: e2e-placeholder-daytona-key
+          ANTHROPIC_API_KEY: e2e-placeholder-anthropic-key
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
         run: yarn playwright test --grep @performance-spike --pass-with-no-tests
