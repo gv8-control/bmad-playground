@@ -103,6 +103,8 @@ UptimeRobot's free tier includes email alerts — enabled by default to the acco
 3. Select type "Slack", paste the Slack webhook URL, and save.
 4. Assign the alert contact to each monitor (My Settings → Alert Contacts → edit monitor → select the Slack contact).
 
+**Rotating the Slack webhook URL:** To rotate or revoke the webhook, go to the Slack app configuration (Slack → Apps → Incoming Webhooks), regenerate or delete the webhook, then update `SLACK_WEBHOOK_URL` in `.env.local` and re-add the alert contact in UptimeRobot (or the GitHub webhook in Section 3) with the new URL. Redeploy is not required for UptimeRobot (it stores the URL server-side), but is required if the webhook is also used by GitHub Actions.
+
 ---
 
 ## Section 2 — Log Access (Vercel + Railway, verification)
