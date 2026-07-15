@@ -1,3 +1,16 @@
+# ── sandbox-agent stage ──
+# Downloads the pinned sandbox-agent binary (rivet-dev) and checksum-verifies
+# it at build time. Per architecture.md (line 76, 673) the sandbox-agent
+# version is pinned in the Dockerfile, not as a code constant. The binary is
+# uploaded to the sandbox during provision (SandboxService.installBinaries).
+FROM node:24-slim AS sandbox-agent
+ARG SANDBOX_AGENT_VERSION=0.4.2
+ARG SANDBOX_AGENT_SHA256=bab098abef874ade481aa7b50463662814fbf27294399f545307fedb638f029b
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL --max-time 120 --retry 3 "https://releases.rivet.dev/sandbox-agent/${SANDBOX_AGENT_VERSION}/binaries/sandbox-agent-x86_64-unknown-linux-musl" -o /opt/sandbox-agent \
+    && echo "${SANDBOX_AGENT_SHA256}  /opt/sandbox-agent" | sha256sum -c - \
+    && chmod +x /opt/sandbox-agent
+
 # ── Install stage ──
 FROM node:24-slim AS install
 RUN corepack enable
@@ -23,6 +36,7 @@ COPY --from=build /app/dist/apps/agent-be/ ./
 COPY --from=build /app/.yarnrc.yml ./
 COPY --from=build /app/package.json /tmp/root-package.json
 COPY --from=build /app/yarn.lock /tmp/root-yarn.lock
+COPY --from=sandbox-agent /opt/sandbox-agent /opt/sandbox-agent
 RUN node -e "const fs=require('fs');const pkg=JSON.parse(fs.readFileSync('./package.json','utf8'));const root=JSON.parse(fs.readFileSync('/tmp/root-package.json','utf8'));pkg.dependencies={...root.dependencies,...pkg.dependencies};pkg.dependencies['ws']='^8.18.0';fs.writeFileSync('./package.json',JSON.stringify(pkg,null,2));fs.copyFileSync('/tmp/root-yarn.lock','./yarn.lock');fs.unlinkSync('/tmp/root-package.json');fs.unlinkSync('/tmp/root-yarn.lock')"
 RUN yarn install
 EXPOSE 3001

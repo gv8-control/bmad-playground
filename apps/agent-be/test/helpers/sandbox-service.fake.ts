@@ -18,6 +18,9 @@ export class SandboxServiceFake implements ISandboxService {
   private readonly sandboxes = new Map<string, SandboxInfo>();
   private readonly injectedGitConfigs = new Map<string, GitUserConfig>();
   private readonly clonedSandboxes = new Set<string>();
+  private readonly binariesInstalled = new Set<string>();
+  private readonly provisionedEnvVars = new Map<string, Record<string, string>>();
+  private readonly provisionedNetworkAllowLists = new Map<string, string>();
   private provisionDelay = 0;
   private shouldFailNextProvision = false;
   private shouldFailNextCommit = false;
@@ -61,6 +64,34 @@ export class SandboxServiceFake implements ISandboxService {
     return this.clonedSandboxes.has(sandboxId);
   }
 
+  /**
+   * Inspection: whether binaries were installed during provision (AC-1).
+   * Story 6.1 test seam — the fake simulates the binary-install side effect
+   * that the real SandboxService.provision() performs.
+   */
+  areBinariesInstalled(sandboxId: string): boolean {
+    return this.binariesInstalled.has(sandboxId);
+  }
+
+  /**
+   * Inspection: env vars injected during provision (AC-2).
+   * Story 6.1 test seam — the fake simulates the envVars that the real
+   * SandboxService.provision() passes to daytona.create().
+   */
+  getProvisionedEnvVars(sandboxId: string): Record<string, string> | undefined {
+    const envVars = this.provisionedEnvVars.get(sandboxId);
+    return envVars ? { ...envVars } : undefined;
+  }
+
+  /**
+   * Inspection: networkAllowList applied during provision (AC-3).
+   * Story 6.1 test seam — the fake simulates the networkAllowList that the
+   * real SandboxService.provision() passes to daytona.create().
+   */
+  getNetworkAllowList(sandboxId: string): string | undefined {
+    return this.provisionedNetworkAllowLists.get(sandboxId);
+  }
+
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
     if (this.shouldFailNextProvision) {
       this.shouldFailNextProvision = false;
@@ -79,6 +110,18 @@ export class SandboxServiceFake implements ISandboxService {
     };
 
     this.sandboxes.set(sandbox.sandboxId, sandbox);
+
+    // Story 6.1 test seam: simulate the provision side effects that the real
+    // SandboxService.provision() performs (binary install, envVars, networkAllowList).
+    // The fake does NOT actually install binaries or call daytona.create() — it
+    // records what the real service WOULD have done so integration tests can assert.
+    this.binariesInstalled.add(sandbox.sandboxId);
+    this.provisionedEnvVars.set(sandbox.sandboxId, {
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
+      GITHUB_TOKEN: params.credential,
+    });
+    this.provisionedNetworkAllowLists.set(sandbox.sandboxId, 'simulated-allow-list');
+
     return sandbox;
   }
 
@@ -114,11 +157,22 @@ export class SandboxServiceFake implements ISandboxService {
     };
   }
 
+  /**
+   * Story 6.1 F1 side effect: destroy() is idempotent — returns void (no-op)
+   * when the sandbox isn't tracked, matching the real SandboxService.destroy()
+   * contract (which returns void on DaytonaNotFoundError). Previously the fake
+   * threw "sandbox not found", which did NOT match the real service's
+   * idempotent-destroy behavior and caused spurious failures in integration
+   * tests that call destroy() on an already-destroyed sandbox.
+   */
   async destroy(sandboxId: string): Promise<void> {
-    if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
+    if (!this.sandboxes.has(sandboxId)) return;
     this.sandboxes.delete(sandboxId);
     this.injectedGitConfigs.delete(sandboxId);
     this.clonedSandboxes.delete(sandboxId);
+    this.binariesInstalled.delete(sandboxId);
+    this.provisionedEnvVars.delete(sandboxId);
+    this.provisionedNetworkAllowLists.delete(sandboxId);
   }
 
   async injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void> {

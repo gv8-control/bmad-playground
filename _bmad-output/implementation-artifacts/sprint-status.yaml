@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-07-14T22:00:00Z
+# last_updated: 2026-07-15T15:25:00Z
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-14T22:00:00Z
+last_updated: 2026-07-15T15:25:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -111,8 +111,8 @@ development_status:
   # Migrates agent execution from host-based (SDK query()) to sandbox-based
   # per PRD §3 (lines 100, 105) and architecture.md data flow (line 668).
   # See: sprint-change-proposal-2026-07-11.md
-  epic-6: backlog
-  6-1-install-claude-code-binary-in-sandbox-during-provision: backlog
+  epic-6: in-progress
+  6-1-install-claude-code-binary-in-sandbox-during-provision: done
   6-2-implement-jsonl-to-agui-event-bridge: backlog
   6-3-migrate-agentservice-to-sandbox-execution: backlog
   6-4-verify-working-tree-commit-and-credential-flows: backlog

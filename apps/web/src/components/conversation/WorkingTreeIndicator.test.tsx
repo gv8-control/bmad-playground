@@ -195,7 +195,6 @@ describe('WorkingTreeIndicator', () => {
   //
   // Story 5.4: AC-4: Save button uses text-accent-fg (not text-bg) on accent surface.
   // AC-9: WorkingTreeIndicator uses shadow-floating (not shadow-lg).
-  // Tests are active (GREEN) after Story 5.4 implementation.
 
   describe('[P0] Story 5.4, AC-4 — Save button text color', () => {
     it('Save button uses text-accent-fg, not text-bg (AC-4)', () => {

@@ -8,10 +8,70 @@ import type {
   WorkingTreeStatus,
   SkillInfo,
 } from '@bmad-easy/shared-types';
-import type { Daytona, Sandbox } from '@daytonaio/sdk';
+import { DaytonaError, DaytonaNotFoundError, type Daytona, type Sandbox } from '@daytonaio/sdk';
 import { DAYTONA_CLIENT } from './daytona-client.provider';
 
 const REPO_SUBDIRECTORY = 'repo';
+
+/**
+ * Comma-separated CIDR allow-list passed to daytona.create() to activate
+ * egress restriction. Daytona pre-whitelists package registries, GitHub/GitLab,
+ * container registries, and AI/ML APIs (Anthropic, OpenAI) on all tiers
+ * regardless of the custom allow-list. Setting networkAllowList activates the
+ * restriction (only pre-whitelisted + allow-listed hosts are reachable),
+ * closing the credential exfiltration path for sandbox-resident credentials
+ * (GITHUB_TOKEN, ANTHROPIC_API_KEY). The dummy CIDR forces activation while
+ * relying on the pre-whitelisted hosts for legitimate egress.
+ */
+const SANDBOX_NETWORK_ALLOW_LIST = '0.0.0.0/32';
+
+/**
+ * Path to the sandbox-agent binary baked into the agent-be Docker image
+ * (downloaded + checksum-verified at Docker build time — see Dockerfile).
+ * Uploaded to the sandbox during provision.
+ */
+const SANDBOX_AGENT_LOCAL_PATH = '/opt/sandbox-agent';
+
+/**
+ * Remote path inside the sandbox where the sandbox-agent binary is placed
+ * and made executable.
+ */
+const SANDBOX_AGENT_REMOTE_PATH = '/usr/local/bin/sandbox-agent';
+
+/**
+ * Pinned exact version of the Claude Code CLI installed inside the sandbox
+ * via `npm install -g`. No floating tags — pre-1.0/exact-version discipline.
+ * The architecture's Dockerfile-pinning requirement (line 76/673) is scoped to
+ * sandbox-agent specifically; Claude Code is distributed as an npm package,
+ * so a module-level constant is the simplest reversible option (DP-3).
+ */
+const CLAUDE_CODE_VERSION = '2.1.210';
+
+/**
+ * Timeout (seconds) for short binary-install commands (chmod, --version
+ * verifications). Matches the stall-detection discipline applied to other
+ * sandbox executeCommand calls (injectGitConfig/commit use 10s; these run
+ * during cold-start provision so a slightly larger budget is reasonable).
+ */
+const SANDBOX_AGENT_CMD_TIMEOUT_S = 30;
+
+/**
+ * Timeout (seconds) for `npm install -g` of the Claude Code CLI. A global
+ * install of a CLI package can take 30-60s under normal conditions; 120s is
+ * an upper bound that prevents a stalled install from blocking provision
+ * (and the per-user provisionQueue lock) indefinitely.
+ */
+const SANDBOX_NPM_INSTALL_TIMEOUT_S = 120;
+
+/**
+ * Timeout (seconds) for uploading the sandbox-agent binary from the agent-be
+ * image to the sandbox via `sandbox.fs.uploadFile`. The binary is a single
+ * musl executable (tens of MB); 120s is a generous upper bound that prevents
+ * a stalled upload (network issue between agent-be and Daytona) from blocking
+ * `provision()` — and the per-user `provisionQueue` lock — indefinitely.
+ * The SDK default is 30 minutes, which is far too long for a cold-start path.
+ */
+const SANDBOX_UPLOAD_TIMEOUT_S = 120;
 
 @Injectable()
 export class SandboxService implements ISandboxService {
@@ -24,27 +84,44 @@ export class SandboxService implements ISandboxService {
       throw new Error('Daytona client is not configured');
     }
 
-    let sandbox: Sandbox | null = null;
+    // Fail fast before allocating any Daytona resource — env validation guards
+    // this at boot, but an explicit guard here prevents a silent empty-key
+    // injection if the var is unset at provision time (AC-5 loud-failure intent).
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+    if (!anthropicApiKey) {
+      throw new Error('ANTHROPIC_API_KEY is not configured — cannot provision sandbox');
+    }
+
+    const sandbox = await this.daytona.create({
+      labels: { conversationId: params.conversationId },
+      envVars: {
+        ANTHROPIC_API_KEY: anthropicApiKey,
+        GITHUB_TOKEN: params.credential,
+      },
+      networkAllowList: SANDBOX_NETWORK_ALLOW_LIST,
+    });
+
+    // installBinaries runs AFTER create() succeeds — if it throws, the sandbox
+    // is already allocated in Daytona. Clean it up before re-throwing so the
+    // failure does not leak a zombie sandbox (the caller's catch cannot clean
+    // up because provision() rejects before returning the sandbox id).
     try {
-      sandbox = await this.daytona.create({
-        labels: { conversationId: params.conversationId },
-      });
-      return {
-        sandboxId: sandbox.id,
-        conversationId: params.conversationId,
-        status: 'ready',
-        provisionedAt: new Date(),
-      };
+      await this.installBinaries(sandbox);
     } catch (err) {
-      if (sandbox) {
-        try {
-          await this.daytona.delete(sandbox);
-        } catch (cleanupErr) {
-          this.logger.error(`Failed to clean up partial sandbox allocation: ${cleanupErr}`);
-        }
-      }
+      await this.daytona.delete(sandbox).catch((deleteErr) => {
+        this.logger.error(
+          `Failed to clean up sandbox ${sandbox.id} after installBinaries failure: ${deleteErr}`,
+        );
+      });
       throw err;
     }
+
+    return {
+      sandboxId: sandbox.id,
+      conversationId: params.conversationId,
+      status: 'ready',
+      provisionedAt: new Date(),
+    };
   }
 
   async clone(sandboxId: string, repoUrl: string, credential: string): Promise<void> {
@@ -81,7 +158,10 @@ export class SandboxService implements ISandboxService {
       const sandbox = await this.daytona.get(sandboxId);
       await this.daytona.delete(sandbox);
     } catch (err) {
-      if (this.isNotFoundError(err)) {
+      if (
+        err instanceof DaytonaNotFoundError ||
+        (err instanceof DaytonaError && err.statusCode === 404)
+      ) {
         return;
       }
       throw err;
@@ -172,15 +252,61 @@ export class SandboxService implements ISandboxService {
     return this.daytona.get(sandboxId);
   }
 
-  private shellQuote(value: string): string {
-    return `'${value.replace(/'/g, "'\\''")}'`;
+  /**
+   * Installs the sandbox-agent binary (uploaded from the agent-be image) and
+   * the Claude Code CLI (npm global install) inside the sandbox, then verifies
+   * both are executable. Throws on any failure — a sandbox without the binaries
+   * cannot run the agent. All paths and versions are constants (no user input).
+   */
+  private async installBinaries(sandbox: Sandbox): Promise<void> {
+    await sandbox.fs.uploadFile(
+      SANDBOX_AGENT_LOCAL_PATH,
+      SANDBOX_AGENT_REMOTE_PATH,
+      SANDBOX_UPLOAD_TIMEOUT_S,
+    );
+
+    const chmodResponse = await sandbox.process.executeCommand(
+      `chmod +x ${SANDBOX_AGENT_REMOTE_PATH}`,
+      undefined,
+      undefined,
+      SANDBOX_AGENT_CMD_TIMEOUT_S,
+    );
+    if (chmodResponse.exitCode !== 0) {
+      throw new Error(`Failed to make sandbox-agent executable: ${chmodResponse.result}`);
+    }
+
+    const npmInstallResponse = await sandbox.process.executeCommand(
+      `npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}`,
+      undefined,
+      undefined,
+      SANDBOX_NPM_INSTALL_TIMEOUT_S,
+    );
+    if (npmInstallResponse.exitCode !== 0) {
+      throw new Error(`Failed to install Claude Code CLI: ${npmInstallResponse.result}`);
+    }
+
+    const agentVerifyResponse = await sandbox.process.executeCommand(
+      `${SANDBOX_AGENT_REMOTE_PATH} --version`,
+      undefined,
+      undefined,
+      SANDBOX_AGENT_CMD_TIMEOUT_S,
+    );
+    if (agentVerifyResponse.exitCode !== 0) {
+      throw new Error(`sandbox-agent binary verification failed: ${agentVerifyResponse.result}`);
+    }
+
+    const claudeVerifyResponse = await sandbox.process.executeCommand(
+      'claude --version',
+      undefined,
+      undefined,
+      SANDBOX_AGENT_CMD_TIMEOUT_S,
+    );
+    if (claudeVerifyResponse.exitCode !== 0) {
+      throw new Error(`Claude Code CLI verification failed: ${claudeVerifyResponse.result}`);
+    }
   }
 
-  private isNotFoundError(err: unknown): boolean {
-    if (err instanceof Error) {
-      const message = err.message.toLowerCase();
-      return message.includes('not found') || message.includes('404');
-    }
-    return false;
+  private shellQuote(value: string): string {
+    return `'${value.replace(/'/g, "'\\''")}'`;
   }
 }

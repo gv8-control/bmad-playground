@@ -143,7 +143,6 @@ describe('1.1-AC2 — Tailwind theme tokens match DESIGN.md', () => {
 // Story 5.4: AC-8:  boxShadow.floating token added to theme.extend.
 // AC-10: fontWeight full theme override (regular/medium/semibold only).
 // AC-11: colors, borderRadius, fontFamily moved from theme.extend to full theme.
-// Tests are active (GREEN) after Story 5.4 implementation.
 
 describe('Story 5.4 — Token-config gaps (AC-8, AC-10, AC-11)', () => {
   describe('AC-8: Floating box-shadow token', () => {

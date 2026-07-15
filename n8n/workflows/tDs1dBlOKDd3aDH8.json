@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-21T22:36:26.718Z",
+  "updatedAt": "2026-07-15T11:11:46.988Z",
   "createdAt": "2026-06-21T12:02:24.127Z",
   "id": "tDs1dBlOKDd3aDH8",
   "name": "Parse OpenCode Response",
@@ -27,27 +27,18 @@
       ]
     },
     {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "name": "response",
-              "value": "={{ $json.stdout ? $json.stdout.split(\"\\n\").filter(l => l.trim()).map(l => JSON.parse(l)).filter(item => item.type === \"text\").pop().part.text : \"\" }}",
-              "type": "string",
-              "id": "a1"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "id": "68a3983c-497d-4b5e-80b3-f300718531ef",
+      "name": "Extract JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         224,
         0
       ],
-      "id": "s2",
-      "name": "Extract JSON"
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const stdout = $input.first().json.stdout;\n\nif (!stdout) {\n  return [{ json: { response: \"\" } }];\n}\n\nconst lines = stdout.split(\"\\n\").filter(l => l.trim()).map(l => {\n  try { return JSON.parse(l); } catch { return null; }\n}).filter(l => l !== null);\n\n// Prefer text-type messages (last one wins, as before)\nconst textItem = lines.filter(item => item.type === \"text\").pop();\nif (textItem && textItem.part && textItem.part.text) {\n  return [{ json: { response: textItem.part.text } }];\n}\n\n// Fall back to error-type messages so infra failures are surfaced\nconst errorItem = lines.filter(item => item.type === \"error\").pop();\nif (errorItem && errorItem.error) {\n  const msg = errorItem.error.data?.message || errorItem.error.name || JSON.stringify(errorItem.error);\n  return [{ json: { response: `[opencode error] ${msg}` } }];\n}\n\nreturn [{ json: { response: \"\" } }];"
+      }
     }
   ],
   "connections": {
@@ -77,34 +68,34 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "162c51bd-1aa9-4876-93d9-383007f6b419",
-  "activeVersionId": "162c51bd-1aa9-4876-93d9-383007f6b419",
-  "versionCounter": 13,
+  "versionId": "97a541b3-fe22-4351-b359-aa9697120a1d",
+  "activeVersionId": "3f1817b3-bc8d-4385-b8bf-751a6cb5838f",
+  "versionCounter": 14,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-01T03:43:25.204Z",
-      "createdAt": "2026-07-01T03:43:25.204Z",
+      "updatedAt": "2026-07-14T10:19:51.920Z",
+      "createdAt": "2026-07-14T10:19:51.920Z",
       "role": "workflow:owner",
       "workflowId": "tDs1dBlOKDd3aDH8",
-      "projectId": "AYEhcVrohjJ82DQg",
+      "projectId": "0UQEQBKdspnqMAPk",
       "project": {
-        "updatedAt": "2026-06-30T18:07:25.243Z",
-        "createdAt": "2026-06-30T17:25:02.325Z",
-        "id": "AYEhcVrohjJ82DQg",
+        "updatedAt": "2026-07-14T10:09:51.931Z",
+        "createdAt": "2026-07-14T10:09:30.918Z",
+        "id": "0UQEQBKdspnqMAPk",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+        "creatorId": "f5b33b4f-eee7-42dc-8e3b-111a70218818"
       }
     }
   ],
   "versionMetadata": {
-    "name": "Version 8a77462a",
-    "description": ""
+    "name": null,
+    "description": null
   }
 }

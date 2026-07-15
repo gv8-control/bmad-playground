@@ -1,8 +1,8 @@
-# Automate Validation Report — Story 4.5
+# Automate Validation Report — Story 6.1
 
-**Date:** 2026-07-12
-**Story:** 4.5 — Wire Environment Variables and Secrets on Both Platforms
-**Mode:** Validate → Create (coverage gaps found)
+**Date:** 2026-07-15
+**Story:** 6.1 — Install sandbox-agent + Claude Code Binaries in Sandbox During Provision
+**Mode:** Validate (coverage sufficient — no Create/Resume needed)
 **Agent:** Murat (Master Test Architect)
 
 ---
@@ -11,156 +11,171 @@
 
 | Metric | Count |
 |---|---|
-| Total test files | 5 |
-| Total tests | 21 (15 pass, 4 expected-to-fail, 2 pass integration) |
-| Unit tests (passing) | 15 |
-| Integration tests (passing) | 2 |
-| Integration tests (expected-to-fail) | 4 |
-| New tests generated | 6 (AC-6: 2, AC-7: 4) |
-| Production code modified | 0 |
+| Story 6.1 test files | 3 |
+| Unit tests (Story 6.1) | 22 (all pass, 0 skipped) |
+| Integration tests (Story 6.1) | 4 (all pass, 0 skipped) |
+| Full unit suite | 717 pass, 0 skipped |
+| Full sandbox-lifecycle integration suite | 18 pass, 0 skipped |
+| Skipped tests in scope | 0 |
+| Skipped tests out of scope (deferred) | 1 describe.skip (Story 4.5, external API) |
+| Coverage verdict | SUFFICIENT — all automatable ACs covered |
+
+**Outcome:** Validation PASS. No test generation (Create/Resume) required. No skipped tests in Story 6.1 scope. No production code edited.
 
 ---
 
-## Validation Results
+## Step 1: Execution Mode & Context
 
-### 1. Unit Tests — AnthropicProxyController (AC-5)
-
-**File:** `apps/agent-be/src/anthropic-proxy/anthropic-proxy.controller.spec.ts`
-**Result:** PASS — 9/9 tests pass
-
-| Test | Priority | Status |
-|---|---|---|
-| injects x-api-key header from process.env.ANTHROPIC_API_KEY | P0 | PASS |
-| returns 503 when ANTHROPIC_API_KEY is not set | P0 | PASS |
-| does NOT forward authorization, x-api-key, host, or cookie headers | P0 | PASS |
-| forwards the response status code and body | P0 | PASS |
-| streams the response body (does not buffer) | P0 | PASS |
-| never includes the API key in the response body or headers | P0 | PASS |
-| forwards query string parameters | P0 | PASS |
-| forwards the request body to the upstream Anthropic API | P0 | PASS |
-| logs at debug level only (no key, no body, no response content) | P1 | PASS |
-
-### 2. NFR-S1 Regression Guards (existing, migrated)
-
-**File:** `apps/agent-be/src/sandbox/sandbox.service.nfr-s1.spec.ts`
-**Result:** PASS — 24/24 tests pass (toHaveProperty → Object.keys() migration verified)
-
-### 3. Integration Tests — Platform Env Vars (AC-1, AC-2, AC-3, AC-6)
-
-**File:** `apps/agent-be/test/integration/platform-env-vars.integration.spec.ts`
-**Result:** 2 PASS, 4 EXPECTED-TO-FAIL
-
-| Test | Priority | Status | Reason |
-|---|---|---|---|
-| Vercel project has required env vars as production-scoped | P0 | EXPECTED-TO-FAIL | Infrastructure gap: 0 env vars on Vercel (Task 4 not executed) |
-| Vercel project does NOT have TEST_ENV | P0 | PASS | TEST_ENV confirmed absent |
-| Railway agent-be service has required env vars | P0 | EXPECTED-TO-FAIL | Infrastructure gap: only Railway-injected vars + DATABASE_URL present (Task 5 not executed) |
-| Railway agent-be service does NOT have TEST_ENV | P0 | PASS | TEST_ENV confirmed absent |
-| CREDENTIAL_ENCRYPTION_KEK is NOT the test placeholder | P0 | EXPECTED-TO-FAIL | Infrastructure gap: KEK not set (Task 5.3 not executed) |
-| DATABASE_URL contains sslmode=require | P0 | EXPECTED-TO-FAIL | Infrastructure gap: sslmode not appended (Task 4.3/5.3 not executed) |
-
-**Expected-to-fail classification:** All 4 failures are infrastructure gaps (Story 4.5 Tasks 4-5 not executed), NOT test-quality issues. The tests are correctly written and will pass once env vars are wired on Vercel/Railway. Per DP-5, wiring env vars is outside test automation scope.
-
-### 4. New Tests — AC-6: NODE_ENV=production in Dockerfile
-
-**File:** `apps/agent-be/test/dockerfile-node-env.spec.ts` (NEW)
-**Result:** PASS — 2/2 tests pass
-
-| Test | Priority | Status |
-|---|---|---|
-| Dockerfile runtime stage sets ENV NODE_ENV=production | P0 | PASS |
-| ENV NODE_ENV=production appears before CMD in runtime stage | P0 | PASS |
-
-**Healing applied:** Initial regex used `\z` (PCRE end-of-string) which is invalid in JavaScript regex. Fixed to `([\s\S]*)` to capture the remainder of the Dockerfile after the runtime stage FROM line.
-
-### 5. New Tests — AC-7: ANTHROPIC_API_KEY in env validation
-
-**File:** `apps/agent-be/src/config/env.validation.spec.ts` (NEW)
-**Result:** PASS — 4/4 tests pass
-
-| Test | Priority | Status |
-|---|---|---|
-| envSchema includes ANTHROPIC_API_KEY as required field | P0 | PASS |
-| validateEnv accepts a valid ANTHROPIC_API_KEY | P0 | PASS |
-| validateEnv rejects empty ANTHROPIC_API_KEY | P0 | PASS |
-| validateEnv rejects missing ANTHROPIC_API_KEY | P0 | PASS |
+- **Mode:** BMad-Integrated (story_file = `_bmad-output/implementation-artifacts/6-1-install-claude-code-binary-in-sandbox-during-provision.md`)
+- **Story status:** review
+- **Acceptance criteria:** 7 (AC-1 through AC-7)
+- **Framework:** Jest 30 (unit, co-located) + Jest integration config (`test/jest-integration.config.ts`)
+- **Test stack:** auto-detected, Nx-inferred `@nx/jest/plugin`
+- **ATDD artifacts:** checklist at `_bmad-output/test-artifacts/atdd-checklist-6-1-...md` — RED/GREEN/REFACTOR phases all complete
 
 ---
 
-## Skipped Test Handling
+## Step 2: Automation Targets & Coverage Mapping
 
-Per user directive: "Treat skipped tests as coverage failures: un-skip and run each."
+### AC → Test mapping
 
-### Actions Taken
+| AC | Description | Test level | Test file(s) | Test count | Status |
+|---|---|---|---|---|---|
+| AC-1 | Binaries installed during provision | Unit + Integration | `sandbox.service.nfr-s1.spec.ts` (6), `sandbox-lifecycle.integration.spec.ts` (1) | 7 | ✅ PASS |
+| AC-2 | ANTHROPIC_API_KEY + GITHUB_TOKEN injected | Unit + Integration | `sandbox.service.nfr-s1.spec.ts` (4), `sandbox-lifecycle.integration.spec.ts` (1) | 5 | ✅ PASS |
+| AC-3 | networkAllowList egress control | Unit + Integration | `sandbox.service.nfr-s1.spec.ts` (2), `sandbox-lifecycle.integration.spec.ts` (1) | 3 | ✅ PASS |
+| AC-4 | Provision sequence extended | Integration | `sandbox-lifecycle.integration.spec.ts` (1) | 1 | ✅ PASS |
+| AC-5 | ANTHROPIC_API_KEY fails loudly at startup | Unit | `env-example.spec.ts` (2), `env.validation.spec.ts` (4, pre-existing Story 4.5) | 6 | ✅ PASS |
+| AC-6 | sandbox-agent version upgrade is PR-review checklist | N/A — manual checklist | (not automatable per story spec) | 0 | ✅ N/A |
+| AC-7 | Fidelity audit findings F1–F3 fixed | Unit | `sandbox.service.nfr-s1.spec.ts` (F1: 3, F2: 2, F3: 2) | 7 | ✅ PASS |
 
-1. **Un-skipped all 6 integration tests** in `platform-env-vars.integration.spec.ts`
-2. **Ran all 6 against live Vercel/Railway APIs** (tokens present in `.env.local`)
-3. **Results:** 2 passed, 4 failed
-4. **Failure analysis:** All 4 failures are infrastructure gaps (env vars not wired), NOT test-quality issues
-   - Vercel API returned 0 env vars (verified independently)
-   - Railway API returned only Railway-injected vars + DATABASE_URL
-   - No selector, timing, mocking, or data issues in the test code
-5. **Healing attempt:** Not applicable — failures are not test-quality issues
-6. **Resolution:** Re-skipped the 4 failing tests as expected-to-fail with detailed comments documenting:
-   - What failure occurred
-   - Why it's unfixable (infrastructure gap, not test-quality)
-   - What needs to happen to make them pass (Tasks 4-5)
-7. **Kept the 2 passing tests un-skipped** (TEST_ENV absent on both platforms)
+**Coverage gaps:** None. All automatable ACs have tests. AC-6 is explicitly a manual PR-review checklist item (not an automated test) per the story spec.
 
-### Decision (DP-5)
+### Duplicate coverage avoidance
 
-Wiring env vars on Vercel/Railway (Tasks 4-5) is the story's implementation work, not test automation scope. The test automation workflow generates and validates tests; it does not wire infrastructure. Marking the 4 tests as expected-to-fail is the correct action — they will be un-skipped when Tasks 4-5 are completed.
+- Unit tests assert at the SDK boundary (`mockDaytona.create.mock.calls`, `mockSandbox.process.executeCommand.mock.calls`) — pure contract verification.
+- Integration tests assert through the full NestJS module wiring via `SandboxServiceFake` inspection methods — behavior verification.
+- No redundant duplication: unit tests verify the `SandboxService` contract; integration tests verify the `ConversationsService` → `SandboxService` wiring.
 
 ---
 
-## Coverage Assessment
+## Step 3: Test Infrastructure
 
-| AC | Coverage | Test File | Status |
-|---|---|---|---|
-| AC-1 (Vercel env vars) | Test exists | platform-env-vars.integration.spec.ts | EXPECTED-TO-FAIL (infrastructure gap) |
-| AC-2 (Railway env vars) | Test exists | platform-env-vars.integration.spec.ts | EXPECTED-TO-FAIL (infrastructure gap) |
-| AC-3 (TEST_ENV absent) | Test exists | platform-env-vars.integration.spec.ts | PASS (2 tests) |
-| AC-4 (OAuth callback URL) | Manual (deferred) | — | N/A (no API exists) |
-| AC-5 (Anthropic proxy) | Test exists | anthropic-proxy.controller.spec.ts | PASS (9 tests) |
-| AC-6 (NODE_ENV in Dockerfile) | **NEW** | dockerfile-node-env.spec.ts | PASS (2 tests) |
-| AC-7 (ANTHROPIC_API_KEY validation) | **NEW** | env.validation.spec.ts | PASS (4 tests) |
-
-**Coverage gaps found and filled:** AC-6 and AC-7 had no tests. Generated 6 new tests (2 for AC-6, 4 for AC-7), all passing.
+- **Mock factory:** `test/helpers/mock-daytona.ts` — `MockSandbox.fs.uploadFile` added (verified working).
+- **Test-seam fake:** `test/helpers/sandbox-service.fake.ts` — inspection methods (`areBinariesInstalled`, `getProvisionedEnvVars`, `getNetworkAllowList`) + `destroy()` idempotency fix (verified working).
+- **No new fixtures/factories/helpers needed** — existing infrastructure supports all Story 6.1 assertions.
 
 ---
 
-## Files Modified
+## Step 4: Test Files Validated
 
-| File | Action | Description |
-|---|---|---|
-| `apps/agent-be/test/integration/platform-env-vars.integration.spec.ts` | Modified | Un-skipped 6 tests, ran them, re-skipped 4 as expected-to-fail with comments. Updated file header. |
-| `apps/agent-be/test/dockerfile-node-env.spec.ts` | Created | 2 tests for AC-6 (NODE_ENV=production in Dockerfile runtime stage) |
-| `apps/agent-be/src/config/env.validation.spec.ts` | Created | 4 tests for AC-7 (ANTHROPIC_API_KEY in env validation schema) |
+### `apps/agent-be/src/sandbox/sandbox.service.nfr-s1.spec.ts` (unit)
 
-**Production code modified:** None.
+- 22 Story 6.1 tests across 6 describe blocks (AC-1, AC-2, AC-3, AC-7 F1/F2/F3).
+- All tests use `[P0]` priority tags.
+- Tests assert on real mock interactions at the SDK boundary (high fidelity).
+- Credential-isolation regression guards verify `envVars` contains ONLY `ANTHROPIC_API_KEY` + `GITHUB_TOKEN` — no platform-internal credentials leak.
+- Input-injection guards verify binary install commands use constant paths (no user-controlled input).
 
----
+### `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts` (integration)
 
-## Test Execution Commands
+- 4 Story 6.1 tests (AC-1, AC-2, AC-3, AC-4) through full NestJS module wiring.
+- F2 comment documents the fake's limitation (throws before allocation, not after).
+- `CredentialsService` mock fixed (added `isCredentialHealthFailed`) — unblocked 9 pre-existing tests.
 
-```bash
-# Unit tests (proxy controller + env validation + Dockerfile)
-yarn nx test agent-be -- --testPathPatterns="anthropic-proxy|env.validation|dockerfile-node-env"
+### `apps/agent-be/test/unit/env-example.spec.ts` (unit, NEW)
 
-# NFR-S1 regression guards
-yarn nx test agent-be -- --testPathPatterns=nfr-s1
-
-# Integration tests (platform env vars)
-yarn nx test-integration agent-be -- --testPathPatterns=platform-env-vars
-```
+- 2 tests (AC-5) verifying `.env.example` exists and documents `ANTHROPIC_API_KEY`.
+- The Zod env validation itself is tested in `env.validation.spec.ts` (Story 4.5 AC-7, 4 tests).
 
 ---
 
-## Lint Status
+## Step 5: Test Validation & Healing (Skipped-Test Handling)
 
-- New test files: 0 errors, 0 warnings
-- Pre-existing project lint error (`require-yield` at line 1261): not in scope, not introduced by this run
+### Skipped tests in Story 6.1 scope
+
+**None.** Grep for `describe.skip|test.skip|it.skip|.skip(|xit(|xdescribe(` across all 3 Story 6.1 test files returned zero matches. All scaffolds activated (RED→GREEN complete).
+
+### Skipped tests out of scope (deferred)
+
+**`apps/agent-be/test/integration/platform-env-vars.integration.spec.ts:181`** — `describe.skip` conditional on `hasPlatformTokens`.
+
+- **Belongs to:** Story 4.5 (not Story 6.1).
+- **Skip reason:** Requires `RAILWAY_TOKEN` + `VERCEL_TOKEN`; makes live calls to external platform APIs (Railway GraphQL, Vercel API) with side effects.
+- **Decision (DP-5 + "Always escalate" rule):** Out of scope for Story 6.1 (scope temptation — defer, don't expand). Un-skipping would trigger calls to external services with side effects, which the decision policy says to always escalate. Tokens are absent in this environment. Recorded as a deferred finding — not un-skipped.
+
+### Test execution results
+
+| Suite | Total | Pass | Fail | Skip |
+|---|---|---|---|---|
+| Unit (full agent-be) | 717 | 717 | 0 | 0 |
+| Integration (sandbox-lifecycle) | 18 | 18 | 0 | 0 |
+
+### Healing
+
+No healing required — all Story 6.1 tests pass on first run. No flaky patterns detected (deterministic mocks, no hard waits in unit tests; integration tests use standard `setImmediate`/`setTimeout(50)` for fire-and-forget async flushing).
 
 ---
 
-**Generated by BMad TEA Agent** — 2026-07-12
+## Step 6: Code Quality
+
+| Check | Result |
+|---|---|
+| Typecheck (`nx typecheck agent-be`) | ✅ PASS |
+| Lint (`nx lint agent-be`) | ✅ PASS (0 errors, 33 pre-existing warnings — none from Story 6.1 files) |
+| Priority tags | ✅ All Story 6.1 tests tagged `[P0]` |
+| Given-When-Then | ✅ Descriptive test names; unit tests assert pure contract |
+| No flaky patterns | ✅ Deterministic mocks, no race conditions |
+| No hardcoded production data | ✅ Test fixtures only (`sk-ant-test-key`, `fake-token`) |
+| Test isolation | ✅ `beforeEach`/`afterEach` reset mocks + env vars |
+
+---
+
+## Test Fidelity Assessment
+
+Verified against production code (`apps/agent-be/src/sandbox/sandbox.service.ts`):
+
+- **`provision()`** — tests assert `daytona.create()` receives `envVars` + `networkAllowList` + `labels`; `installBinaries()` called after create. ✅ Real contract.
+- **`installBinaries()`** — tests assert `fs.uploadFile`, `chmod +x`, `npm install -g @anthropic-ai/claude-code@<version>`, `--version` verification. ✅ Real contract.
+- **`destroy()`** — tests assert `DaytonaNotFoundError` instanceof check (F1 fix). ✅ Real contract.
+- **`resume()`** — tests assert `daytona.start()` rejection propagation (F3 fix). ✅ Real contract.
+- **F2 (dead catch-block)** — tests assert `daytona.delete` NOT called on `create()` rejection. ✅ Real contract (branch removed).
+
+No fabricated contracts. Tests exercise the real `SandboxService` implementation via the `mock-daytona` SDK-boundary mock.
+
+---
+
+## Completion Criteria
+
+- [x] Execution mode determined (BMad-Integrated)
+- [x] Framework configuration loaded and validated
+- [x] Coverage analysis completed — no gaps
+- [x] Automation targets identified (all 7 ACs mapped)
+- [x] Test levels selected (unit + integration)
+- [x] No duplicate coverage
+- [x] Test priorities assigned (all P0)
+- [x] Test files validated (3 files, 29 Story 6.1 tests)
+- [x] Skipped tests handled (0 in scope; 1 out-of-scope deferred)
+- [x] Quality standards enforced (typecheck + lint pass)
+- [x] Test fidelity verified (tests exercise real production contract)
+- [x] No production code edited
+
+---
+
+## Deferred Findings
+
+1. **Story 4.5 platform-env-vars skipped tests** — `describe.skip` in `platform-env-vars.integration.spec.ts` requires real platform tokens and makes external API calls with side effects. Out of scope for Story 6.1. Escalation required to un-skip (external side effects per decision policy). Not actionable in this run.
+
+---
+
+## Decision Record
+
+**Decision (DP-5 + "Always escalate"):** The `describe.skip` in `platform-env-vars.integration.spec.ts` (Story 4.5) was not un-skipped. It is out of scope for Story 6.1 (DP-5: scope temptation), and un-skipping would trigger calls to external services with side effects (Railway/Vercel APIs), which the decision policy mandates escalating. Tokens are absent in this environment. Recorded as a deferred finding.
+
+---
+
+## Next Steps
+
+- Story 6.1 test validation is complete. Coverage is sufficient — no Create/Resume generation needed.
+- The story is ready for review sign-off (status: `review`).
+- The deferred platform-env-vars skip is a Story 4.5 concern, not a Story 6.1 blocker.

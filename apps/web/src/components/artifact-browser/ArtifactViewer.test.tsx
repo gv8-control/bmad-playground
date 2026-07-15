@@ -243,7 +243,6 @@ describe('ArtifactViewer — parseFrontmatter quote-stripping (Bug-hunt B2)', ()
 // Story 5.4: AC-6: h2 separator and hr use border-surface-raised (not border-border-subtle).
 // Since react-markdown is mocked, we test the component override functions
 // from the `components` prop by rendering their output directly.
-// Tests are active (GREEN) after Story 5.4 implementation.
 
 describe('ArtifactViewer — hairline border tokens (Story 5.4, AC-6)', () => {
   beforeEach(() => jest.clearAllMocks());

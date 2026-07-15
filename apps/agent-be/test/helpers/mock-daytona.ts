@@ -54,11 +54,21 @@ export interface MockProcess {
   killPtySession: jest.Mock<Promise<void>, [string]>;
 }
 
+export type MockUploadFile = jest.Mock<
+  Promise<void>,
+  [Buffer | string, string, number?]
+>;
+
+export interface MockFileSystem {
+  uploadFile: MockUploadFile;
+}
+
 export interface MockSandbox {
   id: string;
   labels?: Record<string, string>;
   process: MockProcess;
   git: MockGit;
+  fs: MockFileSystem;
 }
 
 export interface MockDaytona {
@@ -89,6 +99,9 @@ export function createMockSandbox(overrides?: Partial<MockSandbox>): MockSandbox
         currentBranch: 'main',
         fileStatus: [],
       }),
+    },
+    fs: {
+      uploadFile: jest.fn().mockResolvedValue(undefined),
     },
     ...overrides,
   };
