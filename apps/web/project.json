@@ -26,6 +26,7 @@
     },
     "test": {
       "executor": "@nx/jest:jest",
+      "dependsOn": ["^generate"],
       "options": {
         "jestConfig": "apps/web/jest.config.ts",
         "passWithNoTests": true
