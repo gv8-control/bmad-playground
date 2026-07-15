@@ -24,6 +24,11 @@ const storageStatePath = `.auth/${process.env.TEST_ENV || 'local'}/default/stora
 // single config file can serve both tiers without source-level branching.
 // See `_bmad-output/test-artifacts/test-design-qa.md` → Execution Strategy.
 const isRealServiceTier = process.env.PLAYWRIGHT_REAL_SERVICE === '1';
+// Real-service tier starts fresh servers (120s timeout); PR tier reuses the
+// servers the CI workflow already started on the same ports.
+const webServerReuse = isRealServiceTier
+  ? { reuseExistingServer: false, timeout: 120_000 }
+  : { reuseExistingServer: true };
 
 export default defineConfig({
   globalSetup: 'playwright/global-setup.ts',
@@ -108,37 +113,12 @@ export default defineConfig({
   ],
 
   // webServer is global in Playwright (no per-project webServer). The tier flag
-  // selects which dev-server block to use so the real-service tier never reuses
-  // a stale fake-backed server started for a PR-tier run. The SandboxServiceFake
+  // selects whether servers are reused so the real-service tier never reuses a
+  // stale fake-backed server started for a PR-tier run. The SandboxServiceFake
   // cannot be injected here regardless — `yarn nx run agent-be:serve` always uses
   // the production AppModule. The flag exists for webServer hygiene + diagnostics.
-  webServer: isRealServiceTier
-    ? [
-        {
-          command: 'yarn nx run web:dev',
-          url: 'http://localhost:3000',
-          reuseExistingServer: false,
-          timeout: 120_000,
-        },
-        {
-          command: 'yarn nx run agent-be:serve',
-          url: 'http://localhost:3001/health',
-          reuseExistingServer: false,
-          timeout: 120_000,
-        },
-      ]
-    : [
-        {
-          command: 'yarn nx run web:dev',
-          url: 'http://localhost:3000',
-          // CI workflow starts the web app and agent-be before running Playwright;
-          // reuse those servers instead of conflicting on the same ports.
-          reuseExistingServer: true,
-        },
-        {
-          command: 'yarn nx run agent-be:serve',
-          url: 'http://localhost:3001/health',
-          reuseExistingServer: true,
-        },
-      ],
+  webServer: [
+    { command: 'yarn nx run web:dev',        url: 'http://localhost:3000',        ...webServerReuse },
+    { command: 'yarn nx run agent-be:serve', url: 'http://localhost:3001/health', ...webServerReuse },
+  ],
 });
