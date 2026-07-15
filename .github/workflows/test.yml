@@ -583,6 +583,11 @@ jobs:
   nightly-real-service:
     name: Nightly Real-Service Smoke (Tier 3)
     runs-on: ubuntu-latest
+    # RAILWAY_TOKEN, VERCEL_TOKEN, and RAILWAY_DATABASE_URL are environment
+    # secrets under "production" (same as deploy.yml). Without this declaration,
+    # secrets.* references resolve to empty strings and specs fall through to
+    # .env.local, which doesn't exist in CI.
+    environment: production
     timeout-minutes: 30
     if: |
       (github.event_name == 'schedule' && github.event.schedule == '0 3 * * *') ||
