@@ -45,7 +45,7 @@ test.describe.serial('Story 1.8 — App Shell', () => {
 
     test('[P1] Settings avatar link highlighted on /settings', async ({ page, withRepoConnection }) => {
       await page.goto('/settings');
-      const avatar = page.getByRole('link', { name: /e2e test user.*settings/i });
+      const avatar = page.getByRole('link', { name: /e2e worker \d+.*settings/i });
       const bg = await avatar.evaluate((el) => getComputedStyle(el).backgroundColor);
       // Active avatar has a visible surface-raised background, not transparent.
       expect(bg).not.toBe('rgba(0, 0, 0, 0)');
@@ -53,10 +53,10 @@ test.describe.serial('Story 1.8 — App Shell', () => {
 
     test('[P1] Settings avatar shows user initials and accessible aria-label', async ({ page, withRepoConnection }) => {
       await page.goto('/project-map');
-      // Synthetic E2E session user is "E2E Test User" (see playwright/auth.setup.ts).
-      const avatar = page.getByRole('link', { name: /e2e test user.*settings/i });
-      await expect(avatar).toHaveAttribute('aria-label', /E2E Test User.+Settings/i);
-      await expect(avatar).toContainText('EU');
+      // Synthetic E2E session user is "E2E Worker N" (see playwright/auth.setup.ts).
+      const avatar = page.getByRole('link', { name: /e2e worker \d+.*settings/i });
+      await expect(avatar).toHaveAttribute('aria-label', /E2E Worker \d+.+Settings/i);
+      await expect(avatar).toContainText(/E\d/);
     });
 
     test('[P1] inactive nav item uses muted text color', async ({ page, withRepoConnection }) => {

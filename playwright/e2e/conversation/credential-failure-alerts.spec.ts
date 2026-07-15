@@ -35,10 +35,9 @@ import { test, expect, type Page } from '../../support/merged-fixtures';
  * Priority tags: P0 for AC coverage, P1 for edge cases.
  */
 
-// Worker-indexed to avoid parallel-shard collision if the suite ever runs
-// against a shared backend. Matches the streaming-chat.spec.ts module-level
-// const pattern, with TEST_WORKER_INDEX suffix for parallel safety.
-const CONVERSATION_ID = `conv-e2e-credential-alerts-${process.env.TEST_WORKER_INDEX ?? '0'}`;
+// Stable per-file identifier — conversation IDs are scoped to the test user
+// (which IS per-worker), so no cross-worker collision is possible.
+const CONVERSATION_ID = 'conv-e2e-credential-alerts';
 // 2 = POST /api/conversations (create) + GET /skills (initial load) — both
 // fire after SESSION_READY, before the user sends a message. POST /:id/turns
 // happens later (after sendMessage) and is not counted here.

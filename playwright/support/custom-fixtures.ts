@@ -101,11 +101,11 @@ type BmadEasyFixtures = {
 };
 
 export const test = base.extend<BmadEasyFixtures>({
-  withRepoConnection: async ({ request }, use) => {
+  withRepoConnection: async ({ request }, use, testInfo) => {
     // Upsert the test user to get its stable userId.
     const userRes = await withApiRetry(() =>
       request.post(`${BASE_URL}/api/internal/test/seed-user`, {
-        data: { githubId: getWorkerGithubId(), githubLogin: 'e2e-test-user', name: 'E2E Test User' },
+        data: { githubId: getWorkerGithubId(testInfo.workerIndex), githubLogin: 'e2e-test-user', name: 'E2E Test User' },
       }),
     );
     if (!userRes.ok()) {
@@ -164,7 +164,7 @@ export const test = base.extend<BmadEasyFixtures>({
     }
   },
 
-  withConversations: async ({ request, withRepoConnection }, use) => {
+  withConversations: async ({ request, withRepoConnection }, use, testInfo) => {
     const seedConversations = [
       { title: 'PRD Planning Session', lastActiveAt: '2026-07-04T10:00:00.000Z' },
       { title: 'Architecture Review', lastActiveAt: '2026-07-04T11:00:00.000Z' },
@@ -173,7 +173,7 @@ export const test = base.extend<BmadEasyFixtures>({
 
     const userRes = await withApiRetry(() =>
       request.post(`${BASE_URL}/api/internal/test/seed-user`, {
-        data: { githubId: getWorkerGithubId(), githubLogin: 'e2e-test-user', name: 'E2E Test User' },
+        data: { githubId: getWorkerGithubId(testInfo.workerIndex), githubLogin: 'e2e-test-user', name: 'E2E Test User' },
       }),
     );
     if (!userRes.ok()) {
@@ -206,10 +206,10 @@ export const test = base.extend<BmadEasyFixtures>({
     }
   },
 
-  withConversationAndTurns: async ({ request, withRepoConnection }, use) => {
+  withConversationAndTurns: async ({ request, withRepoConnection }, use, testInfo) => {
     const userRes = await withApiRetry(() =>
       request.post(`${BASE_URL}/api/internal/test/seed-user`, {
-        data: { githubId: getWorkerGithubId(), githubLogin: 'e2e-test-user', name: 'E2E Test User' },
+        data: { githubId: getWorkerGithubId(testInfo.workerIndex), githubLogin: 'e2e-test-user', name: 'E2E Test User' },
       }),
     );
     if (!userRes.ok()) {
