@@ -73,6 +73,13 @@
         "cwd": "apps/agent-be"
       }
     },
+    "test-railway": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "jest --config test/jest-railway.config.ts",
+        "cwd": "apps/agent-be"
+      }
+    },
     "serve": {
       "continuous": true,
       "executor": "@nx/js:node",

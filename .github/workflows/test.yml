@@ -20,6 +20,9 @@
 #   TEST_GITHUB_PASSWORD         real GitHub test account password (Tier 3 only)
 #   TEST_GITHUB_OTP_SECRET       TOTP secret if 2FA enabled on the test account (Tier 3 only)
 #   TEST_GITHUB_REPO_URL         real repo URL the OAuth token can clone (Tier 3 only)
+#   RAILWAY_TOKEN                Railway project token for GraphQL API (Tier 3 test-railway only)
+#   RAILWAY_DATABASE_URL         Railway Postgres connection string — distinct from CI DATABASE_URL (Tier 3 test-railway only)
+#   VERCEL_TOKEN                 Vercel API token for env var verification (Tier 3 test-railway only)
 # Non-secret env vars (hardcoded in the workflow, not secrets):
 #   DATABASE_URL                 Postgres service container (postgres:16-alpine, bmad_easy_test DB)
 #   TEST_ENV                     Set to 'ci' on all Playwright jobs — enables test endpoints
@@ -614,6 +617,22 @@ jobs:
           DAYTONA_API_URL: ${{ secrets.DAYTONA_API_URL }}
           DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
         run: npx tsx scripts/cleanup-daytona-sandboxes.ts
+
+      - name: Run Railway + Vercel integration tests (test-railway)
+        # Runs three real-service Jest specs that hit live Railway GraphQL API
+        # and Vercel REST API: railway-project-structure, railway-migrations,
+        # and platform-env-vars. These specs verify infrastructure state
+        # (project structure, applied migrations, env var configuration) that
+        # cannot be checked with fakes.
+        #
+        # DATABASE_URL is overridden to RAILWAY_DATABASE_URL (the Railway
+        # Postgres connection string) so the railway-migrations spec queries
+        # the real Railway Postgres, not the CI service container.
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: yarn nx run agent-be:test-railway
 
       - name: Run real-service smoke (--grep @real-service)
         # The webServer block in playwright.config.ts starts both dev servers

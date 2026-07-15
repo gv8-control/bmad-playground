@@ -1,9 +1,19 @@
 import type { Config } from 'jest';
 
+// Runs ONLY the real-service specs that hit live Railway/Vercel APIs.
+// These specs require RAILWAY_TOKEN and VERCEL_TOKEN (from .env.local or CI
+// secrets) and will fail loud if those tokens are missing — they are excluded
+// from the default test-integration target so `yarn nx run-many --target=test-integration --all`
+// does not break in environments without platform API access.
+//
+// Run: yarn nx test-railway agent-be
 const config: Config = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
-  testMatch: ['**/*.integration.spec.ts'],
+  testMatch: [
+    '**/railway-*.integration.spec.ts',
+    '**/platform-env-vars.integration.spec.ts',
+  ],
   transform: {
     '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.spec.json' }],
   },
@@ -11,17 +21,10 @@ const config: Config = {
     'node_modules/(?!jose|@ag-ui|@anthropic-ai)',
   ],
   testEnvironment: 'node',
-  // Integration tests hit a real database — run serially to avoid state conflicts.
+  // Real-service specs hit live Railway/Vercel APIs — run serially to avoid
+  // rate limits and state conflicts.
   maxWorkers: 1,
   testTimeout: 30_000,
-  // Exclude the three real-service specs — they require live Railway/Vercel API
-  // tokens and are run via the dedicated `test-railway` target instead.
-  testPathIgnorePatterns: [
-    '/node_modules/',
-    'railway-project-structure\\.integration\\.spec\\.ts$',
-    'railway-migrations\\.integration\\.spec\\.ts$',
-    'platform-env-vars\\.integration\\.spec\\.ts$',
-  ],
   moduleNameMapper: {
     '^@bmad-easy/shared-types(.*)$': '<rootDir>/../../../libs/shared-types/src$1',
     '^@bmad-easy/database-schemas(.*)$': '<rootDir>/../../../libs/database-schemas/src$1',
