@@ -90,7 +90,10 @@ describe('Sandbox lifecycle (integration)', () => {
       { provide: DAYTONA_CLIENT, useValue: null },
       {
         provide: CredentialsService,
-        useValue: { resolveOAuthToken: jest.fn().mockResolvedValue('fake-token') },
+        useValue: {
+          resolveOAuthToken: jest.fn().mockResolvedValue('fake-token'),
+          isCredentialHealthFailed: jest.fn().mockResolvedValue(false),
+        },
       },
     ]);
 
