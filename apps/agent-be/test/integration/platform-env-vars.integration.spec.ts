@@ -88,7 +88,7 @@ async function railwayGraphQL(query: string): Promise<any> {
   const response = await fetch(RAILWAY_GRAPHQL_ENDPOINT, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
+      'Project-Access-Token': token,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ query }),

@@ -64,3 +64,4 @@ pm2.log
 pm2.pid
 dump.pm2
 .vercel
+.env*

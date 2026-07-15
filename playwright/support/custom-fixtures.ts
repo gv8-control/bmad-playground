@@ -1,9 +1,8 @@
 import { test as base } from '@playwright/test';
+import { withApiRetry } from './api-retry';
+import { getWorkerGithubId } from './worker-user';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
-
-// Fixed githubId that matches the one used in auth.setup.ts synthetic session.
-const E2E_GITHUB_ID = 'e2e-test-default-99999';
 
 const SEED_ARTIFACTS = [
   {
@@ -104,18 +103,22 @@ type BmadEasyFixtures = {
 export const test = base.extend<BmadEasyFixtures>({
   withRepoConnection: async ({ request }, use) => {
     // Upsert the test user to get its stable userId.
-    const userRes = await request.post(`${BASE_URL}/api/internal/test/seed-user`, {
-      data: { githubId: E2E_GITHUB_ID, githubLogin: 'e2e-test-user', name: 'E2E Test User' },
-    });
+    const userRes = await withApiRetry(() =>
+      request.post(`${BASE_URL}/api/internal/test/seed-user`, {
+        data: { githubId: getWorkerGithubId(), githubLogin: 'e2e-test-user', name: 'E2E Test User' },
+      }),
+    );
     if (!userRes.ok()) {
       throw new Error(`seed-user failed: ${userRes.status()} ${await userRes.text()}`);
     }
     const { userId } = (await userRes.json()) as { userId: string };
 
     // Create the RepoConnection for this user.
-    const connRes = await request.post(`${BASE_URL}/api/internal/test/repo-connections`, {
-      data: { userId, repoUrl: 'https://github.com/test-org/test-repo' },
-    });
+    const connRes = await withApiRetry(() =>
+      request.post(`${BASE_URL}/api/internal/test/repo-connections`, {
+        data: { userId, repoUrl: 'https://github.com/test-org/test-repo' },
+      }),
+    );
     if (!connRes.ok()) {
       throw new Error(`repo-connections seed failed: ${connRes.status()} ${await connRes.text()}`);
     }
@@ -124,20 +127,26 @@ export const test = base.extend<BmadEasyFixtures>({
     try {
       await use({ connectionId });
     } finally {
-      await request.delete(`${BASE_URL}/api/internal/test/repo-connections/${connectionId}`);
+      await withApiRetry(() =>
+        request.delete(`${BASE_URL}/api/internal/test/repo-connections/${connectionId}`),
+      );
     }
   },
 
   withArtifacts: async ({ request, withRepoConnection }, use) => {
     const { connectionId } = withRepoConnection;
 
-    await request.delete(`${BASE_URL}/api/internal/test/artifacts`, {
-      data: { repoConnectionId: connectionId },
-    });
+    await withApiRetry(() =>
+      request.delete(`${BASE_URL}/api/internal/test/artifacts`, {
+        data: { repoConnectionId: connectionId },
+      }),
+    );
 
-    const seedRes = await request.post(`${BASE_URL}/api/internal/test/artifacts`, {
-      data: { repoConnectionId: connectionId, artifacts: SEED_ARTIFACTS },
-    });
+    const seedRes = await withApiRetry(() =>
+      request.post(`${BASE_URL}/api/internal/test/artifacts`, {
+        data: { repoConnectionId: connectionId, artifacts: SEED_ARTIFACTS },
+      }),
+    );
     if (!seedRes.ok()) {
       throw new Error(`artifacts seed failed: ${seedRes.status()} ${await seedRes.text()}`);
     }
@@ -147,9 +156,11 @@ export const test = base.extend<BmadEasyFixtures>({
     try {
       await use(artifacts);
     } finally {
-      await request.delete(`${BASE_URL}/api/internal/test/artifacts`, {
-        data: { repoConnectionId: connectionId },
-      });
+      await withApiRetry(() =>
+        request.delete(`${BASE_URL}/api/internal/test/artifacts`, {
+          data: { repoConnectionId: connectionId },
+        }),
+      );
     }
   },
 
@@ -160,17 +171,21 @@ export const test = base.extend<BmadEasyFixtures>({
       { title: 'Sprint Retrospective', lastActiveAt: '2026-07-04T12:00:00.000Z' },
     ];
 
-    const userRes = await request.post(`${BASE_URL}/api/internal/test/seed-user`, {
-      data: { githubId: E2E_GITHUB_ID, githubLogin: 'e2e-test-user', name: 'E2E Test User' },
-    });
+    const userRes = await withApiRetry(() =>
+      request.post(`${BASE_URL}/api/internal/test/seed-user`, {
+        data: { githubId: getWorkerGithubId(), githubLogin: 'e2e-test-user', name: 'E2E Test User' },
+      }),
+    );
     if (!userRes.ok()) {
       throw new Error(`seed-user failed: ${userRes.status()} ${await userRes.text()}`);
     }
     const { userId } = (await userRes.json()) as { userId: string };
 
-    const seedRes = await request.post(`${BASE_URL}/api/internal/test/conversations`, {
-      data: { userId, conversations: seedConversations },
-    });
+    const seedRes = await withApiRetry(() =>
+      request.post(`${BASE_URL}/api/internal/test/conversations`, {
+        data: { userId, conversations: seedConversations },
+      }),
+    );
     if (!seedRes.ok()) {
       throw new Error(`conversations seed failed: ${seedRes.status()} ${await seedRes.text()}`);
     }
@@ -183,27 +198,33 @@ export const test = base.extend<BmadEasyFixtures>({
     try {
       await use(conversations);
     } finally {
-      await request.delete(`${BASE_URL}/api/internal/test/conversations`, {
-        data: { userId },
-      });
+      await withApiRetry(() =>
+        request.delete(`${BASE_URL}/api/internal/test/conversations`, {
+          data: { userId },
+        }),
+      );
     }
   },
 
   withConversationAndTurns: async ({ request, withRepoConnection }, use) => {
-    const userRes = await request.post(`${BASE_URL}/api/internal/test/seed-user`, {
-      data: { githubId: E2E_GITHUB_ID, githubLogin: 'e2e-test-user', name: 'E2E Test User' },
-    });
+    const userRes = await withApiRetry(() =>
+      request.post(`${BASE_URL}/api/internal/test/seed-user`, {
+        data: { githubId: getWorkerGithubId(), githubLogin: 'e2e-test-user', name: 'E2E Test User' },
+      }),
+    );
     if (!userRes.ok()) {
       throw new Error(`seed-user failed: ${userRes.status()} ${await userRes.text()}`);
     }
     const { userId } = (await userRes.json()) as { userId: string };
 
-    const convRes = await request.post(`${BASE_URL}/api/internal/test/conversations`, {
-      data: {
-        userId,
-        conversations: [{ title: 'Resume E2E Conversation', lastActiveAt: '2026-07-04T12:00:00.000Z' }],
-      },
-    });
+    const convRes = await withApiRetry(() =>
+      request.post(`${BASE_URL}/api/internal/test/conversations`, {
+        data: {
+          userId,
+          conversations: [{ title: 'Resume E2E Conversation', lastActiveAt: '2026-07-04T12:00:00.000Z' }],
+        },
+      }),
+    );
     if (!convRes.ok()) {
       throw new Error(`conversation seed failed: ${convRes.status()} ${await convRes.text()}`);
     }
@@ -217,9 +238,11 @@ export const test = base.extend<BmadEasyFixtures>({
       { role: 'assistant', content: 'PostgreSQL with Prisma, single shared schema in libs/database-schemas.', createdAt: '2026-07-04T11:06:00.000Z' },
     ];
 
-    const turnsRes = await request.post(`${BASE_URL}/api/internal/test/conversations/${conversationId}/turns`, {
-      data: { turns: seedTurns },
-    });
+    const turnsRes = await withApiRetry(() =>
+      request.post(`${BASE_URL}/api/internal/test/conversations/${conversationId}/turns`, {
+        data: { turns: seedTurns },
+      }),
+    );
     if (!turnsRes.ok()) {
       throw new Error(`turns seed failed: ${turnsRes.status()} ${await turnsRes.text()}`);
     }
@@ -235,10 +258,14 @@ export const test = base.extend<BmadEasyFixtures>({
     try {
       await use(conversation);
     } finally {
-      await request.delete(`${BASE_URL}/api/internal/test/conversations/${conversationId}/turns`);
-      await request.delete(`${BASE_URL}/api/internal/test/conversations`, {
-        data: { userId },
-      });
+      await withApiRetry(() =>
+        request.delete(`${BASE_URL}/api/internal/test/conversations/${conversationId}/turns`),
+      );
+      await withApiRetry(() =>
+        request.delete(`${BASE_URL}/api/internal/test/conversations`, {
+          data: { userId },
+        }),
+      );
     }
   },
 });

@@ -31,6 +31,11 @@ export function main(): void {
   try {
     execSync('prisma migrate deploy --config libs/database-schemas/prisma.config.ts', {
       stdio: 'inherit',
+      // NFR-4-4-H1: bound the migration process so a Railway TCP proxy drop,
+      // Postgres lock-wait, or network partition cannot block the script
+      // indefinitely. SIGTERM lets Prisma tear down cleanly before SIGKILL.
+      timeout: 120_000,
+      killSignal: 'SIGTERM',
     });
   } catch (err) {
     console.error(err);

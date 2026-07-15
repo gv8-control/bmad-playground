@@ -20,19 +20,36 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         run: |
-          RUN_DATA=$(gh run list --repo "$REPO" --workflow=test.yml --branch="$BRANCH" --status=completed --limit=1 --json conclusion,databaseId,number)
+          # Fetch recent completed runs and keep only push/pull_request events.
+          # Nightly schedule runs skip PR-tier jobs (lint/typecheck/unit/e2e/
+          # burn-in) and would falsely satisfy the gate — see NFR finding C2.
+          # headSha is fetched so we can assert the green run is for THIS commit,
+          # not a stale green run on an older commit.
+          RUN_DATA=$(gh run list --repo "$REPO" --workflow=test.yml --branch="$BRANCH" --status=completed --limit=10 --json conclusion,databaseId,number,headSha,event)
           if [ -z "$RUN_DATA" ] || [ "$RUN_DATA" = "[]" ]; then
             echo "No completed Test Pipeline run found on branch '$BRANCH'. Run the Test Pipeline first."
             exit 1
           fi
-          CONCLUSION=$(echo "$RUN_DATA" | jq -r '.[0].conclusion')
-          RUN_NUMBER=$(echo "$RUN_DATA" | jq -r '.[0].number')
+          # Select the latest run triggered by push or pull_request (not schedule).
+          FILTERED=$(echo "$RUN_DATA" | jq -c '[.[] | select(.event == "push" or .event == "pull_request")] | .[0]')
+          if [ -z "$FILTERED" ] || [ "$FILTERED" = "null" ]; then
+            echo "No completed Test Pipeline run triggered by push or pull_request found on branch '$BRANCH'. Nightly schedule runs are not accepted (they skip PR-tier jobs). Run the Test Pipeline first."
+            exit 1
+          fi
+          CONCLUSION=$(echo "$FILTERED" | jq -r '.conclusion')
+          RUN_NUMBER=$(echo "$FILTERED" | jq -r '.number')
+          HEAD_SHA=$(echo "$FILTERED" | jq -r '.headSha')
           if [ "$CONCLUSION" != "success" ]; then
             echo "Latest Test Pipeline run #$RUN_NUMBER on '$BRANCH' concluded with '$CONCLUSION'. Fix failing tests before deploying."
             exit 1
           fi
-          echo "Latest Test Pipeline run #$RUN_NUMBER passed. Proceeding with deploy."
+          if [ "$HEAD_SHA" != "$SHA" ]; then
+            echo "Latest successful Test Pipeline run #$RUN_NUMBER was on commit '$HEAD_SHA', but deploy is for commit '$SHA'. The branch has untested newer commits. Run the Test Pipeline first."
+            exit 1
+          fi
+          echo "Latest Test Pipeline run #$RUN_NUMBER passed on commit '$HEAD_SHA'. Proceeding with deploy."
           echo "RUN_NUMBER=$RUN_NUMBER" >> "$GITHUB_ENV"
 
       - name: Checkout repository
@@ -47,6 +64,26 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Capture previous Vercel production deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: prj_ih4UAxO759A1CHdrZ93j4rk3poYD
+          VERCEL_ORG_ID: team_DV9hczWkgqbOEoMGnX9Pta3t
+        run: |
+          npm install -g vercel@latest
+          DEPLOYMENTS=$(vercel ls --prod --format json --yes)
+          # Extract the most recent READY production deployment URL.
+          # This is the deployment currently serving traffic — the one we
+          # would roll back to if Railway fails after we deploy a new version.
+          PREVIOUS=$(echo "$DEPLOYMENTS" | jq -r '[.[] | select(.state == "READY")] | .[0].url // empty')
+          if [ -z "$PREVIOUS" ]; then
+            echo "No previous READY production deployment found. Auto-rollback will not be available for this deploy."
+            echo "PREVIOUS_VERCEL_DEPLOYMENT=" >> "$GITHUB_ENV"
+          else
+            echo "Captured previous production deployment for potential rollback: $PREVIOUS"
+            echo "PREVIOUS_VERCEL_DEPLOYMENT=$PREVIOUS" >> "$GITHUB_ENV"
+          fi
+
       - name: Deploy to Vercel (apps/web)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -54,14 +91,50 @@ jobs:
           VERCEL_ORG_ID: team_DV9hczWkgqbOEoMGnX9Pta3t
         run: |
           npm install -g vercel@latest
-          vercel deploy --prod --yes --cwd=apps/web
+          vercel deploy --prod --yes
+
+      - name: Health check — apps/web (Vercel)
+        env:
+          WEB_HEALTH_URL: https://bmad-easy.vercel.app/
+        run: |
+          echo "Polling $WEB_HEALTH_URL until it returns 200..."
+          curl --fail --max-time 30 --retry 3 --retry-delay 5 "$WEB_HEALTH_URL"
+          echo "apps/web is healthy."
 
       - name: Deploy to Railway (apps/agent-be)
+        id: railway_deploy
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           npm install -g @railway/cli
           railway up --service 4df7d0d1-0040-4395-89c8-bd166c4863cf --environment 0c3802e5-d0a4-44c0-beec-ed6ff592f5e5 --project 30ab04b2-132c-440b-92ca-bc57be294d6f
+
+      - name: Health check — apps/agent-be (Railway)
+        id: railway_health
+        env:
+          AGENT_BE_HEALTH_URL: https://agent-be-production-1c09.up.railway.app/health
+        run: |
+          echo "Polling $AGENT_BE_HEALTH_URL until it returns 200..."
+          curl --fail --max-time 30 --retry 3 --retry-delay 5 "$AGENT_BE_HEALTH_URL"
+          echo "apps/agent-be is healthy."
+
+      - name: Roll back Vercel on Railway failure
+        if: failure() && (steps.railway_deploy.outcome == 'failure' || steps.railway_health.outcome == 'failure')
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: prj_ih4UAxO759A1CHdrZ93j4rk3poYD
+          VERCEL_ORG_ID: team_DV9hczWkgqbOEoMGnX9Pta3t
+        run: |
+          if [ -z "$PREVIOUS_VERCEL_DEPLOYMENT" ]; then
+            echo "::error::Railway deploy failed but no previous Vercel deployment was captured for rollback. Manual recovery required — see docs/runbooks/deploy-failure-recovery.md (Split-Brain Deploy Recovery, Option A)."
+            exit 1
+          fi
+          echo "Railway deploy failed. Rolling back Vercel to previous deployment: $PREVIOUS_VERCEL_DEPLOYMENT"
+          if ! vercel rollback "$PREVIOUS_VERCEL_DEPLOYMENT" --yes; then
+            echo "::error::Vercel rollback to $PREVIOUS_VERCEL_DEPLOYMENT failed. Manual recovery required — see docs/runbooks/deploy-failure-recovery.md (Split-Brain Deploy Recovery, Option A)."
+            exit 1
+          fi
+          echo "::warning::Vercel rolled back to $PREVIOUS_VERCEL_DEPLOYMENT due to Railway deploy failure. Split-brain state resolved — both services are now on the previous version."
 
       - name: Deployment summary
         env:

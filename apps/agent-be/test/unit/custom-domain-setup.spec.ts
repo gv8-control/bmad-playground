@@ -120,7 +120,10 @@ describe('Story 4.9 — Custom Domain Setup Runbook', () => {
   describe('AC-5: Execution model documented', () => {
     test('[P0] runbook documents which steps are human-executed vs API-automatable', () => {
       const content = loadRunbook();
-      expect(content).toMatch(/human.executed/i);
+      // Match "human executed", "human-executed", or "human_executed" only.
+      // The previous `/human.executed/i` (`.` = any char) matched unrelated
+      // strings like "humanXexecuted" for any X.
+      expect(content).toMatch(/human[\s_-]executed/i);
       expect(content).toMatch(/API.automatable/i);
     });
   });

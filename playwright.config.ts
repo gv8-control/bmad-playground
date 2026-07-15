@@ -1,10 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
-import { config as loadDotenv } from 'dotenv';
 
-// Load .env.local into the Playwright runner process (mirrors Next.js dev-server behaviour).
-// The webServer process inherits the shell env, so variables set here (via process.env) are
-// NOT automatically visible to the server — the server reads .env.local itself at startup.
-loadDotenv({ path: '.env.local', override: false });
+// The test:e2e script wraps Playwright with `dotenv -e .env.test`, which loads
+// .env.test into process.env before this config runs. We deliberately do NOT
+// load .env.local here — it contains personal/tooling credentials (including
+// real GitHub test-account creds) that leak TEST_GITHUB_USERNAME/TEST_GITHUB_PASSWORD
+// into the E2E environment, triggering the real OAuth flow in auth.setup.ts
+// instead of the synthetic session. .env.test has these set to empty strings.
+//
+// The webServer process (next dev / agent-be) inherits the shell env, so it
+// reads .env.local itself at startup — the runner doesn't need to inject it.
 
 // The storageState path is overridden by @seontechnologies/playwright-utils
 // fixtures (which use process.env.TEST_ENV || 'local'), but we set it here
@@ -22,6 +26,7 @@ const storageStatePath = `.auth/${process.env.TEST_ENV || 'local'}/default/stora
 const isRealServiceTier = process.env.PLAYWRIGHT_REAL_SERVICE === '1';
 
 export default defineConfig({
+  globalSetup: 'playwright/global-setup.ts',
   testDir: './playwright',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -83,6 +88,13 @@ export default defineConfig({
       ? [
           {
             name: 'real-service',
+            // Shared default user — the real OAuth flow only creates one
+            // session, so the real-service tier has no per-worker isolation.
+            // Without this, parallel real-service tests mutating the same
+            // RepoConnection row race the same way the PR tier did before
+            // per-worker users. Per-project `workers` is supported in
+            // Playwright 1.61.0+ (test.d.ts TestProject.workers).
+            workers: 1,
             grep: /@real-service/,
             retries: 3,
             use: {

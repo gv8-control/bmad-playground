@@ -341,18 +341,30 @@ describe('Story 4.10 — Database Backup and Restore Runbook', () => {
   });
 
   describe('curl flags', () => {
-    test('[P0] curl commands include --fail flag', () => {
+    // Per-block assertion: parse the runbook into fenced code blocks, filter
+    // to those containing curl commands, and assert EACH block carries the
+    // required flags. A whole-file regex would pass even if a single curl
+    // block omitted the flag (the flag could be found elsewhere in the file).
+    // Mirrors the per-block pattern in monitoring-setup.spec.ts.
+    function extractCurlBlocks(): string[] {
       const content = loadRunbook();
-      // Only assert if curl commands exist in the runbook.
-      if (/curl\s/i.test(content)) {
-        expect(content).toMatch(/--fail\b/);
+      const codeBlocks = content.match(/```[\s\S]*?```/g) ?? [];
+      return codeBlocks.filter((b) => /curl\s/i.test(b));
+    }
+
+    test('[P0] every curl command includes --fail flag', () => {
+      const curlBlocks = extractCurlBlocks();
+      expect(curlBlocks.length).toBeGreaterThan(0);
+      for (const block of curlBlocks) {
+        expect(block).toMatch(/--fail\b/);
       }
     });
 
-    test('[P0] curl commands include --max-time flag', () => {
-      const content = loadRunbook();
-      if (/curl\s/i.test(content)) {
-        expect(content).toMatch(/--max-time\b/);
+    test('[P0] every curl command includes --max-time flag', () => {
+      const curlBlocks = extractCurlBlocks();
+      expect(curlBlocks.length).toBeGreaterThan(0);
+      for (const block of curlBlocks) {
+        expect(block).toMatch(/--max-time\b/);
       }
     });
   });

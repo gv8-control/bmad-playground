@@ -130,7 +130,7 @@ interface ConfigSecret {
 }
 
 interface ConfigFile {
-  productionLaunchDate: string;
+  productionLaunchDate: string | null;
   reminderWindowDays: number;
   secrets: ConfigSecret[];
 }
@@ -443,7 +443,11 @@ describe('Story 4.12 — Secret Rotation Reminder Mechanism', () => {
     test('[P0] config file has productionLaunchDate field', () => {
       const config = getConfig();
       expect(config.productionLaunchDate).toBeDefined();
-      expect(typeof config.productionLaunchDate).toBe('string');
+      // productionLaunchDate may be null (no launch date yet) or a date string.
+      expect(
+        config.productionLaunchDate === null ||
+          typeof config.productionLaunchDate === 'string',
+      ).toBe(true);
     });
 
     test('[P0] config file has reminderWindowDays field', () => {
@@ -604,9 +608,15 @@ describe('Story 4.12 — Secret Rotation Reminder Mechanism', () => {
       expect(content).toMatch(/<[a-z-]+>/i);
     });
 
-    test('[P0] config file uses <YYYY-MM-DD> placeholder or real date for productionLaunchDate', () => {
-      const content = loadConfigText();
-      expect(content).toMatch(/\d{4}-\d{2}-\d{2}|<YYYY-MM-DD>/);
+    test('[P0] config file uses valid date, <YYYY-MM-DD> placeholder, or null for productionLaunchDate', () => {
+      const config = getConfig();
+      // productionLaunchDate is either a valid date string, the placeholder,
+      // or null (no launch date yet — tracking inactive).
+      expect(
+        config.productionLaunchDate === null ||
+          (typeof config.productionLaunchDate === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$|<YYYY-MM-DD>/.test(config.productionLaunchDate)),
+      ).toBe(true);
     });
 
     test('[P0] no ${{ }} expressions in workflow run: blocks (script injection prevention)', () => {
@@ -619,12 +629,26 @@ describe('Story 4.12 — Secret Rotation Reminder Mechanism', () => {
     });
 
     test('[P0] workflow passes dynamic values through env: intermediaries', () => {
+      // Strengthened: the concern is that dynamic `${{ }}` values are routed
+      // through `env:` mappings (the intermediary pattern) rather than being
+      // interpolated directly into `run:` blocks. A static env entry like
+      // `CONFIG_PATH: .github/...` satisfied the previous "any env present"
+      // assertion without proving the intermediary pattern is actually used.
+      // Here we require at least one `env:` mapping to reference a `${{ }}`
+      // expression, and (orthogonally) that no `run:` block interpolates one.
       const workflow = loadWorkflow() as WorkflowFile;
       const steps = getSteps(workflow);
-      const hasEnvIntermediary = steps.some(
-        (s) => s.env && Object.keys(s.env).length > 0,
+      const usesIntermediary = steps.some(
+        (s) =>
+          s.env !== undefined &&
+          Object.values(s.env).some((v) => /\$\{\{[^}]+\}\}/.test(v)),
       );
-      expect(hasEnvIntermediary).toBe(true);
+      expect(usesIntermediary).toBe(true);
+      // No `run:` block should interpolate `${{ }}` directly — must go via env.
+      for (const step of steps) {
+        if (!step.run) continue;
+        expect(step.run).not.toMatch(/\$\{\{[^}]+\}\}/);
+      }
     });
   });
 
@@ -726,11 +750,16 @@ describe('Story 4.12 — Secret Rotation Reminder Mechanism', () => {
   });
 
   describe('Script injection prevention in workflow', () => {
-    test('[P0] no ${{ }} expressions in run: blocks (raw text regex)', () => {
-      const text = loadWorkflowText();
-      const runBlocks = text.match(/run:\s*\|[\s\S]*?(?=\s*[-a-z]+:|$)/g) ?? [];
-      for (const block of runBlocks) {
-        expect(block).not.toMatch(/\$\{\{[^}]+\}\}/);
+    test('[P0] no ${{ }} expressions in run: blocks (YAML-parsed, covers single-line and multi-line run)', () => {
+      // Previous raw-text regex only matched the multi-line `run: |` form,
+      // so a single-line `run: cmd ${{ secrets.X }}` would slip through.
+      // Parse the workflow YAML and inspect every step's `run` field instead.
+      // Mirrors the pattern in deploy-workflow.spec.ts.
+      const workflow = loadWorkflow() as WorkflowFile;
+      const steps = getSteps(workflow);
+      for (const step of steps) {
+        if (!step.run) continue;
+        expect(step.run).not.toMatch(/\$\{\{[^}]+\}\}/);
       }
     });
   });
