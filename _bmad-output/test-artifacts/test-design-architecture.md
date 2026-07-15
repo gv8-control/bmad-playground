@@ -4,7 +4,7 @@ totalSteps: 5
 stepsCompleted: ['step-01-detect-mode', 'step-02-load-context', 'step-03-risk-and-testability', 'step-04-coverage-plan', 'step-05-generate-output']
 lastStep: 'step-05-generate-output'
 nextStep: ''
-lastSaved: '2026-07-13'
+lastSaved: '2026-07-14'
 workflowType: 'testarch-test-design'
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md'
@@ -17,6 +17,9 @@ inputDocuments:
   - '.claude/skills/bmad-testarch-test-design/resources/knowledge/test-quality.md'
   - '.claude/skills/bmad-testarch-test-design/resources/knowledge/test-priorities-matrix.md'
   - '_bmad/tea/config.yaml'
+  - '_bmad-output/test-artifacts/traceability-matrix.md (2026-07-14 Epic 4 extension)'
+  - '_bmad-output/implementation-artifacts/bug-hunt-epic-4.md'
+  - '_bmad-output/implementation-artifacts/epic-4-retro-2026-07-14.md'
 ---
 
 # Test Design for Architecture: bmad-easy (System-Level)
@@ -25,7 +28,7 @@ inputDocuments:
 
 **Date:** 2026-06-16
 **Author:** TEA Master Test Architect (BMad)
-**Status:** Architecture Review Complete — all four pre-implementation blockers (B-01–B-04) resolved or delivered. Revised 2026-07-13 against post-Story-5.5 implementation evidence (Epics 1, 2, 3, and 5 complete — 33 stories done per `sprint-status.yaml`; Epic 5 now spans 5 stories — 5.1 through 5.5, the architectural segments-model story; Epic 5 traceability gate upgraded from CONCERNS to **PASS** (48/48 ACs FULL coverage; 1,201 Jest tests across 81 suites + 7 Story 5.5 E2E Playwright tests, 0 skipped); NFR-5 epic PASS-WITH-CONCERNS (3 Medium + 3 Low de-duplicated; 2 Mediums and all 3 Lows are pre-existing project-wide; only the one Medium `M3-new` AgentServiceFake test-seam divergence is Story-5.5-introduced); Epic 6 backlog, not started). Earlier baselines — 2026-07-12 (4 Epic-5 stories, gate CONCERNS, 853 tests) and 2026-07-07 (Epics 1–3 complete, gate decision PASS, 92% coverage) — are retained as historical reference in the body of this document.
+**Status:** Architecture Review Complete — all four pre-implementation blockers (B-01–B-04) resolved or delivered. Revised 2026-07-14 against post-Epic-4 implementation evidence: Epics 1, 2, 3, 4, and 5 all complete (45 stories done per `sprint-status.yaml`; Epic 4 = MVP Cloud Deployment Provisioning, 12 stories 4-1 through 4-12; Epic 5 spans 5 stories including the architectural segments-model Story 5.5). Combined traceability gate (Epics 1–4) = **CONCERNS** (degraded from the Epics 1–3 PASS) — Epic 4 extension introduced 7 documented gaps (3 ATDD-deferred one-time-manual ACs, 2 platform-limitation deferrals, 2 critical bug-hunt findings C1/C2 requiring immediate remediation before closeout release). 4-tier CI pipeline now live with authored specs: PR (fake-backed) → nightly multi-conn → nightly real-service → weekly performance-spike — 11 environment-gated E2E skips across the 3 nightly/weekly tiers. Epic 6 (Sandbox-Based Agent Execution) is backlog — Story 4.5's Anthropic proxy endpoint (`/api/proxy/anthropic`) is now the contract Epic 6 builds on; `architecture.md:259` still describes the OLD direct-injection design (flagged for the architect). Earlier baselines (2026-07-13 post-Story-5.5, 2026-07-12 post-Epic-5, 2026-07-07 Epics 1–3) are retained as historical reference in the body of this document.
 **Project:** bmad-easy
 **PRD Reference:** `_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md`
 **ADR Reference:** `_bmad-output/planning-artifacts/architecture.md`
@@ -96,6 +99,34 @@ Story 5.5 ("Interleave Tool and Semantic Pills Within the Agent Markdown Stream"
 **Test-seam parity verification (`M3-new` carry-forward impact for Epic 6):** Story 5.5 is the architectural centerpiece Epic 6 builds on — the `ConversationPane` SSE handlers now expect segments-shaped AG-UI events (interleaved with text), not the pre-5.5 flat-`messages`-array shape. Epic 6's new `agui-event-bridge.service.ts` (Story 6.2) must emit AG-UI events that match the post-Story-5.5 handler contract. The `M3-new` lesson (fake diverges from production's `pendingClassifierPromises`) means the new `AguiEventBridgeServiceFake` must be designed against the production pattern from the start — not retrofitted after wedge bugs surface. The architect's pre-implementation action: define `IAguiEventBridgeService` in `libs/shared-types` BEFORE Story 6.2 implementation begins, with the explicit test-seam parity contract documented in the interface-level JSDoc.
 
 **Deferred work — still pruned clean:** 0 orphaned deferred-work items remaining across the 5 Epic 5 stories (Story 5.5's only deferred item is the DP-3 per-segment narrowing of persisted JSON, explicitly outside the 10 AC scope per story spec).
+
+### Post-Epic-4 Update (2026-07-14)
+
+Epic 4 ("MVP Cloud Deployment Provisioning", 12 stories 4-1 through 4-12) completed 2026-07-12 through 2026-07-14. The epic delivered the production deployment infrastructure: Vercel project for `apps/web` (project `prj_ih4UAxO759A1CHdrZ93j4rk3poYD`, `https://bmad-easy.vercel.app`), Railway project for `apps/agent-be` + Postgres (project `30ab04b2-132c-440b-92ca-bc57be294d6f`, `https://agent-be-production-1c09.up.railway.app`), multi-stage Dockerfile, 9 Prisma migrations applied to Railway Postgres, env-var wiring + Anthropic proxy endpoint (NFR-S1 compliance — `POST /api/proxy/anthropic` at `apps/agent-be/src/anthropic-proxy/`), manual-trigger deploy workflow (`.github/workflows/deploy.yml`), HTTP/2 ALPN confirmed at Railway's edge, custom domain, database backups (daily + weekly), monitoring/alerting (UptimeRobot), and secret rotation reminder cron (`.github/workflows/secret-rotation-reminder.yml` + `.github/scripts/check-rotations.js`). Six runbooks committed under `docs/runbooks/`. This section records the post-Epic-4 reality — the prior baselines are preserved above.
+
+**Traceability gate (CONCERNS, degraded from the Epics 1–3 PASS):** The 2026-07-14 Epic 4 extension appended to the traceability matrix (`traceability-matrix.md`) evaluates 43 ACs across 12 stories: 36 FULL, 5 PARTIAL, 2 NONE. P0 = 85.7% (24/28), P1 = 72.7% (8/11), P3 = 100% (4/4). Combined Epics 1–4: P0 = 93.9% (62/66), P1 = 94.3% (50/53), overall = 95.3% (142/149). The Epics 1–3 PASS verdict is preserved; the CONCERNS is entirely attributable to Epic 4 gaps. The 7 documented gaps fall into three categories: (a) 3 ATDD-deferred one-time-manual verifications per AC text (4.1-AC3 URL existence, 4.3-AC2 Docker runtime smoke, 4.5-AC4 OAuth callback URL); (b) 2 platform-limitation deferrals (4.6-AC3 GitHub Environment required reviewers — billing-plan limitation HTTP 422; 4.12-AC3 cron-first-issue confirmation — explicitly manual per Story 4.12 Task 5); (c) 2 critical bug-hunt findings tracked for remediation (see below).
+
+**Bug-hunt-epic-4 (2026-07-14, 24 findings):** 2 Critical, 5 High, 12 Medium, 5 Low. The two critical findings block the Epic 4 closeout release:
+- **C1 — Secret rotation cron is silently inactive.** `.github/secret-rotation-config.json` ships `"productionLaunchDate": "<YYYY-MM-DD>"` placeholder. `check-rotations.js` parses it via `new Date("<YYYY-MM-DD>")` → `null` → empty output → exit 0. The weekly cron reports success and creates no GitHub issues. Two false-green tests enforce the broken state (`check-rotations.spec.ts:513-519`, `secret-rotation-schedule.spec.ts:607-610`). The entire Story 4.12 feature is silently off until the placeholder is replaced with a real date AND the false-green tests are rewritten.
+- **C2 — Deploy quality gate does not verify SHA match.** `deploy.yml` runs `gh run list --workflow=test.yml --branch="$BRANCH" --status=completed --limit=1` and checks `conclusion == "success"` but never compares `headSha` to `github.sha`. A stale-success deploy (commit A passed tests; B pushed without `test.yml` running; operator dispatches deploy on B) or a scheduled-only run accepted as PR-tier proof is undetectable. `deploy-workflow.spec.ts` tests verify the gate exists but never assert `headSha` equality — false-green.
+
+**New test tiers that now exist (replacing the forward-looking "planned" descriptions):** The 4-tier CI execution strategy from `test-design-qa.md` § Execution Strategy is now live with authored spec files:
+- **Tier 1 (PR, fake-backed):** lint → typecheck → unit (4-parallel) → e2e (4 shards) → burn-in (10 iterations, PR + Sunday 02:00). No real Daytona/Claude calls. Existing PR-tier e2e jobs use placeholder secrets (`AUTH_GITHUB_ID: e2e-placeholder-client-id`).
+- **Tier 2 (nightly multi-conn, daily 03:00):** `playwright/e2e/multi-conn/concurrent-sse.spec.ts` (NFR-R4) + `playwright/e2e/multi-conn/sse-back-pressure.spec.ts` (NFR-R3). Env-gated on `PLAYWRIGHT_MULTI_CONN=1` or CI=true.
+- **Tier 3 (nightly real-service, daily 03:00):** `playwright/e2e/real-service/functional-smoke.spec.ts` + `playwright/e2e/real-service/nfr-performance.spec.ts` + `playwright/e2e/real-service/nfr-p5-manual-commit.spec.ts`. Env-gated on `PLAYWRIGHT_REAL_SERVICE=1`. 8 secrets required (Daytona, Anthropic, GitHub OAuth, Auth, Database, KEK). 3-retry budget.
+- **Tier 4 (weekly performance-spike, Sunday 04:00):** `playwright/e2e/performance-spike/repo-size.spec.ts` (NFR-P2). Env-gated on `DAYTONA_API_KEY` + `SPIKE_REPO_*_URL`. 240-min timeout.
+
+11 E2E tests are skipped (all environment-gated, none broken) — 3 in the PR tier (require real GitHub org/credentials), 2 in nightly real-service, 3 in nightly multi-conn, 3 in weekly performance-spike.
+
+**New test-seam stability — runbook + regression guard test pattern:** Six consecutive stories (4-7 through 4-12) matured a pattern where the story's primary deliverable is a committed `docs/runbooks/*.md` file and a co-located regression guard test at `apps/agent-be/test/unit/<story-name>.spec.ts` that reads the runbook file structurally and asserts on its content (command presence, credential-isolation, input-injection guards, curl `--fail`/`--max-time` flags). `secret-rotation-schedule.spec.ts` (Story 4.12) is the canonical pattern reference. The bug-hunt-epic-4 overlay surfaced that this pattern amplifies false-green risk (M3 per-file-not-per-block curl flag test, M4 regex too narrow, M5 vacuous env-intermediary assertion, M6 over-permissive `human.executed` regex, M7 too-broad token-prefix regexes) — the structural-validation approach passes while the underlying feature is broken (C1).
+
+**New architectural concern — `architecture.md:259` is stale.** Story 4.5 built the Anthropic proxy endpoint (`/api/proxy/anthropic`) to satisfy NFR-S1 (no platform-internal credentials — specifically `ANTHROPIC_API_KEY` — reach the Daytona sandbox). The architecture document still describes the OLD direct-injection design at line 259. Flagged in Story 4.5's DP-2 amendment; the architecture doc should be amended separately — this is the architect's action item. **Epic 6 impact:** Story 4.5's proxy endpoint is the contract Epic 6 builds on — the `networkAllowList` (Story 6.1) must include the proxy URL, not the raw Anthropic API endpoint. The proxy URL is currently documented in `.env.example` only.
+
+**Epic 6 forward-look update — Epic 4 dependencies:**
+- `ANTHROPIC_API_KEY` is now a required env var in the Zod validation schema (Story 4.5 AC-7) — the env-validation unit test is delivered. However, `DAYTONA_API_URL` and `DAYTONA_API_KEY` are still `z.string().optional().default('')` (bug-hunt M1) — production can boot without them and fail at first sandbox provision. Tighten before Epic 6.
+- The deploy workflow (Story 4.6) blocks Epic 6 deploys if the Test Pipeline is not green — Epic 6 must land green or the deploy gate will block.
+- The `deploy-failure-recovery.md` runbook (Story 4.8) and `db-restore.md` runbook (Story 4.10) cover the recovery procedures Epic 6 may need if the migration breaks production.
+- The secret rotation schedule (Story 4.12) — `ANTHROPIC_API_KEY` is now a 90-day rotation item with documented procedure. Epic 6 should not introduce a new `ANTHROPIC_API_KEY` injection path that contradicts this.
 
 ### Epic 6 (Sandbox-Based Agent Execution) — Forward-Looking Testability Preview
 

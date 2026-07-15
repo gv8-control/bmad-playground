@@ -318,7 +318,7 @@ e20d012 docs: updates to playbook prompts
 6adc9d5 ci: fixes for n8n workflow
 ```
 
-Story 3.11 finalized the concurrent conversations feature. Story 3.12 is the last story in Epic 3 (`epic-3-retrospective: optional`).
+Story 3.11 finalized the concurrent conversations feature. Story 3.12 is the last story in Epic 3 (`epic-3-retrospective: done`).
 
 ### Project Structure Notes
 

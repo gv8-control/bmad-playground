@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-07-14T22:00:00Z
+# last_updated: 2026-07-14T23:30:00Z
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-14T22:00:00Z
+last_updated: 2026-07-14T23:30:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -83,7 +83,7 @@ development_status:
   epic-3-retrospective: done
 
   # ── Epic 4: MVP Cloud Deployment Provisioning ──
-  epic-4: in-progress
+  epic-4: done
   4-1-provision-the-vercel-project-for-apps-web: done
   4-2-provision-the-railway-project-with-postgres-for-apps-agent-be: done
   4-3-add-a-dockerfile-for-apps-agent-be: done
@@ -96,7 +96,7 @@ development_status:
   4-10-configure-database-backups-and-verify-restore: done
   4-11-configure-launch-window-monitoring-and-alerting: done
   4-12-secret-rotation-reminder-mechanism: done
-  epic-4-retrospective: backlog
+  epic-4-retrospective: done
 
   # ── Epic 5: UX Mockup Fidelity — Close Visual Drift ──
   epic-5: done

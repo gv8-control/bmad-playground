@@ -1,7 +1,7 @@
 ---
 stepsCompleted: ['step-01-preflight', 'step-02-generate-pipeline', 'step-03-configure-quality-gates', 'step-04-validate-and-summary', 'tier-split-01-preflight', 'tier-split-02-generate-pipeline', 'tier-split-04-validate-and-summary']
 lastStep: 'tier-split-04-validate-and-summary'
-lastSaved: '2026-07-07'
+lastSaved: '2026-07-14'
 workflowStatus: 'tier-split-complete'
 rework: 'tier-split'
 reworkGoal: 'Separate fake-backed PR tests from real-service nightly tests per the 4-tier execution strategy in test-design-qa.md'
@@ -320,3 +320,41 @@ Until the real-service / multi-conn / performance-spike specs are authored, each
 4. **Author `@performance-spike` specs** — P1-012 (repo-size boundary empirical spike, ~4h QA task per test-design-qa.md), future k6/Artillery regression suite.
 5. **Validate the dispatch path** by manually triggering `workflow_dispatch` with `inputs.tier: nightly-real-service` once secrets are configured.
 6. **(Optional) Diagnose the pre-existing PR-tier dev-server dual-start pattern** (see "Discovered smells") if the existing e2e job exhibits port-binding flakiness.
+
+---
+
+## Post-Epic-4 Update (2026-07-14)
+
+**Trigger:** Epic 4 (MVP Cloud Deployment Provisioning, 12 stories) completed. The 2026-07-07 Tier-Split Rework section above documented the 4-tier CI strategy as planned config with "Real-service specs are out of scope — explicit task instruction." That assumption is now **STALE** — the specs WERE authored during the pre-Epic-4 sandbox-refactor window and during Epic 4 itself. This section records the current state of the CI pipeline against what was planned.
+
+### What Was Planned vs. What Now Exists
+
+| Tier | Planned (2026-07-07) | Current State (2026-07-14) |
+|------|---------------------|---------------------------|
+| Tier 1 (PR) | lint → typecheck → unit → e2e (4 shards) → burn-in → report | **LIVE** — all jobs exist and run on push/PR. `if:` trigger-scope filters preserved. 4-shard e2e matrix, 10-iteration burn-in on PR + Sunday 02:00. |
+| Tier 2 (nightly multi-conn) | `--grep @multi-conn --pass-with-no-tests` (no specs) | **SPECS AUTHORED** — `playwright/e2e/multi-conn/concurrent-sse.spec.ts` (NFR-R4, 10 concurrent SSE) + `playwright/e2e/multi-conn/sse-back-pressure.spec.ts` (NFR-R3, event flood). Env-gated on `PLAYWRIGHT_MULTI_CONN=1` or CI=true. 3 skips in the multi-conn tier (2 require `PLAYWRIGHT_MULTI_CONN=1`; 1 requires production AppModule flood endpoint). The nightly job will exercise these once secrets are configured. |
+| Tier 3 (nightly real-service) | `--grep @real-service --pass-with-no-tests` (no specs) | **SPECS AUTHORED** — `playwright/e2e/real-service/functional-smoke.spec.ts` (real Daytona + Claude + GitHub OAuth happy path) + `playwright/e2e/real-service/nfr-performance.spec.ts` (NFR-P1 first-token timing, NFR-P2 chat-ready timing) + `playwright/e2e/real-service/nfr-p5-manual-commit.spec.ts` (NFR-P5 manual commit timing). Env-gated on `PLAYWRIGHT_REAL_SERVICE=1`. 2 skips (require `PLAYWRIGHT_REAL_SERVICE=1`). Nightly job will exercise once the 8 secrets are configured. |
+| Tier 4 (weekly performance-spike) | `--grep @performance-spike --pass-with-no-tests` (no specs) | **SPEC AUTHORED** — `playwright/e2e/performance-spike/repo-size.spec.ts` (NFR-P2 repo-size boundary spike). Env-gated on `DAYTONA_API_KEY` + `SPIKE_REPO_*_URL`. 3 skips (require real Daytona + configured repo URLs). Weekly job will exercise once secrets + repo URLs are configured. |
+
+### New CI Artifacts Added by Epic 4
+
+| Artifact | Story | Purpose |
+|----------|-------|---------|
+| `.github/workflows/deploy.yml` | 4.6 | Manual-trigger deploy workflow via `workflow_dispatch`. Deploys `apps/web` to Vercel (`vercel deploy --prod`) + `apps/agent-be` to Railway (`railway up`). Quality gate verifies latest `test.yml` run on the branch passed before deploying. GitHub `production` environment with branch restriction. **Note (bug-hunt C2):** the quality gate does NOT verify `headSha` equality — a stale-success deploy is undetectable. Tracked as P1-022. |
+| `.github/workflows/secret-rotation-reminder.yml` | 4.12 | Weekly cron (Monday 00:00 UTC) + `workflow_dispatch`. Creates GitHub issues for secrets due for rotation. Calls `.github/scripts/check-rotations.js` with `.github/secret-rotation-config.json`. **Note (bug-hunt C1):** the config ships a `<YYYY-MM-DD>` placeholder that silently disables the cron. Tracked as P1-021. |
+| `.github/scripts/check-rotations.js` | 4.12 | Node.js script that reads the config, computes due dates, outputs a JSON array of secrets due for rotation. **Note (bug-hunt H3):** swallows ALL exceptions and exits 0 — silent cron failures invisible. Tracked as P1-024. |
+| `.github/secret-rotation-config.json` | 4.12 | JSON config: `productionLaunchDate`, `reminderWindowDays=7`, `secrets` array (5 entries). **Note (bug-hunt C1):** `productionLaunchDate` is a placeholder. Tracked as P1-021. |
+| `docs/runbooks/*.md` (6 files) | 4.7-4.12 | `http2-verification.md`, `deploy-failure-recovery.md`, `custom-domain-setup.md`, `db-restore.md`, `monitoring-setup.md`, `secret-rotation-schedule.md`. Each has a co-located regression-guard test at `apps/agent-be/test/unit/<story-name>.spec.ts`. |
+
+### Epic 4 Test Files (17 new files, ~223 cases)
+
+14 unit + 3 integration test files added across Stories 4.1-4.12 (see traceability matrix Epic 4 Step 2 for the full inventory). 6 environment-gated skips across 3 integration files (`railway-project-structure.integration.spec.ts`, `railway-migrations.integration.spec.ts`, `platform-env-vars.integration.spec.ts`) — all gated on `RAILWAY_TOKEN`/`VERCEL_TOKEN`/`DATABASE_URL`. Per prior matrix precedent, these count as FULL coverage because their unit-level scaffolds provide independent coverage.
+
+### Configuration Still Needed (updated from the 2026-07-07 list)
+
+1. **Add GitHub Actions secrets** (the 8-secret list in the test.yml header comment) — **STILL NEEDED** for the nightly real-service tier to exercise the authored specs. The specs exist; they are skipped until secrets land.
+2. **Set real `productionLaunchDate`** in `.github/secret-rotation-config.json` — **NEW, blocks Epic 4 closeout release** (bug-hunt C1). Derive from `gh run list --workflow=deploy.yml --status=success --limit=1 --json createdAt`.
+3. **Strengthen the deploy quality gate** (SHA-match assertion) in `deploy.yml` — **NEW, blocks Epic 4 closeout release** (bug-hunt C2).
+4. **Add post-deploy health verification** to `deploy.yml` — **NEW** (bug-hunt H1). `curl --fail --max-time 30 --retry 5 --retry-delay 10` against both production URLs.
+5. **Configure `SPIKE_REPO_*_URL` env vars** for the weekly performance-spike tier — the repo-size spec needs 4-5 repos at 50/100/150/200/250MB.
+6. **(Optional) Diagnose the pre-existing PR-tier dev-server dual-start pattern** — still flagged from 2026-07-07 if the existing e2e job exhibits port-binding flakiness.
