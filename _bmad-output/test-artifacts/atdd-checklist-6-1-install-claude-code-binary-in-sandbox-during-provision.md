@@ -71,9 +71,9 @@ As a developer on the bmad-easy team, I want both the sandbox-agent and Claude C
 - **Story File:** `_bmad-output/implementation-artifacts/6-1-install-claude-code-binary-in-sandbox-during-provision.md`
 - **Checklist Path:** `_bmad-output/test-artifacts/atdd-checklist-6-1-install-claude-code-binary-in-sandbox-during-provision.md`
 - **Generated Test Files:**
-  - `apps/agent-be/src/sandbox/sandbox.service.nfr-s1.spec.ts` (unit, 22 new skipped tests)
-  - `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts` (integration, 4 new skipped tests + 1 comment update)
-  - `apps/agent-be/test/unit/env-example.spec.ts` (unit, NEW file, 2 skipped tests)
+  - `apps/agent-be/src/sandbox/sandbox.service.nfr-s1.spec.ts` (unit, 22 tests — all activated)
+  - `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts` (integration, 4 tests — all activated + 1 comment update)
+  - `apps/agent-be/test/unit/env-example.spec.ts` (unit, NEW file, 2 tests — all activated)
 
 ---
 
@@ -198,128 +198,128 @@ The binary installation commands use **constant paths and pinned versions**, not
 
 **File:** `apps/agent-be/src/sandbox/sandbox.service.nfr-s1.spec.ts`
 
-#### describe.skip('[P0] Story 6.1 AC-2 — provision() injects envVars into daytona.create()')
+#### describe('[P0] Story 6.1 AC-2 — provision() injects envVars into daytona.create()')
 
 - **Test:** `[P0] passes envVars to daytona.create() alongside labels`
-  - **Status:** RED — `describe.skip()` — `envVars` not added to `daytona.create()` call yet (Task 1.2)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — `envVars` not added to `daytona.create()` call yet (Task 1.2)
   - **Verifies:** AC-2 (envVars parameter present in create call)
 
 - **Test:** `[P0] envVars contains ONLY ANTHROPIC_API_KEY and GITHUB_TOKEN — no platform-internal credentials`
-  - **Status:** RED — `describe.skip()` — envVars not implemented yet (Task 1.2, 8.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — envVars not implemented yet (Task 1.2, 8.1)
   - **Verifies:** AC-2 (credential isolation — only the two allowed keys)
 
 - **Test:** `[P0] ANTHROPIC_API_KEY value comes from process.env.ANTHROPIC_API_KEY`
-  - **Status:** RED — `describe.skip()` — envVars not implemented yet (Task 1.1, 8.3)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — envVars not implemented yet (Task 1.1, 8.3)
   - **Verifies:** AC-2 (key sourced from the validated env var, not hardcoded)
 
 - **Test:** `[P0] GITHUB_TOKEN value comes from params.credential (the per-user OAuth token)`
-  - **Status:** RED — `describe.skip()` — envVars not implemented yet (Task 1.2, 8.3)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — envVars not implemented yet (Task 1.2, 8.3)
   - **Verifies:** AC-2 (token sourced from the per-user credential, not leaked from elsewhere)
 
-#### describe.skip('[P0] Story 6.1 AC-3 — provision() applies networkAllowList to daytona.create()')
+#### describe('[P0] Story 6.1 AC-3 — provision() applies networkAllowList to daytona.create()')
 
 - **Test:** `[P0] passes networkAllowList to daytona.create()`
-  - **Status:** RED — `describe.skip()` — networkAllowList not added to create call yet (Task 1.3, 8.2)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — networkAllowList not added to create call yet (Task 1.3, 8.2)
   - **Verifies:** AC-3 (networkAllowList parameter present)
 
 - **Test:** `[P0] networkAllowList is non-empty (egress restriction activated)`
-  - **Status:** RED — `describe.skip()` — networkAllowList not implemented yet (Task 1.3, 8.2)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — networkAllowList not implemented yet (Task 1.3, 8.2)
   - **Verifies:** AC-3 (egress restriction is active, not a no-op)
 
-#### describe.skip('[P0] Story 6.1 AC-1 — provision() installs sandbox-agent and Claude Code binaries')
+#### describe('[P0] Story 6.1 AC-1 — provision() installs sandbox-agent and Claude Code binaries')
 
 - **Test:** `[P0] uploads sandbox-agent binary via sandbox.fs.uploadFile after create`
-  - **Status:** RED — `describe.skip()` — binary upload not implemented yet (Task 2.1, 2.2)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — binary upload not implemented yet (Task 2.1, 2.2)
   - **Verifies:** AC-1 (sandbox-agent binary uploaded to sandbox)
 
 - **Test:** `[P0] makes sandbox-agent executable via executeCommand(chmod +x ...)`
-  - **Status:** RED — `describe.skip()` — chmod not implemented yet (Task 2.2)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — chmod not implemented yet (Task 2.2)
   - **Verifies:** AC-1 (binary made executable after upload)
 
 - **Test:** `[P0] installs Claude Code via executeCommand(npm install -g @anthropic-ai/claude-code@<version>)`
-  - **Status:** RED — `describe.skip()` — Claude Code install not implemented yet (Task 2.3)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — Claude Code install not implemented yet (Task 2.3)
   - **Verifies:** AC-1 (Claude Code installed via npm, pinned exact version)
 
 - **Test:** `[P0] verifies both binaries are executable after installation (version/help check)`
-  - **Status:** RED — `describe.skip()` — verification step not implemented yet (Task 2.4)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — verification step not implemented yet (Task 2.4)
   - **Verifies:** AC-1 (binaries verified executable after install)
 
 - **Test:** `[P0] throws when binary installation fails (sandbox without binaries cannot run agent)`
-  - **Status:** RED — `describe.skip()` — failure propagation not implemented yet (Task 2.4)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — failure propagation not implemented yet (Task 2.4)
   - **Verifies:** AC-1 (installation failure aborts provision)
 
 - **Test:** `[P0] throws when sandbox-agent upload fails`
-  - **Status:** RED — `describe.skip()` — upload failure propagation not implemented yet (Task 2.2, 2.4)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — upload failure propagation not implemented yet (Task 2.2, 2.4)
   - **Verifies:** AC-1 (upload failure aborts provision)
 
-#### describe.skip('[P0] Story 6.1 AC-1 — credential-isolation + input-injection regression guards for binary install commands')
+#### describe('[P0] Story 6.1 AC-1 — credential-isolation + input-injection regression guards for binary install commands')
 
 - **Test:** `[P0] binary installation commands do NOT interpolate platform credentials`
-  - **Status:** RED — `describe.skip()` — binary install commands not implemented yet (Task 2.1-2.4)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — binary install commands not implemented yet (Task 2.1-2.4)
   - **Verifies:** AC-1 (credential-isolation invariant — no platform creds in command strings)
 
 - **Test:** `[P0] ANTHROPIC_API_KEY and GITHUB_TOKEN are NOT interpolated into command strings (injected via envVars only)`
-  - **Status:** RED — `describe.skip()` — binary install commands not implemented yet (Task 2.1-2.4)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — binary install commands not implemented yet (Task 2.1-2.4)
   - **Verifies:** AC-1, AC-2 (credential-isolation invariant — credentials go through envVars, not commands)
 
 - **Test:** `[P0] chmod and npm install commands use constant paths (no user-controlled input injection)`
-  - **Status:** RED — `describe.skip()` — binary install commands not implemented yet (Task 2.1-2.4)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — binary install commands not implemented yet (Task 2.1-2.4)
   - **Verifies:** AC-1 (input-injection invariant — no user-controlled values in binary commands)
 
-#### describe.skip('[P0] Story 6.1 AC-7 F1 — destroy() uses typed DaytonaNotFoundError (not string heuristic)')
+#### describe('[P0] Story 6.1 AC-7 F1 — destroy() uses typed DaytonaNotFoundError (not string heuristic)')
 
 - **Test:** `[P0] destroy() returns void (idempotent) when daytona.get rejects with DaytonaNotFoundError`
-  - **Status:** RED — `describe.skip()` — `instanceof DaytonaNotFoundError` check not implemented yet (Task 5.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — `instanceof DaytonaNotFoundError` check not implemented yet (Task 5.1)
   - **Verifies:** AC-7 F1 (typed error class replaces string heuristic for 404)
 
 - **Test:** `[P0] destroy() re-throws when daytona.get rejects with a non-404 DaytonaError (e.g. DaytonaAuthorizationError 403)`
-  - **Status:** RED — `describe.skip()` — typed error check not implemented yet (Task 5.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — typed error check not implemented yet (Task 5.1)
   - **Verifies:** AC-7 F1 (non-404 errors propagate, not swallowed)
 
 - **Test:** `[P0] destroy() re-throws when daytona.get rejects with a generic Error (not a DaytonaError)`
-  - **Status:** RED — `describe.skip()` — typed error check not implemented yet (Task 5.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — typed error check not implemented yet (Task 5.1)
   - **Verifies:** AC-7 F1 (non-Daytona errors propagate)
 
-#### describe.skip('[P0] Story 6.1 AC-7 F2 — provision() dead catch-block cleanup branch removed')
+#### describe('[P0] Story 6.1 AC-7 F2 — provision() dead catch-block cleanup branch removed')
 
 - **Test:** `[P0] provision() does NOT call daytona.delete when daytona.create rejects (no partial allocation cleanup)`
-  - **Status:** RED — `describe.skip()` — dead cleanup branch not removed yet (Task 6.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — dead cleanup branch not removed yet (Task 6.1)
   - **Verifies:** AC-7 F2 (dead `if (sandbox) { await daytona.delete(sandbox) }` branch is gone)
 
 - **Test:** `[P0] provision() propagates the create() rejection error to the caller`
-  - **Status:** RED — `describe.skip()` — error propagation not verified yet (Task 6.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — error propagation not verified yet (Task 6.1)
   - **Verifies:** AC-7 F2 (create rejection propagates cleanly)
 
-#### describe.skip('[P0] Story 6.1 AC-7 F3 — resume() propagates start() failure to caller')
+#### describe('[P0] Story 6.1 AC-7 F3 — resume() propagates start() failure to caller')
 
 - **Test:** `[P0] resume() propagates error when daytona.start rejects (DaytonaTimeoutError)`
-  - **Status:** RED — `describe.skip()` — start-failure propagation not verified yet (Task 7.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — start-failure propagation not verified yet (Task 7.1)
   - **Verifies:** AC-7 F3 (start failure propagates to caller)
 
 - **Test:** `[P0] resume() does NOT call daytona.start when daytona.get rejects`
-  - **Status:** RED — `describe.skip()` — get-before-start ordering not verified yet (Task 7.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — get-before-start ordering not verified yet (Task 7.1)
   - **Verifies:** AC-7 F3 (start not called when get fails)
 
 ### Integration Tests (4 tests) — ADDED TO EXISTING FILE
 
 **File:** `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts`
 
-#### describe.skip('[P0] Story 6.1 — provision injects envVars, networkAllowList, and binaries (AC: 1, 2, 3, 4)')
+#### describe('[P0] Story 6.1 — provision injects envVars, networkAllowList, and binaries (AC: 1, 2, 3, 4)')
 
 - **Test:** `[P0] provision records binaries as installed (AC-1)`
-  - **Status:** RED — `describe.skip()` — uses `sandboxFake.areBinariesInstalled()` (test seam already applied)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — uses `sandboxFake.areBinariesInstalled()` (test seam already applied)
   - **Verifies:** AC-1 (binary installation side effect through full NestJS wiring)
 
 - **Test:** `[P0] provision injects ANTHROPIC_API_KEY and GITHUB_TOKEN as envVars (AC-2)`
-  - **Status:** RED — `describe.skip()` — uses `sandboxFake.getProvisionedEnvVars()` (test seam already applied)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — uses `sandboxFake.getProvisionedEnvVars()` (test seam already applied)
   - **Verifies:** AC-2 (envVars injection through full NestJS wiring)
 
 - **Test:** `[P0] provision applies networkAllowList (AC-3)`
-  - **Status:** RED — `describe.skip()` — uses `sandboxFake.getNetworkAllowList()` (test seam already applied)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — uses `sandboxFake.getNetworkAllowList()` (test seam already applied)
   - **Verifies:** AC-3 (networkAllowList through full NestJS wiring)
 
 - **Test:** `[P0] provision sequence runs in order: provision → clone → injectGitConfig → git status → emit events (AC-4)`
-  - **Status:** RED — `describe.skip()` — event ordering assertion
+  - **Status:** ACTIVATED — describe.skip removed, test passing — event ordering assertion
   - **Verifies:** AC-4 (working-tree event before SESSION_READY)
 
 ### Comment Update — F2 Documentation
@@ -333,14 +333,14 @@ The binary installation commands use **constant paths and pinned versions**, not
 
 **File:** `apps/agent-be/test/unit/env-example.spec.ts`
 
-#### describe.skip('[P0] Story 6.1 AC-5 — .env.example documents ANTHROPIC_API_KEY')
+#### describe('[P0] Story 6.1 AC-5 — .env.example documents ANTHROPIC_API_KEY')
 
 - **Test:** `[P0] apps/agent-be/.env.example file exists`
-  - **Status:** RED — `describe.skip()` — `.env.example` not created yet (Task 9.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — `.env.example` not created yet (Task 9.1)
   - **Verifies:** AC-5 (documentation artifact exists)
 
 - **Test:** `[P0] .env.example documents ANTHROPIC_API_KEY as a required variable`
-  - **Status:** RED — `describe.skip()` — `.env.example` not created yet (Task 9.1)
+  - **Status:** ACTIVATED — describe.skip removed, test passing — `.env.example` not created yet (Task 9.1)
   - **Verifies:** AC-5 (variable documented for operators)
 
 ---
@@ -425,11 +425,11 @@ No new `data-testid` attributes required. Story 6.1 is entirely backend — no U
 
 **Tasks to make this test pass:**
 
-- [ ] Read `ANTHROPIC_API_KEY` from `process.env.ANTHROPIC_API_KEY` in `provision()` (Task 1.1)
-- [ ] Extend `daytona.create()` call to pass `envVars: { ANTHROPIC_API_KEY: ..., GITHUB_TOKEN: params.credential }` (Task 1.2)
-- [ ] Amend the existing NFR-S1 test at line 51-64 (`expect(Object.keys(createArg)).not.toContain('env')`) to assert the new security model (Task 8.1)
-- [ ] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
-- [ ] ✅ Test passes (green phase)
+- [x] Read `ANTHROPIC_API_KEY` from `process.env.ANTHROPIC_API_KEY` in `provision()` (Task 1.1)
+- [x] Extend `daytona.create()` call to pass `envVars: { ANTHROPIC_API_KEY: ..., GITHUB_TOKEN: params.credential }` (Task 1.2)
+- [x] Amend the existing NFR-S1 test at line 51-64 (`expect(Object.keys(createArg)).not.toContain('env')`) to assert the new security model (Task 8.1)
+- [x] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
+- [x] ✅ Test passes (green phase)
 
 ### Test: provision() passes networkAllowList to daytona.create()
 
@@ -437,10 +437,10 @@ No new `data-testid` attributes required. Story 6.1 is entirely backend — no U
 
 **Tasks to make this test pass:**
 
-- [ ] Define a module-level constant for the networkAllowList value (Task 1.3)
-- [ ] Pass `networkAllowList` to `daytona.create()` call (Task 1.3)
-- [ ] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
-- [ ] ✅ Test passes (green phase)
+- [x] Define a module-level constant for the networkAllowList value (Task 1.3)
+- [x] Pass `networkAllowList` to `daytona.create()` call (Task 1.3)
+- [x] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
+- [x] ✅ Test passes (green phase)
 
 ### Test: provision() uploads sandbox-agent binary via sandbox.fs.uploadFile
 
@@ -448,11 +448,11 @@ No new `data-testid` attributes required. Story 6.1 is entirely backend — no U
 
 **Tasks to make this test pass:**
 
-- [ ] Add binary installation step to `provision()` (Task 2.1)
-- [ ] Upload sandbox-agent binary via `sandbox.fs.uploadFile(localPath, remotePath)` (Task 2.2)
-- [ ] Add Dockerfile build stage for sandbox-agent binary download + checksum (Task 2.2)
-- [ ] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
-- [ ] ✅ Test passes (green phase)
+- [x] Add binary installation step to `provision()` (Task 2.1)
+- [x] Upload sandbox-agent binary via `sandbox.fs.uploadFile(localPath, remotePath)` (Task 2.2)
+- [x] Add Dockerfile build stage for sandbox-agent binary download + checksum (Task 2.2)
+- [x] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
+- [x] ✅ Test passes (green phase)
 
 ### Test: provision() installs Claude Code via npm install
 
@@ -460,10 +460,10 @@ No new `data-testid` attributes required. Story 6.1 is entirely backend — no U
 
 **Tasks to make this test pass:**
 
-- [ ] Add Claude Code CLI install via `executeCommand('npm install -g @anthropic-ai/claude-code@<exact-version>')` (Task 2.3)
-- [ ] Define module-level constant for Claude Code version (Task 2.3)
-- [ ] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
-- [ ] ✅ Test passes (green phase)
+- [x] Add Claude Code CLI install via `executeCommand('npm install -g @anthropic-ai/claude-code@<exact-version>')` (Task 2.3)
+- [x] Define module-level constant for Claude Code version (Task 2.3)
+- [x] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
+- [x] ✅ Test passes (green phase)
 
 ### Test: destroy() returns void when DaytonaNotFoundError
 
@@ -471,11 +471,11 @@ No new `data-testid` attributes required. Story 6.1 is entirely backend — no U
 
 **Tasks to make this test pass:**
 
-- [ ] Replace `isNotFoundError()` string heuristic with `err instanceof DaytonaNotFoundError || (err instanceof DaytonaError && err.statusCode === 404)` (Task 5.1)
-- [ ] Import `DaytonaNotFoundError`, `DaytonaError` from `@daytonaio/sdk` (Task 5.1)
-- [ ] Remove the old `isNotFoundError` private method (Task 5.3)
-- [ ] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
-- [ ] ✅ Test passes (green phase)
+- [x] Replace `isNotFoundError()` string heuristic with `err instanceof DaytonaNotFoundError || (err instanceof DaytonaError && err.statusCode === 404)` (Task 5.1)
+- [x] Import `DaytonaNotFoundError`, `DaytonaError` from `@daytonaio/sdk` (Task 5.1)
+- [x] Remove the old `isNotFoundError` private method (Task 5.3)
+- [x] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
+- [x] ✅ Test passes (green phase)
 
 ### Test: provision() does NOT call daytona.delete when create rejects (F2)
 
@@ -483,9 +483,9 @@ No new `data-testid` attributes required. Story 6.1 is entirely backend — no U
 
 **Tasks to make this test pass:**
 
-- [ ] Delete the dead `if (sandbox) { await this.daytona.delete(sandbox); }` cleanup branch in `provision()` catch block (Task 6.1)
-- [ ] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
-- [ ] ✅ Test passes (green phase)
+- [x] Delete the dead `if (sandbox) { await this.daytona.delete(sandbox); }` cleanup branch in `provision()` catch block (Task 6.1)
+- [x] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
+- [x] ✅ Test passes (green phase)
 
 ### Test: resume() propagates error when daytona.start rejects (F3)
 
@@ -493,9 +493,9 @@ No new `data-testid` attributes required. Story 6.1 is entirely backend — no U
 
 **Tasks to make this test pass:**
 
-- [ ] Verify `resume()` propagates `daytona.start()` rejection (current behavior — test makes contract explicit) (Task 7.1)
-- [ ] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
-- [ ] ✅ Test passes (green phase)
+- [x] Verify `resume()` propagates `daytona.start()` rejection (current behavior — test makes contract explicit) (Task 7.1)
+- [x] Run test: `yarn nx test agent-be --testPathPattern="sandbox.service.nfr-s1"`
+- [x] ✅ Test passes (green phase)
 
 ### Test: .env.example documents ANTHROPIC_API_KEY
 
@@ -503,9 +503,9 @@ No new `data-testid` attributes required. Story 6.1 is entirely backend — no U
 
 **Tasks to make this test pass:**
 
-- [ ] Create `apps/agent-be/.env.example` with `ANTHROPIC_API_KEY` documented as required (Task 9.1)
-- [ ] Run test: `yarn nx test agent-be --testPathPattern="env-example"`
-- [ ] ✅ Test passes (green phase)
+- [x] Create `apps/agent-be/.env.example` with `ANTHROPIC_API_KEY` documented as required (Task 9.1)
+- [x] Run test: `yarn nx test agent-be --testPathPattern="env-example"`
+- [x] ✅ Test passes (green phase)
 
 ### Test: provision records binaries as installed (integration)
 
@@ -513,9 +513,9 @@ No new `data-testid` attributes required. Story 6.1 is entirely backend — no U
 
 **Tasks to make this test pass:**
 
-- [ ] Verify `SandboxServiceFake.areBinariesInstalled()` returns true after provision (test seam already applied)
-- [ ] Run test: `cd apps/agent-be && npx jest --config test/jest-integration.config.ts sandbox-lifecycle`
-- [ ] ✅ Test passes (green phase)
+- [x] Verify `SandboxServiceFake.areBinariesInstalled()` returns true after provision (test seam already applied)
+- [x] Run test: `cd apps/agent-be && npx jest --config test/jest-integration.config.ts sandbox-lifecycle`
+- [x] ✅ Test passes (green phase)
 
 ---
 

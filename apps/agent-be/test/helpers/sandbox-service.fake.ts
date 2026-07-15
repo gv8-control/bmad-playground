@@ -6,6 +6,7 @@ import type {
   GitUserConfig,
   WorkingTreeStatus,
   SkillInfo,
+  AgentSessionHandle,
 } from '@bmad-easy/shared-types';
 
 /**
@@ -27,6 +28,15 @@ export class SandboxServiceFake implements ISandboxService {
   private skills: SkillInfo[] = [];
   private sandboxCounter = 0;
   private readonly commitCalls: Array<{ sandboxId: string; message: string; author?: GitUserConfig }> = [];
+
+  // ─── Story 6.2 test seam — process session lifecycle state ──────────────
+  private readonly createdSessions: Array<{ sandboxId: string; sessionId: string; command: string; cwd?: string }> = [];
+  private readonly terminatedSessions: Array<{ sandboxId: string; sessionId: string }> = [];
+  private agentEvents: string[] = [];
+  private agentStderrEvents: string[] = [];
+  private agentStreamDelay = 0;
+  private shouldFailNextAgentStream = false;
+  private sessionCounter = 0;
 
   /** Control hook: simulate a slow provision (milliseconds). */
   setProvisionDelay(ms: number): void {
@@ -196,6 +206,80 @@ export class SandboxServiceFake implements ISandboxService {
 
   async listSkills(_sandboxId: string): Promise<SkillInfo[]> {
     return this.skills;
+  }
+
+  // ─── Story 6.2 test seam — process session lifecycle methods ─────────────
+  // These mirror the real SandboxService session methods (createSession +
+  // executeSessionCommand + getSessionCommandLogs + deleteSession) without
+  // calling the Daytona SDK. The fake reproduces observable side effects that
+  // integration tests assert on (session creation, log streaming, termination).
+
+  /** Control hook: set the event chunks that streamAgentLogs delivers via onStdout. */
+  setAgentEvents(events: string[]): void {
+    this.agentEvents = events;
+  }
+
+  /** Control hook: set the stderr chunks that streamAgentLogs delivers via onStderr. */
+  setAgentStderrEvents(events: string[]): void {
+    this.agentStderrEvents = events;
+  }
+
+  /** Control hook: simulate a slow agent stream (delay between chunks in ms). */
+  setAgentStreamDelay(ms: number): void {
+    this.agentStreamDelay = ms;
+  }
+
+  /** Control hook: cause the next streamAgentLogs call to reject mid-stream. */
+  failNextAgentStream(): void {
+    this.shouldFailNextAgentStream = true;
+  }
+
+  /** Inspection: list of createAgentSession calls made. */
+  getCreatedSessions(): Array<{ sandboxId: string; sessionId: string; command: string; cwd?: string }> {
+    return [...this.createdSessions];
+  }
+
+  /** Inspection: list of terminateAgentSession calls made. */
+  getTerminatedSessions(): Array<{ sandboxId: string; sessionId: string }> {
+    return [...this.terminatedSessions];
+  }
+
+  async createAgentSession(sandboxId: string, command: string, cwd?: string): Promise<AgentSessionHandle> {
+    const sessionId = `agent-session-${this.sessionCounter++}`;
+    const commandId = `agent-cmd-${this.sessionCounter++}`;
+    this.createdSessions.push({ sandboxId, sessionId, command, cwd });
+    return { sessionId, commandId };
+  }
+
+  async streamAgentLogs(
+    _sandboxId: string,
+    _handle: AgentSessionHandle,
+    onStdout: (chunk: string) => void,
+    onStderr: (chunk: string) => void,
+  ): Promise<void> {
+    if (this.shouldFailNextAgentStream) {
+      this.shouldFailNextAgentStream = false;
+      throw new Error('SandboxServiceFake: simulated agent stream failure');
+    }
+    // When a stream delay is set, wait before delivering any output — this
+    // simulates a stalled agent (no events arriving) so the event bridge's
+    // circuit breaker can be exercised even with an empty event list.
+    if (this.agentStreamDelay > 0) {
+      await new Promise((r) => setTimeout(r, this.agentStreamDelay));
+    }
+    for (const chunk of this.agentEvents) {
+      if (this.agentStreamDelay > 0) {
+        await new Promise((r) => setTimeout(r, this.agentStreamDelay));
+      }
+      onStdout(chunk);
+    }
+    for (const chunk of this.agentStderrEvents) {
+      onStderr(chunk);
+    }
+  }
+
+  async terminateAgentSession(sandboxId: string, sessionId: string): Promise<void> {
+    this.terminatedSessions.push({ sandboxId, sessionId });
   }
 
   /** Inspection: sandboxes currently provisioned. */

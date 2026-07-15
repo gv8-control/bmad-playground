@@ -7,6 +7,7 @@ import type {
   GitUserConfig,
   WorkingTreeStatus,
   SkillInfo,
+  AgentSessionHandle,
 } from '@bmad-easy/shared-types';
 import { DaytonaError, DaytonaNotFoundError, type Daytona, type Sandbox } from '@daytonaio/sdk';
 import { DAYTONA_CLIENT } from './daytona-client.provider';
@@ -72,6 +73,18 @@ const SANDBOX_NPM_INSTALL_TIMEOUT_S = 120;
  * The SDK default is 30 minutes, which is far too long for a cold-start path.
  */
 const SANDBOX_UPLOAD_TIMEOUT_S = 120;
+
+/**
+ * Timeout (seconds) for `executeSessionCommand` (the async start of
+ * sandbox-agent, not the long-lived log stream). The async start should
+ * return quickly (it just launches the process); 30s is a generous upper
+ * bound that prevents a stalled start from blocking the event bridge.
+ * Distinct from the circuit breaker (per-active-run timer that resets on
+ * events) — this is a per-call timeout. The `getSessionCommandLogs` streaming
+ * call is long-lived by design — no timeout on it (the circuit breaker
+ * handles stall detection).
+ */
+const SESSION_COMMAND_TIMEOUT_S = 30;
 
 @Injectable()
 export class SandboxService implements ISandboxService {
@@ -308,5 +321,70 @@ export class SandboxService implements ISandboxService {
 
   private shellQuote(value: string): string {
     return `'${value.replace(/'/g, "'\\''")}'`;
+  }
+
+  // ─── Story 6.2 — process session lifecycle methods ─────────────────────
+  // Encapsulate the Daytona process session API (createSession,
+  // executeSessionCommand, getSessionCommandLogs, deleteSession). The event
+  // bridge calls through ISandboxService for all process session operations —
+  // SandboxService is the sole Daytona SDK boundary (architecture: "apps/agent-be
+  // is the sole initiating party toward Daytona").
+
+  async createAgentSession(sandboxId: string, command: string, cwd?: string): Promise<AgentSessionHandle> {
+    const sandbox = await this.getSandbox(sandboxId);
+    const sessionId = `agent-${sandboxId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    await sandbox.process.createSession(sessionId);
+    const effectiveCommand = cwd ? `cd ${this.shellQuote(cwd)} && ${command}` : command;
+    // executeSessionCommand runs AFTER createSession succeeds — if it throws,
+    // the session is already created in Daytona. Clean it up before re-throwing
+    // so the failure does not leak a zombie session (the caller's catch cannot
+    // clean up because the session ID is never returned on failure).
+    try {
+      const response = await sandbox.process.executeSessionCommand(
+        sessionId,
+        { command: effectiveCommand, runAsync: true },
+        SESSION_COMMAND_TIMEOUT_S,
+      );
+      return { sessionId, commandId: response.cmdId };
+    } catch (err) {
+      await sandbox.process.deleteSession(sessionId).catch((deleteErr) => {
+        this.logger.error(
+          `Failed to clean up session ${sessionId} after executeSessionCommand failure: ${deleteErr}`,
+        );
+      });
+      throw err;
+    }
+  }
+
+  async streamAgentLogs(
+    sandboxId: string,
+    handle: AgentSessionHandle,
+    onStdout: (chunk: string) => void,
+    onStderr: (chunk: string) => void,
+  ): Promise<void> {
+    const sandbox = await this.getSandbox(sandboxId);
+    await sandbox.process.getSessionCommandLogs(
+      handle.sessionId,
+      handle.commandId,
+      onStdout,
+      onStderr,
+    );
+  }
+
+  async terminateAgentSession(_sandboxId: string, sessionId: string): Promise<void> {
+    const sandbox = await this.getSandbox(_sandboxId);
+    try {
+      await sandbox.process.deleteSession(sessionId);
+    } catch (err) {
+      // F1 idempotency pattern from Story 6.1: deleteSession on an
+      // already-deleted session returns void (no-op). Non-404 errors propagate.
+      if (
+        err instanceof DaytonaNotFoundError ||
+        (err instanceof DaytonaError && err.statusCode === 404)
+      ) {
+        return;
+      }
+      throw err;
+    }
   }
 }

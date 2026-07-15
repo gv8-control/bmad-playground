@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { StreamingController } from './streaming.controller';
 import { SessionEventsService } from './session-events.service';
 import { AgentService } from './agent.service';
+import { AguiEventBridgeService } from './agui-event-bridge.service';
 import { ToolPillClassifierService } from './tool-pill-classifier.service';
 import { CredentialsModule } from '../credentials/credentials.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
@@ -13,9 +14,10 @@ import { AGENT_SERVICE } from '@bmad-easy/shared-types';
   providers: [
     SessionEventsService,
     ToolPillClassifierService,
+    AguiEventBridgeService,
     { provide: AGENT_SERVICE, useClass: AgentService },
   ],
   controllers: [StreamingController],
-  exports: [SessionEventsService, AGENT_SERVICE, ToolPillClassifierService],
+  exports: [SessionEventsService, AGENT_SERVICE, ToolPillClassifierService, AguiEventBridgeService],
 })
 export class StreamingModule {}

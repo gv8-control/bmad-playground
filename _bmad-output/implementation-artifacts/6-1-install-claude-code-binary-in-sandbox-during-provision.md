@@ -79,9 +79,9 @@ so that the agent can run inside the sandbox where the repository lives, not on 
 
 - **ATDD Checklist:** `_bmad-output/test-artifacts/atdd-checklist-6-1-install-claude-code-binary-in-sandbox-during-provision.md`
 - **Generated Test Files:**
-  - `apps/agent-be/src/sandbox/sandbox.service.nfr-s1.spec.ts` (22 new skipped tests — AC-1,2,3,7)
-  - `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts` (4 new skipped tests + F2 comment — AC-1,2,3,4)
-  - `apps/agent-be/test/unit/env-example.spec.ts` (NEW file, 2 skipped tests — AC-5)
+  - `apps/agent-be/src/sandbox/sandbox.service.nfr-s1.spec.ts` (22 tests — all activated — AC-1,2,3,7)
+  - `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts` (4 tests — all activated + F2 comment — AC-1,2,3,4)
+  - `apps/agent-be/test/unit/env-example.spec.ts` (NEW file, 2 tests — all activated — AC-5)
 - **Test Seams Applied (not skipped — active infrastructure):**
   - `apps/agent-be/test/helpers/mock-daytona.ts` — `MockSandbox.fs` with `uploadFile` added
   - `apps/agent-be/test/helpers/sandbox-service.fake.ts` — inspection methods (`areBinariesInstalled`, `getProvisionedEnvVars`, `getNetworkAllowList`) + `destroy()` idempotency fix
