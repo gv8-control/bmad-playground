@@ -145,9 +145,13 @@ jobs:
         run: yarn install --immutable
 
       - name: Run unit and integration tests
-        run: yarn nx run-many --target=test,test-integration --all --parallel=2 --passWithNoTests
+        # TEMP OOM MITIGATION (run #120): web:test process was SIGKILLed mid-output.
+        # If the next run still fails, revert these three changes:
+        #   1. --parallel=2 (was 1), 2. --maxWorkers=50% (remove), 3. NODE_OPTIONS (remove)
+        run: yarn nx run-many --target=test,test-integration --all --parallel=1 --passWithNoTests --maxWorkers=50%
         env:
           CI: true
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Upload unit test results
         if: failure()
