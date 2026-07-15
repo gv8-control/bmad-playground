@@ -131,12 +131,14 @@ export default defineConfig({
         {
           command: 'yarn nx run web:dev',
           url: 'http://localhost:3000',
-          reuseExistingServer: !process.env.CI,
+          // CI workflow starts the web app and agent-be before running Playwright;
+          // reuse those servers instead of conflicting on the same ports.
+          reuseExistingServer: true,
         },
         {
           command: 'yarn nx run agent-be:serve',
           url: 'http://localhost:3001/health',
-          reuseExistingServer: !process.env.CI,
+          reuseExistingServer: true,
         },
       ],
 });
