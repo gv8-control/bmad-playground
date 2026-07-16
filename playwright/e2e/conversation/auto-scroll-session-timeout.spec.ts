@@ -184,22 +184,6 @@ async function sendMessage(page: Page, text: string): Promise<void> {
 test.describe('Story 6.5 (P5): auto-scroll regression — Retry visible on SESSION_TIMEOUT while scrolled up', () => {
   test.describe.configure({ mode: 'serial' });
 
-  // EXPECTED-TO-FAIL (testarch-automate validation, Story 6.5):
-  // This test cannot pass in the current environment due to a pre-existing JWT
-  // decryption issue: the synthetic session JWT encoded by next-auth/jwt
-  // encode() in Node.js (auth.setup.ts) cannot be decrypted by the Next.js
-  // middleware (Edge runtime). /conversations/new redirects to /sign-in because
-  // the session is rejected, so the mock EventSource (installed via addInitScript)
-  // never initializes — waitForEventSource times out. The GitHub OAuth flow is
-  // also broken (Configuration error), so the real OAuth path fails too.
-  // Root cause: environment/infrastructure (Edge vs Node.js JWE key derivation),
-  // NOT a test-quality issue (selector, timing, mocking, data).
-  // Unfixable without editing production code (middleware/auth config), which
-  // is out of scope per DP-5 and explicitly forbidden by the validate instruction.
-  // The test logic is correct — it passes when the auth session works.
-  // Remove test.fixme() when the JWT decryption issue is resolved.
-  test.fixme();
-
   test('[P1] Retry button stays visible when SESSION_TIMEOUT fires while scrolled up (Epic 5 M1 regression guard)', async ({
     page,
     withRepoConnection,

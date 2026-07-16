@@ -249,6 +249,28 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
         service.injectGitConfig('sandbox-1', { name: 'A', email: 'a@b.com' }),
       ).rejects.toThrow('email config failed');
     });
+
+    // NFR-1 (Story 6.4 audit): injectGitConfig() has the same empty-error-message
+    // bug that commit() had (F4). git config writes failures to stderr; the SDK's
+    // ExecuteResponse.result is stdout-only, so result is empty on failure.
+    // The || fallback surfaces the exit code instead of throwing Error('').
+    it('[P0] injectGitConfig() throws a non-empty diagnostic (incl. exit code) when git config user.name fails with empty result', async () => {
+      mockSandbox.process.executeCommand.mockResolvedValueOnce({ exitCode: 1, result: '' });
+
+      await expect(
+        service.injectGitConfig('sandbox-1', { name: 'A', email: 'a@b.com' }),
+      ).rejects.toThrow(/exit code 1/);
+    });
+
+    it('[P0] injectGitConfig() throws a non-empty diagnostic (incl. exit code) when git config user.email fails with empty result', async () => {
+      mockSandbox.process.executeCommand
+        .mockResolvedValueOnce({ exitCode: 0, result: '' })
+        .mockResolvedValueOnce({ exitCode: 1, result: '' });
+
+      await expect(
+        service.injectGitConfig('sandbox-1', { name: 'A', email: 'a@b.com' }),
+      ).rejects.toThrow(/exit code 1/);
+    });
   });
 
   describe('[P0] clone() — propagates SDK errors (error propagation guard)', () => {

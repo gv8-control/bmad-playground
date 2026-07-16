@@ -190,7 +190,12 @@ export class SandboxService implements ISandboxService {
       10,
     );
     if (nameResponse.exitCode !== 0) {
-      throw new Error(nameResponse.result);
+      // git config writes failure diagnostics to stderr; the SDK's
+      // ExecuteResponse.result is stdout-only, so it may be empty.
+      // Fall back to a diagnostic that includes the exit code (F4 pattern).
+      throw new Error(
+        nameResponse.result || `git config user.name failed (exit code ${nameResponse.exitCode})`,
+      );
     }
     const emailResponse = await sandbox.process.executeCommand(
       `git config user.email ${this.shellQuote(config.email)}`,
@@ -199,7 +204,9 @@ export class SandboxService implements ISandboxService {
       10,
     );
     if (emailResponse.exitCode !== 0) {
-      throw new Error(emailResponse.result);
+      throw new Error(
+        emailResponse.result || `git config user.email failed (exit code ${emailResponse.exitCode})`,
+      );
     }
   }
 

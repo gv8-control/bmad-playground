@@ -1,9 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 import { config as loadDotenv } from 'dotenv';
 
-// Load .env.local into the Playwright runner process (mirrors Next.js dev-server behaviour).
-// The webServer process inherits the shell env, so variables set here (via process.env) are
-// NOT automatically visible to the server — the server reads .env.local itself at startup.
+// Load env files into the Playwright runner process. .env provides
+// AUTH_SECRET, DATABASE_URL, etc. needed by auth.setup.ts syntheticSession().
+// .env.local provides test-specific vars (TEST_GITHUB_*). Both are loaded
+// with override: false so real env vars always win.
+// The webServer processes (Next.js, NestJS) read their own env files at startup.
+loadDotenv({ path: '.env', override: false });
 loadDotenv({ path: '.env.local', override: false });
 
 // The storageState path is overridden by @seontechnologies/playwright-utils

@@ -21,7 +21,15 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 const E2E_GITHUB_ID = 'e2e-test-default-99999';
 
 setup('authenticate', async ({ page, request }) => {
-  if (process.env.TEST_GITHUB_USERNAME && process.env.TEST_GITHUB_PASSWORD) {
+  // Real OAuth flow only for real-service tier (needs a real GitHub test account
+  // + configured OAuth app). PR-tier tests use syntheticSession (signed JWT)
+  // to avoid the external OAuth dependency — the tested paths never trigger
+  // real agent-run code, so no real GitHub token is needed.
+  if (
+    process.env.PLAYWRIGHT_REAL_SERVICE === '1' &&
+    process.env.TEST_GITHUB_USERNAME &&
+    process.env.TEST_GITHUB_PASSWORD
+  ) {
     await realOAuthFlow({ page });
   } else {
     await syntheticSession({ request });
