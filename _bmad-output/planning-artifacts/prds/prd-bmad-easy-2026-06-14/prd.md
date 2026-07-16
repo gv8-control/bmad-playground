@@ -2,7 +2,7 @@
 title: "PRD: bmad-easy"
 status: draft
 created: 2026-06-14
-updated: 2026-07-02
+updated: 2026-07-16
 status: approved
 approved_by: John (Product Manager)
 approval_date: 2026-07-02
@@ -179,6 +179,20 @@ Platform reads current `_bmad-output/` state from the Repository on page load an
 - A manual refresh control is visible on the Project Map.
 - No real-time push detection in MVP; Repository state does not update automatically while the page is open.
 
+#### FR-21: Repository Disconnection
+
+User can disconnect the connected Repository and connect a different one. FR-1 covers connection but provides no mechanism for disconnection or switching; without this FR, users are permanently bound to the first Repository they connect — a dead end for wrong-repo, renamed-repo, and team-migration scenarios.
+
+**Consequences (testable):**
+
+- A "Disconnect" affordance for the connected Repository is accessible from the Settings page.
+- Activating "Disconnect" presents a confirmation dialog warning the user that: (1) all active Conversations will be terminated, and (2) any uncommitted work — working tree state that has not been committed to the Repository via FR-15 or via an agent-initiated `git commit` — will be lost. The dialog requires explicit confirmation; no single-action destructive disconnect is permitted.
+- On confirmation: all active Sandboxes for the user are terminated; the RepoConnection record is deleted; the user is redirected to the onboarding flow (FR-1) to connect a new Repository.
+- Disconnecting does not delete committed Artifacts. Artifacts live in the Repository, not on the platform; the platform owns no copy of Repository content (§4.1 description). When the same Repository is reconnected, its committed Artifacts reappear on the Project Map unchanged.
+- After disconnection completes, the user can immediately connect a new Repository through the onboarding flow (FR-1, FR-2). No cooling-off period is imposed.
+
+**Out of Scope:** Connecting multiple Repositories concurrently (post-MVP per FR-1 Out of Scope). A "switch Repository" affordance that bypasses the standard onboarding flow (FR-2); switching is implemented as Disconnect followed by the onboarding redirect. The underlying data cascade (sandbox session registry cleanup, conversation state records, stored OAuth credential handling) is the architecture document's concern, not specified here.
+
 ---
 
 ### 4.2 Project Map
@@ -275,6 +289,7 @@ User can have multiple Conversations active concurrently, each accessible at its
 - Each Conversation is assigned a 2–5 word semantic title derived from its content. The semantic title is used as the Conversation's page title and as its label in the persistent side navigation.
 - A per-user maximum of 10 concurrent active Conversations is enforced at the platform level.
 - Attempting to open a new Conversation beyond the limit shows a "session limit reached" message rather than silently failing.
+- Once conversation delete ships (Story 7.11), users can delete conversations to free up slots, making the limit a manageable constraint rather than a permanent wall.
 
 #### FR-12: Tool Call Visibility and Semantic Recognition
 
@@ -381,6 +396,19 @@ All platform access requires an authenticated account. In MVP, all users are aut
 - All authenticated MVP users have unrestricted access to all platform features (Project Map, Artifact Browser, Conversations).
 - Concurrent session limits defined in FR-11 are enforced regardless of access status.
 
+#### FR-20: Session Termination
+
+User can terminate their platform session and sign out. This is a required recovery path: the platform's credential failure error copy — surfaced in the credential error banner and across the repository validation, repository connection, and artifacts action surfaces — instructs users to sign out and sign back in to resolve credential failures, but prior to this FR no sign-out affordance existed in the UI. Sign-out is the in-product recovery step that fulfills that copy.
+
+**Consequences (testable):**
+
+- A "Sign out" action is accessible from the user avatar dropdown menu in the persistent side navigation. The avatar — described in §8 as the side-navigation entry point — becomes a dropdown containing account actions; "Sign out" is the only account action in MVP.
+- The sign-out affordance is present on every authenticated page, because the persistent side navigation is always visible after onboarding (§8).
+- Activating "Sign out" terminates the user's platform session and redirects the browser to the sign-in screen.
+- Sign-out does not terminate the user's active Sandboxes. Each active Conversation's Sandbox continues running until it reaches idle timeout or the Conversation is explicitly ended. Platform session lifetime and Sandbox session lifetime are independent: sign-out alone does not destroy in-flight agent work.
+
+**Out of Scope:** Additional account menu items in the avatar dropdown (e.g., profile, billing, account settings) — post-MVP; only "Sign out" is included in MVP. Bulk session revocation (signing the user out of all active devices from a single action) — post-MVP. Tying Sandbox termination to sign-out (sign-out intentionally leaves Sandboxes running; explicit sandbox termination as a user-initiated cascade is covered by repository disconnect in FR-21, not by sign-out).
+
 ---
 
 ## 5. Non-Goals (Explicit)
@@ -472,7 +500,7 @@ Verified with a single manual test run under normal conditions, not statistical 
 
 **Navigation model.** The platform uses page-based navigation. Project Map, Conversation, and Artifact Browser are distinct pages with stable URLs. In-page navigation is hierarchical with breadcrumbs one level deep: Project Map is the root; Conversation and Artifact Browser pages are one level down and display a breadcrumb back to the Project Map. No in-app tab UI is implemented.
 
-A persistent side navigation panel is always visible after onboarding. It contains: the last 5 Conversations labeled with a 2–5 word semantic summary each, a New Conversation button, a separator, links to Project Map and Artifact Browser, and a user avatar circle displaying the user's initials as the entry point to Settings. Settings is present in MVP as an empty "coming soon" page. (Note for downstream authors: the persistent side navigation panel specification is located here in §8 rather than in §4 Features.)
+A persistent side navigation panel is always visible after onboarding. It contains: the last 5 Conversations labeled with a 2–5 word semantic summary each, a New Conversation button, a separator, links to Project Map and Artifact Browser, and a user avatar circle displaying the user's initials as a dropdown menu trigger (per FR-20). The avatar dropdown contains account actions — "Sign out" is the only account action in MVP — and a "Settings" link navigating to the Settings page. Settings is present in MVP with a Repository section containing a Disconnect action (per FR-21) plus non-interactive "coming soon" teaser items for account management and notification preferences. (Note for downstream authors: the persistent side navigation panel specification is located here in §8 rather than in §4 Features.) (Amended 2026-07-16 per FR-20 and FR-21.)
 
 **Sandbox isolation level.** Daytona Cloud provides medium isolation, which is acceptable for MVP given authenticated users directing agent work on their own Repositories. If evidence of adversarial use emerges, upgrading to stronger VM-level isolation is the documented escalation trigger; the platform is designed to contain that migration. [ASSUMPTION: A-2]
 

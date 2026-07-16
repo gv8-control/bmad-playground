@@ -2,7 +2,7 @@
 title: "EXPERIENCE: bmad-easy"
 status: final
 created: 2026-06-15
-updated: 2026-07-08
+updated: 2026-07-16
 sources:
   - _bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md
   - _bmad-output/planning-artifacts/briefs/brief-bmad-easy-2026-06-12/brief.md
@@ -52,7 +52,7 @@ After onboarding completes, the app shell is always present: the persistent side
 | New Conversation | `/conversations/new` | Transient — no stable URL until first message sent |
 | Conversation | `/conversations/:id` | Persistent chat surface |
 | Artifact Browser | `/artifacts` | List + optional detail |
-| Settings | `/settings` | Placeholder — empty "coming soon" |
+| Settings | `/settings` | Repository management (disconnect) + non-interactive "coming soon" teaser items |
 
 **Depth model:** Project Map is the root (depth 0). Conversation and Artifact Browser are one level down (depth 1). Breadcrumb navigation is one level deep: depth-1 pages show "← Project Map" in their header. No deeper nesting.
 
@@ -62,17 +62,67 @@ Always visible in the app shell. Contents, top to bottom:
 
 1. Product wordmark
 2. **New Conversation** button — primary action; always accessible
-3. Conversation list — last 5 conversations, each labeled with its 2–5 word semantic title. Rendered in `text-2`; active conversation highlighted. Below the 5th entry, no additional history is shown (no "show more" in MVP).
+3. Conversation list — the 5 most-recent conversations, each labeled with its 2–5 word semantic title. Rendered in `text-2`; active conversation highlighted. The nav list itself is capped at 5 entries; when the user has more than 5 conversations, a "Show all" link appears below the list and opens a full conversation list modal (see [Conversation List Interactions — Show All](#conversation-list-interactions) below). *Amendment 2026-07-16:* the prior "no 'show more' in MVP" is superseded — the side-nav list still caps at 5, but the full list is reachable via the Show All modal.
 4. Horizontal separator
 5. **Project Map** link
 6. **Artifact Browser** link
-7. _(bottom-pinned)_ **Settings** — represented as the user's avatar circle
+7. _(bottom-pinned)_ **Account** — the user's avatar circle, a dropdown menu trigger (see [Avatar Account Menu](#avatar-account-menu) below)
 
 Active state: the current surface's nav item has `{colors.surface-raised}` background and `{colors.text-1}` text color. All inactive items use `{colors.text-2}`.
 
 No nested items. No expand/collapse. No icon-only collapsed state (collapsed nav is a tablet-only behavior, implemented as an off-canvas drawer triggered by a hamburger button in the app header).
 
-The avatar circle (Settings entry) is a plain navigation link: a single click navigates to `/settings`. No dropdown, menu, or hover popover in MVP.
+#### Avatar Account Menu
+
+_(Amendment 2026-07-16 per UX findings — Finding 1. Supersedes the prior "The avatar circle (Settings entry) is a plain navigation link…" text that previously occupied this position.)_
+
+The avatar circle is a **button** (not a link), with `aria-haspopup="menu"` and `aria-expanded` reflecting the open state. It retains its `aria-label` with the user's name (per Accessibility Floor — Text alternatives). The previous "Settings" text label beside the avatar is removed; the avatar circle alone is the trigger.
+
+Activating the avatar (click, or `Enter`/`Space` on keyboard focus) opens a dropdown menu containing:
+
+1. User name and email — display only, `{colors.text-3}` and `{typography.scale.xs}` (muted; not interactive)
+2. "Settings" — link, navigates to `/settings`
+3. Divider (separator)
+4. "Sign out" — action button
+
+Menu behavior:
+
+- Keyboard-navigable: `Tab` moves between items; `Escape` closes the menu and returns focus to the avatar trigger.
+- Outside click closes the menu.
+- Selecting "Sign out" terminates the session and redirects to `/sign-in`.
+
+#### Conversation List Interactions
+
+_(Amendment 2026-07-16 per UX findings — Findings 4, 5, 7, 9.)_
+
+**Empty State** (Finding 7). When the conversation list is empty (no conversations with titles), the conversation region shows muted text: "No conversations yet" — `{colors.text-3}` and `{typography.scale.xs}`. No illustration or icon; the New Conversation button directly above already prompts action.
+
+**Delete** (Finding 4). Each conversation entry has a delete affordance — a trash-icon button — revealed on hover and on focus. The delete button is a separate focusable element (`Tab` reaches it independently of the conversation link) and has `aria-label="Delete conversation: [title]"`. Clicking delete opens a confirmation dialog using the standard dialog pattern (§Accessibility Floor — focus trap, `Escape` to close, focus returns to the trigger):
+
+- Title: "Delete conversation?"
+- Body: "This conversation and its chat history will be permanently deleted. This cannot be undone."
+- Actions: "Delete" (destructive styling per DESIGN.md) and "Cancel"
+
+On confirm: the conversation's sandbox is terminated if active; the conversation record and its messages are deleted; the entry is removed from the side nav (list refreshes). If the deleted conversation was the currently active page, the app redirects to the Project Map.
+
+**Rename** (Finding 5). Each conversation entry has a rename affordance — a pencil-icon button — revealed on hover and on focus, or the user may double-click the title text to enter edit mode. In edit mode:
+
+- The title becomes an inline text input, pre-populated with the current title, text selected on entry.
+- `Enter` saves the new title.
+- `Escape` cancels (reverts to the original title, exits edit mode).
+- Click outside the input also saves (blur = save).
+- An empty title on save is rejected — the title reverts to the original and edit mode exits.
+- The input has a `maxLength` matching the backend cap (generous — e.g. 100 characters).
+
+On save: a Server Action updates the conversation title; the side nav refreshes with the new title.
+
+**Show All** (Finding 9). Below the conversation list (below the 5th entry), a "Show all" link appears when the user has more than 5 conversations. This respects the prior "no show more in MVP" by relocating the full list to a modal — the side-nav list itself remains capped at 5. Clicking "Show all" opens a **modal** (chosen over a dedicated `/conversations` route for MVP simplicity):
+
+- Title: "Conversations"
+- Search input at the top: "Search conversations…" (filters by title, case-insensitive substring match, as the user types)
+- Full scrollable list of all conversations (not capped at 5); each entry shows its title and a relative last-activity timestamp (the same relative-time treatment as side-nav timestamps — Story 7.5).
+- Clicking a conversation navigates to it and closes the modal.
+- The modal uses the standard dialog pattern (§Accessibility Floor — focus trap, `Escape` to close, focus returns to the "Show all" trigger).
 
 ### Artifact Browser Layout States
 
@@ -187,6 +237,23 @@ Flat list, no grouping. Each entry:
 
 Clicking an entry: applies the two-column layout (list at 280px, artifact content in remaining area). The selected entry gets `{colors.surface-raised}` background and a left accent border in `{colors.accent}`.
 
+### Artifact Search and Filter
+
+_(Amendment 2026-07-16 per UX findings — Finding 8.)_
+
+A search/filter control sits at the top of the artifact list, above the list entries. It appears in both Artifact Browser layout states (list-only and list + detail). Components:
+
+- **Search input.** Placeholder: "Search artifacts…". Filters the list by title (case-insensitive substring match) as the user types. A clear button (×) appears inside the input when text is present; activating it (or emptying the input) returns the list to full.
+- **Type filter.** A control (pill buttons or a dropdown) to filter by artifact type (PRD, Brainstorming, Architecture, etc.). "All" is the default and shows every type.
+
+Filter state:
+
+- Filter state persists in URL query params (`?q=search&type=prd`) for shareable filtered views; on load the list honours the query params and applies them.
+- When the active filter results in no matches, the list area shows: "No artifacts match your search." (an exception to the Voice and Tone "prompt action" empty-state guidance — the absence is the intended feedback, and the search input itself is the actionable surface).
+- Clearing the search text and/or resetting the type filter to "All" returns the list to full.
+
+Implementation note: for MVP this is a client-side filter of the server-rendered artifact list (the list is small — tens of items). Architecture review pending for the query pattern.
+
 ### Artifact Card (Project Map)
 
 Artifact Cards (Project Map) and Artifact List entries (Artifact Browser) are two distinct components: cards carry the DESIGN.md `{components.artifact-card}` visual spec and appear only on the Project Map; the Browser's flat list rows are entries, specified under Artifact List above. Card contents (type label, title, status badge) are defined in DESIGN.md.
@@ -226,7 +293,7 @@ Mockup: [mockups/key-new-conversation.html](mockups/key-new-conversation.html)
 Entry point: "New Conversation" button in side nav, or at `/conversations/new`.
 
 - No stable URL until the user sends their first message.
-- Chat area shows an introductory prompt: "Press `/` to browse available skills, or type a message to start." This is platform copy, not an agent message.
+- Chat area shows an introductory prompt as **rendered content centered in the chat-messages panel** (same placement as the happy-path greeting in Story 7.1) — not a textarea placeholder. Copy: "Press `/` to browse available skills, or type a message to start." This is platform copy, not an agent message. It disappears when the user sends their first message. *Amendment 2026-07-16:* the implementation previously rendered this copy only as the chat input's `placeholder` attribute (invisible until the user starts typing); this amendment confirms it is rendered content in the chat area.
 - Chat input is active immediately (no waiting state — sandbox provisioning begins when the user lands on this page, in the background).
 - If sandbox provisioning is still in progress when the user sends their first message: input is disabled momentarily and the chat area shows "Starting session…" with a spinner until ready, then the message sends automatically.
 - On first message send: the page transitions to `/conversations/:id`, the conversation appears in the side nav with its semantic title, and the "New Conversation" page no longer exists for this session.
@@ -298,12 +365,31 @@ Mockup: [mockups/key-artifact-browser.html](mockups/key-artifact-browser.html)
 | Artifact loading | Content pane shows a skeleton loader while the Markdown file is fetched from the Repository |
 | Artifact load error | Content pane shows: "Couldn't load this artifact. Try refreshing the page." with a Refresh button |
 | Credential failed | Credential error banner above the list (same as Project Map); artifact reads may fail until credentials are refreshed |
+| Filtered (search/type) | List shows only entries matching the active search text and type filter; the search input and Type filter are visible at the top of the list; query params reflect filter state *(Amendment 2026-07-16 — Finding 8)* |
+| Filtered — no matches | List area shows: "No artifacts match your search." with the search input still active; clearing filters returns the full list *(Amendment 2026-07-16 — Finding 8)* |
 
 ### Settings
 
-Mockup: [mockups/key-settings.html](mockups/key-settings.html)
+Mockup: [mockups/key-settings.html](mockups/key-settings.html) *(mockup shows the prior "coming soon" treatment — amended 2026-07-16, see below)*
 
-Static "coming soon" page. No loading, empty, or error states required — content is platform copy only. The page may list planned features as teaser items; these are non-interactive in MVP.
+_(Amendment 2026-07-16 per UX findings — Finding 2. Supersedes the prior "Static 'coming soon' page" text below.)_
+
+The Settings page has two sections: **Repository** and **Coming soon**.
+
+**Repository section.** Shows:
+
+- Connected repository URL — display only (`{typography.scale.sm}`, `{colors.text-1}`), not editable here
+- "Disconnect" button — destructive action styling per DESIGN.md
+
+Disconnect flow. Clicking "Disconnect" opens a confirmation dialog using the standard dialog pattern (§Accessibility Floor — focus trap, `Escape` to close, focus returns to the trigger):
+
+- Title: "Disconnect repository?"
+- Body: "Disconnecting will end all active conversations. Any unsaved work will be lost. Committed artifacts remain in your repository."
+- Actions: "Disconnect" (destructive) and "Cancel"
+
+On confirm: all active sandboxes are terminated; the `RepoConnection` is deleted; the user is redirected to `/onboarding`. (Switching repositories is the same path — disconnect → onboarding, where the user connects the new repository.)
+
+**Coming soon section.** Retains the teaser items (account management, notification preferences) as non-interactive display entries — unchanged from the prior "coming soon" treatment. No loading, empty, or error states required for this section.
 
 ### Onboarding Flow States
 
@@ -318,6 +404,24 @@ Single-page flow at `/onboarding`. Steps:
 5. **Success** — redirect to Project Map.
 
 The "Back" action at step 2+ returns to step 1 with the URL preserved.
+
+### Not Found (404)
+
+_(Amendment 2026-07-16 per UX findings — Finding 3.)_
+
+A `not-found.tsx` page at the app root handles unmatched routes (stale bookmarks, typos, deleted-conversation URLs, access-revoked-repo paths). It mirrors the canonical `error.tsx` structure:
+
+- Full page shell; message centered in the content area.
+- `<h1 tabIndex={-1}>` for AppShell route-focus management (focus moves to the h1 on render).
+- Content: h1 "Page not found"; body "The page you're looking for doesn't exist or may have moved."; a "Go to Project Map" link.
+- Respects design tokens (dark-first, same as all surfaces).
+
+Shell context:
+
+- If rendered within the app shell (authenticated route segment), the side nav remains visible and the message appears in the content area.
+- If rendered outside the app shell (unauthenticated), the message is a centered single-column layout against `{colors.bg}` — same treatment as Sign In.
+
+No separate mockup — the treatment reuses the existing `error.tsx` centered "full page" layout.
 
 ---
 

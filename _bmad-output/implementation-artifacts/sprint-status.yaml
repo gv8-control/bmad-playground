@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-07-16T18:00:00Z
+# last_updated: 2026-07-16T19:30:00Z
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-16T18:00:00Z
+last_updated: 2026-07-16T19:30:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -120,12 +120,23 @@ development_status:
   epic-6-retrospective: done
 
   # ── Epic 7: Live-Usage UX Improvements ──
-  # Five UX gaps discovered from live-app usage after Epic 5 closed.
+  # Stories 7.1–7.5: Five UX gaps discovered from live-app usage after Epic 5 closed.
   # Frontend presentation changes only; independent of Epic 6.
-  # See: sprint-change-proposal-2026-07-13.md
+  # Stories 7.6–7.14: Nine dead-ends and missing maintenance surfaces (2026-07-16 extension).
+  # Five of the nine touch backend concerns; all remain independent of Epic 6.
+  # See: sprint-change-proposal-2026-07-13.md (7.1–7.5), sprint-change-proposal-2026-07-16-ux-dead-ends.md (7.6–7.14)
   epic-7: backlog
   7-1-unify-error-state-presentation-in-conversation-view: backlog
   7-2-loading-state-for-sidebar-page-navigation: backlog
   7-3-loading-state-for-artifact-switching-in-artifact-browser: backlog
   7-4-reduce-focus-state-prominence-on-navigation-surfaces: backlog
   7-5-relative-time-for-conversation-timestamps: backlog
+  7-6-sign-out-affordance-avatar-dropdown: backlog
+  7-7-repository-disconnect-from-settings: backlog
+  7-8-new-conversation-intro-prompt: backlog
+  7-9-side-nav-conversation-empty-state: backlog
+  7-10-global-404-page: backlog
+  7-11-conversation-delete: backlog
+  7-12-conversation-rename: backlog
+  7-13-artifact-browser-search-and-filter: backlog
+  7-14-conversation-search-show-all: backlog
