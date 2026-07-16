@@ -1,7 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "default_agent": "coder",
-  "subagent_depth": 2,
   "permission": {
     "external_directory": {
       "/tmp/**": "allow"
