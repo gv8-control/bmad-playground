@@ -54,7 +54,7 @@ The "returns 404 in production" tests now `delete process.env.CI` to work around
 - **There is no dedicated `test-endpoint-guard.test.ts`** with a truth table. The guard is only indirectly exercised through four route test files.
 - **The `env-guard.ts` boot-time guard has zero unit tests.**
 
-Missing guard truth-table cases:
+Missing guard truth-table cases (against the **current** guard, which uses `CI` as the bypass signal -- Phase 2 tests will cover the equivalent cases against the new `ALLOW_TEST_ENDPOINTS_IN_PRODUCTION` signal):
 
 | TEST_ENV | NODE_ENV | CI | Expected | Tested? |
 |---|---|---|---|---|
@@ -93,7 +93,7 @@ The fix doubled down on testing test infrastructure rather than questioning whet
 
 All other `process.env.CI` reads are for test-runner ergonomics (Playwright config: `forbidOnly`, `retries`, `workers`) or test-tier selection (multi-conn spec skip logic). These are unaffected by changing the guard's logic. There is no existing alternative env var (`VERCEL_ENV`, `RAILWAY_ENVIRONMENT`, etc.) that already serves as an "is production?" signal in source code.
 
-**Blast radius of changing the guard:** the two guard files, the 6 "returns 404 in production" test blocks across 4 route test files, and the E2E setup (which must set whatever new signal replaces CI). The `test:e2e:ci` script in `package.json` and `test.yml` E2E steps would need updating.
+**Blast radius of changing the guard:** the two guard files, the 6 "returns 404 in production" test blocks across 4 route test files, and the E2E setup (which must set whatever new signal replaces CI). The `test.yml` "Start web app" steps (e2e + burn-in jobs) would need the new env var added.
 
 ### Unknown 2: Does `conversations/[id]/turns/route.ts` have non-trivial logic worth testing?
 
@@ -121,7 +121,7 @@ The docs treat test-endpoint reachability as a security concern worth verifying.
 
 **Problem:** The `CI` env var is the wrong signal for "is this a test server, not real production."
 
-**Recommendation:** Replace the `CI === 'true'` bypass with an explicit, non-ambient signal. Introduce a dedicated env var (e.g. `ALLOW_TEST_ENDPOINTS_IN_PRODUCTION=true`) as the bypass signal. Set it only in the E2E/burn-in CI steps in `test.yml` where `web:start` runs against a production build.
+**Recommendation:** Replace the `CI === 'true'` bypass with an explicit, non-ambient signal. Introduce a dedicated env var (e.g. `ALLOW_TEST_ENDPOINTS_IN_PRODUCTION=true`) as the bypass signal. Set it only on the "Start web app" steps in the e2e and burn-in CI jobs in `test.yml` where `web:start` runs against a production build.
 
 The guard becomes:
 ```ts
@@ -137,16 +137,24 @@ export function isTestEndpointEnabled(): boolean {
 **Files to update:**
 - `apps/web/src/lib/test-endpoint-guard.ts` -- change the guard predicate
 - `apps/web/src/lib/env-guard.ts` -- change the boot-time guard to match (must stay in lockstep)
-- `.github/workflows/test.yml` -- set the new env var in the 4 locations where `CI: true` + `TEST_ENV: ci` co-occur on production-build server steps (e2e build/start, burn-in build/start)
+- `.github/workflows/test.yml` -- set the new env var on the 2 "Start web app" steps (e2e job line ~245, burn-in job line ~390). The "Build web app" steps do **not** need it: the guard runs at runtime (per-request via `isTestEndpointEnabled()` and at boot via `instrumentation.ts` -> `assertRequiredEnv()`), and `next build` invokes neither.
 - `apps/web/src/test-setup-env.ts` -- no change needed (already sets `TEST_ENV='ci'`, which is sufficient for non-production test env)
 
-**Trade-off:** Requires updating 4 `test.yml` locations. Small, mechanical change. The benefit is that the bypass signal is now non-ambient and cannot accidentally be true on any deployment platform.
+**Trade-off:** Requires updating 2 `test.yml` steps. Small, mechanical change. The benefit is that the bypass signal is now non-ambient and cannot accidentally be true on any deployment platform.
+
+**env-guard.ts redundancy note:** After this change, both `test-endpoint-guard.ts` and `env-guard.ts` will contain identical logic (`TEST_ENV` + `production` + no bypass -> block). The project-context.md describes these as "two layers" of guarding, but if the logic is identical, the second layer catches the exact same condition at a slightly different time (boot vs. per-request). We accept this as defense-in-depth: both must be defeated for the endpoints to be exposed. Making `env-guard.ts` stricter (e.g., refuse to boot if `ALLOW_TEST_ENDPOINTS_IN_PRODUCTION=true` on what looks like real production) would reintroduce the "what signal indicates real production?" problem that this fix eliminates.
+
+**Nightly tiers future-proofing:** The nightly-multi-conn, nightly-real-service, and weekly-spike jobs also set `CI: true` + `TEST_ENV: ci`, but they use `web:dev` (via Playwright's `webServer` block in `playwright.config.ts`), not `web:start`. Since `next dev` doesn't set `NODE_ENV=production`, the bypass isn't needed there today. However, commit `2dd6495` already demonstrated the pattern of switching E2E from dev to production builds -- if someone does the same for nightly tiers, they'd need to set the new env var on those steps too. No change needed now, but flag this if nightly tiers migrate to production builds.
+
+**Alternative considered and rejected:** E2E fixtures could use Prisma directly (via a test-only database connection) instead of HTTP endpoints, eliminating the guard problem entirely -- no HTTP endpoints to protect, no env-var bypass needed. This was rejected because it's a significantly larger change (rewriting all E2E fixtures, removing the route handlers, establishing a test-only DB connection pattern) for a security surface that this env-var fix adequately closes. The current approach trades a smaller implementation for a permanent (but now well-guarded) security surface.
 
 ### Phase 2: Add the missing guard truth-table test (HIGH, ~30 min)
 
 **Problem:** The guard's behavior is only indirectly tested through route tests, and the bypass case is untested.
 
 **Recommendation:** Create `apps/web/src/lib/test-endpoint-guard.test.ts` with a parametrized truth table covering all combinations of `(TEST_ENV, NODE_ENV, bypass-signal)`. Also add tests for `env-guard.ts`'s `assertRequiredEnv()` -- it currently has zero unit tests.
+
+**Note on `assertRequiredEnv()` test setup:** `assertRequiredEnv()` validates the entire env schema (`API_URL`, `AUTH_SECRET`, `DATABASE_URL`, `CREDENTIAL_ENCRYPTION_KEK`) via Zod before reaching the TEST_ENV check. Testing just the TEST_ENV branch requires setting all required env vars first. This isn't hard but is non-trivial setup that should be accounted for in the time estimate.
 
 The truth table should cover at minimum:
 - The bypass case (`production` + bypass signal set -> 200) -- currently untested
@@ -162,9 +170,10 @@ The truth table should cover at minimum:
 **Recommendation:**
 1. **Rename** the "returns 404 in production" tests to reflect what's actually being tested (e.g. "returns 404 in production without test-endpoint bypass").
 2. **Remove the inline `delete process.env.CI` workaround** from the 4 route test files -- once the guard uses a non-ambient bypass signal (Phase 1), the production-guard test just needs to not set that signal, which is the default.
-3. **Reduce the 4 route test files** to: one smoke test per route (POST/DELETE happy path) + the 404-guard test. Remove the low-value Prisma-arg-shape assertions that verify trivial wiring already covered by E2E fixtures. This reduces ~26 tests to ~12 without losing real coverage.
-4. **Add route tests for `conversations/route.ts`** -- at minimum a smoke test + the 404-guard + a test for the upsert-vs-create branching logic (the most deserving missing-test candidate).
-5. **Add route tests for `conversations/[id]/turns/route.ts`** -- a smoke test + the 404-guard + a test for the `segments` conditional spread branch.
+3. **Reduce the 4 route test files** to: one smoke test per route (POST/DELETE happy path) + the 404-guard test. Remove the low-value Prisma-arg-shape assertions that verify trivial wiring already covered by E2E fixtures. This reduces ~26 tests to ~12 without losing real coverage. **Trade-off:** arg-shape tests verify Prisma call arguments against mocks (precise, fast, brittle); E2E fixtures exercise the routes against a real database (comprehensive, slow, less precise). Removing arg-shape tests means a change to Prisma call arguments (e.g., someone changes the `where` clause) would only be caught by E2E, which is slower and harder to debug. For test-only routes, this trade-off is defensible -- the routes exist solely to serve E2E fixtures, and the E2E fixtures are the real contract.
+4. **Add route tests for `conversations/route.ts`** -- at minimum a smoke test + the 404-guard + a test for the upsert-vs-create branching logic (the most deserving missing-test candidate). These are **logic tests** (verifying branching behavior), not arg-shape tests (verifying Prisma call arguments) -- the distinction matters because Phase 3 step 3 removes arg-shape tests from existing routes as low-value, while these new tests verify actual behavioral branches that fail when refactored.
+5. **Add route tests for `conversations/[id]/turns/route.ts`** -- a smoke test + the 404-guard + a test for the `segments` conditional spread branch. Same logic-test rationale as above.
+6. **Fix the turns route body validation bug** (identified in Unknown 2): `conversations/[id]/turns/route.ts` POST lacks body validation -- a request missing `turns` throws an unhandled `TypeError` instead of a clean 400. Add `{ status: 400 }` validation matching the pattern in `conversations/route.ts` DELETE (lines 59-65), plus a test for the 400 case. This is a small fix that should be included in the same phase since we're already adding tests for this route.
 
 ### Phase 4: Delete vacuous placeholder tests (LOW, ~5 min)
 
@@ -183,6 +192,7 @@ The truth table should cover at minimum:
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Changing the bypass signal breaks E2E in CI | E2E tests can't access test endpoints against production builds | Update all 4 `test.yml` locations in the same commit; run E2E to verify |
+| Changing the bypass signal breaks E2E in CI | E2E tests can't access test endpoints against production builds | Update the 2 "Start web app" steps in `test.yml` in the same commit; run E2E to verify |
 | Removing Prisma-arg-shape tests reduces coverage | Loss of regression detection if route handler logic changes | The smoke tests + E2E fixtures cover the real behavior; the arg-shape tests only verified mock wiring |
 | Self-hosted deployment is not currently a use case | The CI bypass security hole is theoretical | True today (Vercel is the production host), but the `web:start` target was added in the same commit -- if someone uses it, the hole becomes real. Fixing the signal is cheap insurance. |
+| `.env` + `next start` local behavior change | Running `next start` locally (production build) with the committed `.env` (`TEST_ENV=local`) will now throw at boot via `env-guard.ts` because `TEST_ENV` + `production` + no bypass signal = refuse to start | This is **correct behavior** (fail loudly, not silently). No mitigation needed -- it's the system working as intended. Document as a known behavior change so developers aren't surprised. |
