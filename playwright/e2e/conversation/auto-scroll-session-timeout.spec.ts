@@ -175,12 +175,6 @@ async function readySession(mocks: MockHandle): Promise<void> {
   await mocks.waitForFetchCount(2);
 }
 
-async function sendMessage(page: Page, text: string): Promise<void> {
-  const input = page.getByRole('textbox', { name: 'Message input' });
-  await input.fill(text);
-  await page.getByRole('button', { name: 'Send' }).click();
-}
-
 test.describe('Story 6.5 (P5): auto-scroll regression — Retry visible on SESSION_TIMEOUT while scrolled up', () => {
   test.describe.configure({ mode: 'serial' });
 
@@ -191,8 +185,6 @@ test.describe('Story 6.5 (P5): auto-scroll regression — Retry visible on SESSI
     const mocks = await setupStreamingMocks(page);
     await page.goto('/conversations/new');
     await readySession(mocks);
-
-    await sendMessage(page, 'tell me a long story');
 
     await mocks.emit('RUN_STARTED');
     await mocks.emit('TEXT_MESSAGE_START', { messageId: 'msg-1' });
@@ -212,6 +204,7 @@ test.describe('Story 6.5 (P5): auto-scroll regression — Retry visible on SESSI
         if (!el) return false;
         return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
       },
+      undefined,
       { timeout: 5_000 },
     );
 
