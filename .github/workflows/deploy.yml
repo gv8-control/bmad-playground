@@ -75,7 +75,10 @@ jobs:
           # Extract the most recent READY production deployment URL.
           # This is the deployment currently serving traffic — the one we
           # would roll back to if Railway fails after we deploy a new version.
-          PREVIOUS=$(echo "$DEPLOYMENTS" | jq -r '[.[] | select(.state == "READY")] | .[0].url // empty')
+          # Vercel CLI 56+ wraps the list in {"deployments":[...]}; older CLI
+          # emits a bare array. The type check handles both, and []? guards
+          # against non-iterable edge cases so jq never halts the step.
+          PREVIOUS=$(echo "$DEPLOYMENTS" | jq -r '[(if type=="object" then .deployments else . end)[]? | select(.state == "READY")] | .[0].url // empty')
           if [ -z "$PREVIOUS" ]; then
             echo "No previous READY production deployment found. Auto-rollback will not be available for this deploy."
             echo "PREVIOUS_VERCEL_DEPLOYMENT=" >> "$GITHUB_ENV"
