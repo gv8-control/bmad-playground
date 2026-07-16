@@ -9,13 +9,12 @@ const config: Config = {
     '^.+\\.mjs$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],
   },
   transformIgnorePatterns: [
-    'node_modules/(?!jose|@ag-ui|@anthropic-ai)',
+    'node_modules/(?!jose|@ag-ui)',
   ],
   testEnvironment: 'node',
   moduleNameMapper: {
     '^@bmad-easy/shared-types(.*)$': '<rootDir>/../../libs/shared-types/src$1',
     '^@bmad-easy/database-schemas(.*)$': '<rootDir>/../../libs/database-schemas/src$1',
-    '^@anthropic-ai/claude-agent-sdk$': '<rootDir>/src/__mocks__/claude-agent-sdk.ts',
   },
 };
 

@@ -174,6 +174,8 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
     it('[P0] fires after timeout with no events and terminates the agent session', async () => {
       // setAgentStreamDelay exceeds the circuit breaker timeout.
       // The event bridge must call terminateAgentSession and emit RUN_ERROR.
+      // Story 6.3 Task 1.0: streamAgentEvents now REJECTS with the
+      // AGENT_STREAM_TIMEOUT sentinel on timeout (re-throw in catch block).
       jest.useFakeTimers();
       try {
         sandboxFake.setAgentStreamDelay(200_000); // exceeds 120s default timeout
@@ -184,15 +186,19 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
           command: 'sandbox-agent --agent claude-code --prompt "hello"',
           userId: 'user-1',
         });
+        // Attach handler early to prevent unhandled rejection during timer advance.
+        const streamErr = streamPromise.catch((e: Error) => e);
 
         // advanceTimersByTimeAsync flushes microtasks between timer ticks —
         // required because the circuit breaker timer is scheduled after an
         // await createAgentSession microtask (sync advanceTimersByTime would
         // fire before the timer is scheduled).
         await jest.advanceTimersByTimeAsync(120_000);
-        await streamPromise.catch(() => undefined);
+        const err = await streamErr;
 
         expect(sandboxFake.getTerminatedSessions().length).toBeGreaterThanOrEqual(1);
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toBe('AGENT_STREAM_TIMEOUT');
       } finally {
         jest.useRealTimers();
       }
@@ -209,9 +215,12 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
           command: 'sandbox-agent --agent claude-code --prompt "hello"',
           userId: 'user-1',
         });
+        const streamErr = streamPromise.catch((e: Error) => e);
 
         await jest.advanceTimersByTimeAsync(120_000);
-        await streamPromise.catch(() => undefined);
+        const err = await streamErr;
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toBe('AGENT_STREAM_TIMEOUT');
 
         const errorCalls = emitSpy.mock.calls.filter(
           (c) => c[1]?.event === EventType.RUN_ERROR,
@@ -242,6 +251,9 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
           command: 'sandbox-agent --agent claude-code --prompt "hello"',
           userId: 'user-1',
         });
+        // Attach handler early — the stream may reject if the circuit breaker
+        // fires between chunks (race at the 120s boundary).
+        const streamErr = streamPromise.catch((e: Error) => e);
 
         // Advance past what would be a timeout if the timer didn't reset.
         await jest.advanceTimersByTimeAsync(100_000);
@@ -252,7 +264,7 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
 
         // Advance past the remaining chunk delay so the stream completes.
         await jest.advanceTimersByTimeAsync(100_000);
-        await streamPromise.catch(() => undefined);
+        await streamErr;
       } finally {
         jest.useRealTimers();
       }
@@ -269,9 +281,10 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
           command: 'sandbox-agent --agent claude-code --prompt "hello"',
           userId: 'user-1',
         });
+        const streamErr = streamPromise.catch((e: Error) => e);
 
         await jest.advanceTimersByTimeAsync(120_000);
-        await streamPromise.catch(() => undefined);
+        await streamErr;
 
         // The architecture says "terminate the agent process before emitting
         // the error event." Verify terminateAgentSession was called before
@@ -299,9 +312,10 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
           command: 'sandbox-agent --agent claude-code --prompt "hello"',
           userId: 'user-1',
         });
+        const streamErr = streamPromise.catch((e: Error) => e);
 
         await jest.advanceTimersByTimeAsync(120_000);
-        await streamPromise.catch(() => undefined);
+        await streamErr;
 
         const errorCalls = emitSpy.mock.calls.filter(
           (c) => c[1]?.event === EventType.RUN_ERROR,
@@ -317,51 +331,42 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
 
   describe('[P0] AC-5 — Crash/stall termination via Daytona process API', () => {
     it('[P0] stop() terminates the active session via terminateAgentSession', async () => {
-      sandboxFake.setAgentEvents([
-        JSON.stringify({ type: 'TEXT_MESSAGE_START', messageId: 'msg-1', role: 'assistant' }) + '\n',
-      ]);
+      jest.useFakeTimers();
+      try {
+        sandboxFake.setAgentStreamDelay(200_000); // keep stream in-flight
+        sandboxFake.setAgentEvents([
+          JSON.stringify({ type: 'TEXT_MESSAGE_START', messageId: 'msg-1', role: 'assistant' }) + '\n',
+        ]);
 
-      // Start streaming (don't await — it's long-lived)
-      const streamPromise = service.streamAgentEvents({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        command: 'sandbox-agent --agent claude-code --prompt "hello"',
-        userId: 'user-1',
-      });
+        // Start streaming (don't await — it's long-lived)
+        const streamPromise = service.streamAgentEvents({
+          conversationId: 'conv-1',
+          sandboxId: 'sb-1',
+          command: 'sandbox-agent --agent claude-code --prompt "hello"',
+          userId: 'user-1',
+        });
+        const streamErr = streamPromise.catch((e: Error) => e);
 
-      // Give it a tick to start
-      await new Promise((r) => setTimeout(r, 10));
+        // Advance 0ms to let createAgentSession resolve (microtask flush).
+        await jest.advanceTimersByTimeAsync(0);
 
-      await service.stop('conv-1');
+        await service.stop('conv-1');
 
-      expect(sandboxFake.getTerminatedSessions().length).toBeGreaterThanOrEqual(1);
+        expect(sandboxFake.getTerminatedSessions().length).toBeGreaterThanOrEqual(1);
 
-      await streamPromise.catch(() => undefined);
+        // Story 6.3 Task 1.0: streamAgentEvents rejects with AGENT_STOPPED on stop.
+        const err = await streamErr;
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toBe('AGENT_STOPPED');
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('[P0] stop() does NOT emit any SSE events (RUN_ERROR is for crashes/stalls only)', async () => {
-      sandboxFake.setAgentEvents([]);
-
-      const streamPromise = service.streamAgentEvents({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        command: 'sandbox-agent --agent claude-code --prompt "hello"',
-        userId: 'user-1',
-      });
-
-      await new Promise((r) => setTimeout(r, 10));
-
-      emitSpy.mockClear();
-      await service.stop('conv-1');
-
-      expect(emitSpy).not.toHaveBeenCalled();
-
-      await streamPromise.catch(() => undefined);
-    });
-
-    it('[P0] stop() clears the circuit breaker timer', async () => {
       jest.useFakeTimers();
       try {
+        sandboxFake.setAgentStreamDelay(200_000); // keep stream in-flight
         sandboxFake.setAgentEvents([]);
 
         const streamPromise = service.streamAgentEvents({
@@ -370,6 +375,34 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
           command: 'sandbox-agent --agent claude-code --prompt "hello"',
           userId: 'user-1',
         });
+        const streamErr = streamPromise.catch((e: Error) => e);
+
+        await jest.advanceTimersByTimeAsync(0);
+
+        emitSpy.mockClear();
+        await service.stop('conv-1');
+
+        expect(emitSpy).not.toHaveBeenCalled();
+
+        await streamErr;
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('[P0] stop() clears the circuit breaker timer', async () => {
+      jest.useFakeTimers();
+      try {
+        sandboxFake.setAgentStreamDelay(200_000); // keep stream in-flight
+        sandboxFake.setAgentEvents([]);
+
+        const streamPromise = service.streamAgentEvents({
+          conversationId: 'conv-1',
+          sandboxId: 'sb-1',
+          command: 'sandbox-agent --agent claude-code --prompt "hello"',
+          userId: 'user-1',
+        });
+        const streamErr = streamPromise.catch((e: Error) => e);
 
         await jest.advanceTimersByTimeAsync(0);
         await service.stop('conv-1');
@@ -382,7 +415,7 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
         );
         expect(errorsAfterStop).toHaveLength(0);
 
-        await streamPromise.catch(() => undefined);
+        await streamErr;
       } finally {
         jest.useRealTimers();
       }
@@ -391,12 +424,18 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
     it('[P0] stream error (crash) terminates the session and emits RUN_ERROR', async () => {
       sandboxFake.failNextAgentStream();
 
-      await service.streamAgentEvents({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        command: 'sandbox-agent --agent claude-code --prompt "hello"',
-        userId: 'user-1',
-      }).catch(() => undefined);
+      // Story 6.3 Task 1.0: streamAgentEvents now re-throws on abort. A stream
+      // crash (failNextAgentStream) is NOT an abort-initiated rejection (the
+      // stream rejects before aborted is set), so the catch block sets
+      // aborted=true, emits RUN_ERROR, then re-throws the original error.
+      await expect(
+        service.streamAgentEvents({
+          conversationId: 'conv-1',
+          sandboxId: 'sb-1',
+          command: 'sandbox-agent --agent claude-code --prompt "hello"',
+          userId: 'user-1',
+        }),
+      ).rejects.toThrow('SandboxServiceFake: simulated agent stream failure');
 
       expect(sandboxFake.getTerminatedSessions().length).toBeGreaterThanOrEqual(1);
 
@@ -471,35 +510,42 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
   describe('[P0] AC-7 — OnModuleDestroy cleanup', () => {
     it('[P0] terminates all active sessions on module destroy', async () => {
       // Start two concurrent streams
-      sandboxFake.setAgentEvents([]);
+      jest.useFakeTimers();
+      try {
+        sandboxFake.setAgentStreamDelay(200_000); // keep streams in-flight
+        sandboxFake.setAgentEvents([]);
 
-      const stream1 = service.streamAgentEvents({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        command: 'sandbox-agent --agent claude-code --prompt "hello"',
-        userId: 'user-1',
-      }).catch(() => undefined);
+        const stream1 = service.streamAgentEvents({
+          conversationId: 'conv-1',
+          sandboxId: 'sb-1',
+          command: 'sandbox-agent --agent claude-code --prompt "hello"',
+          userId: 'user-1',
+        }).catch(() => undefined);
 
-      const stream2 = service.streamAgentEvents({
-        conversationId: 'conv-2',
-        sandboxId: 'sb-2',
-        command: 'sandbox-agent --agent claude-code --prompt "world"',
-        userId: 'user-2',
-      }).catch(() => undefined);
+        const stream2 = service.streamAgentEvents({
+          conversationId: 'conv-2',
+          sandboxId: 'sb-2',
+          command: 'sandbox-agent --agent claude-code --prompt "world"',
+          userId: 'user-2',
+        }).catch(() => undefined);
 
-      await new Promise((r) => setTimeout(r, 10));
+        await jest.advanceTimersByTimeAsync(0);
 
-      service.onModuleDestroy();
+        service.onModuleDestroy();
 
-      // Both sessions should be terminated
-      expect(sandboxFake.getTerminatedSessions().length).toBeGreaterThanOrEqual(2);
+        // Both sessions should be terminated
+        expect(sandboxFake.getTerminatedSessions().length).toBeGreaterThanOrEqual(2);
 
-      await Promise.all([stream1, stream2]);
+        await Promise.all([stream1, stream2]);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('[P0] clears all circuit breaker timers on module destroy', async () => {
       jest.useFakeTimers();
       try {
+        sandboxFake.setAgentStreamDelay(200_000); // keep stream in-flight
         sandboxFake.setAgentEvents([]);
 
         const streamPromise = service.streamAgentEvents({
@@ -508,6 +554,7 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
           command: 'sandbox-agent --agent claude-code --prompt "hello"',
           userId: 'user-1',
         });
+        const streamErr = streamPromise.catch((e: Error) => e);
 
         await jest.advanceTimersByTimeAsync(0);
         service.onModuleDestroy();
@@ -521,7 +568,7 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
         );
         expect(errorsAfterDestroy).toHaveLength(0);
 
-        await streamPromise.catch(() => undefined);
+        await streamErr;
       } finally {
         jest.useRealTimers();
       }
@@ -568,7 +615,8 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
         // terminate call here is from stop().
         expect(sandboxFake.getTerminatedSessions().length).toBeGreaterThanOrEqual(1);
 
-        await streamPromise.catch(() => undefined);
+        // Story 6.3 Task 1.0: streamAgentEvents rejects with AGENT_STOPPED.
+        await expect(streamPromise).rejects.toThrow('AGENT_STOPPED');
       } finally {
         jest.useRealTimers();
       }
@@ -586,6 +634,7 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
           command: 'sandbox-agent --agent claude-code --prompt "hello"',
           userId: 'user-1',
         });
+        const streamErr = streamPromise.catch((e: Error) => e);
 
         await jest.advanceTimersByTimeAsync(0);
         await service.stop('conv-1');
@@ -599,7 +648,7 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
         );
         expect(errorsAfterStop).toHaveLength(0);
 
-        await streamPromise.catch(() => undefined);
+        await streamErr;
       } finally {
         jest.useRealTimers();
       }
@@ -631,7 +680,8 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
         // onModuleDestroy must terminate the in-flight session via its handle.
         expect(sandboxFake.getTerminatedSessions().length).toBeGreaterThanOrEqual(1);
 
-        await streamPromise.catch(() => undefined);
+        // Story 6.3 Task 1.0: streamAgentEvents rejects with MODULE_DESTROYING.
+        await expect(streamPromise).rejects.toThrow('MODULE_DESTROYING');
       } finally {
         jest.useRealTimers();
       }
@@ -746,6 +796,128 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
         expect.stringContaining('Unrecognized agent event type'),
       );
       expect(emitSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Story 6.3: onEvent callback (event observation mechanism) ──────────
+  //
+  // Lifecycle event ownership (prevents double emission): when onEvent is
+  // provided, the event bridge SKIPS sessionEvents.emit() for lifecycle
+  // events (RUN_STARTED, RUN_FINISHED, RUN_ERROR) — AgentService owns
+  // lifecycle emission to SSE. Non-lifecycle events follow the normal path:
+  // onEvent is called, then sessionEvents.emit().
+
+  describe('[P0] Story 6.3 — onEvent callback (event observation mechanism)', () => {
+    it('[P0] onEvent is called BEFORE sessionEvents.emit() for non-lifecycle events when callback is provided', async () => {
+      const onEvent = jest.fn();
+
+      sandboxFake.setAgentEvents([
+        JSON.stringify({ type: 'TEXT_MESSAGE_START', messageId: 'msg-1', role: 'assistant' }) + '\n',
+        JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'msg-1', delta: 'Hello' }) + '\n',
+      ]);
+
+      await service.streamAgentEvents({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        command: 'sandbox-agent --agent claude-code --prompt "hello"',
+        userId: 'user-1',
+        onEvent,
+      });
+
+      // onEvent must have been called for each non-lifecycle event.
+      expect(onEvent).toHaveBeenCalled();
+      const onEventTypes = onEvent.mock.calls.map((c) => c[0]?.event);
+      expect(onEventTypes).toContain(EventType.TEXT_MESSAGE_START);
+      expect(onEventTypes).toContain(EventType.TEXT_MESSAGE_CONTENT);
+
+      // Non-lifecycle events must ALSO be forwarded to sessionEvents.emit().
+      const emittedTypes = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedTypes).toContain(EventType.TEXT_MESSAGE_START);
+      expect(emittedTypes).toContain(EventType.TEXT_MESSAGE_CONTENT);
+
+      // onEvent must be called BEFORE sessionEvents.emit() for the same event
+      // (ordering — AgentService observes state before SSE forwards it).
+      const firstContentOnEventOrder = onEvent.mock.invocationCallOrder[0];
+      const firstContentEmitCall = emitSpy.mock.calls.find(
+        (c) => c[1]?.event === EventType.TEXT_MESSAGE_CONTENT,
+      );
+      const firstContentEmitOrder = emitSpy.mock.invocationCallOrder[
+        emitSpy.mock.calls.indexOf(firstContentEmitCall)
+      ];
+      expect(firstContentOnEventOrder).toBeLessThan(firstContentEmitOrder);
+    });
+
+    it('[P0] lifecycle events (RUN_STARTED, RUN_FINISHED, RUN_ERROR) are passed to onEvent but NOT forwarded to sessionEvents.emit() when onEvent is provided', async () => {
+      const onEvent = jest.fn();
+
+      sandboxFake.setAgentEvents([
+        JSON.stringify({ type: 'RUN_STARTED', threadId: 'conv-1' }) + '\n',
+        JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'msg-1', delta: 'Hello' }) + '\n',
+        JSON.stringify({ type: 'RUN_FINISHED', total_cost_usd: 0.42 }) + '\n',
+      ]);
+
+      await service.streamAgentEvents({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        command: 'sandbox-agent --agent claude-code --prompt "hello"',
+        userId: 'user-1',
+        onEvent,
+      });
+
+      // onEvent must receive lifecycle events (so AgentService can intercept
+      // cost data from RUN_FINISHED's data payload per AC-8).
+      const onEventTypes = onEvent.mock.calls.map((c) => c[0]?.event);
+      expect(onEventTypes).toContain(EventType.RUN_STARTED);
+      expect(onEventTypes).toContain(EventType.RUN_FINISHED);
+
+      // Lifecycle events must NOT be forwarded to sessionEvents.emit() —
+      // AgentService owns lifecycle emission to SSE (prevents double emission).
+      const emittedTypes = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedTypes).not.toContain(EventType.RUN_STARTED);
+      expect(emittedTypes).not.toContain(EventType.RUN_FINISHED);
+      expect(emittedTypes).not.toContain(EventType.RUN_ERROR);
+    });
+
+    it('[P0] lifecycle events still emit via sessionEvents.emit() when no onEvent callback is provided (backward compat)', async () => {
+      sandboxFake.setAgentEvents([
+        JSON.stringify({ type: 'RUN_STARTED', threadId: 'conv-1' }) + '\n',
+        JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'msg-1', delta: 'Hello' }) + '\n',
+        JSON.stringify({ type: 'RUN_FINISHED' }) + '\n',
+      ]);
+
+      await service.streamAgentEvents({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        command: 'sandbox-agent --agent claude-code --prompt "hello"',
+        userId: 'user-1',
+        // no onEvent — backward compat
+      });
+
+      // Without onEvent, ALL events (including lifecycle) must be forwarded.
+      const emittedTypes = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedTypes).toContain(EventType.RUN_STARTED);
+      expect(emittedTypes).toContain(EventType.TEXT_MESSAGE_CONTENT);
+      expect(emittedTypes).toContain(EventType.RUN_FINISHED);
+    });
+
+    it('[P0] non-lifecycle events still emit via sessionEvents.emit() when no onEvent callback is provided (backward compat)', async () => {
+      sandboxFake.setAgentEvents([
+        JSON.stringify({ type: 'TEXT_MESSAGE_START', messageId: 'msg-1', role: 'assistant' }) + '\n',
+        JSON.stringify({ type: 'TOOL_CALL_START', toolCallId: 'tc-1', toolCallName: 'Bash' }) + '\n',
+      ]);
+
+      await service.streamAgentEvents({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        command: 'sandbox-agent --agent claude-code --prompt "hello"',
+        userId: 'user-1',
+        // no onEvent — backward compat
+      });
+
+      // Without onEvent, non-lifecycle events must still be forwarded.
+      const emittedTypes = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedTypes).toContain(EventType.TEXT_MESSAGE_START);
+      expect(emittedTypes).toContain(EventType.TOOL_CALL_START);
     });
   });
 });

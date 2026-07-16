@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { EventType } from '@ag-ui/core';
 import type { ISandboxService, AgentSessionHandle } from '@bmad-easy/shared-types';
 import { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
-import { SessionEventsService } from './session-events.service';
+import { SessionEventsService, type SseEvent } from './session-events.service';
 
 /**
  * Set of recognized AG-UI EventType values. Events with a `type` field not in
@@ -12,11 +12,42 @@ import { SessionEventsService } from './session-events.service';
  */
 const AGUI_EVENT_TYPES: ReadonlySet<string> = new Set(Object.values(EventType));
 
+/**
+ * Lifecycle events owned by the caller (`AgentService`) when `onEvent` is
+ * provided. The event bridge passes these to `onEvent` (so the caller can
+ * intercept cost data from `RUN_FINISHED`'s data payload) but SKIPS
+ * `sessionEvents.emit()` for them — the caller owns lifecycle emission to SSE
+ * (prevents double emission). Story 6.3 Task 1.1 (DP-3).
+ */
+const LIFECYCLE_EVENTS: ReadonlySet<string> = new Set([
+  EventType.RUN_STARTED,
+  EventType.RUN_FINISHED,
+  EventType.RUN_ERROR,
+]);
+
 export interface AguiEventBridgeParams {
   conversationId: string;
   sandboxId: string;
   command: string;
   userId: string;
+  /**
+   * Optional working directory forwarded to `createAgentSession` (3rd arg).
+   * `SandboxService` shell-quotes it and prefixes the command with
+   * `cd ${shellQuote(cwd)} &&`. Story 6.3 Task 1.2.
+   */
+  cwd?: string;
+  /**
+   * Optional observer callback invoked in `processAgentEvent()` BEFORE
+   * `sessionEvents.emit()` for non-lifecycle events. For lifecycle events
+   * (`RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`), the callback is invoked but
+   * `sessionEvents.emit()` is SKIPPED — the caller owns lifecycle emission to
+   * SSE (prevents double emission). When omitted, all events (including
+   * lifecycle) are forwarded to `sessionEvents.emit()` (backward compat).
+   *
+   * Story 6.3 test seam — added by ATDD red-phase scaffolding. The dev
+   * implements the branching logic in `processAgentEvent()` (Task 1.1).
+   */
+  onEvent?: (event: SseEvent) => void;
 }
 
 interface ActiveRun {
@@ -48,6 +79,7 @@ const MAX_LINE_BUFFER_BYTES = 1_048_576;
 export class AguiEventBridgeService implements OnModuleDestroy {
   private readonly logger = new Logger(AguiEventBridgeService.name);
   private readonly activeRuns = new Map<string, ActiveRun>();
+  private readonly onEventCallbacks = new Map<string, ((event: SseEvent) => void) | undefined>();
 
   constructor(
     @Inject(SANDBOX_SERVICE) private readonly sandboxService: ISandboxService,
@@ -55,7 +87,7 @@ export class AguiEventBridgeService implements OnModuleDestroy {
   ) {}
 
   async streamAgentEvents(params: AguiEventBridgeParams): Promise<void> {
-    const { conversationId, sandboxId, command } = params;
+    const { conversationId, sandboxId, command, cwd } = params;
 
     const activeRun: ActiveRun = {
       sandboxId,
@@ -67,8 +99,18 @@ export class AguiEventBridgeService implements OnModuleDestroy {
     };
     this.activeRuns.set(conversationId, activeRun);
 
-    const handle = await this.sandboxService.createAgentSession(sandboxId, command);
+    // createAgentSession is outside the main try/finally below — if it
+    // throws, clean up the activeRuns entry so it does not leak (stop() and
+    // onModuleDestroy() would otherwise find a stale entry with a null handle).
+    let handle;
+    try {
+      handle = await this.sandboxService.createAgentSession(sandboxId, command, cwd);
+    } catch (err) {
+      this.activeRuns.delete(conversationId);
+      throw err;
+    }
     activeRun.handle = handle;
+    this.onEventCallbacks.set(conversationId, params.onEvent);
 
     let buffer = '';
     const onStdout = (chunk: string) => {
@@ -131,6 +173,13 @@ export class AguiEventBridgeService implements OnModuleDestroy {
           );
         this.emitRunError(conversationId, activeRun);
       }
+      // Re-throw so the method rejects on abort (stop/timeout/destroy) and
+      // resolves only on normal completion. AgentService.runTurn()'s catch
+      // block distinguishes outcomes by the sentinel message string
+      // (AGENT_STOPPED, AGENT_STREAM_TIMEOUT, MODULE_DESTROYING). Without this
+      // re-throw, runTurn()'s catch never fires on stop/timeout, causing
+      // double RUN_FINISHED / double RUN_ERROR. Story 6.3 Task 1.0 (DP-2).
+      throw _err;
     } finally {
       this.clearCircuitBreakerTimer(conversationId);
       if (!activeRun.aborted) {
@@ -143,6 +192,7 @@ export class AguiEventBridgeService implements OnModuleDestroy {
           );
       }
       this.activeRuns.delete(conversationId);
+      this.onEventCallbacks.delete(conversationId);
     }
   }
 
@@ -162,6 +212,7 @@ export class AguiEventBridgeService implements OnModuleDestroy {
         );
     }
     this.activeRuns.delete(conversationId);
+    this.onEventCallbacks.delete(conversationId);
   }
 
   onModuleDestroy(): void {
@@ -182,6 +233,7 @@ export class AguiEventBridgeService implements OnModuleDestroy {
       activeRun.rejectStream?.(new Error('MODULE_DESTROYING'));
     }
     this.activeRuns.clear();
+    this.onEventCallbacks.clear();
   }
 
   private processAgentEvent(conversationId: string, line: string): void {
@@ -214,7 +266,29 @@ export class AguiEventBridgeService implements OnModuleDestroy {
       );
       return;
     }
-    this.sessionEvents.emit(conversationId, { event: type, data });
+    const activeRun = this.activeRuns.get(conversationId);
+    const onEvent = activeRun ? this.onEventCallbacks.get(conversationId) : undefined;
+    const sseEvent: SseEvent = { event: type, data };
+    if (onEvent) {
+      // Guard the onEvent callback: a synchronous throw would otherwise
+      // propagate to streamPromise, causing the catch block to emit RUN_ERROR
+      // and re-throw, then AgentService's catch to emit a second RUN_ERROR.
+      try {
+        onEvent(sseEvent);
+      } catch (err) {
+        this.logger.error(
+          `onEvent callback threw for ${conversationId} (event ${type}): ${err instanceof Error ? err.message : err}`,
+        );
+      }
+      // Lifecycle events are owned by the caller (AgentService) when onEvent
+      // is provided — skip sessionEvents.emit() to prevent double emission.
+      // The caller still receives them via onEvent (e.g. to intercept cost
+      // data from RUN_FINISHED). Story 6.3 Task 1.1 (DP-3).
+      if (LIFECYCLE_EVENTS.has(type)) {
+        return;
+      }
+    }
+    this.sessionEvents.emit(conversationId, sseEvent);
   }
 
   private resetCircuitBreakerTimer(conversationId: string): void {
