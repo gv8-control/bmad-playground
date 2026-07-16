@@ -333,7 +333,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 #### CI/CD
 
-- **GitHub Actions** (`.github/workflows/test.yml`): lint → unit + e2e (4 shards) → burn-in (PRs + weekly) → report.
+- **GitHub Actions** (`.github/workflows/test.yml`): lint → unit + e2e (4 shards) → report. Burn-in (10× full suite) runs weekly only (Sunday 02:00 UTC), not on PRs.
 - Quality gates: P0 = 100% pass (fails immediately), P1 = ≥95% pass (fails below threshold).
 - Deploy is a **manual trigger**, not automatic on merge.
 - `apps/web` deploys to Vercel; `apps/agent-be` deploys to Railway (Docker).
