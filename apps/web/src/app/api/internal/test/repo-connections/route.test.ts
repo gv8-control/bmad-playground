@@ -18,6 +18,20 @@ jest.mock('@/lib/prisma', () => ({
 
 import { POST } from './route';
 
+const ORIGINAL_TEST_ENV = process.env.TEST_ENV;
+
+beforeEach(() => {
+  process.env.TEST_ENV = 'ci';
+});
+
+afterAll(() => {
+  if (ORIGINAL_TEST_ENV === undefined) {
+    delete process.env.TEST_ENV;
+  } else {
+    process.env.TEST_ENV = ORIGINAL_TEST_ENV;
+  }
+});
+
 function makeRequest(body: unknown): Request {
   return { json: async () => body } as unknown as Request;
 }
@@ -60,5 +74,11 @@ describe('POST /api/internal/test/repo-connections', () => {
     const res = await POST(makeRequest({ userId: 'usr_1', repoUrl: 'https://github.com/a/b' }));
     expect(res.status).toBe(404);
     Object.defineProperty(process.env, 'NODE_ENV', { value: prev, configurable: true });
+  });
+
+  it('[P0] returns 404 when TEST_ENV is unset', async () => {
+    delete process.env.TEST_ENV;
+    const res = await POST(makeRequest({ userId: 'usr_1', repoUrl: 'https://github.com/a/b' }));
+    expect(res.status).toBe(404);
   });
 });
