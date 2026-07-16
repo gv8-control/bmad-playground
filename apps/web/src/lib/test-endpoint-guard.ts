@@ -8,7 +8,7 @@
  *   - TEST_ENV is set (explicit opt-in), AND
  *   - Either NODE_ENV is not 'production', OR CI is 'true' (E2E tests run
  *     against a production build in CI — the build sets NODE_ENV=production,
- *     but CI=true区分ates a test server from a real production deployment).
+ *     but CI=true differentiates a test server from a real production deployment).
  */
 export function isTestEndpointEnabled(): boolean {
   if (!process.env.TEST_ENV) return false;
