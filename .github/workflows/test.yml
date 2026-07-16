@@ -3,7 +3,7 @@
 # Framework: Playwright (E2E) + Jest/@nestjs/testing (unit/integration)
 #
 # Tier split (see `_bmad-output/test-artifacts/test-design-qa.md` → Execution Strategy):
-#   Tier 1 — PR (fake-backed, every push/PR):  lint, typecheck, unit, e2e (4 shards), burn-in
+#   Tier 1 — PR (fake-backed, every push/PR):  lint, typecheck, unit, e2e (4 shards)
 #   Tier 2 — Nightly multi-conn (03:00 UTC):   P0-008, P2-004, P1-003, P0-010 (--grep @multi-conn)
 #   Tier 3 — Nightly real-service (03:00 UTC): one happy-path agent run (--grep @real-service)
 #   Tier 4 — Weekly spike (Sundays 04:00 UTC): P1-012 repo-size boundary, future k6/Artillery
@@ -327,12 +327,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: e2e
-    # PR-triggered OR the dedicated weekly-cron schedule (Sunday 02:00 UTC).
+    # Weekly-cron schedule only (Sunday 02:00 UTC).
     # The nightly (03:00 UTC) and weekly-spike (04:00 UTC) schedules are scoped
     # to their own jobs below — burn-in does NOT re-run on those triggers.
+    # Removed from PR trigger: burn-in runs the full suite 10× (~55 min), does
+    # not block merge, and would consume 6.5× the org's monthly Actions allowance
+    # at current PR frequency. The weekly run catches regression flakiness on main.
     if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'schedule' && github.event.schedule == '0 2 * * 0')
+      github.event_name == 'schedule' && github.event.schedule == '0 2 * * 0'
 
     services:
       postgres:
