@@ -204,7 +204,7 @@ test.describe('Story 3.6: Working Tree Indicator and Manual Save', () => {
     const popover = page.getByRole('dialog', { name: 'Save current progress' });
     await popover.getByRole('button', { name: 'Save' }).click();
 
-    await expect(page.getByText('Saving after response...')).toBeVisible();
+    await expect(page.getByText('Saving after response…')).toBeVisible();
   });
 
   // ─── AC-4: Successful save produces Semantic Pill + resets indicator ───
@@ -227,8 +227,8 @@ test.describe('Story 3.6: Working Tree Indicator and Manual Save', () => {
     // Wait for the save fetch to be initiated (3rd call after create + skills)
     await mocks.waitForFetchCount(3);
 
-    // "Saving..." appears while waiting for the SSE confirmation
-    await expect(page.getByText('Saving...')).toBeVisible();
+    // "Saving…" appears while waiting for the SSE confirmation
+    await expect(page.getByText('Saving…')).toBeVisible();
 
     // Backend emits MANUAL_SAVE_SUCCEEDED after the commit
     await mocks.emit('MANUAL_SAVE_SUCCEEDED', {
@@ -318,9 +318,9 @@ test.describe('Story 3.6: Working Tree Indicator and Manual Save', () => {
     const popover = page.getByRole('dialog', { name: 'Save current progress' });
     await popover.getByRole('button', { name: 'Save' }).click();
 
-    // The 'saving' state renders "Saving..." text (Save control is effectively disabled
+    // The 'saving' state renders "Saving…" text (Save control is effectively disabled
     // because the popover is closed and the indicator shows non-interactive text)
-    await expect(page.getByText('Saving...')).toBeVisible();
+    await expect(page.getByText('Saving…')).toBeVisible();
     await expect(page.getByText('Unsaved changes')).toHaveCount(0);
   });
 

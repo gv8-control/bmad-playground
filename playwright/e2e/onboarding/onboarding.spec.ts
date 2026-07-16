@@ -253,11 +253,6 @@ test.describe('Story 1.3 — successful repository connection (AC-3)', () => {
     async ({ page }) => {
       await page.goto('/onboarding');
 
-      // Intercept /project-map (currently 404 until Epic 2) so the navigation target resolves
-      await page.route('**/project-map', (route) =>
-        route.fulfill({ status: 200, body: '<html><body>Project Map</body></html>' }),
-      );
-
       // Mock Server Action to return success without calling GitHub API
       await page.route('**/onboarding', async (route) => {
         if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
@@ -271,10 +266,17 @@ test.describe('Story 1.3 — successful repository connection (AC-3)', () => {
         }
       });
 
+      // Seed a real RepoConnection so the soft navigation to /project-map
+      // resolves on the real page (which redirects to /onboarding if no
+      // connection exists). Done after page.goto so /onboarding doesn't
+      // redirect immediately, and before the click so the navigation target
+      // is valid.
+      await seedRepoConnection();
+
       await page.getByLabel(/repository url/i).fill('https://github.com/test-org/test-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
 
-      await expect(page).toHaveURL('/project-map', { timeout: 15_000 });
+      await page.waitForURL('/project-map', { timeout: 15_000 });
     },
   );
 

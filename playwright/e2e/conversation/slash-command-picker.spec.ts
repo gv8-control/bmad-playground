@@ -175,7 +175,7 @@ test.describe('Story 3.2: Slash Command Picker', () => {
     await input.fill('/');
     await expect(page.getByRole('listbox')).toBeVisible();
 
-    await page.getByText('Press `/` to browse available skills').click();
+    await page.getByText(/Press.*to browse available skills/).click();
 
     await expect(page.getByRole('listbox')).toHaveCount(0);
   });
