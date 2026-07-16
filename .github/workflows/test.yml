@@ -258,6 +258,11 @@ jobs:
           # when CI=true to support E2E tests against production builds).
           TEST_ENV: ci
           CI: true
+          # Auth.js v5 defaults trustHost to true only when NODE_ENV !== 'production'.
+          # next start sets NODE_ENV=production, so trustHost would be false and
+          # the middleware would reject every request as UntrustedHost — redirecting
+          # all authenticated pages to /sign-in. Explicitly trust localhost in CI.
+          AUTH_TRUST_HOST: "true"
 
       - name: Build agent-be (for E2E)
         run: yarn nx run agent-be:build:development
@@ -392,6 +397,7 @@ jobs:
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
           TEST_ENV: ci
           CI: true
+          AUTH_TRUST_HOST: "true"
 
       - name: Build agent-be (for E2E)
         run: yarn nx run agent-be:build:development
