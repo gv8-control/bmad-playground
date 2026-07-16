@@ -20,10 +20,20 @@ export async function POST(request: Request) {
     artifacts: SeedArtifact[];
   };
 
-  const created = await getPrisma().$transaction(
+  const upserted = await getPrisma().$transaction(
     artifacts.map((a) =>
-      getPrisma().artifact.create({
-        data: {
+      getPrisma().artifact.upsert({
+        where: {
+          repoConnectionId_path: { repoConnectionId, path: a.path },
+        },
+        update: {
+          type: a.type,
+          title: a.title,
+          status: a.status ?? 'completed',
+          lastModifiedAt: a.lastModifiedAt ? new Date(a.lastModifiedAt) : new Date(),
+          content: a.content ?? '',
+        },
+        create: {
           repoConnectionId,
           path: a.path,
           type: a.type,
@@ -32,11 +42,12 @@ export async function POST(request: Request) {
           lastModifiedAt: a.lastModifiedAt ? new Date(a.lastModifiedAt) : new Date(),
           content: a.content ?? '',
         },
+        select: { id: true },
       }),
     ),
   );
 
-  return NextResponse.json({ ids: created.map((a) => a.id) });
+  return NextResponse.json({ ids: upserted.map((a) => a.id) });
 }
 
 export async function DELETE(request: Request) {

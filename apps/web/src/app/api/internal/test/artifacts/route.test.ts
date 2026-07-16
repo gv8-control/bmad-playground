@@ -9,14 +9,14 @@
  * It must be non-functional in production (return 404).
  */
 
-const mockArtifactCreate = jest.fn();
+const mockArtifactUpsert = jest.fn();
 const mockArtifactDeleteMany = jest.fn();
 const mock$Transaction = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({
   getPrisma: () => ({
     artifact: {
-      create: mockArtifactCreate,
+      upsert: mockArtifactUpsert,
       deleteMany: mockArtifactDeleteMany,
     },
     $transaction: mock$Transaction,
@@ -51,7 +51,7 @@ describe('POST /api/internal/test/artifacts', () => {
     expect(body).toEqual({ ids: ['art_1', 'art_2'] });
   });
 
-  it('[P0] calls $transaction with create operations for each artifact', async () => {
+  it('[P0] calls $transaction with upsert operations for each artifact', async () => {
     mock$Transaction.mockResolvedValue([{ id: 'art_1' }]);
     await POST(
       makeRequest({
@@ -60,14 +60,23 @@ describe('POST /api/internal/test/artifacts', () => {
       }),
     );
     expect(mock$Transaction).toHaveBeenCalledTimes(1);
-    expect(mockArtifactCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+    expect(mockArtifactUpsert).toHaveBeenCalledWith({
+      where: {
+        repoConnectionId_path: { repoConnectionId: 'conn_1', path: 'p.md' },
+      },
+      update: expect.objectContaining({
+        type: 'prd',
+        title: 'T',
+        status: 'completed',
+      }),
+      create: expect.objectContaining({
         repoConnectionId: 'conn_1',
         path: 'p.md',
         type: 'prd',
         title: 'T',
         status: 'completed',
       }),
+      select: { id: true },
     });
   });
 
@@ -79,9 +88,10 @@ describe('POST /api/internal/test/artifacts', () => {
         artifacts: [{ path: 'p.md', type: 'prd', title: 'T' }],
       }),
     );
-    expect(mockArtifactCreate).toHaveBeenCalledWith(
+    expect(mockArtifactUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'completed' }),
+        update: expect.objectContaining({ status: 'completed' }),
+        create: expect.objectContaining({ status: 'completed' }),
       }),
     );
   });
@@ -103,12 +113,21 @@ describe('POST /api/internal/test/artifacts', () => {
         ],
       }),
     );
-    expect(mockArtifactCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+    expect(mockArtifactUpsert).toHaveBeenCalledWith({
+      where: {
+        repoConnectionId_path: { repoConnectionId: 'conn_1', path: 'p.md' },
+      },
+      update: expect.objectContaining({
         status: 'in-progress',
         content: '# content',
         lastModifiedAt: new Date('2026-07-01T00:00:00.000Z'),
       }),
+      create: expect.objectContaining({
+        status: 'in-progress',
+        content: '# content',
+        lastModifiedAt: new Date('2026-07-01T00:00:00.000Z'),
+      }),
+      select: { id: true },
     });
   });
 
