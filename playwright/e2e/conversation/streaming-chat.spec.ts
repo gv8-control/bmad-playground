@@ -562,7 +562,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
           if (!el) return false;
           return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
         },
-        { timeout: 5000 },
+        undefined, { timeout: 5000 },
       );
 
       await mocks.emit('TEXT_MESSAGE_END');
@@ -602,7 +602,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
         if (!el) return false;
         return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
       },
-      { timeout: 5000 },
+      undefined, { timeout: 5000 },
     );
 
     // Scroll up to pause auto-scroll
@@ -697,7 +697,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
         if (!el) return false;
         return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
       },
-      { timeout: 5000 },
+      undefined, { timeout: 5000 },
     );
 
     // Emit more content — auto-scroll should follow
@@ -720,7 +720,7 @@ test.describe('Story 3.3: Streaming Chat', () => {
         if (!el) return false;
         return el.scrollHeight - el.scrollTop - el.clientHeight < 50;
       },
-      { timeout: 5000 },
+      undefined, { timeout: 5000 },
     );
 
     await mocks.emit('TEXT_MESSAGE_END');

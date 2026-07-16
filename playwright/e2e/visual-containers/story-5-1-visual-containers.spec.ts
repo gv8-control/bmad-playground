@@ -1,5 +1,7 @@
-import { test, expect, type Page } from '../../support/merged-fixtures';
+import { type Page } from '@playwright/test';
+import { test, expect } from '../../support/merged-fixtures';
 import { resetRepoConnection, seedRepoConnection } from '../../support/reset-repo-connection';
+import { setupStreamingMocks } from '../../support/streaming-mocks';
 
 /**
  * ATDD — Story 5.1: Restore Missing Visual Containers Across Surfaces
@@ -185,99 +187,8 @@ test.describe('Story 5.1 — AC-4: Settings coming-soon empty-state', () => {
 
 // ─── AC-6: Conversation chat-input-box container (authenticated, mocked SSE) ──
 
-interface MockHandle {
-  waitForEventSource: () => Promise<void>;
-  emit: (type: string, data?: unknown) => Promise<void>;
-}
-
-async function setupConversationMocks(page: Page, conversationId = 'conv-e2e-visual'): Promise<MockHandle> {
-  await page.addInitScript((conversationId) => {
-    class MockEventSource {
-      url: string;
-      readyState = 0;
-      onerror: ((event: Event) => void) | null = null;
-      private readonly listeners: Record<string, Array<(event: { data: string }) => void>> = {};
-
-      constructor(url: string) {
-        this.url = url;
-        (window as unknown as Record<string, unknown>).__mockEventSource = this;
-      }
-
-      addEventListener(type: string, handler: (event: { data: string }) => void): void {
-        (this.listeners[type] = this.listeners[type] || []).push(handler);
-      }
-
-      removeEventListener(): void {}
-
-      close(): void {
-        this.readyState = 2;
-      }
-
-      __emit(type: string, data: unknown): void {
-        const event = { data: typeof data === 'string' ? data : JSON.stringify(data) };
-        (this.listeners[type] || []).forEach((handler) => handler(event));
-      }
-    }
-
-    (window as unknown as Record<string, unknown>).EventSource = MockEventSource;
-
-    const w = window as unknown as Record<string, unknown>;
-    if (!w.__mockFetchInstalled) {
-      w.__mockFetchInstalled = true;
-      const originalFetch = window.fetch.bind(window);
-      w.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input.toString();
-        const method = init?.method ?? 'GET';
-
-        if (url.includes('/stop') && method === 'POST') {
-          return new Response(JSON.stringify({ conversationId, stopped: true }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        if (url.includes('/turns') && method === 'POST') {
-          return new Response(JSON.stringify({ conversationId, title: 'Test' }), {
-            status: 201,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        if (url.includes('/skills') && method === 'GET') {
-          return new Response(JSON.stringify([]), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        if (url.includes('/api/conversations') && method === 'POST') {
-          return new Response(JSON.stringify({ id: conversationId }), {
-            status: 201,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        return originalFetch(input as RequestInfo, init);
-      };
-    }
-  }, conversationId);
-
-  return {
-    waitForEventSource: () =>
-      page
-        .waitForFunction(() => (window as unknown as Record<string, unknown>).__mockEventSource != null)
-        .then(() => undefined),
-    emit: (type: string, data: unknown = {}) =>
-      page.evaluate(
-        ({ type, data }) => {
-          const es = (window as unknown as Record<string, unknown>).__mockEventSource as
-            | { __emit: (type: string, data: unknown) => void }
-            | undefined;
-          es?.__emit(type, data);
-        },
-        { type, data },
-      ),
-  };
+async function setupConversationMocks(page: Page, conversationId = 'conv-e2e-visual') {
+  return setupStreamingMocks(page, { conversationId, skills: [] });
 }
 
 test.describe('Story 5.1 — AC-6: Conversation chat-input-box container', () => {

@@ -94,6 +94,7 @@ export function createMockHandle(page: Page): MockHandle {
           (n) =>
             ((window as unknown as Record<string, unknown>).__mockFetchCalls as FetchCall[] | undefined)?.length ?? 0 >= n,
           count,
+          { timeout: 30_000 },
         )
         .then(() => undefined),
   }
