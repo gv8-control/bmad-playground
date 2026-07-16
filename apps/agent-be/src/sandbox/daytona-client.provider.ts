@@ -10,10 +10,6 @@ export const daytonaClientProvider: Provider = {
     const apiUrl = configService.get<string>('daytonaApiUrl');
     const apiKey = configService.get<string>('daytonaApiKey');
 
-    if (!apiUrl || !apiKey) {
-      return null;
-    }
-
     return new Daytona({ apiKey, apiUrl });
   },
   inject: [ConfigService],

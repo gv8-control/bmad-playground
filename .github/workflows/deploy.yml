@@ -55,14 +55,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'yarn'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Capture previous Vercel production deployment
         env:
@@ -71,11 +71,18 @@ jobs:
           VERCEL_ORG_ID: team_DV9hczWkgqbOEoMGnX9Pta3t
         run: |
           npm install -g vercel@latest
-          DEPLOYMENTS=$(vercel ls --prod --format json --yes --cwd=apps/web)
+          # No cwd override: the Vercel project dashboard has "Root Directory"
+          # set to apps/web. Passing a cwd flag here would double the path to
+          # apps/web/apps/web. VERCEL_PROJECT_ID/VERCEL_ORG_ID env vars handle
+          # project association without a local .vercel/ directory.
+          DEPLOYMENTS=$(vercel ls --prod --format json --yes)
           # Extract the most recent READY production deployment URL.
           # This is the deployment currently serving traffic — the one we
           # would roll back to if Railway fails after we deploy a new version.
-          PREVIOUS=$(echo "$DEPLOYMENTS" | jq -r '[.[] | select(.state == "READY")] | .[0].url // empty')
+          # Vercel CLI 56+ wraps the list in {"deployments":[...]}; older CLI
+          # emits a bare array. The type check handles both, and []? guards
+          # against non-iterable edge cases so jq never halts the step.
+          PREVIOUS=$(echo "$DEPLOYMENTS" | jq -r '[(if type=="object" then .deployments else . end)[]? | select(.state == "READY")] | .[0].url // empty')
           if [ -z "$PREVIOUS" ]; then
             echo "No previous READY production deployment found. Auto-rollback will not be available for this deploy."
             echo "PREVIOUS_VERCEL_DEPLOYMENT=" >> "$GITHUB_ENV"
@@ -91,7 +98,7 @@ jobs:
           VERCEL_ORG_ID: team_DV9hczWkgqbOEoMGnX9Pta3t
         run: |
           npm install -g vercel@latest
-          vercel deploy --prod --yes --cwd=apps/web
+          vercel deploy --prod --yes
 
       - name: Health check — apps/web (Vercel)
         env:
@@ -130,7 +137,7 @@ jobs:
             exit 1
           fi
           echo "Railway deploy failed. Rolling back Vercel to previous deployment: $PREVIOUS_VERCEL_DEPLOYMENT"
-          if ! vercel rollback "$PREVIOUS_VERCEL_DEPLOYMENT" --yes --cwd=apps/web; then
+          if ! vercel rollback "$PREVIOUS_VERCEL_DEPLOYMENT" --yes; then
             echo "::error::Vercel rollback to $PREVIOUS_VERCEL_DEPLOYMENT failed. Manual recovery required — see docs/runbooks/deploy-failure-recovery.md (Split-Brain Deploy Recovery, Option A)."
             exit 1
           fi

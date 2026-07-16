@@ -17,13 +17,9 @@ const REPO_SUBDIRECTORY = 'repo';
 export class SandboxService implements ISandboxService {
   private readonly logger = new Logger(SandboxService.name);
 
-  constructor(@Inject(DAYTONA_CLIENT) private readonly daytona: Daytona | null) {}
+  constructor(@Inject(DAYTONA_CLIENT) private readonly daytona: Daytona) {}
 
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
-    if (!this.daytona) {
-      throw new Error('Daytona client is not configured');
-    }
-
     let sandbox: Sandbox | null = null;
     try {
       sandbox = await this.daytona.create({
@@ -60,9 +56,6 @@ export class SandboxService implements ISandboxService {
   }
 
   async resume(sandboxId: string): Promise<SandboxInfo> {
-    if (!this.daytona) {
-      throw new Error('Daytona client is not configured');
-    }
     const sandbox = await this.getSandbox(sandboxId);
     await this.daytona.start(sandbox);
     return {
@@ -74,9 +67,6 @@ export class SandboxService implements ISandboxService {
   }
 
   async destroy(sandboxId: string): Promise<void> {
-    if (!this.daytona) {
-      return;
-    }
     try {
       const sandbox = await this.daytona.get(sandboxId);
       await this.daytona.delete(sandbox);
@@ -166,9 +156,6 @@ export class SandboxService implements ISandboxService {
   }
 
   private async getSandbox(sandboxId: string): Promise<Sandbox> {
-    if (!this.daytona) {
-      throw new Error('Daytona client is not configured');
-    }
     return this.daytona.get(sandboxId);
   }
 

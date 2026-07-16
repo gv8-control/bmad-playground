@@ -3,10 +3,10 @@ FROM node:24-slim AS install
 RUN corepack enable
 WORKDIR /app
 COPY package.json yarn.lock .yarnrc.yml ./
-# Yarn Berry stores patches/plugins/releases under .yarn/. Without this COPY,
-# any future patch added to .yarn/patches/ would be silently absent from the
-# image (yarn install would not error — it would just build without the patch).
-COPY .yarn ./.yarn
+# NOTE: .yarn/ (patches/plugins/releases) is gitignored and therefore absent
+# from Railway's git-based build context. If patches are added in the future,
+# update .gitignore to track .yarn/patches/ and add a COPY here. See
+# .dockerignore for the list of Yarn Berry directories that must be tracked.
 RUN yarn install --immutable
 
 # ── Build stage ──
