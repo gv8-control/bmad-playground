@@ -1409,6 +1409,95 @@ describe('AgentService (real — sandbox-based execution via AguiEventBridgeServ
     });
   });
 
+  // ─── Story 6.4 AC-4: Host-filesystem regression guards ──────────────
+  //
+  // Regression guards for the sandbox-based execution model (Stories 6.1–6.3).
+  // They verify the agent runs inside the sandbox (cwd: 'repo') and working-tree
+  // operations target the sandbox filesystem via sandboxId — preventing a future
+  // regression back to host-based execution.
+  //
+  // Guard patterns follow the sibling Story 6.3 regression-guard block
+  // (lines 1315-1431): `captureCommand()` helper for streamAgentEvents
+  // params, `createMockEventBridge()` for AG-UI event feeding, and
+  // `jest.spyOn(sandboxFake, 'getWorkingTreeStatus')` for sandbox-call
+  // assertion. The credential-isolation + input-injection invariants for
+  // `buildAgentCommand` (the user-controlled-input command site) are already
+  // covered by the 6.3 block (lines 1330-1410); these tests extend that
+  // uniform guard template with the cwd + sandboxId invariants.
+
+  describe('[P0] Story 6.4 AC-4 — Host-filesystem regression guards (sandbox-targeted execution)', () => {
+    function captureStreamParams(): {
+      bridge: { streamAgentEvents: jest.Mock; stop: jest.Mock };
+      getParams: () => { command: string; cwd?: string; sandboxId?: string };
+    } {
+      let capturedParams = { command: '' };
+      const bridge = {
+        streamAgentEvents: jest.fn(async (params: {
+          command?: string;
+          cwd?: string;
+          sandboxId?: string;
+        }) => {
+          capturedParams = {
+            command: params.command ?? '',
+            cwd: params.cwd,
+            sandboxId: params.sandboxId,
+          };
+        }),
+        stop: jest.fn().mockResolvedValue(undefined),
+      };
+      return { bridge, getParams: () => capturedParams };
+    }
+
+    // Task 3.1 — buildAgentCommand() runs inside the sandbox (cwd: 'repo'),
+    // NOT on the host. Regression guard for the host-based → sandbox
+    // execution migration (Story 6.3).
+    it('[P0] streamAgentEvents receives cwd: "repo" (agent runs inside the sandbox, not on the host)', async () => {
+      const { bridge, getParams } = captureStreamParams();
+      mockEventBridge = bridge;
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(getParams().cwd).toBe('repo');
+    });
+
+    // Task 3.2 — getWorkingTreeStatus is called with the active run's
+    // sandboxId, NOT a host path. Verifies working-tree operations target the
+    // sandbox filesystem. (The `commit` sandboxId assertion is covered by
+    // manual-commit.service.spec.ts — not duplicated here per DP-2: AgentService
+    // does not call commit; ManualCommitService does, and its existing tests
+    // pass sandboxId through SandboxServiceFake.getCommitCalls().)
+    it('[P0] getWorkingTreeStatus is called with the active run sandboxId, not a host path', async () => {
+      (sandboxFake.getWorkingTreeStatus as jest.Mock).mockResolvedValue({
+        dirty: true,
+        files: ['src/foo.ts'],
+      });
+      const wtSpy = jest.spyOn(sandboxFake, 'getWorkingTreeStatus');
+
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Write', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'File written', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
+      ]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(wtSpy).toHaveBeenCalledWith('sb-1');
+    });
+  });
+
   // ─── Story 6.3 AC-4: Host-based SDK code removed ─────────────────────
 
   describe('[P0] Story 6.3 AC-4 — Host-based SDK code removed', () => {

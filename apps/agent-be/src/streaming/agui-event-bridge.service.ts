@@ -44,8 +44,8 @@ export interface AguiEventBridgeParams {
    * SSE (prevents double emission). When omitted, all events (including
    * lifecycle) are forwarded to `sessionEvents.emit()` (backward compat).
    *
-   * Story 6.3 test seam — added by ATDD red-phase scaffolding. The dev
-   * implements the branching logic in `processAgentEvent()` (Task 1.1).
+   * Story 6.3 test seam — the branching logic in `processAgentEvent()`
+   * dispatches lifecycle vs. non-lifecycle events as described above.
    */
   onEvent?: (event: SseEvent) => void;
 }

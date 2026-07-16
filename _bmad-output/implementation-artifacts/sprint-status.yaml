@@ -1,5 +1,5 @@
 # generated: 2026-06-17
-# last_updated: 2026-07-16T05:25:00Z
+# last_updated: 2026-07-16T08:00:00Z
 # project: bmad-easy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-17
-last_updated: 2026-07-16T05:40:00Z
+last_updated: 2026-07-16T08:00:00Z
 project: bmad-easy
 
 project_key: NOKEY
@@ -115,7 +115,7 @@ development_status:
   6-1-install-claude-code-binary-in-sandbox-during-provision: done
   6-2-implement-jsonl-to-agui-event-bridge: done
   6-3-migrate-agentservice-to-sandbox-execution: done
-  6-4-verify-working-tree-commit-and-credential-flows: backlog
+  6-4-verify-working-tree-commit-and-credential-flows: done
   6-5-real-service-e2e-verification: backlog
 
   # ── Epic 7: Live-Usage UX Improvements ──

@@ -907,3 +907,92 @@ describe('[P0] Story 6.1 AC-7 F3 — resume() propagates start() failure to call
     expect(mockDaytona.start).not.toHaveBeenCalled();
   });
 });
+
+// ============================================================================
+// Story 6.4: Verify Working Tree, Commit, and Credential Flows
+// F4 — commit() failure-path tests (AC: #2): git add failure surfaces a
+//        non-empty diagnostic (exit code) when stdout is empty; git commit
+//        failure propagates the result message.
+// F5 — listSkills() failure-path tests (AC: #4): executeCommand rejection
+//        returns [] + logs warn; non-zero exitCode returns [] regardless of
+//        stdout content (exitCode gate).
+//
+// Guard patterns + regex conventions follow the sibling
+// `injectGitConfig()` failure-path test (lines 235-251) and the established
+// `jest.spyOn(service['logger'], 'warn')` logger-spy convention from
+// tool-pill-classifier.service.spec.ts / agui-event-bridge.service.spec.ts.
+// ============================================================================
+
+describe('[P0] Story 6.4 F4 — commit() failure-path tests (AC: #2)', () => {
+  let mockDaytona: MockDaytona;
+  let mockSandbox: MockSandbox;
+  let service: SandboxService;
+
+  beforeEach(() => {
+    ({ mockDaytona, mockSandbox } = createMockDaytonaWithSandbox());
+    service = new SandboxService(mockDaytona as unknown as Daytona);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  it('[P0] commit() throws a non-empty diagnostic (incl. exit code) when git add fails with empty result', async () => {
+    mockSandbox.process.executeCommand
+      .mockResolvedValueOnce({ exitCode: 1, result: '' }) // git add fails (stderr-only → empty stdout)
+      .mockResolvedValueOnce({ exitCode: 0, result: '' }); // git commit — must NOT be reached
+
+    await expect(service.commit('sandbox-1', 'msg')).rejects.toThrow(/exit code 1/);
+
+    // git add failure short-circuits — git commit is never issued.
+    expect(mockSandbox.process.executeCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it('[P0] commit() throws the git commit failure message when git commit fails', async () => {
+    mockSandbox.process.executeCommand
+      .mockResolvedValueOnce({ exitCode: 0, result: '' }) // git add succeeds
+      .mockResolvedValueOnce({ exitCode: 1, result: 'nothing to commit, working tree clean' }); // git commit fails
+
+    await expect(service.commit('sandbox-1', 'msg')).rejects.toThrow(
+      'nothing to commit, working tree clean',
+    );
+  });
+});
+
+describe('[P0] Story 6.4 F5 — listSkills() failure-path tests (AC: #4)', () => {
+  let mockDaytona: MockDaytona;
+  let mockSandbox: MockSandbox;
+  let service: SandboxService;
+
+  beforeEach(() => {
+    ({ mockDaytona, mockSandbox } = createMockDaytonaWithSandbox());
+    service = new SandboxService(mockDaytona as unknown as Daytona);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  it('[P0] listSkills() returns [] and logs warn when executeCommand rejects', async () => {
+    mockSandbox.process.executeCommand.mockRejectedValueOnce(new Error('ENOTREACHABLE'));
+    const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+
+    await expect(service.listSkills('sandbox-1')).resolves.toEqual([]);
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('listSkills failed'));
+  });
+
+  it('[P0] listSkills() returns [] when ls fails with non-zero exitCode and empty result', async () => {
+    mockSandbox.process.executeCommand.mockResolvedValue({ exitCode: 2, result: '' });
+
+    await expect(service.listSkills('sandbox-1')).resolves.toEqual([]);
+  });
+
+  it('[P0] listSkills() returns [] when ls fails with non-zero exitCode and stdout output (exitCode gate)', async () => {
+    mockSandbox.process.executeCommand.mockResolvedValue({ exitCode: 1, result: 'some junk' });
+
+    await expect(service.listSkills('sandbox-1')).resolves.toEqual([]);
+  });
+});

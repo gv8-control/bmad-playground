@@ -221,7 +221,14 @@ export class SandboxService implements ISandboxService {
       10,
     );
     if (addResponse.exitCode !== 0) {
-      throw new Error(addResponse.result);
+      // git add writes failure diagnostics to stderr; the SDK's
+      // ExecuteResponse.result is stdout-only, so it is empty for git add
+      // failures. Fall back to a diagnostic that surfaces the exit code so
+      // ManualCommitService reports MANUAL_SAVE_FAILED with actionable info
+      // instead of an empty error string (F4 fidelity-audit fix).
+      throw new Error(
+        addResponse.result || `git add failed (exit code ${addResponse.exitCode})`,
+      );
     }
     const response = await sandbox.process.executeCommand(
       `git commit -m ${this.shellQuote(message)}`,
@@ -230,7 +237,9 @@ export class SandboxService implements ISandboxService {
       10,
     );
     if (response.exitCode !== 0) {
-      throw new Error(response.result);
+      throw new Error(
+        response.result || `git commit failed (exit code ${response.exitCode})`,
+      );
     }
   }
 
@@ -243,6 +252,13 @@ export class SandboxService implements ISandboxService {
         undefined,
         10,
       );
+      // Non-zero exit code means "no skills" (or "can't read skills"),
+      // regardless of stdout content. A failed `ls` could write to stdout
+      // in a failure mode; without this gate the parsing below would return
+      // junk SkillInfo entries (F5 fidelity-audit fix).
+      if (response.exitCode !== 0) {
+        return [];
+      }
       const output = response.result.trim();
       if (!output) {
         return [];
