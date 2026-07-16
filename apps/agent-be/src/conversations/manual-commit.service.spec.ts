@@ -24,6 +24,7 @@ import { AGENT_SERVICE, SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { buildTestModule } from '../../test/helpers/test-module-builder';
 import { SandboxServiceFake } from '../../test/helpers/sandbox-service.fake';
 import { AgentServiceFake } from '../../test/helpers/agent-service.fake';
+import { createMockDaytona } from '../../test/helpers/mock-daytona';
 
 describe('ManualCommitService', () => {
   let service: ManualCommitService;
@@ -72,7 +73,7 @@ describe('ManualCommitService', () => {
 
     const { module } = await buildTestModule([ConversationsModule], [
       { provide: PrismaService, useValue: mockPrisma },
-      { provide: DAYTONA_CLIENT, useValue: null },
+      { provide: DAYTONA_CLIENT, useValue: createMockDaytona() },
       {
         provide: CredentialsService,
         useValue: { resolveOAuthToken: jest.fn().mockResolvedValue('fake-oauth-token') },
