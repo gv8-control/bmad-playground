@@ -71,7 +71,11 @@ jobs:
           VERCEL_ORG_ID: team_DV9hczWkgqbOEoMGnX9Pta3t
         run: |
           npm install -g vercel@latest
-          DEPLOYMENTS=$(vercel ls --prod --format json --yes --cwd=apps/web)
+          # No --cwd: the Vercel project dashboard has "Root Directory" set to
+          # apps/web. Adding --cwd=apps/web would double the path to
+          # apps/web/apps/web. VERCEL_PROJECT_ID/VERCEL_ORG_ID env vars handle
+          # project association without a local .vercel/ directory.
+          DEPLOYMENTS=$(vercel ls --prod --format json --yes)
           # Extract the most recent READY production deployment URL.
           # This is the deployment currently serving traffic — the one we
           # would roll back to if Railway fails after we deploy a new version.
@@ -94,7 +98,7 @@ jobs:
           VERCEL_ORG_ID: team_DV9hczWkgqbOEoMGnX9Pta3t
         run: |
           npm install -g vercel@latest
-          vercel deploy --prod --yes --cwd=apps/web
+          vercel deploy --prod --yes
 
       - name: Health check — apps/web (Vercel)
         env:
@@ -133,7 +137,7 @@ jobs:
             exit 1
           fi
           echo "Railway deploy failed. Rolling back Vercel to previous deployment: $PREVIOUS_VERCEL_DEPLOYMENT"
-          if ! vercel rollback "$PREVIOUS_VERCEL_DEPLOYMENT" --yes --cwd=apps/web; then
+          if ! vercel rollback "$PREVIOUS_VERCEL_DEPLOYMENT" --yes; then
             echo "::error::Vercel rollback to $PREVIOUS_VERCEL_DEPLOYMENT failed. Manual recovery required — see docs/runbooks/deploy-failure-recovery.md (Split-Brain Deploy Recovery, Option A)."
             exit 1
           fi
