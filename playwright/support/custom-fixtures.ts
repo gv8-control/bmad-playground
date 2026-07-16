@@ -91,7 +91,7 @@ type SeededConversationWithTurns = {
 
 type BmadEasyFixtures = {
   /** Ensures the synthetic E2E test user has a RepoConnection row for the duration of the test. */
-  withRepoConnection: { connectionId: string };
+  withRepoConnection: { connectionId: string; userId: string };
   /** Seeds Artifact rows for the RepoConnection, so the Project Map has data without triggering a GitHub sync. Returns the seeded artifacts with their generated IDs. */
   withArtifacts: SeededArtifact[];
   /** Seeds Conversation rows (with titles) for the E2E test user, so the side nav has data. Returns the seeded conversations with their generated IDs. */
@@ -125,7 +125,7 @@ export const test = base.extend<BmadEasyFixtures>({
     const { id: connectionId } = (await connRes.json()) as { id: string };
 
     try {
-      await use({ connectionId });
+      await use({ connectionId, userId });
     } finally {
       await withApiRetry(() =>
         request.delete(`${BASE_URL}/api/internal/test/repo-connections/${connectionId}`),

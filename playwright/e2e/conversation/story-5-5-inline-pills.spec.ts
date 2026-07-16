@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '../../support/merged-fixtures';
+import { type Page } from '@playwright/test';
+import { test, expect } from '../../support/merged-fixtures';
 
 /**
  * Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream
@@ -41,12 +42,6 @@ import { test, expect, type Page } from '../../support/merged-fixtures';
 const CONVERSATION_ID = 'conv-e2e-story-5-5';
 const TURN_TITLE = 'Story 5.5 Test';
 const E2E_GITHUB_ID = 'e2e-test-default-99999';
-
-interface FetchCall {
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-}
 
 interface MockHandle {
   waitForEventSource: () => Promise<void>;
