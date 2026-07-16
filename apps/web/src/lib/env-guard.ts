@@ -23,7 +23,11 @@ export function assertRequiredEnv(): void {
     throw new Error(`Environment validation failed: ${errors}`);
   }
 
-  if (process.env.TEST_ENV && process.env.NODE_ENV === 'production') {
+  // TEST_ENV enables test-only API endpoints (seed-user, repo-connections,
+  // conversations). Block it in real production deployments to prevent
+  // accidental exposure. In CI (CI=true), the production build is used for
+  // E2E tests that depend on these endpoints — allow it there.
+  if (process.env.TEST_ENV && process.env.NODE_ENV === 'production' && process.env.CI !== 'true') {
     throw new Error(
       'TEST_ENV must not be set in a production environment (NODE_ENV=production) — refusing to start',
     );

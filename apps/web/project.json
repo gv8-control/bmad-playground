@@ -17,6 +17,14 @@
         "command": "next dev --port 3000"
       }
     },
+    "start": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/web",
+        "command": "next start --port 3000"
+      }
+    },
     "lint": {
       "executor": "@nx/eslint:lint",
       "options": {
