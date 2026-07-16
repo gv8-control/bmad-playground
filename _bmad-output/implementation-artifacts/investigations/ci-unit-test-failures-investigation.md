@@ -40,7 +40,7 @@ Hypothesis #1, not accepted as fact.
 | Run history conclusions (#23–#122)           | Available | No unit=success anywhere; mostly skipped before #111                  |
 | Runner memory telemetry (dmesg/OOM killer)   | Missing   | GitHub-hosted runners expose no kernel logs — mechanism must be inferred/reproduced |
 | Local reproduction (RSS measurement)         | Available | Peak 986 MB total / 817 MB worker, 58 s, single worker               |
-| Prior investigation doc (opencode session)   | Available | `docs/ci-web-test-failure-investigation.md` — H6 source; local-repro table cross-validates Finding 6 |
+| Prior investigation doc (opencode session)   | Superseded | `docs/ci-web-test-failure-investigation.md` — deleted in cleanup; this case file is the surviving record. Local-repro table cross-validates Finding 6 |
 | E2E failure plan (separate track)            | Available | `docs/e2e-run-122-fix-plan.md` — E2E shard failures already analyzed & planned separately |
 | CI diagnostic run (#123, commit 3705cd4)     | Available | Run 29454121485, job 87483522892 — decisive evidence (Findings 9–10) |
 
