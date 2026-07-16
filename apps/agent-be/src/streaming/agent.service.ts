@@ -215,7 +215,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
             });
           })
           .catch((err) => {
-            this.logger.error(`Classifier failed for tool call ${toolCallId}: ${err}`);
+            this.logger.error(`Classifier failed for tool call ${toolCallId} (conversation ${conversationId}): ${err}`);
           });
 
         if (!this.pendingClassifierPromises.has(conversationId)) {

@@ -89,8 +89,19 @@ const SESSION_COMMAND_TIMEOUT_S = 30;
 @Injectable()
 export class SandboxService implements ISandboxService {
   private readonly logger = new Logger(SandboxService.name);
+  private readonly conversationIdBySandbox = new Map<string, string>();
 
   constructor(@Inject(DAYTONA_CLIENT) private readonly daytona: Daytona) {}
+
+  /**
+   * Returns a log-context suffix for a sandboxId — ` (conversation <id>)` when
+   * the sandbox→conversation mapping is known, empty string when it isn't.
+   * Populated by provision() and resume(); cleared by destroy().
+   */
+  private logCtx(sandboxId: string): string {
+    const convId = this.conversationIdBySandbox.get(sandboxId);
+    return convId ? ` (conversation ${convId})` : '';
+  }
 
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
     // Fail fast before allocating any Daytona resource — env validation guards
@@ -116,6 +127,7 @@ export class SandboxService implements ISandboxService {
         },
         networkAllowList: SANDBOX_NETWORK_ALLOW_LIST,
       });
+      this.conversationIdBySandbox.set(sandbox.id, params.conversationId);
       await this.installBinaries(sandbox);
       return {
         sandboxId: sandbox.id,
@@ -130,7 +142,7 @@ export class SandboxService implements ISandboxService {
           await this.daytona.delete(sandbox);
         } catch (cleanupErr) {
           this.logger.error(
-            `Failed to clean up sandbox ${sandboxId} after provision failure: ${cleanupErr}`,
+            `Failed to clean up sandbox ${sandboxId}${this.logCtx(sandboxId)} after provision failure: ${cleanupErr}`,
           );
         }
       }
@@ -153,15 +165,18 @@ export class SandboxService implements ISandboxService {
   async resume(sandboxId: string): Promise<SandboxInfo> {
     const sandbox = await this.getSandbox(sandboxId);
     await this.daytona.start(sandbox);
+    const conversationId = sandbox.labels?.conversationId || sandboxId;
+    this.conversationIdBySandbox.set(sandboxId, conversationId);
     return {
       sandboxId: sandbox.id,
-      conversationId: sandbox.labels?.conversationId || sandboxId,
+      conversationId,
       status: 'ready',
       provisionedAt: new Date(),
     };
   }
 
   async destroy(sandboxId: string): Promise<void> {
+    this.conversationIdBySandbox.delete(sandboxId);
     try {
       const sandbox = await this.daytona.get(sandboxId);
       await this.daytona.delete(sandbox);
@@ -271,7 +286,7 @@ export class SandboxService implements ISandboxService {
         .filter((line) => line.length > 0)
         .map((name) => ({ name }));
     } catch (err) {
-      this.logger.warn(`listSkills failed for sandbox ${sandboxId}: ${err}`);
+      this.logger.warn(`listSkills failed for sandbox ${sandboxId}${this.logCtx(sandboxId)}: ${err}`);
       return [];
     }
   }
@@ -364,7 +379,7 @@ export class SandboxService implements ISandboxService {
     } catch (err) {
       await sandbox.process.deleteSession(sessionId).catch((deleteErr) => {
         this.logger.error(
-          `Failed to clean up session ${sessionId} after executeSessionCommand failure: ${deleteErr}`,
+          `Failed to clean up session ${sessionId} after executeSessionCommand failure${this.logCtx(sandboxId)}: ${deleteErr}`,
         );
       });
       throw err;
