@@ -1,5 +1,7 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "default_agent": "coder",
+  "subagent_depth": 2,
   "permission": {
     "external_directory": {
       "/tmp/**": "allow"
@@ -18,10 +20,14 @@
     }
   },
   "agent": {
+    "build": {
+      "disable": true
+    },
     "coder": {
       "model": "neuralwatt/glm-5.2",
       "temperature": 0.25,
-      "reasoningEffort": "max"
+      "reasoningEffort": "high",
+      "permission": { "task": "allow" }
     },
     "thinker": {
       "tools": {

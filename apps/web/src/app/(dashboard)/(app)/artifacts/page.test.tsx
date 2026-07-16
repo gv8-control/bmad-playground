@@ -8,10 +8,9 @@
  * Story 5.2 covers: AC-7 (breadcrumb inline beside title), AC-8 (header bottom divider).
  * Story 5.4 covers: AC-6 (list pane border-surface-raised).
  *
- * GREEN PHASE: implementation complete. Story 2.4 delivered the list-only
- * page; Story 2.5 adds searchParams handling, selected-artifact query,
- * two-column layout, and ArtifactViewer/ArtifactLoadError rendering.
- * Story 5.2 and Story 5.4 tests are active and passing.
+ * Story 2.4 delivered the list-only page; Story 2.5 adds searchParams
+ * handling, selected-artifact query, two-column layout, and
+ * ArtifactViewer/ArtifactLoadError rendering.
  *
  * Child component rendering (ArtifactListEntry, ArtifactViewer,
  * ArtifactLoadError, CredentialErrorBanner) is verified by their own

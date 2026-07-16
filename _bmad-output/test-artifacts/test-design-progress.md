@@ -4,7 +4,7 @@ totalSteps: 5
 stepsCompleted: ['step-01-detect-mode', 'step-02-load-context', 'step-03-risk-and-testability', 'step-04-coverage-plan', 'step-05-generate-output']
 lastStep: 'step-05-generate-output'
 nextStep: ''
-lastSaved: '2026-07-13'
+lastSaved: '2026-07-14'
 inputDocuments:
   - '_bmad-output/planning-artifacts/prds/prd-bmad-easy-2026-06-14/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
@@ -15,6 +15,10 @@ inputDocuments:
   - '.claude/skills/bmad-testarch-test-design/resources/knowledge/risk-governance.md'
   - '.claude/skills/bmad-testarch-test-design/resources/knowledge/test-quality.md'
   - '_bmad/tea/config.yaml'
+  - '_bmad-output/test-artifacts/traceability-matrix.md (2026-07-14 Epic 4 extension)'
+  - '_bmad-output/implementation-artifacts/bug-hunt-epic-4.md'
+  - '_bmad-output/implementation-artifacts/epic-4-retro-2026-07-14.md'
+  - '_bmad-output/implementation-artifacts/sprint-status.yaml'
 ---
 
 # Test Design Progress
@@ -339,7 +343,7 @@ System-level estimate across the full MVP scope, before epic/story breakdown:
 **Autonomous decisions (in place of halting at the skill's checkpoints):**
 
 1. **Mode determination:** chose `[E] Edit` per the task brief; the system-level plan already exists and only surgical edits are needed.
-2. **Target selection (step-01-assess #1):** targeted the existing test-plan files — `test-design-architecture.md`, this file, `test-design-qa.md`, `bmad-easy-handoff.md`, plus a minimal note on the stale `automation-summary.md`. Did not create duplicate artefacts. Left the hydration-gap files (`test-design-progress-hydration-gap.md`, `test-design-epic-hydration-gap.md`) untouched — they are scoped to a separate post-incident design and stand on their own.
+2. **Target selection (step-01-assess #1):** targeted the existing test-plan files — `test-design-architecture.md`, this file, `test-design-qa.md`, `bmad-easy-handoff.md`, plus a minimal note on the stale `automation-summary.md`. Did not create duplicate artefacts. Left the `test-design-epic-hydration-gap.md` file untouched — it is scoped to a separate post-incident design and stands on its own.
 3. **Confirmation gates (step-01-assess #3, step-02-apply-edit #1):** proceeded without halting; recorded this decision here per the unattended-operation guideline.
 
 ### Current Project State (2026-07-12)
@@ -353,11 +357,11 @@ System-level estimate across the full MVP scope, before epic/story breakdown:
 | Epic 6 (Sandbox-Based Agent Execution) | backlog | 5 (6.1–6.5) | None yet — see "Epic 6 forward-look" below |
 | Epic 4 | (no Epic 4 — numbering skips per `epics.md`) | — | — |
 
-**Note on Epic 5 status field:** `sprint-status.yaml` still lists `epic-5: in-progress` even though all four stories are `done`. Traceability-matrix-epic-5.md flagged the same. The epic status field is a manual-transition item — not a coverage or quality gap.
+**Note on Epic 5 status field:** `sprint-status.yaml` still lists `epic-5: in-progress` even though all four stories are `done`. The Epic 5 traceability matrix flagged the same. The epic status field is a manual-transition item — not a coverage or quality gap.
 
 ### Epic 5 Test Outcomes
 
-- **Traceability gate:** `CONCERNS` (per `traceability/gate-decision-epic-5.json`). 38/38 ACs at FULL coverage; P0 100% (36/36), P1 100% (2/2); 0 critical-open items; 853 tests passing across 65 Jest suites plus 3 active Playwright visual-container specs; 0 skipped.
+- **Traceability gate:** `CONCERNS`. 38/38 ACs at FULL coverage; P0 100% (36/36), P1 100% (2/2); 0 critical-open items; 853 tests passing across 65 Jest suites plus 3 active Playwright visual-container specs; 0 skipped.
 - **Test fidelity audit (2026-07-12):** PASS. 2 LOW Gap-C findings (bounded; both downstream of the prior agent-be SSE contract blocker) + 1 INFO coverage note (`withArtifacts` Playwright fixture broken; hover-token E2E for 5.4 AC-1/AC-5 reduced to className-only unit tests).
 - **NFR assessment (epic-level, 2026-07-12):** PASS-WITH-CONCERNS. 24 PASS, 5 CONCERNS (de-duplicated: 1 Medium + 4 Low), 0 FAIL. The 1 Medium is story-introduced: NFR-5.3-1 auto-scroll effect deps after Story 5.3 AC-3 spinner relocation (bug-hunt M1). Roughly 9 quick-win fixes (~1 hour total) identified for a follow-up hardening story.
 - **Bug hunt (2026-07-12):** 11 findings (0 critical, 0 high, 3 medium, 8 low). The 3 mediums: M1 auto-scroll regression; M2 `no-scrollbar` missing on full-width artifact list pane (5.4-AC7 gap); M3 `parseFrontmatter` renders quoted YAML values with quotes (deferred DP-5 hardening).
@@ -432,12 +436,12 @@ Was 853 across 65 suites after Epic 5 (4 stories); +41 web tests + 1 Playwright 
 
 ### Epic 5 Test Outcomes (post-Story-5.5)
 
-- **Traceability gate (2026-07-13):** `PASS` (per `traceability/gate-decision-epic-5.json`, `evaluated_at: 2026-07-13T19:30:00.000Z`, `gate_status: PASS`). 48/48 ACs at FULL coverage across all 5 stories; P0 100% (46/46), P1 100% (2/2); 0 critical-open, 0 high-open, 3 medium-open (all test-seam or test-fidelity, none production-reachable), 11 low-open. **The 2026-07-12 CONCERNS field was driven primarily by the AC-7 (5.4) full-width artifact list pane missing the `no-scrollbar` class. That concern is now FIXED** — the 2026-07-13 bug-hunt applied a quick-win fix adding the class to `artifacts/page.tsx:124` and added a test assertion at `artifacts/page.test.tsx:265-269`. All previously-documented weaknesses (see 2026-07-12 section above) are either resolved or re-categorized as residual concerns that do not block the gate.
+- **Traceability gate (2026-07-13):** `PASS` (`evaluated_at: 2026-07-13T19:30:00.000Z`, `gate_status: PASS`). 48/48 ACs at FULL coverage across all 5 stories; P0 100% (46/46), P1 100% (2/2); 0 critical-open, 0 high-open, 3 medium-open (all test-seam or test-fidelity, none production-reachable), 11 low-open. **The 2026-07-12 CONCERNS field was driven primarily by the AC-7 (5.4) full-width artifact list pane missing the `no-scrollbar` class. That concern is now FIXED** — the 2026-07-13 bug-hunt applied a quick-win fix adding the class to `artifacts/page.tsx:124` and added a test assertion at `artifacts/page.test.tsx:265-269`. All previously-documented weaknesses (see 2026-07-12 section above) are either resolved or re-categorized as residual concerns that do not block the gate.
 - **Story 5.5 acceptance criteria:** 10 ACs (AC-1 through AC-10), all FULL coverage. Test evidence:
   - **Component tests:** 9 ConversationPane tests (AC-1 / AC-2 / AC-3 / AC-4 / AC-5 / AC-6 SUCCEEDED + FAILED / AC-8 surrogate / AC-9 resume variant / AC-1 multi-tool variant) + 5 AgentMessage tests (AC-1, AC-10 narrative ordering).
   - **Backend persistence tests:** 3 tests in `agent.service.unit.spec.ts` (segments persisted; segments ordered; tool_call fields captured) + 1 strengthened `agent.service.spec.ts:184-202` test (segment contents asserted via `arrayContaining`).
   - **E2E:** 7 tests in `playwright/e2e/conversation/story-5-5-inline-pills.spec.ts` (covering AC-1, AC-2, AC-3, AC-4, AC-5, multi-tool AC-1 variant, AC-2 expand/collapse variant).
-- **Story 5.5 NFR assessment (`nfr-assessment-5-5.md`, 2026-07-13):** PASS-WITH-CONCERNS. 8 PASS, 4 CONCERNS (1 Medium + 3 Low), 0 FAIL. The 1 Medium is `M3-new` (`AgentServiceFake` diverges from production `pendingClassifierPromises` pattern — test-seam fidelity violation; production code is correct). 3 Lows: `L5-new` index-based React keys for text segments (`AgentMessage.tsx:99`), `L6-new` `MANUAL_SAVE_SUCCEEDED/FAILED` handler duplication (~150 lines), `L7-new` `apps/web/project.json` lacks a `typecheck` nx target (surfaced by the M2-new TS narrowing bug fixed during the audit).
+- **Story 5.5 NFR assessment (2026-07-13):** PASS-WITH-CONCERNS. 8 PASS, 4 CONCERNS (1 Medium + 3 Low), 0 FAIL. The 1 Medium is `M3-new` (`AgentServiceFake` diverges from production `pendingClassifierPromises` pattern — test-seam fidelity violation; production code is correct). 3 Lows: `L5-new` index-based React keys for text segments (`AgentMessage.tsx:99`), `L6-new` `MANUAL_SAVE_SUCCEEDED/FAILED` handler duplication (~150 lines), `L7-new` `apps/web/project.json` lacks a `typecheck` nx target (surfaced by the M2-new TS narrowing bug fixed during the audit).
 - **Epic 5 NFR assessment (`nfr-assessment-5-epic.md`, 2026-07-13 revision):** PASS-WITH-CONCERNS. 23 PASS, 6 CONCERNS (de-duplicated: 3 Medium + 3 Low), 0 FAIL. Two of the three Mediums are pre-existing project-wide (`turn.findMany` missing `take` limit — NFR-5.2-1, amplified by Story 5.5's `segments` JSONB column read; `messages.map()` unbound rendering — NFR-5.3-2, amplified by Story 5.5's multi-`Markdown` per agent message). The third Medium (`M3-new`) is the only NEW Epic-5-introduced finding — see NFR Story 5.5 above.
 - **Story 5.5 bug-hunt (`bug-hunt-epic-5-story-5-5-interleaved-pills.md`, 2026-07-13):** 9 findings (0 critical, 0 high, 3 medium, 6 low) against 18 source files + 13 co-located test files and the committed changes (commit `465ea50` plus related quick-win commit `11f470f`). Profile reflects Story 5.5's architectural scope — zero critical/high (no production-reachable data-loss or security regressions introduced); mediums concentrated in (i) false-green tests asserting segment presence without verifying the relative ORDER that AC-1's "at the EXACT POSITION" contract requires, and (ii) one real-but-normally-unreachable status-overwrite bug in `TOOL_CALL_END`. The 3-layer bug-hunt (TFA → ECH → CR) ran sequentially in subagent-fallback mode (single-session inline execution — same precedence as the 2026-07-12 hunt).
 
@@ -507,3 +511,102 @@ These items are recorded so that when Epic 6 enters implementation, its per-stor
 - `_bmad-output/test-artifacts/test-design-qa.md` — `lastSaved`; status line + Executive Summary test counts (853 → 1201 total); Exit Criteria P0/P1 thresholds (matches the PASS gate decision); Story 5.5 IC scenarios added to the coverage matrix in the Conversations feature area; Post-Epic-5 Gap Closure Plan extended with a "Post-Story-5.5 Gap Closure Update" that closes P1-014 + P1-016 + parts of P3-001 and adds new items P1-018, P1-019, P1-020, P3-002; Epic 6 forward-look paragraphs extended with Story 5.5 substrate references.
 - `_bmad-output/test-artifacts/test-design/bmad-easy-handoff.md` — `generatedAt` extended with revised-2026-07-13; Post-Story-5.5 Update section; Phase Transition table updated (Implements Test Automation → Release line for Epic 5: CONCERNS → PASS for the gate status; Story-9-5.5 segments-model substrate noted in Risk-to-Story mapping and Epic 6 Forward-Look).
 - `_bmad-output/test-artifacts/automation-summary.md` — minimal stale-data note refreshed; test counts updated (853 → 1201 total + 7 Story 5.5 E2E); gate decision updated (CONCERNS → PASS). Retained as historical reference; per-story automate-validation reports remain the source of truth.
+
+## Post-Epic-4 Update (2026-07-14, EDIT mode)
+
+**Trigger:** Epic 4 ("MVP Cloud Deployment Provisioning", 12 stories 4-1 through 4-12) completed 2026-07-12 through 2026-07-14. The 2026-07-14 traceability matrix extension (`traceability-matrix.md` § "Epic 4 Extension") and the bug-hunt overlay (`bug-hunt-epic-4.md`) + Epic 4 retro (`epic-4-retro-2026-07-14.md`) landed. This section records the post-Epic-4 reality so the system-level progress file matches `sprint-status.yaml` (all 12 Epic 4 stories `done` + `epic-4: done` + `epic-4-retrospective: done`). The prior Post-Epic-5, Post-Story-5.5, and original Steps 1–5 sections are preserved verbatim for auditability.
+
+**Autonomous decisions (in place of halting at the skill's step-01-confirm and step-02-confirm gates):**
+
+1. **Mode determination:** chose `[E] Edit` per the task brief; the system-level plan already exists and surgical edits are needed.
+2. **Target selection (step-01-assess #1):** targeted `test-design-architecture.md`, this file, `test-design-qa.md`, `test-design-epic-hydration-gap.md`, and `ci-pipeline-progress.md`. Did not create duplicate artefacts.
+3. **Confirmation gates (step-01-assess #3, step-02-apply-edit #1):** proceeded without halting; recorded this decision here per the unattended-operation guideline.
+
+### Current Project State (2026-07-14, post-Epic-4)
+
+| Epic | Status | Stories | Test Artefacts |
+|---|---|---|---|
+| Epic 1 (Authentication & Repository Connection) | done | 9 (1.1–1.9) | ATDD + automate-validation + test-review; epic-1-retrospective done |
+| Epic 2 (Project Map & Artifact Browser) | done | 6 (2.1–2.6) | ATDD + automate-validation + test-review; epic-2-retrospective done |
+| Epic 3 (Conversations — Running BMAD Skills with the Agent) | done | 12 (3.1–3.12) | ATDD + automate-validation + test-review + NFR per story; epic-3-retrospective done |
+| Epic 4 (MVP Cloud Deployment Provisioning) | **done** | **12 (4.1–4.12)** | ATDD + automate-validation for all 12 stories + NFR for 6 (4-1, 4-2, 4-3, 4-6, 4-9, 4-12) + **bug-hunt-epic-4 + traceability extension + epic-4-retrospective** (the missing Wave-1+2 closeout run from the Epic 5 retro agreement) |
+| Epic 5 (UX Mockup Fidelity — Close Visual Drift) | done | 5 (5.1–5.5) | ATDD + automate-validation + test-review (4 of 5) + per-story + epic-level NFR; bug-hunt + traceability + NFR all re-run for Story 5.5 on 2026-07-13; gate = PASS |
+| Epic 6 (Sandbox-Based Agent Execution) | backlog | 5 (6.1–6.5) | None yet — Story 4.5's Anthropic proxy is the contract Epic 6 builds on |
+| Epic 7 (Live-Usage UX Improvements) | backlog | 5 (7.1–7.5) | backlog — 5 UX gaps discovered post-Epic-5; frontend presentation only |
+
+**Correction to the 2026-07-12 and 2026-07-13 table:** those tables listed "no Epic 4 — numbering skips per `epics.md`". That was incorrect — Epic 4 (MVP Cloud Deployment Provisioning) was defined in `epics.md:941-1222` and ran in parallel with Epic 5 (2026-07-12 through 2026-07-14). The prior tables omitted Epic 4 because the test-design workflow was last in Create/Edit mode on 2026-07-13, before Epic 4 stories had completed. This is now corrected.
+
+### Test Counts (2026-07-14 verification)
+
+| Type | Count |
+|---|---|
+| Total test files (`apps/` + `playwright/`) | 133 files |
+| Total test cases (grep-based `it`/`test` count) | ~1,876 cases |
+| `.skip` markers | 12 (all environment-gated, none broken) |
+| E2E spec files (`playwright/e2e/`) | 28 (across shell, auth, onboarding, project-map, artifact-browser, conversation, multi-conn, performance-spike, real-service shelves) |
+| Component test files (`apps/web/src/**/*.test.tsx`) | 37 |
+| Unit test files (co-located `*.spec.ts`) | 29 (apps/web + apps/agent-be + libs) |
+| Integration test files | 8 total: 4 in `apps/web/src/lib/` + 5 in `apps/agent-be/test/integration/` (of which 3 are Epic 4 environment-gated against `RAILWAY_TOKEN`/`VERCEL_TOKEN`/`DATABASE_URL`) |
+
+The prior 2026-07-13 count (1,201 Jest across 81 suites + 7 E2E) reflected only the Epics 1–3 + Epic 5 test surface. Epic 4 added 17 new test files (14 unit-level + 3 integration-level, ~223 cases) plus the 5 new multi-conn/real-service/performance-spike E2E suites from the pre-Epic-4 sandbox-refactor window. The grep-based total (~1,876) includes `.skip`/`.each` variants; the prior Jest-only count was a different counting basis.
+
+### Epic 4 Test Outcomes
+
+- **Traceability gate (2026-07-14 Epic 4 extension):** `CONCERNS` (strict rule-based: FAIL — P0 85.7% < 100%, P1 72.7% < 80% minimum). 43 ACs: 36 FULL, 5 PARTIAL, 2 NONE. The CONCERNS override applies because all 7 gaps are documented — 3 ATDD-deferred one-time-manual per AC text, 2 platform-limitation deferrals (GitHub billing plan, manual sub-step), 2 critical bug-hunt findings tracked for remediation. **Combined Epics 1–4 gate = CONCERNS** (was PASS for Epics 1–3). The Epics 1–3 PASS verdict is preserved; the CONCERNS is entirely attributable to Epic 4.
+- **Bug-hunt-epic-4 (`bug-hunt-epic-4.md`, 2026-07-14):** 24 findings (0 critical? No — **2 Critical**, 5 High, 12 Medium, 5 Low). The 2 critical findings block the Epic 4 closeout release:
+  - **C1 — Secret rotation cron silently inactive.** `.github/secret-rotation-config.json` ships `"productionLaunchDate": "<YYYY-MM-DD>"` placeholder; `check-rotations.js` parses it → produces empty `[]` → exits 0 → weekly cron reports success and creates no issues. Two false-green tests enforce the broken state. The entire Story 4.12 feature is silently off.
+  - **C2 — Deploy quality gate missing SHA check.** `deploy.yml` accepts a stale `test.yml` success run (different commit SHA) as proof — untested commits can deploy.
+  - The 5 Highs: H1 no post-deploy health verification, H2 Vercel/Railway split-brain no automation, H3 `check-rotations.js` swallows ALL exceptions + exits 0, H4 Dockerfile install stage omits `.yarn/` directory, H5 `check-rotations.js` ms-arithmetic DST drift.
+  - The 12 Mediums concentrate in the runbook-regression-guard false-green test patterns (M3 per-file-not-per-block curl-flag test, M4 regex too narrow, M5 vacuous assertion, M6 over-permissive regex, M7 too-broad token-prefix patterns, M8 env-validation scope too narrow, M9 issue-dedup race, M10 Dockerfile opaque package.json mutation, M11 run-migrations fully mocks execSync, M12 runbook buries auth caveat).
+- **Epic 4 retro (`epic-4-retro-2026-07-14.md`):** Key findings: (1) the Wave-1+2 closeout team agreement from the Epic 5 retro was NOT applied to Epic 4 during the epic — the bug hunt + trace extension + NFR aggregation were run post-hoc, not at the closeout boundary; (2) "deferred as human action items" cascade smell (Story 4.5 → 4.6 → 4.7); (3) `--fail`/`--max-time` curl-flag rule adopted mid-epic but not back-applied to 3 earlier runbooks (4.7, 4.8, 4.9); (4) runbook + regression-guard test pattern matured across 6 consecutive stories (4.7–4.12); (5) Story 4.8's strict zero-deferral policy (26 patches inline, 0 deferred) is the cleanest review outcome.
+
+### New Test-Plan Items (Epic 4 cycle, tracked in `test-design-qa.md` Post-Epic-4 Gap Closure Update)
+
+| Test ID | Requirement | Level | Priority | Finding Closed | Notes |
+|---|---|---|---|---|---|
+| P1-021 | Set real `productionLaunchDate` in `.github/secret-rotation-config.json` + rewrite false-green tests at `check-rotations.spec.ts:513-519` and `secret-rotation-schedule.spec.ts:607-610` to reject the placeholder post-launch | Implementation + tests | P1 | bug-hunt C1 (Critical) | **Blocks Epic 4 closeout release.** Requires Marius to confirm the actual production launch date (derivable from `gh run list --workflow=deploy.yml --status=success --limit=1 --json createdAt`). |
+| P1-022 | Strengthen `deploy-workflow.spec.ts:165-222` AC-2 tests to assert `headSha == ${{ github.sha }}` is checked (or `--commit` flag to `gh run list`); tighten `deploy.yml` gate to fail if SHA mismatches + declare accepted `event_name` (push/PR only — no scheduled runs accepted as PR-tier proof) | Implementation + tests | P1 | bug-hunt C2 (Critical) | **Blocks Epic 4 closeout release.** Untested commits can currently deploy. |
+| P1-023 | Add post-deploy health verification step in `deploy.yml` (`curl --fail --max-time 30 --retry 5 --retry-delay 10 https://bmad-easy.vercel.app/ && curl --fail --max-time 30 --retry 5 --retry-delay 10 https://agent-be-production-1c09.up.railway.app/health`); fail the deploy job if either check fails + surface rollback guidance in `$GITHUB_STEP_SUMMARY` | Implementation (CI) | P1 | bug-hunt H1 (High) | Deployed app may be unhealthy but deploy reports success; operators only notice via UptimeRobot alert (5-min window of degraded service). |
+| P1-024 | Strengthen `check-rotations.js` exit-code contract — exit 0 ONLY for explicitly-empty results; exit non-zero with `console.error` diagnostic for unexpected errors (invalid JSON config, invalid launch date, outer try-catch failures); add `check-rotations.spec.ts` assertions that malformed config and runtime errors produce non-zero exit | Implementation + tests | P1 | bug-hunt H3 (High) | Compounds C1 — even if the placeholder is fixed, future config-file typos or runtime errors will remain invisible. Should be coordinated WITH the C1 fix. |
+| P1-025 | Add `.yarn/` directory copy to the Dockerfile install stage (`COPY package.json yarn.lock .yarnrc.yml .yarn ./`) + add `dockerfile.spec.ts` regression guard asserting `.yarn` is copied; migrate `check-rotations.js` due-date calculation from elapsed-ms arithmetic to calendar-day arithmetic (`date.setDate(date.getDate() + intervalDays)`) + update `check-rotations.spec.ts:247-273` to assert calendar-day semantics | Implementation + tests | P1 | bug-hunt H4 + H5 (High) | Two independent fixes bundled. H4 is future-proofing for when Yarn patches are introduced. H5 is DST-drift correctness over multi-year rotation cycles. |
+| P2-011 | Optional Docker-image runtime smoke — add `docker compose`-based integration test at `apps/agent-be/test/integration/docker-health.integration.spec.ts` that builds the agent-be image and `curl`s `/health` against a temporary local Postgres | Integration | P2 | 4.3-AC2 (P0 NONE) — ATDD-deferred | Lower priority than the critical findings — the AC text itself frames this as manual; `HEALTHCHECK` in production catches boot failure. |
+| P2-012 | Optional launch-smoke E2E — Playwright project that navigates to `https://bmad-easy.vercel.app` on demand, verifying HTTP 200 | E2E (launch-smoke) | P2 | 4.1-AC3 (P1 NONE) — ATDD-deferred | Lower priority — 4 runbook regression-guard tests already verify the URL is documented as the production target across 4 separate test files. |
+| P2-013 | Marius decision on 4.6-AC3 GitHub Environment required reviewers — either upgrade GitHub billing plan to support required reviewers + branch restriction protection rules, OR formally document the MVP deferral in `deferred-work.md` and re-classify the AC as a documented project decision | Decision (PM) | P1 (decision) | 4.6-AC3 (P0 PARTIAL) — platform limitation | Not a test-side remediation — requires project owner decision. Without this decision, the AC remains PARTIAL and the P0 gate stays below 100%. |
+| P3-003 | Epic-4 runbook-regression-guard test-pattern audit — the 6 stories (4.7–4.12) follow the structural-validation approach (tests read committed runbooks + assert on structure). The bug-hunt surfaced 5 false-green patterns (M3 per-file-not-per-block, M4 regex too narrow, M5 vacuous assertion, M6 over-permissive regex, M7 too-broad token-prefix). Audit all 6 regression-guard test files against this finding list. | Audit + tests | P3 | bug-hunt M3–M7 (Medium) | The structural-validation approach passes while the underlying feature is broken (C1) — the pattern amplifies false-green risk. |
+
+### Prior Test-Plan Items — Carry-Forward Status (since 2026-07-13)
+
+| Test ID | Status (2026-07-14) | Notes |
+|---|---|---|
+| P1-015 | Still OPEN | Type-checked `connectRepository` mock factory + `.catch()` path test — out of Epic 4 scope (frontend file). |
+| P1-017 | Still OPEN | ChatInput AC-4 false-green tightening — out of Epic 4 scope. |
+| P1-018 | Still OPEN | Mirror `pendingClassifierPromises` in `AgentServiceFake` — out of Epic 4 scope (agent-be production code not modified by Epic 4). Epic 4 retro confirms this carries forward unchanged — must land before Epic 6. |
+| P1-019 | Still OPEN | Story 5.5 M2-new regression test — out of Epic 4 scope. |
+| P1-020 | Still OPEN | Add `typecheck` nx target to `apps/web/project.json` — Epic 4 retro notes Story 4.7 added `dependsOn: ["^generate"]` to `agent-be:typecheck` but did NOT add `web:typecheck`. Carries forward. |
+| P2-008 | Still OPEN | `withArtifacts` Playwright fixture restoration — no progress in Epic 4. |
+| P2-009 | Still OPEN | Loading-skeleton header parity E2E — no progress. |
+| P2-010 | Still OPEN | 5.2-AC10 conversation-list scroll E2E — no progress. |
+| P3-002 | Still OPEN | Epic-5 NFR hardening bundle — not visible in Epic 4 work. Carries forward; should be verified complete before Epic 6. |
+
+### Stale Plans Removed / Corrected
+
+- **"no Epic 4 — numbering skips per `epics.md`"** (2026-07-12 and 2026-07-13 progress tables) — **REMOVED/CORRECTED**. Epic 4 IS defined and IS complete. The omission was an artifact of the test-design workflow running before Epic 4 stories had completed; it is not a scope change.
+- **CI pipeline progress "Real-service specs are out of scope — explicit task instruction"** (`ci-pipeline-progress.md` Tier-Split Step 01 "Assumptions recorded") — **MARKED STALE**. The specs WERE authored: `playwright/e2e/multi-conn/concurrent-sse.spec.ts`, `playwright/e2e/multi-conn/sse-back-pressure.spec.ts`, `playwright/e2e/real-service/functional-smoke.spec.ts`, `playwright/e2e/real-service/nfr-performance.spec.ts`, `playwright/e2e/real-service/nfr-p5-manual-commit.spec.ts`, `playwright/e2e/performance-spike/repo-size.spec.ts` all exist and are environment-gated. The `ci-pipeline-progress.md` file is updated with a Post-Epic-4 section this run.
+- **Hydration gap plan (`test-design-epic-hydration-gap.md`) "Status: Draft"** — **MARKED SUPERSEDED**. The hydration gap plan items were addressed during Epics 1–3 + the sandbox-refactor window: `AppShell.hydration.test.tsx` (component test for `hydrateRoot` round-trip), `playwright/support/console-error-guard.ts` (global `page.on('pageerror')` + `page.on('console')` fixture), `playwright/e2e/hydration/hydration.spec.ts` (E2E hydration assertion on `/project-map`), and `setAttribute` in `AppShell.tsx` was refactored to `tabIndex={-1}` prop (confirmed: no `setAttribute` calls remain in `AppShell.tsx`). See the updated hydration gap doc for per-item verification status.
+
+### Epic 6 Forward-Look (updated for Epic 4 dependencies)
+
+Epic 6 remains backlog (5 stories 6.1–6.5). The testability needs the test plan must tee up are recorded in `test-design-architecture.md` § "Epic 6 Forward-Looking Testability Preview" (Story 5.5 substrate + new test seam) and now additionally informed by Epic 4 dependencies:
+
+- **Story 4.5's Anthropic proxy endpoint is the contract Epic 6 builds on.** `architecture.md:259` still describes the OLD direct-injection design — the architect should amend the architecture doc before Epic 6 begins. The `networkAllowList` (Story 6.1) must include the proxy URL (`/api/proxy/anthropic`), not the raw Anthropic API endpoint.
+- **`DAYTONA_API_URL` and `DAYTONA_API_KEY` are still `z.string().optional().default('')`** (bug-hunt M1) — production can boot without them. Tighten to `z.string().min(1)` before Epic 6.
+- **The deploy workflow (Story 4.6) blocks Epic 6 deploys** if the Test Pipeline is not green — Epic 6 must land green.
+- **The `AgentServiceFake` divergence fix (P1-018) must land before Epic 6 starts** — Epic 4 retro confirms this carries forward unchanged. Story 6.2/6.3 will exercise the working-tree path under sandbox execution.
+- **`web:typecheck` nx target (P1-020) must be added** — Story 4.7 added `dependsOn: ["^generate"]` to `agent-be:typecheck` but not `web:typecheck`. Epic 6 will touch `apps/web`.
+- **Epic 7 (Live-Usage UX Improvements) is now in the backlog** (5 stories 7.1–7.5) — frontend presentation changes only, independent of Epic 6. Not yet in the test design plan; will need an epic-level test design pass when it enters implementation.
+
+- `_bmad-output/test-artifacts/test-design-architecture.md` — `lastSaved`; status line; new "Post-Epic-4 Update (2026-07-14)" subsection extending the 2026-07-13 Post-Story-5.5 Update with the deployment infrastructure reality + actual test tiers + Anthropic proxy architectural concern + Epic 6 forward-look dependency update; re-added the Epic 6 Forward-Looking Testability Preview header (consumed during the edit, restored).
+- `_bmad-output/test-artifacts/test-design-progress.md` — `lastSaved`; this Post-Epic-4 Update section appended after the 2026-07-13 Post-Story-5.5 Update. All earlier content preserved verbatim.
+- `_bmad-output/test-artifacts/test-design-qa.md` — `lastSaved`; status line; Exit Criteria P0/P1/P2/P3 thresholds updated to reflect the combined CONCERNS gate; Post-Epic-4 Gap Closure Update appended after the Post-Story-5.5 Gap Closure Update; Epic 6 forward-look extended with Epic 4 dependencies.
+- `_bmad-output/test-artifacts/test-design-epic-hydration-gap.md` — `lastSaved`; status changed from Draft; Post-Epic-4 Status section appended documenting which hydration gap plan items were addressed and Epic 4's relationship (infra/deployment, no UI changes, no hydration impact).
+- `_bmad-output/test-artifacts/ci-pipeline-progress.md` — `lastSaved` updated to 2026-07-14; Post-Epic-4 Update section appended documenting that specs WERE authored (correcting the stale "specs out of scope" assumption) + deploy.yml + secret-rotation-reminder.yml additions + Epic 4 test files.

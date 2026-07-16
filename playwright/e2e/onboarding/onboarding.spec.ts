@@ -5,7 +5,8 @@
  * AC-4 (descriptive per-cause inline errors).
  *
  * Most tests use the synthetic session seeded by auth.setup.ts (AUTH_SECRET only).
- * Tests that require real GitHub org restrictions remain skipped.
+ * Tests that require real GitHub org restrictions are conditionally skipped
+ * (gated on TEST_ORG_RESTRICTION_REPO_URL / TEST_REPO_URL env vars).
  *
  * Server Action POST responses are mocked via page.route() using React Flight
  * wire format so that error/success flows can be tested without real GitHub credentials.
@@ -13,19 +14,11 @@
 
 import { test, expect } from '../../support/merged-fixtures';
 import { resetRepoConnection, seedRepoConnection } from '../../support/reset-repo-connection';
+import { rscActionPayload } from '../../support/rsc-mock';
 // After all onboarding tests finish, restore a repo connection so that
 // subsequent test files (conversation, project-map) which require a
 // connection to exist for seeding are not left without one.
 test.afterAll(seedRepoConnection);
-
-/**
- * Generates a minimal React Flight (RSC) wire-format payload for a Server Action
- * that returns a plain object. Chunk 1 carries the action result; chunk 0 is the
- * root referencing it via the "a" (action) field.
- */
-function rscActionPayload(result: unknown): string {
-  return `:N${Date.now()}.000\n0:{"a":"$@1","f":"","b":"","q":"","i":false}\n1:${JSON.stringify(result)}\n`;
-}
 
 // ─── Unauthenticated access guard ────────────────────────────────────────────
 
@@ -229,11 +222,15 @@ test.describe('Story 1.3 — inline error display (AC-4)', () => {
     },
   );
 
-  test.skip(
+  test(
     '[P1] org OAuth App restriction error explicitly names the org cause — not a generic message (AC-4)',
     async ({ page }) => {
       // Requires a test repo in an org with OAuth App access restrictions enabled.
-      // Cannot be simulated without a real GitHub org configured with App restrictions.
+      // Set TEST_ORG_RESTRICTION_REPO_URL to the repo URL to enable this test.
+      test.skip(
+        !process.env.TEST_ORG_RESTRICTION_REPO_URL,
+        'Requires TEST_ORG_RESTRICTION_REPO_URL — a repo in a GitHub org with OAuth App access restrictions',
+      );
       await page.goto('/onboarding');
       await page.getByLabel(/repository url/i).fill('https://github.com/restricted-org-test/some-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
@@ -256,11 +253,6 @@ test.describe('Story 1.3 — successful repository connection (AC-3)', () => {
     async ({ page }) => {
       await page.goto('/onboarding');
 
-      // Intercept /project-map (currently 404 until Epic 2) so the navigation target resolves
-      await page.route('**/project-map', (route) =>
-        route.fulfill({ status: 200, body: '<html><body>Project Map</body></html>' }),
-      );
-
       // Mock Server Action to return success without calling GitHub API
       await page.route('**/onboarding', async (route) => {
         if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
@@ -274,18 +266,29 @@ test.describe('Story 1.3 — successful repository connection (AC-3)', () => {
         }
       });
 
+      // Seed a real RepoConnection so the soft navigation to /project-map
+      // resolves on the real page (which redirects to /onboarding if no
+      // connection exists). Done after page.goto so /onboarding doesn't
+      // redirect immediately, and before the click so the navigation target
+      // is valid.
+      await seedRepoConnection();
+
       await page.getByLabel(/repository url/i).fill('https://github.com/test-org/test-repo');
       await page.getByRole('button', { name: /connect repository/i }).click();
 
-      await expect(page).toHaveURL('/project-map', { timeout: 15_000 });
+      await page.waitForURL('/project-map', { timeout: 15_000 });
     },
   );
 
-  test.skip(
+  test(
     '[P1] encrypted token is never visible in the browser — response body check (AC-3)',
     async ({ page }) => {
       // Requires real GitHub credentials and a writable test repo.
-      // Cannot be simulated with route mocking since token security is a server-side property.
+      // Set TEST_REPO_URL to a writable repo to enable this test.
+      test.skip(
+        !process.env.TEST_REPO_URL,
+        'Requires TEST_REPO_URL — a writable GitHub repo with real OAuth credentials',
+      );
       const responses: string[] = [];
 
       page.on('response', async (response) => {

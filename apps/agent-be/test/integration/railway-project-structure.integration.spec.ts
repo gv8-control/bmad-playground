@@ -16,7 +16,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const RAILWAY_GRAPHQL_ENDPOINT = 'https://backboard.railway.com/graphql/v2';
-const WORKSPACE_ID = 'a1f06762-5fbd-431e-811f-5183b80576e5';
 const EXPECTED_PROJECT_NAME = 'bmad-easy';
 
 function getRailwayToken(): string {
@@ -46,7 +45,7 @@ async function railwayGraphQL(query: string): Promise<any> {
   const response = await fetch(RAILWAY_GRAPHQL_ENDPOINT, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
+      'Project-Access-Token': token,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ query }),
@@ -73,27 +72,18 @@ let projectId: string;
 
 describe('Railway project structure — Story 4.2', () => {
   beforeAll(async () => {
-    const data = await railwayGraphQL(`
+    // Project tokens use Project-Access-Token header (not Authorization: Bearer).
+    // The projectToken query returns the projectId and environmentId the token is scoped to.
+    const tokenData = await railwayGraphQL(`
       query {
-        projects(workspaceId: "${WORKSPACE_ID}") {
-          edges {
-            node {
-              id
-              name
-            }
-          }
+        projectToken {
+          projectId
+          environmentId
         }
       }
     `);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const projectEdge = data.projects.edges.find((e: any) => e.node.name === EXPECTED_PROJECT_NAME);
-
-    if (!projectEdge) {
-      throw new Error(`Project "${EXPECTED_PROJECT_NAME}" not found in workspace ${WORKSPACE_ID}. Run Story 4.2 Tasks 1-2 first.`);
-    }
-
-    projectId = projectEdge.node.id;
+    projectId = tokenData.projectToken.projectId;
 
     projectData = await railwayGraphQL(`
       query {
@@ -197,7 +187,10 @@ describe('Railway project structure — Story 4.2', () => {
     }
     const vars: Record<string, string> =
       typeof rawVars === 'string' ? JSON.parse(rawVars) : (rawVars as Record<string, string>);
-    expect(vars).toHaveProperty('DATABASE_URL');
+    // NFR-4-2-M1: use Object.keys(...).toContain('KEY') instead of
+    // toHaveProperty('KEY') — toHaveProperty includes the actual (secret)
+    // value in the assertion failure message, leaking it to CI logs.
+    expect(Object.keys(vars)).toContain('DATABASE_URL');
     expect(typeof vars.DATABASE_URL).toBe('string');
     expect((vars.DATABASE_URL as string).startsWith('postgresql://')).toBe(true);
   });

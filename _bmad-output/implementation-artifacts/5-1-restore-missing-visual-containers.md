@@ -317,7 +317,6 @@ glm-5.2 (neuralwatt/glm-5.2)
 **Audit Mode:** Create (NFR-specific issues only)
 **Auditor:** Master Test Architect
 **Overall Status:** PASS ✅
-**Full Report:** `_bmad-output/test-artifacts/nfr-assessment-5-1.md`
 
 **Summary:** 9 PASS, 2 CONCERNS (LOW), 2 INFO, 0 FAIL, 0 blockers. Story 5.1 is a frontend-only visual container story — no Prisma queries, no security headers, no sandbox/credential changes. The only new logic is the `parseFrontmatter` function in `ArtifactViewer.tsx`.
 

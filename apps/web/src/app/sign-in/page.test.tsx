@@ -67,7 +67,6 @@ describe('SignInPage — pending state', () => {
 
 // ─── Story 5.1: Visual containers (AC-1) ────────────────────────────────────
 //
-// GREEN PHASE: tests are active for Task 1 implementation.
 // AC-1: Sign-in auth card with brand logo box, heading, and legal footer.
 // The sign-in page must render a bordered auth card wrapping the OAuth button,
 // a brand logo box (48x48, "be") above the heading, a "Continue with GitHub"

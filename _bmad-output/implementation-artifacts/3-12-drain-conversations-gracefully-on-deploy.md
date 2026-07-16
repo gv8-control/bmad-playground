@@ -318,7 +318,7 @@ e20d012 docs: updates to playbook prompts
 6adc9d5 ci: fixes for n8n workflow
 ```
 
-Story 3.11 finalized the concurrent conversations feature. Story 3.12 is the last story in Epic 3 (`epic-3-retrospective: optional`).
+Story 3.11 finalized the concurrent conversations feature. Story 3.12 is the last story in Epic 3 (`epic-3-retrospective: done`).
 
 ### Project Structure Notes
 
@@ -349,7 +349,7 @@ Story 3.11 finalized the concurrent conversations feature. Story 3.12 is the las
 - [Source: ux-designs/.../EXPERIENCE.md#Conversation Loading (Returning)] — "Reconnecting…" state pattern (lines 240-248)
 - [Source: ux-designs/.../validation-report.md] — "Deploy-time onModuleDestroy drops pending manual commits without MANUAL_SAVE_FAILED" (line 90)
 - [Source: ux-designs/.../review-implementation-drift.md] — "Deploy/drain UX is Story 3.12 (backlog)" (line 81)
-- [Source: implementation-readiness-report-2026-07-02.md] — "Story 3.5 is overloaded... Split into 2-3 stories: (b) Graceful shutdown + SSE capacity" (lines 228-230)
+- [Source: implementation-readiness-report-2026-07-03.md] — "Story 3.5 is overloaded... Split into 2-3 stories: (b) Graceful shutdown + SSE capacity" (lines 228-230)
 - [Source: apps/agent-be/src/conversations/conversations.service.ts] — in-memory Maps (lines 27-29), `getStatus` fallback (lines 226-241), `resumeConversation` fast-path (lines 394-464), `countActiveConversations` (lines 68-81)
 - [Source: apps/agent-be/src/conversations/manual-commit.service.ts] — `onModuleDestroy` (lines 110-113), `pendingCommits`/`executingCommits` Sets (lines 8-9), `MANUAL_SAVE_FAILED` event (lines 94-97, 102-105)
 - [Source: apps/agent-be/src/streaming/session-events.service.ts] — `emitters` Map (line 11), `emit()`/`complete()` (lines 22-37), no `OnModuleDestroy`

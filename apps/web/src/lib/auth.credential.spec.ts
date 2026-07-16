@@ -6,9 +6,6 @@
  * Verifies the jwt callback encrypts and upserts the access token after user
  * upsert when account.access_token is present (AC-3).
  *
- * All tests are active and passing. auth.ts was updated in Task 3.1
- * and all test.skip() markers have been removed.
- *
  * Relationship to auth.integration.spec.ts:
  *   auth.integration.spec.ts covers the existing jwt/session callbacks from Story 1.2.
  *   This file covers only the NEW credential-storage behaviour added in Story 1.3.
@@ -37,8 +34,7 @@ jest.mock('next-auth/providers/github', () => ({
 }));
 
 const mockEncryptToken = jest.fn();
-// virtual: true because crypto.ts does not exist until Task 2.1 is implemented.
-jest.mock('./crypto', () => ({ encryptToken: (...args: unknown[]) => mockEncryptToken(...args) }), { virtual: true });
+jest.mock('./crypto', () => ({ encryptToken: (...args: unknown[]) => mockEncryptToken(...args) }));
 
 jest.mock('next-auth', () => ({
   __esModule: true,

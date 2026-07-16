@@ -67,8 +67,6 @@ describe('useDraftPersistence', () => {
 
 // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
 //
-// GREEN PHASE: tests are active for Story 5.3 implementation.
-//
 // AC-7: Draft localStorage key is "new-conversation", not "new-conversation-draft"
 
 describe('useDraftPersistence — Story 5.3 structural drift', () => {

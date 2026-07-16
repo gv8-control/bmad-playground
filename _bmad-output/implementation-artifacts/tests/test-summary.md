@@ -1,6 +1,6 @@
 # Test Automation Summary
 
-**Last updated:** 2026-07-12 (Story 5.4 — token-usage drift E2E tests; 7 new tests, 2 skipped)
+**Last updated:** 2026-07-14 (Story 4.10 — Configure Database Backups and Verify Restore; 45 unit tests verified passing, 0 E2E/API tests generated — documentation + verification story with no API endpoints or UI; all 3 ACs involve platform infrastructure behavior (Railway volume backup schedules, pg_dump/restore to local Docker Postgres, integrity verification) that no browser mock can simulate; E2E explicitly excluded per story Testing Approach; existing 45 unit tests are runbook-structure regression guards providing complete coverage of all 3 ACs + credential-isolation + input-injection + curl-flag security invariants)
 
 ---
 
@@ -2643,3 +2643,612 @@ yarn playwright test playwright/e2e/conversation/story-5-5-inline-pills.spec.ts 
 - Fix the "tool call before any text" timing race (AC-1, AC-8) — consider waiting for React state settlement between `sendMessage()` and event emission
 - Run the full E2E suite to confirm no cross-spec regressions with other conversation tests
 
+#### Unit Tests — Deploy Workflow (31 tests, all passing)
+
+**File:** `apps/agent-be/test/unit/deploy-workflow.spec.ts`
+
+##### AC-1: Manual trigger only, deploys both services (11 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| workflow file exists and is valid YAML | AC-1 | P0 | File exists and parses as valid YAML via `js-yaml` |
+| workflow name is "Deploy to Production" | AC-1 | P0 | Workflow `name` field matches |
+| on: trigger is workflow_dispatch (string form) | AC-1 | P0 | Manual trigger only (string form) |
+| on: trigger contains ONLY workflow_dispatch (object form) | AC-1 | P0 | No other triggers in object form |
+| on: trigger does NOT contain push | AC-1 | P0 | No push trigger |
+| on: trigger does NOT contain pull_request | AC-1 | P0 | No pull_request trigger |
+| on: trigger does NOT contain schedule | AC-1 | P0 | No schedule trigger |
+| workflow has a "deploy" job | AC-1 | P0 | Deploy job exists |
+| deploy job runs on ubuntu-latest | AC-1 | P0 | Runner configuration |
+| deploy job includes a Vercel deploy step (apps/web) | AC-1 | P0 | Vercel deploy for apps/web |
+| deploy job includes a Railway deploy step (apps/agent-be) | AC-1 | P0 | Railway deploy for apps/agent-be |
+
+##### AC-2: Quality gate dependency (6 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| quality-gate verification step exists in the deploy job | AC-2 | P0 | Quality-gate step present |
+| quality-gate step is the FIRST step in the deploy job | AC-2 | P0 | Runs before any deploy action |
+| quality-gate step uses gh run list --workflow=test.yml | AC-2 | P0 | Checks the correct test workflow |
+| quality-gate step checks for conclusion success | AC-2 | P0 | Only proceeds on success |
+| quality-gate step fails if no completed run exists | AC-2 | P0 | Does not bypass the quality gate |
+| quality-gate step uses GH_TOKEN from GITHUB_TOKEN | AC-2 | P0 | Uses default token (no extra secrets) |
+
+##### AC-3: GitHub Environment with protection rules (1 test)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| deploy job uses environment: production | AC-3 | P0 | Environment protection (required reviewers + branch restriction + env secrets) |
+
+##### Security: permissions and concurrency (3 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| permissions block is least-privilege (actions: read, contents: read) | Security | P0 | Least-privilege token scope |
+| concurrency group prevents concurrent deploys | Security | P0 | No concurrent production deploys |
+| deploy job has timeout-minutes set | Security | P0 | Deploy job has a timeout |
+
+##### Security: credential-isolation regression guards (5 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| VERCEL_TOKEN is referenced only via secrets.*, never as a literal value | Security | P0 | No token leak via command arguments |
+| RAILWAY_TOKEN is referenced only via secrets.*, never as a literal value | Security | P0 | No token leak via command arguments |
+| no credential env-var names appear as literal values in run: blocks | Security | P0 | No credentials in command strings |
+| no credential values appear in the workflow YAML (credential isolation) | Security | P0 | No literal secrets in the file |
+| VERCEL_PROJECT_ID and VERCEL_ORG_ID are in env: (not secrets, but not in run: blocks) | Security | P0 | Project IDs in env, not in command strings |
+
+##### Security: input-injection regression guards (4 tests)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| github.ref_name is NOT directly interpolated in run: blocks | Security | P0 | No `${{ github.ref_name }}` in run: text |
+| github.ref_name IS passed through env: intermediaries | Security | P0 | Branch name passed via env: |
+| branch name is safely quoted in shell commands (no unquoted $BRANCH) | Security | P0 | Malicious input is safely quoted |
+| no ${{ }} expressions in run: blocks except via env: intermediaries | Security | P0 | No direct interpolation of any kind in run: blocks |
+
+##### Deployment summary step (1 test)
+
+| Test | AC | Priority | Description |
+|---|---|---|---|
+| deploy job includes a deployment summary step writing to GITHUB_STEP_SUMMARY | Summary | P0 | Deployment summary is written |
+
+---
+
+## Next Steps
+
+- **No action required for Story 4.6** — all 3 ACs have test coverage at the appropriate level (unit YAML structure validation + security regression guards).
+- **When the Test Pipeline passes** (pre-existing Story 4.5 failures resolved), complete manual E2E verification (Story Tasks 4.6-4.8): trigger the deploy workflow, verify Vercel deploy succeeds, verify Railway deploy succeeds, verify production apps are reachable.
+- **Production URL smoke test (future):** a Playwright test navigating to `https://bmad-easy.vercel.app` and asserting HTTP 200 could be added once the deploy pipeline is fully operational. This would be an integration test against a live deployment, not a mock — deferred until the Test Pipeline passes and deploys succeed.
+
+---
+
+## Story 4.7: Confirm HTTP/2-Capable Reverse Proxy in Front of `apps/agent-be`
+
+**Generated:** 2026-07-13
+**Story status:** review
+
+---
+
+## Generated Tests
+
+### API Tests
+
+None generated. Story 4.7 introduces zero new API endpoints. The `/health` endpoint verified by the curl check is pre-existing (NestJS bootstrap in `apps/agent-be/src/main.ts`, excluded from the `/api` global prefix) — not added by this story.
+
+### E2E Tests
+
+None generated. Story 4.7 has no UI. HTTP/2 ALPN negotiation is a TLS-handshake property that no Playwright API can inspect or assert on. The story's Testing Approach explicitly states: *"No Playwright E2E tests. Playwright observes DOM, not TLS/ALPN negotiation."*
+
+#### E2E Deferral Justification (per-AC browser-mock feasibility check)
+
+| AC | Browser-mock feasible? | Reason |
+|---|---|---|
+| AC-1 (HTTP/2 ALPN negotiation confirmed and recorded) | No | ALPN negotiation occurs during the TLS handshake, before any HTTP request. Playwright route interception (`page.route()`) operates at the HTTP application layer, not the TLS transport layer. The Performance Resource Timing API's `nextHopProtocol` is tautological under mocked routes (the mock responds at HTTP layer without a TLS handshake, so it always reports `h2`). A mock that always reports `h2` tests the mock, not the capability. |
+| AC-2 (Scope boundary — no end-to-end SSE test) | N/A | This AC is a scope boundary — it explicitly excludes E2E coverage. It states 10-concurrent-SSE verification is Story 3.11's responsibility. No mock needed; the evidence file documents the boundary. |
+
+### Unit Tests (existing — verified passing)
+
+**File:** `apps/agent-be/test/unit/http2-verification.spec.ts` (14 tests)
+
+These are evidence-file regression guards, not live network tests. They validate the committed evidence file (`docs/runbooks/http2-verification.md`) so that a future deletion or emptying is caught by CI.
+
+#### AC-1: HTTP/2 ALPN negotiation confirmed and recorded (10 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| evidence file exists at docs/runbooks/http2-verification.md | P0 | Evidence file presence regression guard |
+| evidence file contains the agent-be public URL | P0 | Records the verified URL (`*.up.railway.app`) |
+| evidence file contains the curl command that was run | P0 | Records the concrete check command |
+| evidence file contains the ALPN negotiation line | P0 | Records `* ALPN: server accepted h2` |
+| evidence file contains the HTTP/2 status line | P0 | Records `< HTTP/2 200` |
+| evidence file contains the date of verification | P0 | Records when the check was run |
+| evidence file contains the tool and version used | P0 | Records `curl 8.5.0` with HTTP2 feature |
+| evidence file notes whether a reverse proxy/sidecar was needed | P0 | Records proxy necessity (expected: no) |
+| evidence file references NFR-R4 (10 concurrent SSE connections) | P0 | Links to the NFR this satisfies |
+| evidence file references the /health endpoint (not /api/health) | P0 | Check hits the correct endpoint |
+
+#### AC-2: Scope boundary — no end-to-end SSE test (2 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| evidence file notes that 10-concurrent-SSE verification is Story 3.11 scope | P0 | Scope boundary documented |
+| evidence file clarifies this story confirms transport capability only | P0 | Scope boundary documented |
+
+#### Evidence file structure (2 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| evidence file has a markdown heading | P0 | Well-formed markdown |
+| evidence file is non-trivial (at least 10 lines) | P0 | Substantive content (48 lines) |
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| Unit | `http2-verification.spec.ts` | 14 | 14 | 0 | **ALL PASSING** |
+| E2E | — | 0 | — | — | N/A (deferred — TLS-layer property) |
+| API | — | 0 | — | — | N/A (no new endpoints) |
+
+**Test execution:** `yarn nx test agent-be -- --testPathPattern=http2-verification`
+**Result:** 24 suites passed, 425 tests passed, 0 failures (14 Story 4.7 tests included).
+
+---
+
+## Next Steps
+
+- **No action required for Story 4.7** — both ACs have test coverage at the appropriate level (unit evidence-file regression guards). The story is a pure infrastructure verification with no API or UI surface.
+- **End-to-end 10-concurrent-SSE verification** is Story 3.11's scope once the streaming transport exists — explicitly excluded from this story by AC-2.
+- **Re-verify HTTP/2** manually (re-run `curl -v --http2 https://agent-be-production-1c09.up.railway.app/health` and update `docs/runbooks/http2-verification.md`) only if the Railway deployment topology changes. Per DP-5, no CI regression guard for the live check — it is a deployment invariant, not a code regression.
+
+---
+
+## Story 4.8: Deploy Failure Recovery and Rollback
+
+**Reviewed:** 2026-07-13
+**Story status:** review
+**Decision:** No E2E or API tests generated
+
+---
+
+## Generated Tests
+
+### Unit Tests (Jest) — Runbook Regression Guards
+
+- [x] [apps/agent-be/test/unit/deploy-failure-recovery.spec.ts](../../../apps/agent-be/test/unit/deploy-failure-recovery.spec.ts) — runbook structure and content regression guard (31 tests, all [P0])
+
+This is a documentation + verification story. The primary deliverable is `docs/runbooks/deploy-failure-recovery.md` (384 lines). The regression guard test reads the committed runbook file and asserts on its structure and content — no live network calls. Follows the `http2-verification.spec.ts` pattern (Story 4.7) and `deploy-workflow.spec.ts` pattern (Story 4.6).
+
+#### Test Inventory
+
+##### AC-1: Vercel rollback capability documented (2 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook contains the vercel rollback command | P0 | Runbook documents `vercel rollback` command for manual rollback |
+| runbook contains the Vercel production URL | P0 | Runbook records `https://bmad-easy.vercel.app` for operator reference |
+
+##### AC-2: Railway rollback capability documented (4 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook contains the railway redeploy command (or railway up) | P0 | Runbook documents `railway redeploy` / `railway up` for manual redeploy |
+| runbook contains the Railway project ID | P0 | Runbook records `30ab04b2-132c-440b-92ca-bc57be294d6f` for operator reference |
+| runbook contains the Railway agent-be service ID | P0 | Runbook records `4df7d0d1-0040-4395-89c8-bd166c4863cf` for operator reference |
+| runbook references the HEALTHCHECK instruction | P0 | Runbook documents the Dockerfile HEALTHCHECK mechanism (AC-2/AC-4) |
+
+##### AC-3: Prisma migration recovery procedure documented (5 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook references the _prisma_migrations table | P0 | Runbook documents the inspection target for partial migration state |
+| runbook documents the SQL inspection query for _prisma_migrations | P0 | Runbook records `SELECT migration_name ... FROM _prisma_migrations` |
+| runbook documents the DELETE recovery command for failed migrations | P0 | Runbook records `DELETE FROM _prisma_migrations WHERE migration_name = ...` |
+| runbook references the describeDatabase() safety pattern | P0 | Runbook documents credential isolation: announces target, never logs credentials |
+| runbook references prisma migrate deploy or yarn db:migrate for re-run | P0 | Runbook documents the re-run procedure after recovery |
+
+##### AC-4: Misconfigured secret blocks traffic documented (2 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook documents Vercel build-failure prevention | P0 | Runbook documents that a failed Vercel build is not promoted to production |
+| runbook documents Railway HEALTHCHECK failure prevention | P0 | Runbook documents that HEALTHCHECK failure prevents traffic and restarts container |
+
+##### Task 5: Split-brain deploy recovery documented (3 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook references the split-brain scenario | P0 | Runbook documents the Vercel-succeeds-Railway-fails split-brain scenario |
+| runbook documents recovery option A (rollback Vercel) | P0 | Runbook documents rolling back Vercel to match old agent-be |
+| runbook documents recovery option B (fix Railway and redeploy) | P0 | Runbook documents fixing Railway and redeploying agent-be only |
+
+##### Runbook structure (5 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook file exists at docs/runbooks/deploy-failure-recovery.md | P0 | File presence regression guard |
+| runbook has a markdown heading | P0 | Well-formed markdown |
+| runbook is non-trivial (at least 10 lines) | P0 | Substantive content (384 lines) |
+| runbook contains section headings for all 5 recovery procedures | P0 | Vercel, Railway, Prisma, Secret, Split-Brain sections present |
+| runbook contains a date (YYYY-MM-DD format) | P0 | Verification record date present |
+
+##### Security: credential-isolation regression guards (6 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook does not contain Vercel token values | P0 | No `vcp_*` token values in runbook |
+| runbook does not contain Railway token values | P0 | No Railway token values in runbook |
+| runbook does not contain Anthropic API key values | P0 | No `sk-*` API key values in runbook |
+| runbook does not contain database connection strings with passwords | P0 | No `postgresql://user:pass@host` in runbook |
+| runbook does not contain literal credential env-var assignments | P0 | No `VERCEL_TOKEN=...`, `DATABASE_URL=...` literal assignments |
+| runbook references describeDatabase() safety pattern (credential isolation) | P0 | `describeDatabase()` pattern referenced for credential isolation |
+
+##### Security: input-injection regression guards (4 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| SQL DELETE command uses placeholder, not raw interpolated value | P0 | `DELETE FROM _prisma_migrations WHERE migration_name = '<placeholder>'` |
+| vercel rollback command uses placeholder for deployment URL | P0 | `vercel rollback <deployment-url>`, not hardcoded URL |
+| railway redeploy command references service ID via flag, not inline interpolation | P0 | `railway redeploy --service <id>`, not inline interpolation |
+| DATABASE_URL referenced as env var, not interpolated into command string | P0 | No `DATABASE_URL=postgresql://user:pass@host` in command strings |
+
+---
+
+## Rationale
+
+Story 4.8 has no testable surface for E2E or API automation:
+
+| Check | Result |
+|---|---|
+| HTTP API endpoint | None — no new API surface; the story documents recovery procedures |
+| UI / browser interaction | None — "Deploy failure recovery is an operational procedure, not a user-facing feature. No browser interaction is involved." (story Testing Approach) |
+| Live-network Jest tests for Vercel/Railway | Explicitly excluded — "would be flaky (transient network issues) and would test production infrastructure from CI runners (side effects on an external service)" (story Testing Approach, DP-5) |
+| Playwright E2E tests | Explicitly excluded — "No browser interaction is involved" (story Testing Approach) |
+| Browser-level mock feasibility | Verified by ATDD checklist — no browser mock can simulate Vercel deployment promotion, Railway container health checks, Postgres migration state, or container startup failures |
+| Prisma migration recovery | Manual validation against local Docker Postgres (Task 3.2) — not a CI test; validation result recorded in runbook |
+
+The regression guard test validates the runbook's structure and content so that a future change (deleting or emptying the file) is caught by CI. The live Vercel/Railway API verification is a one-time manual step (per DP-5: no CI regression guard for platform features — the runbook documents the one-time verification).
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| Unit | `deploy-failure-recovery.spec.ts` | 31 | 31 | 0 | **ALL PASSING** |
+| E2E | — | 0 | — | — | N/A (deferred — platform infrastructure, no browser interaction) |
+| API | — | 0 | — | — | N/A (no new endpoints) |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Unit Test(s) | Verification Method |
+|---|---|---|---|
+| AC-1 | Vercel rollback — automatic rollback confirmed, `vercel rollback` documented | vercel rollback command, Vercel production URL (2 tests) | Live Vercel API verification (one-time, recorded in runbook) |
+| AC-2 | Railway rollback — automatic redeploy confirmed, `railway redeploy` documented | railway redeploy command, Railway project ID, Railway service ID, HEALTHCHECK reference (4 tests) | Live Railway GraphQL API verification (one-time, recorded in runbook) |
+| AC-3 | Prisma migration recovery — documented procedure, validated against non-production DB | _prisma_migrations table, SQL inspection query, DELETE recovery command, describeDatabase() safety pattern, re-run command (5 tests) | Local Docker Postgres validation (one-time, recorded in runbook) |
+| AC-4 | Misconfigured secret blocks traffic — Vercel build failure + Railway HEALTHCHECK | Vercel build-failure prevention, Railway HEALTHCHECK failure prevention (2 tests) | API inspection (one-time, recorded in runbook) |
+| Task 5 | Split-brain deploy recovery — scenario + both recovery options | split-brain scenario, recovery option A (rollback Vercel), recovery option B (fix Railway) (3 tests) | Documented in runbook (no live verification — procedure documentation) |
+
+---
+
+## Test Execution
+
+```bash
+yarn nx test agent-be -- --testPathPattern=deploy-failure-recovery --skip-nx-cache
+```
+
+```
+Test Suites: 25 passed, 25 total
+Tests:       456 passed, 456 total
+```
+
+All 31 Story 4.8 regression guard tests pass (included in the 456 agent-be tests). 0 regressions.
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (documentation + verification story)
+- [x] E2E tests generated (if UI exists) — N/A: no UI surface exists (deploy failure recovery is an operational procedure, not a user-facing feature)
+- [x] Tests use standard test framework APIs — Jest `test`/`expect` with `fs` and `path` for file reading
+- [x] Tests cover happy path — runbook exists with all 5 recovery sections, all required commands and references present
+- [x] Tests cover 1-2 critical error cases — credential-isolation (6 tests: no token values, no connection strings, no literal assignments), input-injection (4 tests: SQL placeholder, CLI placeholders, env var not interpolated)
+- [x] All generated tests run successfully — 31/31 pass
+- [x] Tests use proper locators (semantic, accessible) — N/A (file-structure validation, no DOM interaction)
+- [x] Tests have clear descriptions — all tagged [P0] with descriptive names and AC references
+- [x] No hardcoded waits or sleeps — N/A (synchronous file reads, no async operations)
+- [x] Tests are independent (no order dependency) — each test reads the file independently via `loadRunbook()`
+- [x] Test summary created — this document
+- [x] Tests saved to appropriate directories — `apps/agent-be/test/unit/` (follows `http2-verification.spec.ts` pattern)
+
+---
+
+## Next Steps
+
+- **No action required for Story 4.8** — all 4 ACs have test coverage at the appropriate level (unit runbook-structure regression guards). The story is a documentation + verification story with no API or UI surface.
+- **Re-verify Vercel/Railway rollback** manually (re-run the API/CLI checks and update `docs/runbooks/deploy-failure-recovery.md`) only if the deployment topology changes. Per DP-5, no CI regression guard for live platform checks — they are one-time verifications, not code regressions.
+- **Re-verify Prisma migration recovery** manually (re-run the local Docker Postgres validation) only if the migration set or `scripts/run-migrations.ts` changes significantly. The regression guard test validates the runbook's structure, not the live recovery procedure.
+
+---
+
+## Story 4.9: Configure Custom Domain and Stable Production URL
+
+**Reviewed:** 2026-07-14
+**Story status:** review
+**Decision:** No E2E or API tests generated
+
+---
+
+## Generated Tests
+
+### Unit Tests (Jest) — Runbook Regression Guards
+
+- [x] [apps/agent-be/test/unit/custom-domain-setup.spec.ts](../../../apps/agent-be/test/unit/custom-domain-setup.spec.ts) — runbook structure and content regression guard (24 tests, all [P0])
+
+This is a documentation + verification story. The primary deliverable is `docs/runbooks/custom-domain-setup.md` (10 KB). The regression guard test reads the committed runbook file and asserts on its structure and content — no live network calls. Follows the `deploy-failure-recovery.spec.ts` pattern (Story 4.8) and `http2-verification.spec.ts` pattern (Story 4.7).
+
+#### Test Inventory
+
+##### AC-1: DNS + Vercel domain + TLS documented (3 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook documents DNS configuration (A record or CNAME) | P0 | Runbook documents A record for apex domain, CNAME for subdomain |
+| runbook documents the Vercel API endpoint for adding a domain | P0 | Runbook records `api.vercel.com/v10/projects` for domain add |
+| runbook references TLS provisioning | P0 | Runbook documents Vercel automatic TLS (Let's Encrypt) |
+
+##### AC-2: AUTH_URL update documented (2 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook references AUTH_URL | P0 | Runbook documents updating AUTH_URL env var to custom domain |
+| runbook documents the Vercel API endpoint for env var management | P0 | Runbook records `api.vercel.com` + `env` for env var CRUD |
+
+##### AC-3: OAuth App callback URL update documented (3 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook references the OAuth App ID | P0 | Runbook records OAuth App ID `Ov23liwPSopCBFh9nMRN` |
+| runbook references github.com/settings/developers | P0 | Runbook documents the manual GitHub OAuth App settings page |
+| runbook references the callback URL path | P0 | Runbook records callback path `/api/auth/callback/github` |
+
+##### AC-4: End-to-end OAuth verification documented (1 test)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook documents the end-to-end OAuth verification procedure | P0 | Runbook documents the manual sign-in test against the custom domain |
+
+##### AC-5: Execution model documented (1 test)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook documents which steps are human-executed vs API-automatable | P0 | Runbook distinguishes human-executed (DNS, OAuth App) from API-automatable (Vercel domain add, AUTH_URL) steps |
+
+##### Runbook structure (8 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook file exists at docs/runbooks/custom-domain-setup.md | P0 | File presence regression guard |
+| runbook has a markdown heading | P0 | Well-formed markdown |
+| runbook is non-trivial (at least 10 lines) | P0 | Substantive content |
+| runbook contains section headings for all 5 steps | P0 | DNS, Vercel domain add, AUTH_URL, OAuth callback, verification sections present |
+| runbook contains a rollback procedure section | P0 | Rollback procedure documented |
+| runbook contains a date (YYYY-MM-DD format) | P0 | Verification record date present |
+| runbook contains the Vercel project ID | P0 | Records `prj_ih4UAxO759A1CHdrZ93j4rk3poYD` for operator reference |
+| runbook contains the current production URL | P0 | Records `bmad-easy.vercel.app` for operator reference |
+
+##### Security: credential-isolation regression guards (4 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| runbook does not contain Vercel token values | P0 | No `vcp_*` token values in runbook |
+| runbook does not contain Bearer followed by a literal token value | P0 | `Bearer $VERCEL_TOKEN` (env var ref) allowed; `Bearer <literal>` rejected via negative lookahead `(?![$])` |
+| runbook does not contain database connection strings with passwords | P0 | No `postgresql://user:pass@host` in runbook |
+| runbook does not contain literal credential env-var assignments | P0 | No `VERCEL_TOKEN=...` literal assignments (env var refs `$VERCEL_TOKEN` and placeholders `<token>` allowed) |
+
+##### Security: input-injection regression guards (2 tests)
+
+| Test | Priority | Description |
+|---|---|---|
+| documented API commands use `<custom-domain>` placeholder, not hardcoded domain values | P0 | curl commands use `<custom-domain>` placeholder, not hardcoded domain |
+| curl commands reference VERCEL_TOKEN as env var, not literal value | P0 | `$VERCEL_TOKEN` env var reference in curl commands, not literal token values |
+
+---
+
+## Rationale
+
+Story 4.9 has no testable surface for E2E or API automation:
+
+| Check | Result |
+|---|---|
+| HTTP API endpoint | None — no new API surface; the story documents custom domain configuration procedures |
+| UI / browser interaction | None — "Custom domain configuration is an operational procedure, not a user-facing feature. The end-to-end OAuth verification (AC-4) is a manual sign-in test, not an automated browser test." (story Testing Approach) |
+| Live-network Jest tests for Vercel API | Explicitly excluded — "A Jest test that makes live Vercel API calls in CI would be flaky (transient network issues) and would test production infrastructure from CI runners (side effects on an external service)" (story Testing Approach, decision policy: must be escalated) |
+| Playwright E2E tests | Explicitly excluded — "No Playwright E2E tests. Custom domain configuration is an operational procedure, not a user-facing feature." (story Testing Approach) |
+| Browser-level mock feasibility | Verified by ATDD checklist — no browser mock can simulate DNS propagation, Vercel domain verification, TLS certificate provisioning, OAuth App settings, or the GitHub OAuth flow against a custom domain |
+| OAuth App callback URL update | Manual step at github.com/settings/developers — no API exists for OAuth App management (AC-3) |
+| End-to-end OAuth verification | Manual sign-in test — AC explicitly states "verified by a manual sign-in test" (AC-4) |
+
+The regression guard test validates the runbook's structure and content so that a future change (deleting or emptying the file) is caught by CI. The live Vercel API verification is a one-time manual step (per decision policy: external service calls with side effects must be escalated — the runbook documents the commands, the human executes them).
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| Unit | `custom-domain-setup.spec.ts` | 24 | 24 | 0 | **ALL PASSING** |
+| E2E | — | 0 | — | — | N/A (deferred — platform infrastructure, no browser interaction) |
+| API | — | 0 | — | — | N/A (no new endpoints) |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Unit Test(s) | Verification Method |
+|---|---|---|---|
+| AC-1 | DNS + Vercel domain + TLS — DNS records, Vercel domain add, TLS provisioning documented | DNS config, Vercel API endpoint, TLS reference (3 tests) | Live Vercel API verification (one-time, recorded in runbook) |
+| AC-2 | AUTH_URL update — env var updated to custom domain via Vercel API | AUTH_URL reference, env var API endpoint (2 tests) | Live Vercel API verification (one-time, recorded in runbook) |
+| AC-3 | OAuth App callback URL — updated at github.com/settings/developers (manual) | OAuth App ID, settings page, callback path (3 tests) | Manual GitHub OAuth App update (one-time, no API exists) |
+| AC-4 | End-to-end OAuth verification — manual sign-in test against custom domain | OAuth verification procedure (1 test) | Manual sign-in test (one-time, per AC) |
+| AC-5 | Execution model — human-executed vs API-automatable steps documented | Execution model documentation (1 test) | Documented in runbook (no live verification — procedure documentation) |
+
+---
+
+## Test Execution
+
+```bash
+yarn nx test agent-be -- --testPathPattern=custom-domain-setup
+```
+
+```
+Test Suites: 26 passed, 26 total
+Tests:       480 passed, 480 total
+```
+
+All 24 Story 4.9 regression guard tests pass (included in the 480 agent-be tests). 0 regressions.
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (documentation + verification story)
+- [x] E2E tests generated (if UI exists) — N/A: no UI surface exists (custom domain configuration is an operational procedure, not a user-facing feature)
+- [x] Tests use standard test framework APIs — Jest `test`/`expect` with `fs` and `path` for file reading
+- [x] Tests cover happy path — runbook exists with all 5 steps, all required commands and references present
+- [x] Tests cover 1-2 critical error cases — credential-isolation (4 tests: no token values, no Bearer literal, no connection strings, no literal assignments), input-injection (2 tests: `<custom-domain>` placeholder, `$VERCEL_TOKEN` env var reference)
+- [x] All generated tests run successfully — 24/24 pass
+- [x] Tests use proper locators (semantic, accessible) — N/A (file-structure validation, no DOM interaction)
+- [x] Tests have clear descriptions — all tagged [P0] with descriptive names and AC references
+- [x] No hardcoded waits or sleeps — N/A (synchronous file reads, no async operations)
+- [x] Tests are independent (no order dependency) — each test reads the file independently via `loadRunbook()`
+- [x] Test summary created — this document
+- [x] Tests saved to appropriate directories — `apps/agent-be/test/unit/` (follows `deploy-failure-recovery.spec.ts` pattern)
+
+---
+
+## Next Steps
+
+- **No action required for Story 4.9** — all 5 ACs have test coverage at the appropriate level (unit runbook-structure regression guards). The story is a documentation + verification story with no API or UI surface.
+- **Re-verify Vercel domain configuration** manually (re-run the API checks and update `docs/runbooks/custom-domain-setup.md`) only if the Vercel project or domain configuration changes. Per decision policy, no CI regression guard for live platform checks — they are one-time verifications, not code regressions.
+- **Re-verify OAuth App callback URL** manually (re-run the sign-in test) only if the OAuth App or custom domain changes. The regression guard test validates the runbook's structure, not the live OAuth flow.
+
+---
+
+## Story 4.10: Configure Database Backups and Verify Restore
+
+**Generated:** 2026-07-14
+**Story status:** review
+**Decision:** No E2E or API tests generated
+
+---
+
+## Generated Tests
+
+### Unit Tests (Jest)
+
+- [x] [apps/agent-be/test/unit/db-restore.spec.ts](../../../apps/agent-be/test/unit/db-restore.spec.ts) — Regression guard test validating the `docs/runbooks/db-restore.md` runbook structure, content, credential-isolation, input-injection, and curl-flag requirements (45 tests, all tagged [P0])
+
+The story shipped with the runbook (`docs/runbooks/db-restore.md`) and the regression guard test (`db-restore.spec.ts`). The test was created in ATDD red-phase (44 skipped tests), then activated by removing `test.skip()` markers, fixing the connection-string password regex (`[^@]+` -> `[^@]*` in 4 places), and adding a Bearer token guard test (45 total). No E2E or API tests were generated — Story 4.10 has no HTTP API endpoint and no UI surface.
+
+#### Test Inventory
+
+The 45 regression guard tests are organized into the following categories:
+
+| Category | Tests | Description |
+|---|---|---|
+| Runbook structure | 7 | File exists, markdown heading, >=10 lines, date, section headings, prerequisites, verification record |
+| AC-1 (Backup configuration) | 4 | Backup feature, daily/weekly schedules, retention policy |
+| AC-2 (Restore test) | 5 | pg_dump, pg_restore, Docker Postgres, row count + sample comparison |
+| AC-3 (Runbook) | 6 | Restore trigger, pointing agent-be, integrity verification, all 7 tables |
+| Railway references | 5 | GraphQL endpoint, project ID, environment ID, service ID, DATABASE_URL |
+| Rollback procedure | 2 | Section exists + independently executable via volumeInstanceBackupList |
+| Credential-isolation guards | 8 | CREDENTIAL_ENV_VARS list (RAILWAY_TOKEN, DATABASE_URL, CREDENTIAL_ENCRYPTION_KEK, AUTH_SECRET, ANTHROPIC_API_KEY, DAYTONA_API_KEY, PGPASSWORD), no token fragments, no sk- prefix, no connection strings with passwords, no literal VAR=value, Bearer token guard |
+| Input-injection guards | 5 | Placeholders (<volume-instance-id>/<backup-id>), DATABASE_URL as env var, pg_dump uses $DATABASE_URL, railway up uses --service flags, no interpolated connection strings |
+| Curl flags | 3 | --fail and --max-time 30 on all curl commands |
+
+---
+
+## Rationale
+
+Story 4.10 has no testable surface for E2E or API automation:
+
+| Check | Result |
+|---|---|
+| HTTP API endpoint | None — no new API surface; the story documents database backup configuration and restore procedures for the Railway Postgres instance |
+| UI / browser interaction | None — "This is a documentation + verification story. The primary deliverable is `docs/runbooks/db-restore.md`. The only other committed artifact is the regression guard test. No application code, Dockerfile, or workflow YAML is modified." (story Dev Notes) |
+| Live-network Jest tests for Railway API | Explicitly excluded — "No live-network Jest tests for Railway API calls. The Railway API verification (Task 3) is a one-time manual step — the runbook documents the commands, the regression guard test validates the runbook's structure. A Jest test that makes live Railway API calls in CI would be flaky (transient network issues) and would test production infrastructure from CI runners." (story Testing Approach) |
+| Restore test as CI test | Explicitly excluded — "Restore test is a local procedure, not a CI test. The `pg_dump` + local Docker Postgres restore test (Task 4) is executed by the dev agent during implementation and documented in the runbook's Verification Record. It is NOT a CI test — it requires `DATABASE_URL` (production credential) and Docker." (story Testing Approach) |
+| Playwright E2E tests | N/A — no UI surface exists (database backup configuration is an operational procedure, not a user-facing feature) |
+| Backup schedule configuration | Dashboard-only — "The Railway API can list backup schedules but cannot create or modify them — no `volumeInstanceBackupScheduleCreate` mutation exists. The runbook documents the dashboard steps and verifies existing schedules via the read-only API." (story Dev Notes) |
+
+The regression guard test validates the runbook's structure and content so that a future change (deleting or emptying the file, removing required sections, or introducing credential leaks) is caught by CI. The live Railway API verification and restore test are one-time manual procedures documented in the runbook's Verification Record (per decision policy: external service calls with side effects must be escalated — the runbook documents the commands, the human executes them).
+
+---
+
+## Coverage
+
+| Level | File | Tests | Active | Skipped | Status |
+|---|---|---|---|---|---|
+| Unit | `db-restore.spec.ts` | 45 | 45 | 0 | **ALL PASSING** |
+| E2E | — | 0 | — | — | N/A (deferred — platform infrastructure, no browser interaction) |
+| API | — | 0 | — | — | N/A (no new endpoints) |
+
+### Acceptance Criteria Coverage
+
+| AC | Description | Unit Test(s) | Verification Method |
+|---|---|---|---|
+| AC-1 | Backup configuration — Railway built-in Postgres backup with daily + weekly schedules | Backup feature, daily/weekly schedules, retention policy (4 tests) | Live Railway API verification (one-time, recorded in runbook Verification Record — pending valid RAILWAY_TOKEN) |
+| AC-2 | Restore test — backup restored to temporary Postgres instance, data integrity confirmed | pg_dump, pg_restore, Docker Postgres, row count + sample comparison (5 tests) | Local restore test (one-time, executed by dev agent against local dev database, recorded in runbook Verification Record) |
+| AC-3 | Runbook — committed at `docs/runbooks/db-restore.md` covering restore trigger, pointing agent-be, integrity verification | Restore trigger, pointing agent-be, integrity verification, all 7 tables, runbook structure (13 tests) + Railway references (5 tests) + rollback (2 tests) + credential-isolation (8 tests) + input-injection (5 tests) + curl flags (3 tests) | Regression guard test (CI-verified — 45 tests pass on every CI run) |
+
+---
+
+## Test Execution
+
+```bash
+yarn nx test agent-be -- --testPathPattern=db-restore
+```
+
+```
+Test Suites: 1 passed, 1 total
+Tests:       45 passed, 45 total
+```
+
+All 45 Story 4.10 regression guard tests pass (included in the 532 agent-be tests). 0 regressions.
+
+Full agent-be suite:
+
+```bash
+yarn nx test agent-be
+```
+
+```
+Test Suites: 27 passed, 27 total
+Tests:       532 passed, 532 total
+```
+
+---
+
+## Checklist Validation
+
+- [x] API tests generated (if applicable) — N/A: no HTTP API endpoint exists (documentation + verification story)
+- [x] E2E tests generated (if UI exists) — N/A: no UI surface exists (database backup configuration is an operational procedure, not a user-facing feature)
+- [x] Tests use standard test framework APIs — Jest `test`/`expect` with `fs` and `path` for file reading
+- [x] Tests cover happy path — runbook exists with all required sections, commands, and references present
+- [x] Tests cover 1-2 critical error cases — credential-isolation (8 tests: CREDENTIAL_ENV_VARS list, no token fragments, no sk- prefix, no connection strings with passwords, no literal VAR=value, Bearer token guard), input-injection (5 tests: placeholders, DATABASE_URL as env var, pg_dump uses $DATABASE_URL, railway up uses --service flags, no interpolated connection strings)
+- [x] All generated tests run successfully — 45/45 pass
+- [x] Tests use proper locators (semantic, accessible) — N/A (file-structure validation, no DOM interaction)
+- [x] Tests have clear descriptions — all tagged [P0] with descriptive names and AC references
+- [x] No hardcoded waits or sleeps — N/A (synchronous file reads, no async operations)
+- [x] Tests are independent (no order dependency) — each test reads the file independently
+- [x] Test summary created — this document
+- [x] Tests saved to appropriate directories — `apps/agent-be/test/unit/` (follows `deploy-failure-recovery.spec.ts` pattern from Story 4.8)
+
+---
+
+## Next Steps
+
+- **No action required for Story 4.10** — all 3 ACs have test coverage at the appropriate level (unit runbook-structure regression guards). The story is a documentation + verification story with no API or UI surface.
+- **Re-verify backup schedules via Railway API** manually (run the GraphQL queries documented in the runbook) only if backup configuration changes. Per decision policy, no CI regression guard for live platform checks — they are one-time verifications, not code regressions. The RAILWAY_TOKEN in `.env.local` was not authorized during implementation; API verification is pending human execution with a valid token.
+- **Re-test the restore procedure** manually (run the pg_dump + local Docker Postgres restore) only if the database schema changes or the restore procedure is modified. The dev agent validated the procedure against the local development database (`bmad_easy_test`); production Railway restore test is pending the production DATABASE_URL.

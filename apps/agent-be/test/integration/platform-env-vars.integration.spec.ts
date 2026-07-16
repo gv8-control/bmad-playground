@@ -7,17 +7,16 @@
  * - AC-3: TEST_ENV is absent on both platforms
  * - AC-6: NODE_ENV=production is set on Railway (belt-and-suspenders with Dockerfile)
  *
- * VALIDATED: 2/6 tests pass (TEST_ENV absent on both platforms — AC-3).
- * 4/6 tests expected-to-fail: env vars not yet wired on Vercel/Railway
- * (Story 4.5 Tasks 4-5 not executed). These are infrastructure gaps, not
- * test-quality issues — the tests are correctly written but cannot pass
- * until env vars are set on the platforms.
+ * Story 4.5 is complete — env vars are wired on both platforms. All 6 tests
+ * are active and run in the dedicated `test-railway` target, which requires
+ * RAILWAY_TOKEN and VERCEL_TOKEN (from .env.local or CI secrets). The spec
+ * fails loud if those tokens are missing — it does NOT conditionally skip.
  *
  * Security: Uses expect(Object.keys(vars)).toContain('KEY') (NOT toHaveProperty)
  * per the "Secret-aware test assertions" rule — assertion failures must not
  * dump secret values into CI logs.
  *
- * Run: yarn nx test-integration agent-be -- --testPathPatterns=platform-env-vars
+ * Run: yarn nx test-railway agent-be
  */
 
 import * as fs from 'fs';
@@ -88,7 +87,7 @@ async function railwayGraphQL(query: string): Promise<any> {
   const response = await fetch(RAILWAY_GRAPHQL_ENDPOINT, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
+      'Project-Access-Token': token,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ query }),
@@ -165,11 +164,7 @@ describe('Platform env vars — Story 4.5 (Vercel + Railway)', () => {
   });
 
   describe('[P0] Vercel env vars (AC-1, AC-3)', () => {
-    // Expected-to-fail: Vercel project has 0 env vars (verified via API on 2026-07-12).
-    // Infrastructure gap — Story 4.5 Task 4 (wire Vercel env vars) not executed.
-    // Not a test-quality issue: the test correctly filters for production-scoped vars;
-    // the Vercel API returns an empty envs array. Un-skip after Task 4 completion.
-    it.skip('[P0] Vercel project has AUTH_SECRET, AUTH_GITHUB_ID, AUTH_GITHUB_SECRET, AUTH_URL, DATABASE_URL as production env vars', () => {
+    it('[P0] Vercel project has AUTH_SECRET, AUTH_GITHUB_ID, AUTH_GITHUB_SECRET, AUTH_URL, DATABASE_URL as production env vars', () => {
       const productionVars = vercelEnvVars.filter(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (v: any) => Array.isArray(v.target) && v.target.includes('production'),
@@ -189,13 +184,7 @@ describe('Platform env vars — Story 4.5 (Vercel + Railway)', () => {
   });
 
   describe('[P0] Railway agent-be env vars (AC-2, AC-3, AC-6)', () => {
-    // Expected-to-fail: Railway agent-be service has only Railway-injected vars
-    // + DATABASE_URL (verified via API on 2026-07-12). Required vars
-    // (CREDENTIAL_ENCRYPTION_KEK, DAYTONA_API_URL, DAYTONA_API_KEY,
-    // ANTHROPIC_API_KEY, AUTH_SECRET, NODE_ENV) not wired.
-    // Infrastructure gap — Story 4.5 Task 5 (wire Railway env vars) not executed.
-    // Not a test-quality issue. Un-skip after Task 5 completion.
-    it.skip('[P0] Railway agent-be service has DATABASE_URL, CREDENTIAL_ENCRYPTION_KEK, DAYTONA_API_URL, DAYTONA_API_KEY, ANTHROPIC_API_KEY, AUTH_SECRET, NODE_ENV', () => {
+    it('[P0] Railway agent-be service has DATABASE_URL, CREDENTIAL_ENCRYPTION_KEK, DAYTONA_API_URL, DAYTONA_API_KEY, ANTHROPIC_API_KEY, AUTH_SECRET, NODE_ENV', () => {
       expect(Object.keys(railwayVars)).toContain('DATABASE_URL');
       expect(Object.keys(railwayVars)).toContain('CREDENTIAL_ENCRYPTION_KEK');
       expect(Object.keys(railwayVars)).toContain('DAYTONA_API_URL');
@@ -209,10 +198,7 @@ describe('Platform env vars — Story 4.5 (Vercel + Railway)', () => {
       expect(Object.keys(railwayVars)).not.toContain('TEST_ENV');
     });
 
-    // Expected-to-fail: CREDENTIAL_ENCRYPTION_KEK not set on Railway (undefined).
-    // Infrastructure gap — Story 4.5 Task 5.3 (generate production KEK) not executed.
-    // Not a test-quality issue. Un-skip after Task 5.3 completion.
-    it.skip('[P0] CREDENTIAL_ENCRYPTION_KEK is NOT the test placeholder (verify length is 64 hex chars)', () => {
+    it('[P0] CREDENTIAL_ENCRYPTION_KEK is NOT the test placeholder (verify length is 64 hex chars)', () => {
       const kek = railwayVars['CREDENTIAL_ENCRYPTION_KEK'];
       expect(kek).toBeDefined();
       expect(kek).not.toMatch(/^0+$/);
@@ -220,11 +206,7 @@ describe('Platform env vars — Story 4.5 (Vercel + Railway)', () => {
       expect(kek).toMatch(/^[0-9a-f]{64}$/i);
     });
 
-    // Expected-to-fail: Railway DATABASE_URL lacks sslmode=require
-    // (verified: "postgresql://...@tokaido.proxy.rlwy.net:42861/railway" — no sslmode).
-    // Infrastructure gap — Story 4.5 Task 4.3/5.3 (append sslmode=require) not executed.
-    // Not a test-quality issue. Un-skip after Tasks 4.3/5.3 completion.
-    it.skip('[P0] DATABASE_URL on both platforms contains sslmode=require', () => {
+    it('[P0] DATABASE_URL on both platforms contains sslmode=require', () => {
       const railwayDbUrl = railwayVars['DATABASE_URL'];
       expect(railwayDbUrl).toContain('sslmode=require');
 

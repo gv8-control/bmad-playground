@@ -6,7 +6,7 @@ echo "Docker is up"
 # Wait for databases
 docker compose up -d --wait
 
-set -a; . .env; set +a
+set -a; . .env; [ -f .env.local ] && . .env.local; set +a
 
 pm2 start "$(which n8n)" --name n8n 2>/dev/null || true
 N8N_RUNNERS_MODE=internal N8N_RUNNERS_ENABLED=true N8N_RUNNERS_BROKER_PORT=5680 pm2 start "$(which n8n)" --name n8n-worker -- worker 2>/dev/null || true

@@ -1,5 +1,8 @@
 # Dependencies
 node_modules/
+# NOTE: .yarn/ MUST NOT be excluded — Yarn Berry uses it for patches/plugins/releases.
+# The agent-be Dockerfile COPYs .yarn into the install stage; excluding it would
+# silently produce an image without any patches.
 
 # Git
 .git/

@@ -10,7 +10,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
  * (Weekly / On-Demand: Performance Spikes); test-design-architecture.md → NFR-P2
  * thresholds (≤8s provision+clone+config+status, ≤10s chat-ready, ≤200MB repos).
  *
- * Red-phase status: SPIKE — not red/green ATDD. Measures empirical clone timing across
+ * SPIKE — empirical timing measurement, not red/green ATDD. Measures empirical clone timing across
  * repo sizes to validate (or update) the NFR-P2 boundary. Asserts the ≤8s / ≤10s
  * thresholds for repos ≤200MB and gathers boundary data for repos >200MB (where the
  * limit is discovered, not asserted).

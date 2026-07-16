@@ -1,4 +1,9 @@
-import { test, expect, type Page } from '../../support/merged-fixtures';
+import { type Page } from '@playwright/test';
+import { test, expect } from '../../support/merged-fixtures';
+import {
+  setupStreamingMocks as baseSetupStreamingMocks,
+  type MockHandle as BaseMockHandle,
+} from '../../support/streaming-mocks';
 
 /**
  * Story 3.1: Provision a Sandbox When Opening a Conversation
@@ -22,108 +27,30 @@ import { test, expect, type Page } from '../../support/merged-fixtures';
 
 const CONVERSATION_ID = 'conv-e2e-1';
 
-interface FetchCall {
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-}
-
-interface MockHandle {
-  waitForEventSource: () => Promise<void>;
-  emit: (type: string, data?: unknown) => Promise<void>;
+interface MockHandle extends BaseMockHandle {
   eventSourceUrl: () => Promise<string | null>;
-  fetchCalls: () => Promise<FetchCall[]>;
-  waitForFetchCount: (count: number) => Promise<void>;
 }
 
 async function setupConversationMocks(page: Page): Promise<MockHandle> {
-  await page.addInitScript((conversationId) => {
-    class MockEventSource {
-      url: string;
-      readyState = 0;
-      onerror: ((event: Event) => void) | null = null;
-      private readonly listeners: Record<string, Array<(event: { data: string }) => void>> = {};
-
-      constructor(url: string) {
-        this.url = url;
-        (window as unknown as Record<string, unknown>).__mockEventSource = this;
-      }
-
-      addEventListener(type: string, handler: (event: { data: string }) => void): void {
-        (this.listeners[type] = this.listeners[type] || []).push(handler);
-      }
-
-      removeEventListener(): void {
-        // no-op for test mock
-      }
-
-      close(): void {
-        this.readyState = 2;
-      }
-
-      __emit(type: string, data: unknown): void {
-        const event = { data: typeof data === 'string' ? data : JSON.stringify(data) };
-        (this.listeners[type] || []).forEach((handler) => handler(event));
-      }
-    }
-
-    (window as unknown as Record<string, unknown>).EventSource = MockEventSource;
-
-    const w = window as unknown as Record<string, unknown>;
-    if (!w.__mockFetchInstalled) {
-      w.__mockFetchInstalled = true;
-      const originalFetch = window.fetch.bind(window);
-      w.__mockFetchCalls = [] as FetchCall[];
-      w.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input.toString();
-        const method = init?.method ?? 'GET';
-        const rawHeaders = (init?.headers as Record<string, string>) ?? {};
-        const headers: Record<string, string> = {};
-        for (const k of Object.keys(rawHeaders)) headers[k.toLowerCase()] = rawHeaders[k];
-        (w.__mockFetchCalls as FetchCall[]).push({ url, method, headers });
-        if (url.includes('/api/conversations') && method === 'POST') {
-          return new Response(JSON.stringify({ id: conversationId }), {
-            status: 201,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-        return originalFetch(input as RequestInfo, init);
-      };
-    }
-  }, CONVERSATION_ID);
-
+  const mocks = await baseSetupStreamingMocks(page, {
+    conversationId: CONVERSATION_ID,
+    defaultRoutes: false,
+    routes: [
+      {
+        urlIncludes: '/api/conversations',
+        method: 'POST',
+        status: 201,
+        body: { id: CONVERSATION_ID },
+      },
+    ],
+  });
   return {
-    waitForEventSource: () =>
-      page
-        .waitForFunction(() => (window as unknown as Record<string, unknown>).__mockEventSource != null)
-        .then(() => undefined),
-    emit: (type: string, data: unknown = {}) =>
-      page.evaluate(
-        ({ type, data }) => {
-          const es = (window as unknown as Record<string, unknown>).__mockEventSource as
-            | { __emit: (type: string, data: unknown) => void }
-            | undefined;
-          es?.__emit(type, data);
-        },
-        { type, data },
-      ),
+    ...mocks,
     eventSourceUrl: () =>
       page.evaluate(() => {
         const es = (window as unknown as Record<string, unknown>).__mockEventSource as { url: string } | undefined;
         return es?.url ?? null;
       }),
-    fetchCalls: () =>
-      page.evaluate(() => {
-        const calls = (window as unknown as Record<string, unknown>).__mockFetchCalls as FetchCall[];
-        return calls ?? [];
-      }),
-    waitForFetchCount: (count: number) =>
-      page
-        .waitForFunction(
-          (n) => ((window as unknown as Record<string, unknown>).__mockFetchCalls as FetchCall[] | undefined)?.length ?? 0 >= n,
-          count,
-        )
-        .then(() => undefined),
   };
 }
 

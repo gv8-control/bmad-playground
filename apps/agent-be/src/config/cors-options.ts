@@ -24,11 +24,23 @@ export function resolveCorsOptions(): CorsOptions {
     .split(',')
     .map((o) => o.trim())
     .filter((o) => o.length > 0)
-    .map((o) => o.replace(/\/+$/, ''))
-    .filter((o) => o !== '*');
+    .map((o) => o.replace(/\/+$/, ''));
+
+  // Wildcard subdomain patterns (e.g. `https://*.example.com`) are not supported.
+  // Browsers reject them when `credentials: true` is set, so fail at boot rather
+  // than silently passing an unusable origin through.
+  const wildcardSubdomain = origins.find((o) => o.includes('*.'));
+  if (wildcardSubdomain) {
+    throw new Error(
+      `CORS_ALLOWED_ORIGINS contains an unsupported wildcard subdomain pattern: "${wildcardSubdomain}". ` +
+        'Wildcard subdomains are incompatible with credentials:true. List explicit origins instead.',
+    );
+  }
+
+  const filtered = origins.filter((o) => o !== '*');
 
   return {
-    origin: origins.length > 0 ? origins : [...DEFAULT_ORIGINS],
+    origin: filtered.length > 0 ? filtered : [...DEFAULT_ORIGINS],
     credentials: true,
   };
 }

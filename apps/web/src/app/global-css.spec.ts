@@ -5,7 +5,6 @@
  * Structural test for global.css scrollbar hiding rules.
  * Covers AC-7 (scrollbar hiding on scrollable panels).
  *
- * GREEN PHASE: tests are active after Story 5.4 implementation.
  * Priority tags: P0 for AC coverage.
  */
 

@@ -93,8 +93,6 @@ describe('[P0] SlashCommandPicker interactions', () => {
 
 // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
 //
-// GREEN PHASE: tests are active for Story 5.3 implementation.
-//
 // AC-9: Slash picker "Skills — type to filter" header
 
 describe('SlashCommandPicker — Story 5.3 structural drift', () => {

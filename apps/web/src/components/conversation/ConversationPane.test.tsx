@@ -28,7 +28,6 @@
  * SSE event handlers insert into streaming agent message segments, replay dedup,
  * manual save segments, CREDENTIAL_FAILURE/ACCESS_DENIED segment updates, resume
  * with segments).
- * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
@@ -2238,8 +2237,6 @@ describe('ConversationPane', () => {
 
   // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────
   //
-  // GREEN PHASE: tests are active for Story 5.3 implementation.
-  //
   // AC-1: Chat-input area 824px column centering (matches messages container)
   // AC-3: SessionStartSpinner centered in chat-messages panel (not input area)
   // AC-10: Conversation limit copy "limit of 10 active conversations"
@@ -2380,8 +2377,6 @@ describe('ConversationPane', () => {
   });
 
   // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
-  //
-  // GREEN PHASE: tests are active and passing.
   //
   // AC-1: Tool call indicator renders inline at stream position
   // AC-2: Tool call result replaces indicator in place

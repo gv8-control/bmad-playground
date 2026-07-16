@@ -4,8 +4,6 @@
  * Story 5.3: Fix Conversation Stream Structural Drift
  * Tests for ScrollToBottomButton component.
  *
- * GREEN PHASE: tests are active for Story 5.3 implementation.
- *
  * AC-5: Scroll-to-bottom button text color is text-text-2, not text-text-1
  */
 import { render, screen } from '@testing-library/react';

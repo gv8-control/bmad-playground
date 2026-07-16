@@ -4,8 +4,6 @@
  * Story 5.3: Fix Conversation Stream Structural Drift
  * Server Component unit tests for NewConversationPage.
  *
- * GREEN PHASE: tests are active for Story 5.3 implementation.
- *
  * AC-6: New-conversation page header removal
  * - No visible Breadcrumb or h1 header renders
  * - A visually-hidden <h1 tabIndex={-1}> exists for AppShell route-focus

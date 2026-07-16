@@ -142,7 +142,7 @@ so that I can follow the Agent's reasoning and actions as a single continuous na
   - [x] 8.4 **Scaffolding applied.** `ChatMessageList.test.tsx` has a `Story 5.5 inline pills` describe block with `it.skip()` tests for inline rendering and standalone-branch removal. Activate by removing `it.skip()`.
   - [x] 8.5 **Scaffolding applied.** `agent.service.unit.spec.ts` has a `Story 5.5 segments persistence` describe block with `it.skip()` tests for segments persistence, ordering, and tool_call field capture. `agent.service.spec.ts` has a `Story 5.5 AgentServiceFake segments persistence` describe block with `it.skip()` test for fake segments persistence. Activate by removing `it.skip()`.
   - [x] 8.6 **Scaffolding applied.** Resume tests (initialMessages with segments, legacy fallback) have been scaffolded as `it.skip()` in the `Story 5.5` describe block in `ConversationPane.test.tsx`. Activate by removing `it.skip()`.
-  - [x] 8.7 **ATDD red phase complete.** All tests scaffolded as `it.skip()` with P0/P1 tags. See `_bmad-output/test-artifacts/atdd-checklist-5-5-interleave-tool-and-semantic-pills-within-the-agent-markdown-stream.md` for the full checklist, activation guidance, and E2E deferral rationale.
+  - [x] 8.7 **ATDD red phase complete.** All tests scaffolded as `it.skip()` with P0/P1 tags. See the ATDD checklist for activation guidance and E2E deferral rationale.
 
 - [x] Task 9: Verify build, lint, and tests
   - [x] 9.1 Run `yarn nx lint web` and `yarn nx lint agent-be` — confirm 0 lint errors
@@ -484,7 +484,6 @@ Tests are co-located with source (`*.spec.ts` / `*.test.tsx` next to the file un
 
 ### ATDD Artifacts
 
-- **Checklist:** `_bmad-output/test-artifacts/atdd-checklist-5-5-interleave-tool-and-semantic-pills-within-the-agent-markdown-stream.md`
 - **Component tests:** `apps/web/src/components/conversation/ConversationPane.test.tsx` (Story 5.5 describe block)
 - **Component tests:** `apps/web/src/components/conversation/AgentMessage.test.tsx` (Story 5.5 describe block)
 - **Component tests:** `apps/web/src/components/conversation/ChatMessageList.test.tsx` (Story 5.5 describe block)

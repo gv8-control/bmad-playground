@@ -14,6 +14,14 @@ const config: Config = {
   // Integration tests hit a real database — run serially to avoid state conflicts.
   maxWorkers: 1,
   testTimeout: 30_000,
+  // Exclude the three real-service specs — they require live Railway/Vercel API
+  // tokens and are run via the dedicated `test-railway` target instead.
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    'railway-project-structure\\.integration\\.spec\\.ts$',
+    'railway-migrations\\.integration\\.spec\\.ts$',
+    'platform-env-vars\\.integration\\.spec\\.ts$',
+  ],
   moduleNameMapper: {
     '^@bmad-easy/shared-types(.*)$': '<rootDir>/../../../libs/shared-types/src$1',
     '^@bmad-easy/database-schemas(.*)$': '<rootDir>/../../../libs/database-schemas/src$1',

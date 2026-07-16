@@ -12,7 +12,6 @@
  * AC-6 (button spacing/alignment), AC-9 (separator styling), AC-10 (top-clustered nav).
  * Story 5.4 covers: AC-6 (nav right border border-surface-raised).
  *
- * GREEN PHASE: Story 5.2 and Story 5.4 tests are active and passing.
  */
 
 import '@testing-library/jest-dom';

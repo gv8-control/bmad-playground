@@ -76,3 +76,7 @@ Avoid catchy terms and prefer better-known, simpler terms. Examples:
 3. Don't touch unrelated code but please do surface bad code or design smells you discover with me so we can address them as a separate issue.
 
 4. Flag uncertainty explicitly. If you're unsure about something, see point 1 above. If it makes sense to do so, conduct a small, localised and low-risk experiment and bring the hypothesis and results to me to discuss. Confidence without certainty causes more damage than admitting a gap.
+
+## Railway API
+
+The `RAILWAY_TOKEN` in `.env.local` is a **project token** (UUID format). Project tokens use the `Project-Access-Token` header, NOT `Authorization: Bearer`. Example: `curl -H "Project-Access-Token: $RAILWAY_TOKEN" https://backboard.railway.com/graphql/v2`.

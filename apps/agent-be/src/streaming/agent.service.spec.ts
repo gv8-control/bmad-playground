@@ -8,7 +8,6 @@
  * error handling (RUN_ERROR).
  * Story 5.5 covers: AC-9 (AgentServiceFake segments persistence — fake builds
  * segments array alongside accumulatedText, persists segments to Turn row).
- * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { Test } from '@nestjs/testing';
 import { ConversationsService } from '../conversations/conversations.service';
@@ -175,8 +174,6 @@ describe('AgentService (via ConversationsService integration)', () => {
   });
 
   // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
-  //
-  // GREEN PHASE: tests are active and passing.
   //
   // AC-9: AgentServiceFake persists segments alongside content
 

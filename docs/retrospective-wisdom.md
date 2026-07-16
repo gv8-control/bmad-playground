@@ -66,7 +66,7 @@ What to test, how, when; what reviews catch early vs. late; real APIs/sandboxes 
 
 **Covers — and doesn't:** Covers the principle that success-only mocks are a fidelity gap even when shape and boundary are correct. Doesn't cover the enforcement gap — having the principle in the methodology and applying it to every boundary are different things. A checklist forcing function ("for each boundary: does the mock model failure modes? environmental states?") is what closes this. Without it, the audit's depth tracks recency bias, not risk.
 
-**Source:** Epic 3 sandbox provisioning — `git clone` into non-empty working directory; 873 tests passing, production broken. Fidelity audit cleared the boundary (`test-fidelity-audit-2026-07-06.md`, C6 "verified clean").
+**Source:** Epic 3 sandbox provisioning — `git clone` into non-empty working directory; 873 tests passing, production broken. Fidelity audit cleared the boundary (C6 "verified clean").
 
 **Recurrence:** Not yet re-evaluated.
 
@@ -132,7 +132,7 @@ Traps that looked reasonable and weren't. The trap's shape is the most portable 
 
 **What we did instead:** Re-opened the "mitigated" status. The gap should have read "open — mitigation designed, not implemented" until the nightly tier was built and running.
 
-**Source:** Epic 3 — `bmad-easy-handoff.md` prescribed nightly smoke tier; `nfr-assessment-full-20260707.md` marked Finding 5 "mitigated"; no nightly tier exists in the codebase.
+**Source:** Epic 3 — `bmad-easy-handoff.md` prescribed nightly smoke tier; `nfr-assessment.md` marked Finding 5 "mitigated"; no nightly tier exists in the codebase.
 
 **Recurrence:** Not yet re-evaluated.
 

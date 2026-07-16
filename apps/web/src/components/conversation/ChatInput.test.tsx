@@ -133,8 +133,6 @@ describe('ChatInput', () => {
 
 // ─── Story 5.1: Visual containers (AC-6) ────────────────────────────────────
 //
-// GREEN PHASE: tests are active for Task 6 implementation.
-//
 // AC-6: Conversation chat-input-box container.
 // The textarea, Send button, and WorkingTreeIndicator must sit inside a
 // single bordered chat-input-box container (bg-surface-raised border
@@ -206,8 +204,6 @@ describe('ChatInput — chat-input-box container (Story 5.1, AC-6)', () => {
 });
 
 // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
-//
-// GREEN PHASE: tests are active for Story 5.3 implementation.
 //
 // AC-4: Disabled Send button uses muted-surface style
 // AC-5: Placeholder copy "Message…" (not "Type a message…")

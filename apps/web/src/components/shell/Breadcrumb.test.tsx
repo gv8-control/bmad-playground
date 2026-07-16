@@ -6,7 +6,6 @@
  * Story 5.2 covers: AC-7 (breadcrumb renders inline beside page title —
  * nav no longer has padding/flex-shrink-0 classes).
  *
- * GREEN PHASE: Story 5.2 tests are active and passing.
  */
 
 import '@testing-library/jest-dom';

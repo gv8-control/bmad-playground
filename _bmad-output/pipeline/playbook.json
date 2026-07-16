@@ -41,11 +41,11 @@
       "stage": "pre-implementation",
       "skill": "bmad-testarch-atdd",
       "agent": "coder",
-      "prompt": "Create tests. After applying TDD red-phase scaffolding (adding skipped test blocks to new or existing files, adding test seams, or creating stub files), update the story file's tasks to reflect what was already done — tasks that instruct the dev to create scaffolding that prepare-tests has already applied should be amended to instruct activation of the existing scaffolding instead, so the story does not contradict the codebase state. Before deferring E2E coverage, verify no browser-level mock pattern can simulate the scenario — only defer if no mock covers the ACs, and record the check in the ATDD checklist. When creating regression guards for code that executes external commands with user-controlled input, apply a uniform guard template to every call site: exercise both credential-isolation invariants (no credentials leak via command arguments or environment variables) and input-injection invariants (malicious input is safely quoted and cannot alter the command's behavior). For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
+      "prompt": "Create tests. After applying TDD red-phase scaffolding (adding skipped test blocks to new or existing files, adding test seams, or creating stub files), update the story file's tasks to reflect what was already done — tasks that instruct the dev to create scaffolding that prepare-tests has already applied should be amended to instruct activation of the existing scaffolding instead, so the story does not contradict the codebase state. Before deferring E2E coverage, verify no browser-level mock pattern can simulate the scenario — only defer if no mock covers the ACs, and record the check in the ATDD checklist. When creating regression guards for code that executes external commands with user-controlled input, apply a uniform guard template to every call site: exercise both credential-isolation invariants (no credentials leak via command arguments or environment variables) and input-injection invariants (malicious input is safely quoted and cannot alter the command's behavior). Before creating regression guard tests, consult sibling test files in the same directory for established guard patterns and regex conventions — patterns corrected during prior code reviews may exist in sibling files and should be applied rather than reintroduced. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-06T12:26:33.858Z",
-      "updatedByRun": "3.11-a1-20260706T082713"
+      "updatedAt": "2026-07-14T16:35:00.741Z",
+      "updatedByRun": "4.11-a1-20260714T123043"
     },
     {
       "id": "validate-story-2",
@@ -87,9 +87,11 @@
       "stage": "test-generation",
       "skill": "bmad-qa-generate-e2e-tests",
       "agent": "planner",
-      "prompt": "",
+      "prompt": "Before generating E2E tests, check the story's ATDD checklist for any E2E deferral decision. If E2E coverage was deferred by prepare-tests because no browser-level mock can simulate the acceptance criteria, confirm the deferral is still valid and complete the step without generating tests or asking for direction. For any decision that arises, consult @_bmad-output/decision-policy.md before escalating: if a rule covers it, decide and continue. HALT only for decisions no rule covers.",
       "enabled": true,
-      "origin": "core"
+      "origin": "core",
+      "updatedAt": "2026-07-14T16:35:00.740Z",
+      "updatedByRun": "4.11-a1-20260714T123043"
     },
     {
       "id": "review-code",
@@ -97,7 +99,7 @@
       "stage": "review",
       "skill": "bmad-code-review",
       "agent": "planner",
-      "prompt": "Review the story implementation. Spec file: {implementation_artifacts}/`<epic>-<story>-*.md` (Tier 1); diff baseline = its frontmatter `baseline_commit`, or all uncommitted changes if absent — resolve without asking. Chunk automatically if over threshold for internal organization only — review every chunk sequentially before finishing, starting from the first. Do not wait for confirmation between chunks. Skip the pre-review checkpoint. For decision-needed findings, consult @_bmad-output/decision-policy.md: if a rule covers it, decide and continue (if deferring, write a one-line reason instead of asking). HALT only for decisions no rule covers. After triage, choose 'apply every patch' (no per-finding confirmation) and end — no next-steps menu.",
+      "prompt": "Review the story implementation. Skip the Blind Hunter review layer — run only Edge Case Hunter and Acceptance Auditor. Spec file: {implementation_artifacts}/`<epic>-<story>-*.md` (Tier 1); diff baseline = its frontmatter `baseline_commit`, or all uncommitted changes if absent — resolve without asking. Chunk automatically if over threshold for internal organization only — review every chunk sequentially before finishing, starting from the first. Do not wait for confirmation between chunks. Skip the pre-review checkpoint. For decision-needed findings, consult @_bmad-output/decision-policy.md: if a rule covers it, decide and continue (if deferring, write a one-line reason instead of asking). HALT only for decisions no rule covers. After triage, choose 'apply every patch' (no per-finding confirmation) and end — no next-steps menu.",
       "enabled": true,
       "origin": "core",
       "updatedAt": "2026-07-13T16:33:16.990Z",
@@ -121,11 +123,11 @@
       "stage": "review",
       "skill": "bmad-testarch-nfr",
       "agent": "reviewer",
-      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section. For findings you determine were introduced by the current story and that have a straightforward remediation (e.g., a missing class or attribute the story should have applied to a location it touched), apply the fix directly rather than only documenting it; for findings that are pre-existing or require complex remediation, document them as before.",
+      "prompt": "run Create mode. Find NFR-specific issues only (e.g., missing select projections, take limits, timing tests, security headers). Document findings (severity + remediation) in the story's review section. For findings you determine were introduced by the current story and that have a straightforward remediation (e.g., a missing class or attribute the story should have applied to a location it touched), apply the fix directly rather than only documenting it; for findings that are pre-existing or require complex remediation, document them as before. For any MEDIUM or higher finding that is not fixed in this step, record it in @_bmad-output/implementation-artifacts/deferred-work.md so a future story whose scope touches the affected code can pick it up.",
       "enabled": true,
       "origin": "core",
-      "updatedAt": "2026-07-12T17:03:00.862Z",
-      "updatedByRun": "5.4-a1-20260712T150150"
+      "updatedAt": "2026-07-13T11:15:48.883Z",
+      "updatedByRun": "4.6-a1-20260713T093042"
     },
     {
       "id": "update-project-context",

@@ -11,8 +11,6 @@
  * if the conversation doesn't exist or doesn't belong to the user, mints a
  * boundary JWT, and renders ConversationPane with initialConversationId.
  *
- * GREEN PHASE: Story 5.2 tests are active and passing.
- *
  * Child component rendering (ConversationPane, Breadcrumb) is verified by
  * their own co-located component tests. This page test focuses on
  * data-fetching decisions and redirect logic. Child components are mocked

@@ -34,7 +34,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
  *   + `[DONE]` and calls `res.end()`. The `res` `drain` event resets
  *   `pendingCount = 0` and clears the timer.
  *
- * Skip rule (deliberate red-phase coordination gap, not a flake guard):
+ * Skip rule (deliberate coordination gap between QA and Backend, not a flake guard):
  *   The multi-conn tier boots the production AppModule via
  *   `yarn nx run agent-be:serve` (`playwright.config.ts` `webServer`). The
  *   production wiring is `SandboxService` (real) + `AgentService` (real) —

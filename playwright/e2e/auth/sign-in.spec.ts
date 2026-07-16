@@ -2,7 +2,8 @@
  * ATDD — Story 1.2: Sign In with GitHub
  * These tests cover AC-1 through AC-4 of Story 1.2.
  *
- * Tests that require real GitHub OAuth credentials remain skipped:
+ * Tests that require real GitHub OAuth credentials are conditionally skipped
+ * (gated on AUTH_GITHUB_ID env var):
  *   - [P1] OAuth initiation scope check (needs AUTH_GITHUB_ID)
  */
 

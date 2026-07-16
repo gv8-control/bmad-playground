@@ -27,7 +27,6 @@
  *                    TOOL_CALL_PROMOTED, both content and segments persisted to
  *                    Turn row).
  *
- * TDD GREEN PHASE — Story 3.4/3.7/3.8/3.11/5.5 tests un-skipped and passing.
  */
 import { SessionEventsService } from './session-events.service';
 import { AgentService } from './agent.service';
@@ -1322,8 +1321,6 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
   });
 
   // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
-  //
-  // GREEN PHASE: tests are active and passing.
   //
   // AC-9: segments persisted alongside content in Turn row
   // AC-9: Tool call positions captured relative to text

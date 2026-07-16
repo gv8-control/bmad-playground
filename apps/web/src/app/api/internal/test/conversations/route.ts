@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getPrisma } from '@/lib/prisma';
+import { isTestEndpointEnabled } from '@/lib/test-endpoint-guard';
 
 type SeedConversation = {
+  id?: string;
   title: string;
   lastActiveAt?: string;
 };
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV === 'production' || !process.env.TEST_ENV) {
+  if (!isTestEndpointEnabled()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -16,15 +18,33 @@ export async function POST(request: Request) {
     conversations: SeedConversation[];
   };
 
+  // Use upsert when a custom ID is provided (allows re-seeding without
+  // unique-constraint errors when tests run sequentially with the same ID).
+  // Use create when no custom ID is provided (auto-generated cuid).
   const created = await getPrisma().$transaction(
     conversations.map((c) =>
-      getPrisma().conversation.create({
-        data: {
-          userId,
-          title: c.title,
-          lastActiveAt: c.lastActiveAt ? new Date(c.lastActiveAt) : new Date(),
-        },
-      }),
+      c.id
+        ? getPrisma().conversation.upsert({
+            where: { id: c.id },
+            update: {
+              userId,
+              title: c.title,
+              lastActiveAt: c.lastActiveAt ? new Date(c.lastActiveAt) : new Date(),
+            },
+            create: {
+              id: c.id,
+              userId,
+              title: c.title,
+              lastActiveAt: c.lastActiveAt ? new Date(c.lastActiveAt) : new Date(),
+            },
+          })
+        : getPrisma().conversation.create({
+            data: {
+              userId,
+              title: c.title,
+              lastActiveAt: c.lastActiveAt ? new Date(c.lastActiveAt) : new Date(),
+            },
+          }),
     ),
   );
 
@@ -32,7 +52,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (process.env.NODE_ENV === 'production' || !process.env.TEST_ENV) {
+  if (!isTestEndpointEnabled()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

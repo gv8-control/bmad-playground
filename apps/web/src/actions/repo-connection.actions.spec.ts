@@ -5,9 +5,6 @@
  * Integration tests for the connectRepository Server Action.
  * Covers AC-2 (URL validation + write-access check), AC-3 (encrypted storage,
  * token never returned to client), AC-4 (descriptive per-cause error messages).
- *
- * All tests are active and passing. The actions module was created in Task 4
- * and all test.skip() markers have been removed.
  */
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────

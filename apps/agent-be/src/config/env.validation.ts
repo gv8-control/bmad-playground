@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 export const envSchema = z.object({
   DATABASE_URL: z.string().url(),
-  DAYTONA_API_URL: z.string().optional().default(''),
-  DAYTONA_API_KEY: z.string().optional().default(''),
+  DAYTONA_API_URL: z.string().min(1),
+  DAYTONA_API_KEY: z.string().min(1),
   AUTH_SECRET: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
 });

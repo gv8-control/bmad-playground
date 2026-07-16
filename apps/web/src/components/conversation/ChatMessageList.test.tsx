@@ -8,7 +8,6 @@
  * Story 5.5 covers: AC-1, AC-2, AC-3, AC-4, AC-5 (inline pills — standalone
  * tool-call rendering branch removed, AgentMessage delegates all assistant
  * rendering including interleaved tool calls).
- * TDD GREEN PHASE — all tests un-skipped and passing.
  */
 import { render, screen } from '@testing-library/react';
 
@@ -104,8 +103,6 @@ describe('ChatMessageList', () => {
 });
 
 // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────────
-//
-// GREEN PHASE: tests are active for Story 5.3 implementation.
 //
 // AC-1: 824px column centering for messages
 // AC-2: Rich new-conversation empty-state
@@ -225,8 +222,6 @@ describe('ChatMessageList — Story 5.3 structural drift', () => {
 });
 
 // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
-//
-// GREEN PHASE: tests are active and passing.
 //
 // AC-1: No standalone tool-call rendering — pills render inline within AgentMessage
 
