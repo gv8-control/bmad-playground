@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bmad-easy — New conversation error states</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0D0D11;
+    color: #EDECF5;
+    min-width: 1280px;
+  }
+
+  /* === State divider === */
+  .state-divider {
+    text-align: center;
+    padding: 48px 0 24px;
+    border-top: 1px solid #2B2B38;
+  }
+  .state-divider:first-child { border-top: none; padding-top: 24px; }
+  .state-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8D8CA0;
+  }
+  .state-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #EDECF5;
+    margin-top: 4px;
+  }
+  .state-desc {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    margin-top: 4px;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* === Screen frame === */
+  .screen-frame {
+    width: 1280px;
+    margin: 0 auto 48px;
+    border: 1px solid #232330;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  /* === Browser chrome === */
+  .browser-chrome {
+    background: #1E1E26;
+    border-bottom: 1px solid #2B2B38;
+    padding: 0 12px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chrome-dots { display: flex; gap: 6px; }
+  .chrome-dot { width: 12px; height: 12px; border-radius: 9999px; }
+  .dot-red   { background: #FF5F57; }
+  .dot-yellow{ background: #FFBD2E; }
+  .dot-green { background: #28CA41; }
+  .chrome-address-bar {
+    flex: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chrome-lock { color: #3ECF8E; font-size: 10px; }
+
+  /* === App shell === */
+  .app-shell {
+    display: flex;
+    height: 600px;
+    overflow: hidden;
+  }
+
+  /* === Side nav === */
+  .side-nav {
+    width: 240px;
+    flex-shrink: 0;
+    background: #16161C;
+    border-right: 1px solid #1E1E26;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .nav-wordmark {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #1E1E26;
+  }
+  .wordmark-text { font-size: 1rem; font-weight: 600; color: #EDECF5; letter-spacing: -0.02em; }
+  .wordmark-dot  { color: #7B6EE8; }
+  .nav-new-btn {
+    margin: 12px 12px 8px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid #7B6EE8;
+    border-radius: 8px;
+    color: #7B6EE8;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    font-family: inherit;
+  }
+  .nav-conversations {
+    flex: 1;
+    overflow: hidden;
+    padding: 4px 0;
+  }
+  .nav-item {
+    display: block;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nav-item:hover { background: #1E1E26; color: #EDECF5; }
+  .nav-item.active {
+    background: #1E1E26;
+    color: #EDECF5;
+    border-radius: 6px;
+    margin: 0 8px;
+    padding: 8px 8px;
+  }
+  .nav-separator {
+    height: 1px;
+    background: #1E1E26;
+    margin: 8px 16px;
+  }
+  .nav-bottom {
+    padding: 8px 12px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .avatar-circle {
+    width: 32px; height: 32px;
+    border-radius: 9999px;
+    background: #7B6EE8;
+    color: #FFFFFF;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .nav-bottom-label { font-size: 0.75rem; color: #8D8CA0; }
+
+  /* === Content area === */
+  .content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0D0D11;
+    position: relative;
+  }
+
+  /* === Chat messages panel — centered === */
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 32px;
+  }
+
+  /* === Empty state prompt (normal idle state) === */
+  .chat-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 480px;
+    text-align: center;
+  }
+  .chat-empty-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+  }
+  .chat-empty-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #EDECF5;
+  }
+  .chat-empty-subtitle {
+    font-size: 0.9375rem;
+    color: #8D8CA0;
+    line-height: 1.6;
+  }
+
+  /* === Starting session overlay === */
+  .starting-session-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: 480px;
+    text-align: center;
+  }
+  .starting-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #2B2B38;
+    border-top-color: #7B6EE8;
+    border-radius: 9999px;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .starting-label {
+    font-size: 0.9375rem;
+    color: #8D8CA0;
+  }
+  .starting-message-preview {
+    font-size: 0.875rem;
+    color: #56556A;
+    font-style: italic;
+  }
+
+  /* === Blocking error message (replaces empty state) === */
+  .blocking-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 480px;
+    text-align: center;
+  }
+  .blocking-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    color: #56556A;
+  }
+  .blocking-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #EDECF5;
+  }
+  .blocking-body {
+    font-size: 0.9375rem;
+    color: #8D8CA0;
+    line-height: 1.6;
+  }
+  .blocking-action {
+    display: inline-block;
+    background: transparent;
+    border: 1px solid #2B2B38;
+    color: #EDECF5;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    margin-top: 4px;
+  }
+  .blocking-action:hover { background: #1E1E26; }
+
+  /* === Chat input area === */
+  .chat-input-area {
+    flex-shrink: 0;
+    padding: 0 32px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: #0D0D11;
+    position: relative;
+  }
+  .chat-input-box {
+    background: #1E1E26;
+    border: 1px solid #2B2B38;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .chat-input-box.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .chat-textarea {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 1rem;
+    color: #EDECF5;
+    font-family: inherit;
+    resize: none;
+    line-height: 1.5;
+    min-height: 28px;
+    width: 100%;
+  }
+  .chat-textarea::placeholder { color: #56556A; }
+  .chat-input-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .working-tree-hidden {
+    font-size: 0.75rem;
+    color: #56556A;
+  }
+  .send-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: #7B6EE8;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .send-button.disabled {
+    background: #1E1E26;
+    color: #56556A;
+    border: 1px solid #2B2B38;
+    cursor: not-allowed;
+  }
+
+  /* === Input hidden (blocking states) === */
+  .chat-input-area.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ===================================================== -->
+<!-- STATE 1: Session start timeout                        -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 1 of 4</div>
+  <div class="state-title">Session start timeout</div>
+  <div class="state-desc">Sandbox never became ready. The "Starting session…" spinner is replaced by a timeout message + Retry button. No chat history exists. Input is not shown — the block is in the chat area. Side nav's New Conversation button stays enabled.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      app.bmad-easy.com/conversations/new
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="chat-messages">
+        <div class="blocking-message">
+          <div class="blocking-icon">⏳</div>
+          <div class="blocking-title">Starting your session is taking longer than expected</div>
+          <button class="blocking-action">Retry</button>
+        </div>
+      </div>
+      <!-- Input hidden — block is on the page, not by disabling nav -->
+      <div class="chat-input-area hidden"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================================================== -->
+<!-- STATE 2: Conversation limit reached                    -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 2 of 4</div>
+  <div class="state-title">Conversation limit reached</div>
+  <div class="state-desc">User already has 10 active conversations — the per-user maximum. Blocking message in the chat area. Input not shown. No upgrade action — this limit applies to every plan. Side nav's New Conversation button stays enabled — the block is communicated on the page.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      app.bmad-easy.com/conversations/new
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-item">Sprint planning — Q2</div>
+        <div class="nav-item">Market research</div>
+        <div class="nav-item">User personas</div>
+        <div class="nav-item">Roadmap review</div>
+        <div class="nav-item">Competitor analysis</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="chat-messages">
+        <div class="blocking-message">
+          <div class="blocking-icon">⏸</div>
+          <div class="blocking-title">You've reached the limit of 10 active conversations</div>
+          <div class="blocking-body">Return to one of your existing conversations, or try again later.</div>
+        </div>
+      </div>
+      <div class="chat-input-area hidden"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================================================== -->
+<!-- STATE 3: Seat limit exceeded                           -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 3 of 4</div>
+  <div class="state-title">Seat limit exceeded</div>
+  <div class="state-desc">User's team has exceeded its seat allocation. Blocking message with upgrade prompt. Input not shown. The upgrade destination is post-MVP billing; in MVP all users have full access, so this state is specified but not reachable until billing ships.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      app.bmad-easy.com/conversations/new
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="chat-messages">
+        <div class="blocking-message">
+          <div class="blocking-icon">⏸</div>
+          <div class="blocking-title">Your team has used all of its seats</div>
+          <div class="blocking-body">Upgrade your plan to start new conversations.</div>
+          <button class="blocking-action">Upgrade plan</button>
+        </div>
+      </div>
+      <div class="chat-input-area hidden"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================================================== -->
+<!-- STATE 4: Starting session (transient — not an error)   -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 4 of 4</div>
+  <div class="state-title">Starting session (transient — shown for context)</div>
+  <div class="state-desc">Not an error — this is the transient state that precedes the timeout in State 1. Shown here so you can see the transition: spinner + "Starting session…" becomes the timeout message + Retry button. Input is disabled during this state.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      app.bmad-easy.com/conversations/new
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="chat-messages">
+        <div class="starting-session-overlay">
+          <div class="starting-spinner"></div>
+          <div class="starting-label">Starting session…</div>
+          <div class="starting-message-preview">Your message will send automatically when ready.</div>
+        </div>
+      </div>
+      <div class="chat-input-area">
+        <div class="chat-input-box disabled">
+          <textarea class="chat-textarea" rows="1" placeholder="Message bmad-easy…" disabled>/bmad-prd</textarea>
+          <div class="chat-input-controls">
+            <span class="working-tree-hidden"></span>
+            <button class="send-button disabled">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

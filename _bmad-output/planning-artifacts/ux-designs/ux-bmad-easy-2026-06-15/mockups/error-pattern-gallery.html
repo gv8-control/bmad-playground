@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Error Pattern Gallery — bmad-easy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* === DESIGN.md tokens (exact values) === */
+  :root {
+    --bg: #0D0D11;
+    --surface: #16161C;
+    --surface-raised: #1E1E26;
+    --border: #2B2B38;
+    --border-subtle: #232330;
+    --text-1: #EDECF5;
+    --text-2: #8D8CA0;
+    --text-3: #56556A;
+    --accent: #7B6EE8;
+    --accent-hover: #9083F2;
+    --accent-fg: #FFFFFF;
+    --positive: #3ECF8E;
+    --positive-bg: rgba(62,207,142,0.08);
+    --caution: #F2A944;
+    --caution-bg: rgba(242,169,68,0.08);
+    --negative: #F06B6B;
+    --negative-bg: rgba(240,107,107,0.08);
+    --overlay: rgba(0,0,0,0.65);
+
+    --r-sm: 4px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-xl: 16px;
+    --r-full: 9999px;
+
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-1);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5rem;
+    padding: 48px 64px;
+  }
+
+  /* === Gallery chrome === */
+  .gallery-header {
+    max-width: 824px;
+    margin-bottom: 48px;
+  }
+  .gallery-title {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 600;
+    color: var(--text-1);
+    margin-bottom: 8px;
+  }
+  .gallery-subtitle {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: var(--text-2);
+  }
+  .gallery-meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 16px;
+    font-size: 0.75rem;
+    color: var(--text-3);
+  }
+  .gallery-meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* === Pattern section === */
+  .pattern {
+    max-width: 824px;
+    margin-bottom: 64px;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 32px;
+  }
+  .pattern:first-of-type { border-top: none; padding-top: 0; }
+
+  .pattern-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-2);
+    margin-bottom: 4px;
+  }
+  .pattern-title {
+    font-size: 1.125rem;
+    line-height: 1.75rem;
+    font-weight: 600;
+    color: var(--text-1);
+    margin-bottom: 8px;
+  }
+  .pattern-desc {
+    font-size: 0.875rem;
+    line-height: 1.5rem;
+    color: var(--text-2);
+    margin-bottom: 16px;
+  }
+  .pattern-locations {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+  .location-chip {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    background: var(--surface-raised);
+  }
+  .location-chip.mocked { border-color: var(--positive); color: var(--positive); }
+  .location-chip.spine-only { border-color: var(--caution); color: var(--caution); }
+  .location-chip.no-spec { border-color: var(--negative); color: var(--negative); }
+
+  .legend {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 32px;
+    font-size: 0.75rem;
+    color: var(--text-3);
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 8px; height: 8px; border-radius: var(--r-full); }
+  .dot-green { background: var(--positive); }
+  .dot-amber { background: var(--caution); }
+  .dot-red { background: var(--negative); }
+
+  /* === Render frame (simulates the app surface) === */
+  .render-frame {
+    background: var(--bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .render-frame-label {
+    font-size: 0.75rem;
+    color: var(--text-3);
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+  }
+  .render-body { padding: 24px; }
+
+  /* === Variant label === */
+  .variant-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-2);
+    margin-bottom: 8px;
+    margin-top: 24px;
+  }
+  .variant-label:first-child { margin-top: 0; }
+
+  /* === Gap flag (kept for reference, no longer used — decisions resolved) === */
+  .gap-flag { display: none; }
+
+  /* ============================================== */
+  /* PATTERN 1: Inline field error                   */
+  /* ============================================== */
+  .field-group { margin-bottom: 16px; }
+  .field-label {
+    font-size: 0.875rem;
+    color: var(--text-1);
+    margin-bottom: 6px;
+    display: block;
+  }
+  .field-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 12px 16px;
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    color: var(--text-1);
+    outline: none;
+  }
+  .field-input.error {
+    border-color: var(--negative);
+  }
+  .field-error {
+    font-size: 0.75rem;
+    color: var(--negative);
+    margin-top: 6px;
+    display: block;
+  }
+
+  /* ============================================== */
+  /* PATTERN 2: Auth error card                      */
+  /* ============================================== */
+  .auth-block {
+    max-width: 400px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .auth-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    padding: 32px;
+  }
+  .auth-logo {
+    width: 48px;
+    height: 48px;
+    background: var(--accent);
+    border-radius: var(--r-lg);
+    margin: 0 auto 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--accent-fg);
+  }
+  .auth-heading {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-1);
+    margin-bottom: 24px;
+  }
+  .oauth-button {
+    width: 100%;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: none;
+    border-radius: var(--r-md);
+    padding: 10px 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+  .auth-error {
+    background: var(--negative-bg);
+    border: 1px solid var(--negative);
+    border-radius: var(--r-md);
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    color: var(--text-1);
+    text-align: left;
+  }
+  .auth-error a { color: var(--negative); text-decoration: underline; }
+
+  /* ============================================== */
+  /* PATTERN 3: Blocking content message             */
+  /* ============================================== */
+  .content-area {
+    background: var(--bg);
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+  }
+  .blocking-message {
+    max-width: 480px;
+    text-align: center;
+  }
+  .blocking-icon {
+    font-size: 1.5rem;
+    color: var(--negative);
+    margin-bottom: 12px;
+  }
+  .blocking-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-1);
+    margin-bottom: 8px;
+  }
+  .blocking-body {
+    font-size: 0.875rem;
+    color: var(--text-2);
+    line-height: 1.5rem;
+    margin-bottom: 16px;
+  }
+  /* Decision: blocking content messages carry negative color.
+     Container gets negative-bg + negative left border, consistent with
+     Access Notice and Credential Error Banner error containers. */
+  .blocking-message {
+    background: var(--negative-bg);
+    border-left: 2px solid var(--negative);
+    border-radius: var(--r-sm);
+    padding: 16px 20px;
+  }
+  .blocking-action {
+    display: inline-block;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: none;
+    border-radius: var(--r-md);
+    padding: 8px 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .blocking-action.outlined {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-1);
+  }
+
+  /* ============================================== */
+  /* PATTERN 4: Credential Error Banner              */
+  /* ============================================== */
+  .credential-banner {
+    background: var(--negative-bg);
+    border-bottom: 1px solid var(--negative);
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    color: var(--text-1);
+  }
+  .credential-banner a {
+    color: var(--negative);
+    text-decoration: underline;
+  }
+
+  /* ============================================== */
+  /* PATTERN 5: Access Notice                        */
+  /* ============================================== */
+  .access-notice {
+    border-radius: var(--r-sm);
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    color: var(--text-1);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .access-notice.caution {
+    background: var(--caution-bg);
+    border-left: 2px solid var(--caution);
+  }
+  .access-notice.negative {
+    background: var(--negative-bg);
+    border-left: 2px solid var(--negative);
+  }
+  .access-notice-dismiss {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text-3);
+    cursor: pointer;
+    font-size: 0.875rem;
+    padding: 0 4px;
+  }
+  .access-notice-dismiss:hover { color: var(--text-2); }
+
+  /* ============================================== */
+  /* PATTERN 6: Error-state Tool Pill                */
+  /* ============================================== */
+  .message-stream {
+    max-width: 760px;
+  }
+  .agent-message {
+    padding: 4px 0;
+    color: var(--text-1);
+    font-size: 1rem;
+    line-height: 1.5rem;
+    margin-bottom: 12px;
+  }
+  .tool-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    cursor: pointer;
+  }
+  /* Decision: error-state Tool Pill stays neutral — same styling as base tool-pill.
+     The error signal is carried by the Access Notice or Credential Error Banner
+     below/above it, not by the pill itself. Status text ("✕ failed") differentiates. */
+  .tool-pill.error {
+    /* no visual override — inherits base .tool-pill styling */
+  }
+  .tool-pill .pill-status { font-size: 0.6875rem; opacity: 0.8; }
+
+  /* === Simulation context wrappers === */
+  .sim-shell {
+    display: flex;
+    background: var(--surface);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    min-height: 300px;
+  }
+  .sim-sidebar {
+    width: 240px;
+    background: var(--surface);
+    border-right: 1px solid var(--border-subtle);
+    padding: 16px 12px;
+    flex-shrink: 0;
+  }
+  .sim-sidebar .nav-wordmark {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-1);
+    margin-bottom: 16px;
+    padding: 0 8px;
+  }
+  .sim-sidebar .nav-wordmark .dot { color: var(--accent); }
+  .sim-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+  .sim-content-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.875rem;
+    color: var(--text-2);
+  }
+
+  /* === Conversation stream sim === */
+  .conv-stream {
+    flex: 1;
+    padding: 16px 32px;
+    overflow-y: auto;
+  }
+  .conv-input-area {
+    padding: 12px 32px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .conv-input-box {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 12px 16px;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    color: var(--text-3);
+    font-size: 1rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="gallery-header">
+  <div class="gallery-title">Error Pattern Gallery — bmad-easy</div>
+  <div class="gallery-subtitle">
+    Every distinct error rendering pattern in the product, with every location it appears.
+    Use this to adjust error styling consistently. Tokens are exact DESIGN.md values.
+  </div>
+  <div class="gallery-meta">
+    <span>14 error locations across 7 surfaces</span>
+    <span>6 distinct rendering patterns</span>
+    <span>3 already mocked · 11 spine-only · 2 with no component spec</span>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot dot-green"></span> Already mocked</span>
+  <span><span class="dot dot-amber"></span> Spine-only (documented in EXPERIENCE.md, no visual mock)</span>
+  <span><span class="dot dot-red"></span> No component spec in DESIGN.md (design decision needed)</span>
+</div>
+
+<!-- ============================================== -->
+<!-- PATTERN 1: Inline field error                   -->
+<!-- ============================================== -->
+<div class="pattern">
+  <div class="pattern-label">Pattern 1</div>
+  <div class="pattern-title">Inline field error</div>
+  <div class="pattern-desc">
+    Red border on the input + red helper text below. Appears on field validation failure.
+    Component spec: <code>border-color: {colors.negative}</code>. No DESIGN.md component token —
+    styling lives in mockup CSS only.
+  </div>
+  <div class="pattern-locations">
+    <span class="location-chip mocked">Onboarding — URL format validation</span>
+    <span class="location-chip mocked">Onboarding — Permission/write-access failure</span>
+  </div>
+
+  <div class="render-frame">
+    <div class="render-frame-label">Onboarding surface — /onboarding</div>
+    <div class="render-body" style="max-width: 480px;">
+      <div class="field-group">
+        <label class="field-label">Repository URL</label>
+        <input class="field-input error" type="text" value="not-a-valid-url" readonly>
+        <span class="field-error">Enter a valid GitHub repository URL.</span>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Repository URL</label>
+        <input class="field-input error" type="text" value="https://github.com/org/private-repo" readonly>
+        <span class="field-error">Couldn't get write access to this repository. Check that your GitHub organization allows the bmad-easy app, or that you have write permission.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- PATTERN 2: Auth error card                      -->
+<!-- ============================================== -->
+<div class="pattern">
+  <div class="pattern-label">Pattern 2</div>
+  <div class="pattern-title">Auth error card</div>
+  <div class="pattern-desc">
+    Contained error card inside the auth block. Red-bordered, translucent red background, red link.
+    Hidden by default; shown on auth failure. No DESIGN.md component token — styling lives in mockup CSS only.
+  </div>
+  <div class="pattern-locations">
+    <span class="location-chip mocked">Sign In — Auth failure</span>
+  </div>
+
+  <div class="render-frame">
+    <div class="render-frame-label">Sign-in surface — /sign-in</div>
+    <div class="render-body">
+      <div class="auth-block">
+        <div class="auth-card">
+          <div class="auth-logo">be</div>
+          <div class="auth-heading">Sign in to bmad-easy</div>
+          <button class="oauth-button">Sign in with GitHub</button>
+          <div class="auth-error">
+            Sign-in failed. Try again or <a href="#">contact support</a>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- PATTERN 3: Blocking content message             -->
+<!-- ============================================== -->
+<div class="pattern">
+  <div class="pattern-label">Pattern 3</div>
+  <div class="pattern-title">Blocking content message</div>
+  <div class="pattern-desc">
+    Replaces the content area (chat area or content pane). Message + optional action button.
+    Input is hidden or disabled. <strong>Decision (2026-07-16):</strong> carries <code>{colors.negative}</code>
+    — negative-bg background, negative left border, negative icon. Six variants across two surfaces.
+  </div>
+  <div class="gap-flag">
+    <strong>Design decision needed:</strong> No DESIGN.md component spec for this pattern.
+    The spine references "same visual treatment" but never defines it. The renders below
+    use a neutral centered treatment — is that right, or should load failures carry negative color?
+  </div>
+  <div class="pattern-locations">
+    <span class="location-chip spine-only">New Conversation — Conversation limit reached</span>
+    <span class="location-chip spine-only">New Conversation — Seat limit exceeded</span>
+    <span class="location-chip spine-only">New Conversation — Session start timeout</span>
+    <span class="location-chip spine-only">Conversation — History load failure</span>
+    <span class="location-chip spine-only">Conversation — Reconnecting timeout</span>
+    <span class="location-chip spine-only">Conversation — Agent process terminated</span>
+    <span class="location-chip spine-only">Artifact Browser — Artifact load error</span>
+  </div>
+
+  <!-- 3a: Conversation limit reached -->
+  <div class="variant-label">3a — Conversation limit reached (New Conversation)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">New Conversation — /conversations/new — chat area</div>
+    <div class="render-body">
+      <div class="sim-shell">
+        <div class="sim-sidebar">
+          <div class="nav-wordmark">bmad<span class="dot">·</span>easy</div>
+        </div>
+        <div class="sim-content">
+          <div class="content-area">
+            <div class="blocking-message">
+              <div class="blocking-icon">⏸</div>
+              <div class="blocking-title">You've reached the limit of 10 active conversations</div>
+              <div class="blocking-body">Return to one of your existing conversations, or try again later.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3b: Seat limit exceeded -->
+  <div class="variant-label">3b — Seat limit exceeded (New Conversation)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">New Conversation — /conversations/new — chat area</div>
+    <div class="render-body">
+      <div class="sim-shell">
+        <div class="sim-sidebar">
+          <div class="nav-wordmark">bmad<span class="dot">·</span>easy</div>
+        </div>
+        <div class="sim-content">
+          <div class="content-area">
+            <div class="blocking-message">
+              <div class="blocking-icon">⏸</div>
+              <div class="blocking-title">Your team has used all of its seats</div>
+              <div class="blocking-body">Upgrade your plan to start new conversations.</div>
+              <button class="blocking-action">Upgrade plan</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3c: Session start timeout -->
+  <div class="variant-label">3c — Session start timeout (New Conversation + Conversation reconnecting)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">New Conversation — chat area (same pattern on Conversation reconnecting)</div>
+    <div class="render-body">
+      <div class="sim-shell">
+        <div class="sim-sidebar">
+          <div class="nav-wordmark">bmad<span class="dot">·</span>easy</div>
+        </div>
+        <div class="sim-content">
+          <div class="content-area">
+            <div class="blocking-message">
+              <div class="blocking-icon">⏳</div>
+              <div class="blocking-title">Starting your session is taking longer than expected</div>
+              <button class="blocking-action outlined">Retry</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3d: History load failure -->
+  <div class="variant-label">3d — History load failure (Conversation)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">Conversation — /conversations/:id — content area</div>
+    <div class="render-body">
+      <div class="sim-shell">
+        <div class="sim-sidebar">
+          <div class="nav-wordmark">bmad<span class="dot">·</span>easy</div>
+        </div>
+        <div class="sim-content">
+          <div class="content-area">
+            <div class="blocking-message">
+              <div class="blocking-icon">⚠</div>
+              <div class="blocking-title">Couldn't load this conversation</div>
+              <div class="blocking-body">The conversation history couldn't be loaded.</div>
+              <button class="blocking-action outlined">Refresh</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3e: Artifact load error -->
+  <div class="variant-label">3e — Artifact load error (Artifact Browser)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">Artifact Browser — /artifacts — content pane</div>
+    <div class="render-body">
+      <div class="sim-shell">
+        <div class="sim-sidebar">
+          <div class="nav-wordmark">bmad<span class="dot">·</span>easy</div>
+        </div>
+        <div class="sim-content">
+          <div class="content-area">
+            <div class="blocking-message">
+              <div class="blocking-icon">⚠</div>
+              <div class="blocking-title">Couldn't load this artifact</div>
+              <div class="blocking-body">The artifact couldn't be loaded from the repository.</div>
+              <button class="blocking-action outlined">Refresh</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3f: Agent process terminated -->
+  <div class="variant-label">3f — Agent process terminated (Conversation — circuit breaker)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">Conversation — /conversations/:id — in-stream system message</div>
+    <div class="render-body">
+      <div class="sim-shell">
+        <div class="sim-sidebar">
+          <div class="nav-wordmark">bmad<span class="dot">·</span>easy</div>
+        </div>
+        <div class="sim-content">
+          <div class="conv-stream">
+            <div class="message-stream">
+              <div class="agent-message">
+                I'll read the brainstorming artifact and draft the PRD based on the key themes we discussed…
+              </div>
+              <div class="blocking-message" style="text-align: left; max-width: 100%; padding: 12px 0;">
+                <div class="blocking-title" style="font-size: 0.875rem; font-weight: 400; color: var(--text-2);">
+                  The agent stopped unexpectedly. Send a new message to try again.
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="conv-input-area">
+            <div class="conv-input-box">Type a message…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- PATTERN 4: Credential Error Banner              -->
+<!-- ============================================== -->
+<div class="pattern">
+  <div class="pattern-label">Pattern 4</div>
+  <div class="pattern-title">Credential Error Banner</div>
+  <div class="pattern-desc">
+    Full-width horizontal banner at the top of the content area, below the page header.
+    Non-dismissible until credentials are replaced. Contains plain-language copy + red link
+    triggering inline re-auth modal. Component spec: <code>{components.credential-error-banner}</code>.
+  </div>
+  <div class="pattern-locations">
+    <span class="location-chip spine-only">Project Map — Credential failed</span>
+    <span class="location-chip spine-only">Artifact Browser — Credential failed</span>
+    <span class="location-chip spine-only">Conversation — Credential failed (mid-conversation)</span>
+  </div>
+
+  <div class="render-frame">
+    <div class="render-frame-label">Project Map — / — banner above artifact list</div>
+    <div class="render-body" style="padding: 0;">
+      <div class="sim-shell">
+        <div class="sim-sidebar">
+          <div class="nav-wordmark">bmad<span class="dot">·</span>easy</div>
+        </div>
+        <div class="sim-content">
+          <div class="sim-content-header">Project Map</div>
+          <div class="credential-banner">
+            Your repository connection needs attention. <a href="#">Update access token</a>
+          </div>
+          <div style="padding: 16px 32px; color: var(--text-3); font-size: 0.875rem;">
+            (artifact list would appear here)
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="variant-label">Same banner on Conversation surface (appears mid-conversation in real time)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">Conversation — /conversations/:id — banner above message panel</div>
+    <div class="render-body" style="padding: 0;">
+      <div class="sim-shell">
+        <div class="sim-sidebar">
+          <div class="nav-wordmark">bmad<span class="dot">·</span>easy</div>
+        </div>
+        <div class="sim-content">
+          <div class="sim-content-header">← Project Map</div>
+          <div class="credential-banner">
+            Your repository connection needs attention. <a href="#">Update access token</a>
+          </div>
+          <div class="conv-stream">
+            <div class="message-stream">
+              <div class="agent-message">Let me read the latest PRD draft…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- PATTERN 5: Access Notice                        -->
+<!-- ============================================== -->
+<div class="pattern">
+  <div class="pattern-label">Pattern 5</div>
+  <div class="pattern-title">Access Notice</div>
+  <div class="pattern-desc">
+    Inline notice rendered in the message stream directly below an error-state Tool Pill.
+    Scoped to a single failing tool call — not full-width, not pinned. Dismissible.
+    Never offers re-auth (a 403 is not a credential failure). Component spec:
+    <code>{components.access-notice}</code>. Three variants by ACCESS_DENIED code.
+  </div>
+  <div class="pattern-locations">
+    <span class="location-chip spine-only">Conversation — RATE_LIMITED</span>
+    <span class="location-chip spine-only">Conversation — ORG_RESTRICTION</span>
+    <span class="location-chip spine-only">Conversation — INSUFFICIENT_PERMISSION</span>
+  </div>
+
+  <!-- 5a: RATE_LIMITED -->
+  <div class="variant-label">5a — RATE_LIMITED (caution treatment, with retry hint)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">Conversation — in-stream, below error-state Tool Pill</div>
+    <div class="render-body">
+      <div class="message-stream" style="max-width: 760px;">
+        <div class="agent-message">Let me check the repository status…</div>
+        <div style="margin-bottom: 8px;">
+          <span class="tool-pill error">
+            git_status
+            <span class="pill-status">✕ failed</span>
+          </span>
+        </div>
+        <div class="access-notice caution">
+          <span>GitHub is rate-limiting this request. Wait a moment and try again.</span>
+          <button class="access-notice-dismiss">✕</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5b: ORG_RESTRICTION -->
+  <div class="variant-label">5b — ORG_RESTRICTION (caution treatment)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">Conversation — in-stream, below error-state Tool Pill</div>
+    <div class="render-body">
+      <div class="message-stream" style="max-width: 760px;">
+        <div class="agent-message">Reading the architecture document…</div>
+        <div style="margin-bottom: 8px;">
+          <span class="tool-pill error">
+            read_file
+            <span class="pill-status">✕ failed</span>
+          </span>
+        </div>
+        <div class="access-notice caution">
+          <span>Your organization hasn't approved this app. Ask an org admin to grant access.</span>
+          <button class="access-notice-dismiss">✕</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5c: INSUFFICIENT_PERMISSION -->
+  <div class="variant-label">5c — INSUFFICIENT_PERMISSION (negative treatment)</div>
+  <div class="render-frame">
+    <div class="render-frame-label">Conversation — in-stream, below error-state Tool Pill</div>
+    <div class="render-body">
+      <div class="message-stream" style="max-width: 760px;">
+        <div class="agent-message">Committing the draft PRD…</div>
+        <div style="margin-bottom: 8px;">
+          <span class="tool-pill error">
+            git_commit
+            <span class="pill-status">✕ failed</span>
+          </span>
+        </div>
+        <div class="access-notice negative">
+          <span>Your account doesn't have access to this resource.</span>
+          <button class="access-notice-dismiss">✕</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- PATTERN 6: Error-state Tool Pill                -->
+<!-- ============================================== -->
+<div class="pattern">
+  <div class="pattern-label">Pattern 6</div>
+  <div class="pattern-title">Error-state Tool Pill</div>
+  <div class="pattern-desc">
+    Inline chip in the agent message stream at the position a tool call failed.
+    Clicking expands to show the raw error output. <strong>Decision (2026-07-16):</strong>
+    the error-state variant stays neutral — same styling as the base Tool Pill
+    (<code>{components.tool-pill}</code>). The error signal is carried by the Access Notice
+    or Credential Error Banner below/above it. Status text ("✕ failed") differentiates.
+  </div>
+  <div class="gap-flag">
+    <strong>Design decision needed:</strong> No DESIGN.md spec for the error-state variant.
+    The render below uses negative border + negative text + negative-bg — is that right,
+    or should it stay neutral and let the Access Notice carry the error signal?
+  </div>
+  <div class="pattern-locations">
+    <span class="location-chip spine-only">Conversation — Failed git operation (credential failed)</span>
+    <span class="location-chip spine-only">Conversation — Failed git operation (access denied)</span>
+  </div>
+
+  <div class="render-frame">
+    <div class="render-frame-label">Conversation — in-stream</div>
+    <div class="render-body">
+      <div class="message-stream" style="max-width: 760px;">
+        <div class="agent-message">I'll commit the PRD draft to the repository now.</div>
+        <div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
+          <span class="tool-pill error">
+            git_commit
+            <span class="pill-status">✕ failed</span>
+          </span>
+          <span style="font-size: 0.75rem; color: var(--text-3);">click to expand raw output</span>
+        </div>
+        <div class="agent-message" style="color: var(--text-2); font-size: 0.875rem;">
+          (the agent receives the tool error and adapts — the turn continues)
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="variant-label">Comparison — neutral (success) Tool Pill vs error-state Tool Pill</div>
+  <div class="render-frame">
+    <div class="render-frame-label">Side by side</div>
+    <div class="render-body">
+      <div style="display: flex; gap: 24px; align-items: center; flex-wrap: wrap;">
+        <span class="tool-pill">
+          read_file
+          <span class="pill-status">✓ done</span>
+        </span>
+        <span class="tool-pill error">
+          git_commit
+          <span class="pill-status">✕ failed</span>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- Coverage summary                                -->
+<!-- ============================================== -->
+<div class="pattern" style="border-top: 1px solid var(--border-subtle); padding-top: 32px;">
+  <div class="pattern-label">Summary</div>
+  <div class="pattern-title">Coverage gap</div>
+  <div class="pattern-desc">
+    14 error locations documented in EXPERIENCE.md. 3 already mocked (sign-in + onboarding).
+    11 are spine-only. 2 patterns have no DESIGN.md component spec and need a design decision
+    before the styling can be considered final.
+  </div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 824px;">
+    <div style="background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px;">
+      <div style="font-size: 0.75rem; color: var(--positive); text-transform: uppercase; margin-bottom: 8px;">Already mocked</div>
+      <div style="font-size: 0.875rem; color: var(--text-2); line-height: 1.75rem;">
+        • Onboarding — URL format validation<br>
+        • Onboarding — Permission failure<br>
+        • Sign In — Auth failure
+      </div>
+    </div>
+    <div style="background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px;">
+      <div style="font-size: 0.75rem; color: var(--caution); text-transform: uppercase; margin-bottom: 8px;">Spine-only (11 locations)</div>
+      <div style="font-size: 0.875rem; color: var(--text-2); line-height: 1.75rem;">
+        • Conversation limit reached<br>
+        • Seat limit exceeded<br>
+        • Session start timeout (×2 surfaces)<br>
+        • History load failure<br>
+        • Agent process terminated<br>
+        • Artifact load error<br>
+        • Credential Error Banner (×3 surfaces)<br>
+        • Access Notice (×3 variants)<br>
+        • Error-state Tool Pill (×2 contexts)
+      </div>
+    </div>
+  </div>
+  <div style="background: var(--negative-bg); border: 1px solid var(--negative); border-radius: var(--r-lg); padding: 16px; max-width: 824px; margin-top: 16px;">
+    <div style="font-size: 0.75rem; color: var(--negative); text-transform: uppercase; margin-bottom: 8px;">No component spec (2 patterns)</div>
+    <div style="font-size: 0.875rem; color: var(--text-1); line-height: 1.75rem;">
+      <strong>Pattern 3 — Blocking content message:</strong> spine says "same visual treatment as the
+      'Couldn't load…' error copy" but never defines the treatment. Gallery uses neutral centered
+      treatment — confirm or adjust.<br>
+      <strong>Pattern 6 — Error-state Tool Pill:</strong> base Tool Pill is spec'd; error variant is not.
+      Gallery uses negative border/text/bg — confirm or adjust.
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
