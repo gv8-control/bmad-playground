@@ -100,6 +100,11 @@ describe('AgentService (real — sandbox-based execution via AguiEventBridgeServ
     streamAgentEvents: jest.Mock;
     stop: jest.Mock;
     capturedOnEvent: () => ((event: SseEvent) => void) | undefined;
+    // Bug H1: Simulate the real event bridge's crash path — emitRunError()
+    // emits a RUN_ERROR to sessionEvents BEFORE re-throwing with the
+    // AGENT_STREAM_CRASHED sentinel. AgentService's catch recognizes the
+    // sentinel and skips its own RUN_ERROR emit (proves no double-emit).
+    rejectNextStreamWithCrash: () => void;
   } {
     let onEventCb: ((event: SseEvent) => void) | undefined;
     const streamAgentEvents = jest.fn(async (params: { conversationId?: string; onEvent?: (event: SseEvent) => void }) => {
@@ -115,10 +120,23 @@ describe('AgentService (real — sandbox-based execution via AguiEventBridgeServ
       }
     });
     const stop = jest.fn().mockResolvedValue(undefined);
+    const rejectNextStreamWithCrash = () => {
+      streamAgentEvents.mockImplementationOnce(async (params: { conversationId?: string }) => {
+        const convId = params.conversationId ?? 'conv-1';
+        // Simulate the real event bridge's emitRunError() side-effect: emit
+        // RUN_ERROR to sessionEvents BEFORE rejecting with the sentinel.
+        sessionEvents.emit(convId, {
+          event: EventType.RUN_ERROR,
+          data: { message: 'The agent stopped unexpectedly. Send a new message to try again.' },
+        });
+        throw new Error('AGENT_STREAM_CRASHED');
+      });
+    };
     return {
       streamAgentEvents,
       stop,
       capturedOnEvent: () => onEventCb,
+      rejectNextStreamWithCrash,
     };
   }
 
@@ -128,15 +146,25 @@ describe('AgentService (real — sandbox-based execution via AguiEventBridgeServ
   // for stop()/onModuleDestroy()/concurrent-guard tests so the full
   // stop→reject→runTurn-catch interaction is exercised AND no never-resolving
   // promise is left dangling (avoids Jest open-handle warnings).
-  function createControllableEventBridge(): {
+  function createControllableEventBridge(events: SseEvent[] = []): {
     streamAgentEvents: jest.Mock;
     stop: jest.Mock;
   } {
     // Per-conversation reject handle (mirrors the real bridge's activeRuns map)
     // so multiple concurrent runs are each rejectable independently.
     const rejectStreams = new Map<string, (err: Error) => void>();
-    const streamAgentEvents = jest.fn(async (params: { conversationId?: string }) => {
+    const streamAgentEvents = jest.fn(async (params: { conversationId?: string; onEvent?: (event: SseEvent) => void }) => {
       const convId = params.conversationId ?? 'conv-1';
+      const onEvent = params.onEvent;
+      // Feed events before parking — simulates the real event bridge forwarding
+      // AG-UI events to onEvent (and non-lifecycle events to sessionEvents)
+      // before the stream is rejected by stop().
+      for (const event of events) {
+        onEvent?.(event);
+        if (!LIFECYCLE_EVENTS.has(event.event)) {
+          sessionEvents.emit(convId, event);
+        }
+      }
       await new Promise<void>((_, reject) => {
         rejectStreams.set(convId, reject);
       });
@@ -406,7 +434,11 @@ describe('AgentService (real — sandbox-based execution via AguiEventBridgeServ
 
     it('[P0] streamAgentEvents rejection (non-AGENT_STOPPED) emits RUN_ERROR (AC-7)', async () => {
       const bridge = createMockEventBridge([]);
-      bridge.streamAgentEvents.mockRejectedValueOnce(new Error('spawn failed: ENOENT'));
+      // Bug H1: simulate the real event bridge's crash path — emitRunError()
+      // emits a RUN_ERROR to sessionEvents BEFORE re-throwing with the
+      // AGENT_STREAM_CRASHED sentinel. AgentService's catch recognizes the
+      // sentinel and skips its own RUN_ERROR emit (no double-emit).
+      bridge.rejectNextStreamWithCrash();
       mockEventBridge = bridge;
 
       agentService = createAgentService();
@@ -424,7 +456,12 @@ describe('AgentService (real — sandbox-based execution via AguiEventBridgeServ
       const errorCalls = emitSpy.mock.calls.filter(
         (c) => c[1]?.event === EventType.RUN_ERROR,
       );
-      expect(errorCalls[0][1].data.message).toBe('spawn failed: ENOENT');
+      // Bug H1 regression: exactly one RUN_ERROR (from the event bridge's
+      // emitRunError), NOT a second one from AgentService's catch.
+      expect(errorCalls).toHaveLength(1);
+      expect(errorCalls[0][1].data.message).toBe(
+        'The agent stopped unexpectedly. Send a new message to try again.',
+      );
     });
 
     it('[P0] AGENT_STOPPED rejection skips RUN_ERROR — stop() handles RUN_FINISHED (AC-6)', async () => {
@@ -1307,6 +1344,80 @@ describe('AgentService (real — sandbox-based execution via AguiEventBridgeServ
       // which rejects the streams with AGENT_STOPPED).
       await run1;
       await run2;
+    });
+  });
+
+  // ─── Bug M3: stop() must await pending classifier promises (regression) ──
+
+  describe('[P0] Bug M3 — stop() awaits pending classifier promises before RUN_FINISHED', () => {
+    it('[P0] stop() captures pendingPromises before bridge.stop() — classifier SSE event arrives before RUN_FINISHED', async () => {
+      // Classifier promise that we resolve manually — simulates a slow
+      // classifier whose SSE event must arrive before RUN_FINISHED.
+      let resolveClassifier!: (value: unknown) => void;
+      mockClassifier.classifyToolResult.mockReturnValue(
+        new Promise((resolve) => {
+          resolveClassifier = resolve;
+        }),
+      );
+
+      const bridge = createControllableEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'output', role: 'tool', isError: false } },
+      ]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      const runTurnPromise = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+      runTurnPromise.catch(() => undefined);
+      // Let the bridge feed events and park — the classifier promise is now
+      // in pendingClassifierPromises.
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Start stop() — it captures pendingPromises EARLY, then awaits
+      // bridge.stop() (which rejects the stream with AGENT_STOPPED), then
+      // awaits Promise.allSettled on the captured array. Don't await yet —
+      // the classifier hasn't resolved.
+      const stopPromise = agentService.stop('conv-1');
+      stopPromise.catch(() => undefined);
+
+      // Let bridge.stop() fire and runTurn's catch process AGENT_STOPPED
+      // (runTurn's finally deletes the Map entry — but stop() already captured
+      // the array reference, so Promise.allSettled is NOT vacuous).
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Resolve the classifier — its .then emits TOOL_CALL_PROMOTED.
+      resolveClassifier({
+        type: 'TOOL_CALL_PROMOTED',
+        toolCallId: 'tc-1',
+        artifactType: 'prd',
+        artifactTitle: 'My PRD',
+        artifactId: 'art-1',
+        viewHref: '/artifacts?id=art-1',
+      });
+
+      // Now stop() can complete — Promise.allSettled resolves, then
+      // RUN_FINISHED is emitted.
+      await stopPromise;
+      await runTurnPromise;
+
+      const events = emitSpy.mock.calls.map((c) => c[1]?.event);
+      const promotedIndex = events.indexOf('TOOL_CALL_PROMOTED');
+      const finishedIndex = events.indexOf(EventType.RUN_FINISHED);
+
+      // Bug M3 regression: the classifier's SSE event must arrive BEFORE
+      // RUN_FINISHED. Without the early-capture fix, stop() would read
+      // pendingClassifierPromises AFTER runTurn's finally deleted it (the
+      // ?? [] fallback makes it empty), skip the await, and emit RUN_FINISHED
+      // before the classifier resolves.
+      expect(promotedIndex).toBeGreaterThan(-1);
+      expect(finishedIndex).toBeGreaterThan(-1);
+      expect(promotedIndex).toBeLessThan(finishedIndex);
     });
   });
 

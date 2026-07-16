@@ -427,7 +427,11 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
       // Story 6.3 Task 1.0: streamAgentEvents now re-throws on abort. A stream
       // crash (failNextAgentStream) is NOT an abort-initiated rejection (the
       // stream rejects before aborted is set), so the catch block sets
-      // aborted=true, emits RUN_ERROR, then re-throws the original error.
+      // aborted=true, emits RUN_ERROR, then re-throws.
+      //
+      // Bug H1: the re-throw now uses the AGENT_STREAM_CRASHED sentinel
+      // (instead of the original error) so AgentService.runTurn()'s catch
+      // recognizes that RUN_ERROR was already emitted and skips its own emit.
       await expect(
         service.streamAgentEvents({
           conversationId: 'conv-1',
@@ -435,7 +439,7 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
           command: 'sandbox-agent --agent claude-code --prompt "hello"',
           userId: 'user-1',
         }),
-      ).rejects.toThrow('SandboxServiceFake: simulated agent stream failure');
+      ).rejects.toThrow('AGENT_STREAM_CRASHED');
 
       expect(sandboxFake.getTerminatedSessions().length).toBeGreaterThanOrEqual(1);
 
@@ -714,8 +718,53 @@ describe('AguiEventBridgeService (Story 6.2)', () => {
     });
   });
 
-  describe('[P0] AC-2 — Malformed event handling (coverage gap)', () => {
-    it('[P0] logs debug and skips non-JSON lines without emitting', async () => {
+  // ─── Bug H2: Zombie Daytona session leak on stop-during-createAgentSession ─
+
+  describe('[P0] Bug H2 — stop() during createAgentSession cleans up orphaned session', () => {
+    it('[P0] stop() during createAgentSession await terminates the orphaned session and rejects with AGENT_STOPPED', async () => {
+      jest.useFakeTimers();
+      try {
+        // Override createAgentSession to resolve on the next microtask, so
+        // stop() can fire while createAgentSession is still pending (handle
+        // is null at that point — the pre-fix bug was that stop() skipped
+        // terminateAgentSession and deleted the entry, leaving the resolved
+        // handle orphaned with nobody to terminate it).
+        const orphanedHandle = { sessionId: 'orphaned-session-1', commandId: 'cmd-1' };
+        jest.spyOn(sandboxFake, 'createAgentSession').mockImplementation(async () => {
+          // Yield to the microtask queue so stop() runs before this resolves.
+          await Promise.resolve();
+          return orphanedHandle;
+        });
+
+        const streamPromise = service.streamAgentEvents({
+          conversationId: 'conv-1',
+          sandboxId: 'sb-1',
+          command: 'sandbox-agent --agent claude-code --prompt "hello"',
+          userId: 'user-1',
+        });
+        const streamErr = streamPromise.catch((e: Error) => e);
+
+        // stop() fires while createAgentSession is still pending —
+        // activeRun.handle is null, so stop() skips terminateAgentSession and
+        // deletes the activeRuns entry (the pre-fix bug).
+        await service.stop('conv-1');
+
+        // After createAgentSession resolves, the guard detects the deleted
+        // entry, terminates the orphaned session, and rejects with AGENT_STOPPED.
+        const err = await streamErr;
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toBe('AGENT_STOPPED');
+
+        // The orphaned session must have been terminated by the guard.
+        const terminated = sandboxFake.getTerminatedSessions();
+        expect(terminated.some((t) => t.sessionId === 'orphaned-session-1')).toBe(true);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  describe('[P0] AC-2 — Malformed event handling (coverage gap)', () => {    it('[P0] logs debug and skips non-JSON lines without emitting', async () => {
       const debugSpy = jest.spyOn(service['logger'], 'debug');
 
       sandboxFake.setAgentEvents(['not valid json\n']);

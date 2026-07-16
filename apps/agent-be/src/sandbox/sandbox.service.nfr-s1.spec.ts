@@ -710,6 +710,116 @@ describe('[P0] Story 6.1 AC-1 — credential-isolation + input-injection regress
   });
 });
 
+describe('[P0] Story 6.1 AC-7 F4 — installBinaries() failure-path tests (empty-result fallback)', () => {
+  // NFR-1 (Story 6.4 audit): installBinaries() has the same empty-error-message
+  // bug that commit() and injectGitConfig() had (F4). chmod, npm install, and
+  // the --version verifications write failure diagnostics to stderr; the SDK's
+  // ExecuteResponse.result is stdout-only, so it may be empty on failure.
+  // The || fallback surfaces the exit code instead of throwing Error('').
+  let mockDaytona: MockDaytona;
+  let mockSandbox: MockSandbox;
+  let service: SandboxService;
+
+  beforeEach(() => {
+    ({ mockDaytona, mockSandbox } = createMockDaytonaWithSandbox());
+    service = new SandboxService(mockDaytona as unknown as Daytona);
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
+    mockSandbox.process.executeCommand.mockResolvedValue({ exitCode: 0, result: '' });
+    mockSandbox.fs.uploadFile.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it('[P0] throws a non-empty diagnostic (incl. exit code) when chmod fails with empty result', async () => {
+    mockSandbox.process.executeCommand.mockImplementation((cmd: string) => {
+      if (cmd.includes('chmod')) {
+        return Promise.resolve({ exitCode: 1, result: '' });
+      }
+      return Promise.resolve({ exitCode: 0, result: '' });
+    });
+
+    await expect(
+      service.provision({
+        conversationId: 'conv-1',
+        repoUrl: 'https://github.com/test/repo.git',
+        credential: 'fake-oauth-token',
+      }),
+    ).rejects.toThrow(/exit code 1/);
+  });
+
+  it('[P0] throws a non-empty diagnostic (incl. exit code) when npm install fails with empty result', async () => {
+    mockSandbox.process.executeCommand.mockImplementation((cmd: string) => {
+      if (cmd.includes('npm install')) {
+        return Promise.resolve({ exitCode: 1, result: '' });
+      }
+      return Promise.resolve({ exitCode: 0, result: '' });
+    });
+
+    await expect(
+      service.provision({
+        conversationId: 'conv-1',
+        repoUrl: 'https://github.com/test/repo.git',
+        credential: 'fake-oauth-token',
+      }),
+    ).rejects.toThrow(/exit code 1/);
+  });
+
+  it('[P0] throws a non-empty diagnostic (incl. exit code) when sandbox-agent --version fails with empty result', async () => {
+    mockSandbox.process.executeCommand.mockImplementation((cmd: string) => {
+      if (cmd.includes('sandbox-agent') && cmd.includes('--version')) {
+        return Promise.resolve({ exitCode: 1, result: '' });
+      }
+      return Promise.resolve({ exitCode: 0, result: '' });
+    });
+
+    await expect(
+      service.provision({
+        conversationId: 'conv-1',
+        repoUrl: 'https://github.com/test/repo.git',
+        credential: 'fake-oauth-token',
+      }),
+    ).rejects.toThrow(/exit code 1/);
+  });
+
+  it('[P0] throws a non-empty diagnostic (incl. exit code) when claude --version fails with empty result', async () => {
+    mockSandbox.process.executeCommand.mockImplementation((cmd: string) => {
+      if (cmd === 'claude --version') {
+        return Promise.resolve({ exitCode: 1, result: '' });
+      }
+      return Promise.resolve({ exitCode: 0, result: '' });
+    });
+
+    await expect(
+      service.provision({
+        conversationId: 'conv-1',
+        repoUrl: 'https://github.com/test/repo.git',
+        credential: 'fake-oauth-token',
+      }),
+    ).rejects.toThrow(/exit code 1/);
+  });
+
+  it('[P0] throws the result message when chmod fails with non-empty result (primary branch)', async () => {
+    mockSandbox.process.executeCommand.mockImplementation((cmd: string) => {
+      if (cmd.includes('chmod')) {
+        return Promise.resolve({ exitCode: 1, result: 'chmod: operation not permitted' });
+      }
+      return Promise.resolve({ exitCode: 0, result: '' });
+    });
+
+    await expect(
+      service.provision({
+        conversationId: 'conv-1',
+        repoUrl: 'https://github.com/test/repo.git',
+        credential: 'fake-oauth-token',
+      }),
+    ).rejects.toThrow('chmod: operation not permitted');
+  });
+});
+
 describe('[P0] Story 6.1 NFR — stall-detection timeouts on all installBinaries operations', () => {
   // NFR: every long-running sandbox operation that could stall must have a
   // timeout so it cannot block provision() (and the per-user provisionQueue
@@ -1006,15 +1116,25 @@ describe('[P0] Story 6.4 F5 — listSkills() failure-path tests (AC: #4)', () =>
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('listSkills failed'));
   });
 
-  it('[P0] listSkills() returns [] when ls fails with non-zero exitCode and empty result', async () => {
+  it('[P0] listSkills() returns [] and logs warn when ls fails with non-zero exitCode and empty result', async () => {
     mockSandbox.process.executeCommand.mockResolvedValue({ exitCode: 2, result: '' });
+    const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
 
     await expect(service.listSkills('sandbox-1')).resolves.toEqual([]);
+
+    // Operator-signal fix: a non-zero exitCode must emit a warning so the
+    // failure is not indistinguishable from "no skills installed".
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('listSkills ls failed'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('exit code 2'));
   });
 
-  it('[P0] listSkills() returns [] when ls fails with non-zero exitCode and stdout output (exitCode gate)', async () => {
+  it('[P0] listSkills() returns [] and logs warn when ls fails with non-zero exitCode and stdout output (exitCode gate)', async () => {
     mockSandbox.process.executeCommand.mockResolvedValue({ exitCode: 1, result: 'some junk' });
+    const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
 
     await expect(service.listSkills('sandbox-1')).resolves.toEqual([]);
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('listSkills ls failed'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('exit code 1'));
   });
 });

@@ -1,6 +1,11 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { EventType } from '@ag-ui/core';
-import type { ISandboxService, AgentSessionHandle } from '@bmad-easy/shared-types';
+import type {
+  ISandboxService,
+  AgentSessionHandle,
+  IAguiEventBridgeService,
+  AguiEventBridgeParams,
+} from '@bmad-easy/shared-types';
 import { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
 import { SessionEventsService, type SseEvent } from './session-events.service';
 
@@ -24,31 +29,6 @@ const LIFECYCLE_EVENTS: ReadonlySet<string> = new Set([
   EventType.RUN_FINISHED,
   EventType.RUN_ERROR,
 ]);
-
-export interface AguiEventBridgeParams {
-  conversationId: string;
-  sandboxId: string;
-  command: string;
-  userId: string;
-  /**
-   * Optional working directory forwarded to `createAgentSession` (3rd arg).
-   * `SandboxService` shell-quotes it and prefixes the command with
-   * `cd ${shellQuote(cwd)} &&`. Story 6.3 Task 1.2.
-   */
-  cwd?: string;
-  /**
-   * Optional observer callback invoked in `processAgentEvent()` BEFORE
-   * `sessionEvents.emit()` for non-lifecycle events. For lifecycle events
-   * (`RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`), the callback is invoked but
-   * `sessionEvents.emit()` is SKIPPED — the caller owns lifecycle emission to
-   * SSE (prevents double emission). When omitted, all events (including
-   * lifecycle) are forwarded to `sessionEvents.emit()` (backward compat).
-   *
-   * Story 6.3 test seam — the branching logic in `processAgentEvent()`
-   * dispatches lifecycle vs. non-lifecycle events as described above.
-   */
-  onEvent?: (event: SseEvent) => void;
-}
 
 interface ActiveRun {
   sandboxId: string;
@@ -75,8 +55,30 @@ const AGENT_STREAM_TIMEOUT_MESSAGE =
  */
 const MAX_LINE_BUFFER_BYTES = 1_048_576;
 
+/**
+ * Sentinel re-thrown by the catch block when a non-abort stream crash occurs
+ * (e.g. streamAgentLogs rejects with an unexpected error). The event bridge
+ * already emitted RUN_ERROR via emitRunError() before re-throwing, so
+ * AgentService.runTurn()'s catch recognizes this sentinel and skips its own
+ * RUN_ERROR emit (prevents double RUN_ERROR — Bug H1).
+ */
+const AGENT_STREAM_CRASHED = 'AGENT_STREAM_CRASHED';
+
+/**
+ * Abort-sentinel error messages that can reach the catch block. When the
+ * caught error matches one of these, it is re-thrown as-is (AgentService
+ * already recognizes it). For any other error (genuine crash), the catch
+ * block re-throws with AGENT_STREAM_CRASHED so AgentService can skip its own
+ * RUN_ERROR emit (Bug H1).
+ */
+const ABORT_SENTINELS = new Set([
+  'AGENT_STOPPED',
+  'AGENT_STREAM_TIMEOUT',
+  'MODULE_DESTROYING',
+]);
+
 @Injectable()
-export class AguiEventBridgeService implements OnModuleDestroy {
+export class AguiEventBridgeService implements IAguiEventBridgeService, OnModuleDestroy {
   private readonly logger = new Logger(AguiEventBridgeService.name);
   private readonly activeRuns = new Map<string, ActiveRun>();
   private readonly onEventCallbacks = new Map<string, ((event: SseEvent) => void) | undefined>();
@@ -108,6 +110,20 @@ export class AguiEventBridgeService implements OnModuleDestroy {
     } catch (err) {
       this.activeRuns.delete(conversationId);
       throw err;
+    }
+    // Bug H2: If stop()/onModuleDestroy() ran during the await, the activeRuns
+    // entry was deleted. We now hold an orphaned Daytona session that needs
+    // cleanup — terminate it and reject with AGENT_STOPPED so AgentService's
+    // catch handles it as an abort (skips RUN_ERROR).
+    if (!this.activeRuns.has(conversationId)) {
+      await this.sandboxService
+        .terminateAgentSession(sandboxId, handle.sessionId)
+        .catch((e) =>
+          this.logger.error(
+            `Cleaned up orphaned agent session for ${conversationId} after stop-race: ${e}`,
+          ),
+        );
+      throw new Error('AGENT_STOPPED');
     }
     activeRun.handle = handle;
     this.onEventCallbacks.set(conversationId, params.onEvent);
@@ -172,13 +188,25 @@ export class AguiEventBridgeService implements OnModuleDestroy {
             ),
           );
         this.emitRunError(conversationId, activeRun);
+        // Bug H1: re-throw with the AGENT_STREAM_CRASHED sentinel for genuine
+        // crashes so AgentService.runTurn()'s catch recognizes that RUN_ERROR
+        // was already emitted here and skips its own emit (prevents double
+        // RUN_ERROR). For abort sentinels that also enter this branch (e.g.
+        // AGENT_STREAM_TIMEOUT — aborted isn't set until here), re-throw the
+        // original error as-is since AgentService already recognizes it.
+        const errMsg = _err instanceof Error ? _err.message : String(_err);
+        if (ABORT_SENTINELS.has(errMsg)) {
+          throw _err;
+        }
+        throw new Error(AGENT_STREAM_CRASHED);
       }
       // Re-throw so the method rejects on abort (stop/timeout/destroy) and
       // resolves only on normal completion. AgentService.runTurn()'s catch
       // block distinguishes outcomes by the sentinel message string
-      // (AGENT_STOPPED, AGENT_STREAM_TIMEOUT, MODULE_DESTROYING). Without this
-      // re-throw, runTurn()'s catch never fires on stop/timeout, causing
-      // double RUN_FINISHED / double RUN_ERROR. Story 6.3 Task 1.0 (DP-2).
+      // (AGENT_STOPPED, AGENT_STREAM_TIMEOUT, MODULE_DESTROYING,
+      // AGENT_STREAM_CRASHED). Without this re-throw, runTurn()'s catch
+      // never fires on stop/timeout, causing double RUN_FINISHED / double
+      // RUN_ERROR. Story 6.3 Task 1.0 (DP-2).
       throw _err;
     } finally {
       this.clearCircuitBreakerTimer(conversationId);

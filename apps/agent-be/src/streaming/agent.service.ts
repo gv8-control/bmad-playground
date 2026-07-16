@@ -1,15 +1,18 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import type { IAgentService, AgentRunParams, MessageSegment } from '@bmad-easy/shared-types';
+import type {
+  IAgentService,
+  AgentRunParams,
+  MessageSegment,
+} from '@bmad-easy/shared-types';
 import { EventType } from '@ag-ui/core';
-import type { ISandboxService } from '@bmad-easy/shared-types';
-import { SANDBOX_SERVICE } from '@bmad-easy/shared-types';
+import type { ISandboxService, IAguiEventBridgeService } from '@bmad-easy/shared-types';
+import { SANDBOX_SERVICE, AGUI_EVENT_BRIDGE_SERVICE } from '@bmad-easy/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Prisma } from '@bmad-easy/database-schemas';
 import { SessionEventsService, type SseEvent } from './session-events.service';
 import { ToolPillClassifierService } from './tool-pill-classifier.service';
 import { CostTrackingService } from '../cost-tracking/cost-tracking.service';
-import { AguiEventBridgeService } from './agui-event-bridge.service';
 
 interface ActiveRun {
   sandboxId: string;
@@ -33,11 +36,14 @@ const FILE_MODIFYING_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'Not
  * - AGENT_STREAM_TIMEOUT: circuit breaker fired; skip RUN_ERROR (event bridge
  *   already emitted it via emitRunError)
  * - MODULE_DESTROYING: module shutting down; skip RUN_ERROR and RUN_FINISHED
- * (SSE clients disconnecting). Story 6.3 Task 2.3 (DP-3).
+ *   (SSE clients disconnecting). Story 6.3 Task 2.3 (DP-3).
+ * - AGENT_STREAM_CRASHED: stream crashed (non-abort); skip RUN_ERROR (event
+ *   bridge already emitted it via emitRunError). Bug H1.
  */
 const AGENT_STOPPED = 'AGENT_STOPPED';
 const AGENT_STREAM_TIMEOUT = 'AGENT_STREAM_TIMEOUT';
 const MODULE_DESTROYING = 'MODULE_DESTROYING';
+const AGENT_STREAM_CRASHED = 'AGENT_STREAM_CRASHED';
 
 @Injectable()
 export class AgentService implements IAgentService, OnModuleDestroy {
@@ -51,7 +57,7 @@ export class AgentService implements IAgentService, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly classifier: ToolPillClassifierService,
     private readonly costTracking: CostTrackingService,
-    private readonly aguiEventBridgeService: AguiEventBridgeService,
+    @Inject(AGUI_EVENT_BRIDGE_SERVICE) private readonly aguiEventBridgeService: IAguiEventBridgeService,
   ) {}
 
   async runTurn(params: AgentRunParams): Promise<void> {
@@ -348,12 +354,14 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       if (
         errorMessage === AGENT_STOPPED ||
         errorMessage === AGENT_STREAM_TIMEOUT ||
-        errorMessage === MODULE_DESTROYING
+        errorMessage === MODULE_DESTROYING ||
+        errorMessage === AGENT_STREAM_CRASHED
       ) {
         // Abort-initiated rejection — skip RUN_ERROR:
         // - AGENT_STOPPED: stop() handles RUN_FINISHED
         // - AGENT_STREAM_TIMEOUT: event bridge already emitted RUN_ERROR
         // - MODULE_DESTROYING: SSE clients disconnecting
+        // - AGENT_STREAM_CRASHED: event bridge already emitted RUN_ERROR (Bug H1)
       } else {
         // Await pending classifier/working-tree promises before emitting
         // RUN_ERROR so their SSE events arrive before the error (mirrors the
@@ -380,11 +388,16 @@ export class AgentService implements IAgentService, OnModuleDestroy {
       return;
     }
 
+    // Bug M3: Capture the pendingPromises array reference EARLY — runTurn's
+    // finally will delete the Map entry during the await of
+    // aguiEventBridgeService.stop(), so a post-await get() would return
+    // undefined and miss the promise references (vacuous Promise.allSettled).
+    const pendingPromises = this.pendingClassifierPromises.get(conversationId) ?? [];
+
     await this.aguiEventBridgeService.stop(conversationId).catch((err) => {
       this.logger.warn(`Failed to stop event bridge for conversation ${conversationId}: ${err}`);
     });
 
-    const pendingPromises = this.pendingClassifierPromises.get(conversationId) ?? [];
     if (pendingPromises.length > 0) {
       await Promise.allSettled(pendingPromises);
     }

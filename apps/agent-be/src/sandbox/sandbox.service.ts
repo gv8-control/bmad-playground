@@ -274,6 +274,11 @@ export class SandboxService implements ISandboxService {
       // in a failure mode; without this gate the parsing below would return
       // junk SkillInfo entries (F5 fidelity-audit fix).
       if (response.exitCode !== 0) {
+        // Surface the failure to operators — a silent [] here is
+        // indistinguishable from "no skills installed" (F5 operator-signal fix).
+        this.logger.warn(
+          `listSkills ls failed for sandbox ${sandboxId}${this.logCtx(sandboxId)} (exit code ${response.exitCode})`,
+        );
         return [];
       }
       const output = response.result.trim();
@@ -315,7 +320,13 @@ export class SandboxService implements ISandboxService {
       SANDBOX_AGENT_CMD_TIMEOUT_S,
     );
     if (chmodResponse.exitCode !== 0) {
-      throw new Error(`Failed to make sandbox-agent executable: ${chmodResponse.result}`);
+      // chmod writes failure diagnostics to stderr; the SDK's
+      // ExecuteResponse.result is stdout-only, so it may be empty.
+      // Fall back to a diagnostic that includes the exit code (F4 pattern,
+      // matching injectGitConfig() and commit()).
+      throw new Error(
+        chmodResponse.result || `Failed to make sandbox-agent executable (exit code ${chmodResponse.exitCode})`,
+      );
     }
 
     const npmInstallResponse = await sandbox.process.executeCommand(
@@ -325,7 +336,11 @@ export class SandboxService implements ISandboxService {
       SANDBOX_NPM_INSTALL_TIMEOUT_S,
     );
     if (npmInstallResponse.exitCode !== 0) {
-      throw new Error(`Failed to install Claude Code CLI: ${npmInstallResponse.result}`);
+      // npm writes failure diagnostics to stderr; result is stdout-only.
+      // Fall back to a diagnostic that includes the exit code (F4 pattern).
+      throw new Error(
+        npmInstallResponse.result || `Failed to install Claude Code CLI (exit code ${npmInstallResponse.exitCode})`,
+      );
     }
 
     const agentVerifyResponse = await sandbox.process.executeCommand(
@@ -335,7 +350,11 @@ export class SandboxService implements ISandboxService {
       SANDBOX_AGENT_CMD_TIMEOUT_S,
     );
     if (agentVerifyResponse.exitCode !== 0) {
-      throw new Error(`sandbox-agent binary verification failed: ${agentVerifyResponse.result}`);
+      // Binary verification writes diagnostics to stderr; result is stdout-only.
+      // Fall back to a diagnostic that includes the exit code (F4 pattern).
+      throw new Error(
+        agentVerifyResponse.result || `sandbox-agent binary verification failed (exit code ${agentVerifyResponse.exitCode})`,
+      );
     }
 
     const claudeVerifyResponse = await sandbox.process.executeCommand(
@@ -345,7 +364,11 @@ export class SandboxService implements ISandboxService {
       SANDBOX_AGENT_CMD_TIMEOUT_S,
     );
     if (claudeVerifyResponse.exitCode !== 0) {
-      throw new Error(`Claude Code CLI verification failed: ${claudeVerifyResponse.result}`);
+      // claude --version writes diagnostics to stderr; result is stdout-only.
+      // Fall back to a diagnostic that includes the exit code (F4 pattern).
+      throw new Error(
+        claudeVerifyResponse.result || `Claude Code CLI verification failed (exit code ${claudeVerifyResponse.exitCode})`,
+      );
     }
   }
 
