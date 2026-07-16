@@ -144,36 +144,14 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      # DIAGNOSTIC (investigation: ci-unit-test-failures): the web:test process is
-      # killed silently ~39s into this step at a roaming suite position. The steps
-      # below capture runner resources, stream task output in real time, and dump
-      # kernel logs on failure to identify the killer (OOM killer / segfault / other).
-      # Remove once the root cause is confirmed.
-      - name: Show runner resources (diagnostic)
-        run: |
-          nproc
-          free -h
-          node -e "console.log('availableParallelism:', require('os').availableParallelism())"
-
       - name: Run unit and integration tests
-        run: yarn nx run-many --target=test,test-integration --all --parallel=1 --passWithNoTests --outputStyle=stream 2>&1
+        # --outputStyle=stream: Nx's default buffered capture truncates a failing
+        # task's output tail (later PASS/FAIL lines and the Jest summary), which
+        # masked real test failures as a phantom process kill. See
+        # _bmad-output/implementation-artifacts/investigations/ci-unit-test-failures-investigation.md
+        run: yarn nx run-many --target=test,test-integration --all --parallel=2 --passWithNoTests --outputStyle=stream 2>&1
         env:
           CI: true
-          # DIAGNOSTIC: Node 24 defaults to --unhandled-rejections=throw (exit 1).
-          # warn mode lets the run continue and prints the offending rejection +
-          # stack instead — discriminates the unhandled-rejection hypothesis
-          # (docs/ci-web-test-failure-investigation.md) from an external kill.
-          NODE_OPTIONS: --unhandled-rejections=warn
-
-      - name: Capture kill evidence (diagnostic)
-        if: failure()
-        run: |
-          echo "=== dmesg tail ==="
-          sudo dmesg -T | tail -100 || true
-          echo "=== surviving processes by RSS ==="
-          ps aux --sort=-rss | head -15 || true
-          echo "=== memory at post-mortem ==="
-          free -h || true
 
       - name: Upload unit test results
         if: failure()
