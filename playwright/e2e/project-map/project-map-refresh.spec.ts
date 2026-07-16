@@ -19,9 +19,9 @@ import { rscActionPayload } from '../../support/rsc-mock';
  * re-render without a real GitHub API call. The withArtifacts fixture seeds
  * Artifact rows so the page renders with data without triggering a real sync.
  *
- * Note: project-map.spec.ts also has 2 active tests for Story 2.3 that test
- * the refresh button with the real (unmocked) Server Action. These tests
- * complement them with mocked-action verification for more isolated coverage.
+ * Note: project-map.spec.ts has 1 active test for Story 2.3 (refresh button
+ * visibility). The spinner/re-render behavior is covered here via mocked
+ * Server Action for deterministic isolation.
  */
 
 const SYNC_SUCCESS = {
