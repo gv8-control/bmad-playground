@@ -19,6 +19,7 @@ import { DAYTONA_CLIENT } from '../sandbox/daytona-client.provider';
 import { SANDBOX_SERVICE, AGENT_SERVICE } from '@bmad-easy/shared-types';
 import { SandboxServiceFake } from '../../test/helpers/sandbox-service.fake';
 import { AgentServiceFake } from '../../test/helpers/agent-service.fake';
+import { createMockDaytona } from '../../test/helpers/mock-daytona';
 
 describe('AgentService (via ConversationsService integration)', () => {
   let service: ConversationsService;
@@ -74,7 +75,7 @@ describe('AgentService (via ConversationsService integration)', () => {
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
       .overrideProvider(DAYTONA_CLIENT)
-      .useValue(null)
+      .useValue(createMockDaytona())
       .overrideProvider(CredentialsService)
       .useValue({
         resolveOAuthToken: jest.fn().mockResolvedValue('fake-oauth-token'),
