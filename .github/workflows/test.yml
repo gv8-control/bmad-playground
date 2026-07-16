@@ -231,8 +231,19 @@ jobs:
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
-      - name: Start web app (dev server)
-        run: yarn nx run web:dev &
+      - name: Build web app (production)
+        run: yarn nx run web:build
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+          TEST_ENV: ci
+          CI: true
+
+      - name: Start web app (production server)
+        run: yarn nx run web:start &
         env:
           PORT: 3000
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -242,7 +253,11 @@ jobs:
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
           # Enables /api/internal/test/* endpoints (seed-user, repo-connections)
           # used by auth.setup.ts syntheticSession() + withRepoConnection fixture.
+          # CI=true allows test endpoints despite NODE_ENV=production (production
+          # build sets NODE_ENV=production; the test-endpoint-guard allows this
+          # when CI=true to support E2E tests against production builds).
           TEST_ENV: ci
+          CI: true
 
       - name: Build agent-be (for E2E)
         run: yarn nx run agent-be:build:development
@@ -355,8 +370,19 @@ jobs:
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
-      - name: Start web app (dev server)
-        run: yarn nx run web:dev &
+      - name: Build web app (production)
+        run: yarn nx run web:build
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+          TEST_ENV: ci
+          CI: true
+
+      - name: Start web app (production server)
+        run: yarn nx run web:start &
         env:
           PORT: 3000
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -365,6 +391,7 @@ jobs:
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
           TEST_ENV: ci
+          CI: true
 
       - name: Build agent-be (for E2E)
         run: yarn nx run agent-be:build:development
