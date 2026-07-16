@@ -14,19 +14,11 @@
 
 import { test, expect } from '../../support/merged-fixtures';
 import { resetRepoConnection, seedRepoConnection } from '../../support/reset-repo-connection';
+import { rscActionPayload } from '../../support/rsc-mock';
 // After all onboarding tests finish, restore a repo connection so that
 // subsequent test files (conversation, project-map) which require a
 // connection to exist for seeding are not left without one.
 test.afterAll(seedRepoConnection);
-
-/**
- * Generates a minimal React Flight (RSC) wire-format payload for a Server Action
- * that returns a plain object. Chunk 1 carries the action result; chunk 0 is the
- * root referencing it via the "a" (action) field.
- */
-function rscActionPayload(result: unknown): string {
-  return `:N${Date.now()}.000\n0:{"a":"$@1","f":"","b":"","q":"","i":false}\n1:${JSON.stringify(result)}\n`;
-}
 
 // ─── Unauthenticated access guard ────────────────────────────────────────────
 

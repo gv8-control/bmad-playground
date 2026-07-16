@@ -96,6 +96,13 @@ test.describe.serial('Story 1.8 — App Shell', () => {
     test('[P1] content pane scrolls independently while header and side nav stay fixed', async ({ page, withRepoConnection }) => {
       await page.goto('/project-map');
 
+      // Wait for the actual page content to render (not the loading.tsx skeleton).
+      // In production builds, /project-map uses streaming/Suspense — the initial
+      // HTML shows a loading skeleton whose content div lacks the overflow-y-auto
+      // class. The refresh button only exists in the streamed content, so waiting
+      // for it ensures the content pane selector will match.
+      await expect(page.getByRole('button', { name: /refresh project map/i })).toBeVisible();
+
       // Inject tall content into the scrolling content pane to make it overflow
       await page.evaluate(() => {
         const contentPane = document.querySelector('main .overflow-y-auto');

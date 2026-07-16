@@ -67,7 +67,10 @@ export function createMockHandle(page: Page): MockHandle {
   return {
     waitForEventSource: () =>
       page
-        .waitForFunction(() => (window as unknown as Record<string, unknown>).__mockEventSource != null)
+        .waitForFunction(
+          () => (window as unknown as Record<string, unknown>).__mockEventSource != null,
+          { timeout: 30_000 },
+        )
         .then(() => undefined),
     emit: (type: string, data: unknown = {}) =>
       page.evaluate(

@@ -16,22 +16,12 @@
 
 import { test, expect } from '../../support/merged-fixtures';
 import { resetRepoConnection, seedRepoConnection } from '../../support/reset-repo-connection';
+import { rscActionPayload } from '../../support/rsc-mock';
 
 // After all bmad-validation tests finish, restore a repo connection so that
 // subsequent test files (conversation, project-map) which require a
 // connection to exist for seeding are not left without one.
 test.afterAll(seedRepoConnection);
-
-/**
- * Generates a React Flight (RSC) wire-format payload for a Server Action
- * that returns a plain object. Matches the Next.js 16 format:
- * - Chunk 0: root referencing the action result via "a" field
- * - Chunk 1 (D): diagnostic metadata
- * - Chunk 1: the actual action result
- */
-function rscActionPayload(result: unknown): string {
-  return `0:{"a":"$@1","f":"","b":"development","q":"","i":false}\n1:D{"time":0.5}\n1:${JSON.stringify(result)}\n`;
-}
 
 const BMAD_DOCS_URL = 'https://docs.bmad-method.org';
 

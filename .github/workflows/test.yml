@@ -297,6 +297,19 @@ jobs:
           BASE_URL: http://localhost:3000
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          # TEST_ENV must be set in the test runner (not just the server) so
+          # that auth.setup.ts and @seontechnologies/playwright-utils resolve
+          # the same storage-state path (.auth/ci/...). Without this, the test
+          # runner defaults to 'local', which can cause storage-state path
+          # mismatches with the package's internal resolution.
+          TEST_ENV: ci
+          # Needed by env-guard.ts if Playwright falls back to starting the
+          # dev server (webServer config). Normally the production server is
+          # reused, but this ensures the dev server can boot if needed.
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          AUTH_TRUST_HOST: "true"
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
 
       - name: Upload E2E results
         if: failure()

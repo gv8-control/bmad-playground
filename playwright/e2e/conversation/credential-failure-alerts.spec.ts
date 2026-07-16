@@ -490,6 +490,7 @@ test.describe('Story 3.7: Credential Failure Alerts Mid-Conversation', () => {
         toolCallId: 'tc-1',
         code: 'RATE_LIMITED',
       });
+      await mocks.emit('RUN_FINISHED');
 
       await expect(
         page.getByText(
