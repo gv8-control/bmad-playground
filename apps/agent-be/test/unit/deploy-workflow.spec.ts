@@ -147,7 +147,11 @@ describe('Story 4.6 — Deploy Workflow', () => {
       const vercelStep = steps.find((s) => s.run?.includes('vercel deploy'));
       expect(vercelStep).toBeDefined();
       expect(vercelStep?.run).toContain('--prod');
-      expect(vercelStep?.run).toContain('--cwd=apps/web');
+      // --cwd=apps/web must NOT be present: the Vercel project dashboard has
+      // "Root Directory" set to apps/web, so --cwd=apps/web doubles the path
+      // to apps/web/apps/web (deploy run #8 failure). VERCEL_PROJECT_ID/
+      // VERCEL_ORG_ID env vars handle project association without --cwd.
+      expect(vercelStep?.run).not.toContain('--cwd=apps/web');
     });
 
     test('[P0] deploy job includes a Railway deploy step (apps/agent-be)', () => {
@@ -419,7 +423,8 @@ describe('Story 4.6 — Deploy Workflow', () => {
       );
       expect(captureStep).toBeDefined();
       expect(captureStep?.run).toContain('--prod');
-      expect(captureStep?.run).toContain('--cwd=apps/web');
+      // --cwd=apps/web removed to prevent path doubling (see deploy step comment).
+      expect(captureStep?.run).not.toContain('--cwd=apps/web');
     });
 
     test('[P0] capture step stores PREVIOUS_VERCEL_DEPLOYMENT in GITHUB_ENV', () => {
@@ -483,7 +488,8 @@ describe('Story 4.6 — Deploy Workflow', () => {
       const rollbackStep = steps.find((s) => s.run?.includes('vercel rollback'));
       expect(rollbackStep).toBeDefined();
       expect(rollbackStep?.run).toContain('--yes');
-      expect(rollbackStep?.run).toContain('--cwd=apps/web');
+      // --cwd=apps/web removed to prevent path doubling (see deploy step comment).
+      expect(rollbackStep?.run).not.toContain('--cwd=apps/web');
     });
 
     test('[P0] rollback step has if: failure() condition', () => {
