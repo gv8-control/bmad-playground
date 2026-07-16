@@ -8,16 +8,15 @@
  * - AC-6: NODE_ENV=production is set on Railway (belt-and-suspenders with Dockerfile)
  *
  * Story 4.5 is complete — env vars are wired on both platforms. All 6 tests
- * are active and run when RAILWAY_TOKEN and VERCEL_TOKEN are available
- * (from .env.local or CI secrets). The describe block is conditionally
- * skipped when tokens are absent so the suite fails safe in environments
- * without platform API access.
+ * are active and run in the dedicated `test-railway` target, which requires
+ * RAILWAY_TOKEN and VERCEL_TOKEN (from .env.local or CI secrets). The spec
+ * fails loud if those tokens are missing — it does NOT conditionally skip.
  *
  * Security: Uses expect(Object.keys(vars)).toContain('KEY') (NOT toHaveProperty)
  * per the "Secret-aware test assertions" rule — assertion failures must not
  * dump secret values into CI logs.
  *
- * Run: yarn nx test-integration agent-be -- --testPathPatterns=platform-env-vars
+ * Run: yarn nx test-railway agent-be
  */
 
 import * as fs from 'fs';
@@ -88,7 +87,7 @@ async function railwayGraphQL(query: string): Promise<any> {
   const response = await fetch(RAILWAY_GRAPHQL_ENDPOINT, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
+      'Project-Access-Token': token,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ query }),
@@ -158,29 +157,7 @@ async function getRailwayAgentBeVars(): Promise<Record<string, string>> {
 let vercelEnvVars: any[];
 let railwayVars: Record<string, string>;
 
-// Gate the entire suite on token availability — the beforeAll fetches env vars
-// from both platform APIs, which requires RAILWAY_TOKEN and VERCEL_TOKEN.
-// When tokens are absent (e.g., standard CI without platform secrets), the
-// suite skips cleanly instead of failing in beforeAll.
-const hasPlatformTokens = (() => {
-  const env = process.env;
-  if (env.RAILWAY_TOKEN && env.VERCEL_TOKEN) return true;
-  // Also check .env.local for local dev (tokens are read lazily by the
-  // getter functions, but we gate here to avoid beforeAll throwing)
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const envPath = path.resolve(process.cwd(), '.env.local');
-    const envContent = fs.readFileSync(envPath, 'utf-8');
-    return /RAILWAY_TOKEN=/.test(envContent) && /VERCEL_TOKEN=/.test(envContent);
-  } catch {
-    return false;
-  }
-})();
-
-const platformDescribe = hasPlatformTokens ? describe : describe.skip;
-
-platformDescribe('Platform env vars — Story 4.5 (Vercel + Railway)', () => {
+describe('Platform env vars — Story 4.5 (Vercel + Railway)', () => {
   beforeAll(async () => {
     vercelEnvVars = await vercelGetEnvVars();
     railwayVars = await getRailwayAgentBeVars();

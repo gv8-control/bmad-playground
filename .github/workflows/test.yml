@@ -3,7 +3,7 @@
 # Framework: Playwright (E2E) + Jest/@nestjs/testing (unit/integration)
 #
 # Tier split (see `_bmad-output/test-artifacts/test-design-qa.md` → Execution Strategy):
-#   Tier 1 — PR (fake-backed, every push/PR):  lint, typecheck, unit, e2e (4 shards), burn-in
+#   Tier 1 — PR (fake-backed, every push/PR):  lint, typecheck, unit, e2e (4 shards)
 #   Tier 2 — Nightly multi-conn (03:00 UTC):   P0-008, P2-004, P1-003, P0-010 (--grep @multi-conn)
 #   Tier 3 — Nightly real-service (03:00 UTC): one happy-path agent run (--grep @real-service)
 #   Tier 4 — Weekly spike (Sundays 04:00 UTC): P1-012 repo-size boundary, future k6/Artillery
@@ -20,6 +20,9 @@
 #   TEST_GITHUB_PASSWORD         real GitHub test account password (Tier 3 only)
 #   TEST_GITHUB_OTP_SECRET       TOTP secret if 2FA enabled on the test account (Tier 3 only)
 #   TEST_GITHUB_REPO_URL         real repo URL the OAuth token can clone (Tier 3 only)
+#   RAILWAY_TOKEN                Railway project token for GraphQL API (Tier 3 test-railway only)
+#   RAILWAY_DATABASE_URL         Railway Postgres connection string — distinct from CI DATABASE_URL (Tier 3 test-railway only)
+#   VERCEL_TOKEN                 Vercel API token for env var verification (Tier 3 test-railway only)
 # Non-secret env vars (hardcoded in the workflow, not secrets):
 #   DATABASE_URL                 Postgres service container (postgres:16-alpine, bmad_easy_test DB)
 #   TEST_ENV                     Set to 'ci' on all Playwright jobs — enables test endpoints
@@ -142,7 +145,11 @@ jobs:
         run: yarn install --immutable
 
       - name: Run unit and integration tests
-        run: yarn nx run-many --target=test,test-integration --all --parallel=4 --passWithNoTests
+        # --outputStyle=stream: Nx's default buffered capture truncates a failing
+        # task's output tail (later PASS/FAIL lines and the Jest summary), which
+        # masked real test failures as a phantom process kill. See
+        # _bmad-output/implementation-artifacts/investigations/ci-unit-test-failures-investigation.md
+        run: yarn nx run-many --target=test,test-integration --all --parallel=2 --passWithNoTests --outputStyle=stream 2>&1
         env:
           CI: true
 
@@ -224,8 +231,19 @@ jobs:
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
-      - name: Start web app (dev server)
-        run: yarn nx run web:dev &
+      - name: Build web app (production)
+        run: yarn nx run web:build
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+          TEST_ENV: ci
+          CI: true
+
+      - name: Start web app (production server)
+        run: yarn nx run web:start &
         env:
           PORT: 3000
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -235,18 +253,42 @@ jobs:
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
           # Enables /api/internal/test/* endpoints (seed-user, repo-connections)
           # used by auth.setup.ts syntheticSession() + withRepoConnection fixture.
+          # CI=true allows test endpoints despite NODE_ENV=production (production
+          # build sets NODE_ENV=production; the test-endpoint-guard allows this
+          # when CI=true to support E2E tests against production builds).
           TEST_ENV: ci
+          CI: true
+          # Auth.js v5 defaults trustHost to true only when NODE_ENV !== 'production'.
+          # next start sets NODE_ENV=production, so trustHost would be false and
+          # the middleware would reject every request as UntrustedHost — redirecting
+          # all authenticated pages to /sign-in. Explicitly trust localhost in CI.
+          AUTH_TRUST_HOST: "true"
+
+      - name: Build agent-be (for E2E)
+        run: yarn nx run agent-be:build:development
 
       - name: Start agent-be
-        run: yarn nx run agent-be:serve &
+        run: |
+          yarn nx run agent-be:serve > /tmp/agent-be.log 2>&1 &
+          echo $! > /tmp/agent-be.pid
         env:
           PORT: 3001
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          # agent-be env validation (env.validation.ts) requires these at boot.
+          # Placeholders are sufficient — fake-backed E2E specs never reach
+          # real Daytona/Anthropic agent-run code paths.
+          DAYTONA_API_URL: https://e2e-placeholder.daytona.io
+          DAYTONA_API_KEY: e2e-placeholder-daytona-key
+          ANTHROPIC_API_KEY: e2e-placeholder-anthropic-key
 
       - name: Wait for services
         run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
+
+      - name: Print agent-be logs on failure
+        if: failure()
+        run: cat /tmp/agent-be.log || echo "No agent-be log file found"
 
       - name: Run E2E tests (shard ${{ matrix.shard }}/4)
         run: yarn playwright test --shard=${{ matrix.shard }}/4
@@ -255,6 +297,19 @@ jobs:
           BASE_URL: http://localhost:3000
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          # TEST_ENV must be set in the test runner (not just the server) so
+          # that auth.setup.ts and @seontechnologies/playwright-utils resolve
+          # the same storage-state path (.auth/ci/...). Without this, the test
+          # runner defaults to 'local', which can cause storage-state path
+          # mismatches with the package's internal resolution.
+          TEST_ENV: ci
+          # Needed by env-guard.ts if Playwright falls back to starting the
+          # dev server (webServer config). Normally the production server is
+          # reused, but this ensures the dev server can boot if needed.
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          AUTH_TRUST_HOST: "true"
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
 
       - name: Upload E2E results
         if: failure()
@@ -272,12 +327,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: e2e
-    # PR-triggered OR the dedicated weekly-cron schedule (Sunday 02:00 UTC).
+    # Weekly-cron schedule only (Sunday 02:00 UTC).
     # The nightly (03:00 UTC) and weekly-spike (04:00 UTC) schedules are scoped
     # to their own jobs below — burn-in does NOT re-run on those triggers.
+    # Removed from PR trigger: burn-in runs the full suite 10× (~55 min), does
+    # not block merge, and would consume 6.5× the org's monthly Actions allowance
+    # at current PR frequency. The weekly run catches regression flakiness on main.
     if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'schedule' && github.event.schedule == '0 2 * * 0')
+      github.event_name == 'schedule' && github.event.schedule == '0 2 * * 0'
 
     services:
       postgres:
@@ -333,8 +390,19 @@ jobs:
       - name: Install Playwright browsers
         run: yarn playwright install --with-deps chromium
 
-      - name: Start web app (dev server)
-        run: yarn nx run web:dev &
+      - name: Build web app (production)
+        run: yarn nx run web:build
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          AUTH_GITHUB_ID: e2e-placeholder-client-id
+          AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
+          TEST_ENV: ci
+          CI: true
+
+      - name: Start web app (production server)
+        run: yarn nx run web:start &
         env:
           PORT: 3000
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -343,17 +411,34 @@ jobs:
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
           TEST_ENV: ci
+          CI: true
+          AUTH_TRUST_HOST: "true"
+
+      - name: Build agent-be (for E2E)
+        run: yarn nx run agent-be:build:development
 
       - name: Start agent-be
-        run: yarn nx run agent-be:serve &
+        run: |
+          yarn nx run agent-be:serve > /tmp/agent-be.log 2>&1 &
+          echo $! > /tmp/agent-be.pid
         env:
           PORT: 3001
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          # agent-be env validation (env.validation.ts) requires these at boot.
+          # Placeholders are sufficient — fake-backed burn-in specs never reach
+          # real Daytona/Anthropic agent-run code paths.
+          DAYTONA_API_URL: https://e2e-placeholder.daytona.io
+          DAYTONA_API_KEY: e2e-placeholder-daytona-key
+          ANTHROPIC_API_KEY: e2e-placeholder-anthropic-key
 
       - name: Wait for services
         run: yarn wait-on http://localhost:3000 http://localhost:3001/health --timeout 60000
+
+      - name: Print agent-be logs on failure
+        if: failure()
+        run: cat /tmp/agent-be.log || echo "No agent-be log file found"
 
       - name: Run burn-in loop (10 iterations)
         env:
@@ -506,13 +591,16 @@ jobs:
           BASE_URL: http://localhost:3000
           # Enables /api/internal/test/* endpoints used by withRepoConnection fixture.
           TEST_ENV: ci
-          # Agent-be env validation requires DATABASE_URL + AUTH_SECRET.
+          # Agent-be env validation (env.validation.ts) requires these at boot.
           # CREDENTIAL_ENCRYPTION_KEK is needed because EncryptionService is
           # instantiated eagerly via CredentialsModule. No real Daytona/Claude
           # calls — the tested code paths never reach agent-run code.
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          DAYTONA_API_URL: https://e2e-placeholder.daytona.io
+          DAYTONA_API_KEY: e2e-placeholder-daytona-key
+          ANTHROPIC_API_KEY: e2e-placeholder-anthropic-key
           # OAuth placeholders are sufficient — multi-conn specs don't exercise
           # the OAuth redirect flow (same convention as the PR-tier e2e job).
           AUTH_GITHUB_ID: e2e-placeholder-client-id
@@ -547,6 +635,11 @@ jobs:
   nightly-real-service:
     name: Nightly Real-Service Smoke (Tier 3)
     runs-on: ubuntu-latest
+    # RAILWAY_TOKEN, VERCEL_TOKEN, and RAILWAY_DATABASE_URL are environment
+    # secrets under "production" (same as deploy.yml). Without this declaration,
+    # secrets.* references resolve to empty strings and specs fall through to
+    # .env.local, which doesn't exist in CI.
+    environment: production
     timeout-minutes: 30
     if: |
       (github.event_name == 'schedule' && github.event.schedule == '0 3 * * *') ||
@@ -614,6 +707,22 @@ jobs:
           DAYTONA_API_URL: ${{ secrets.DAYTONA_API_URL }}
           DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
         run: npx tsx scripts/cleanup-daytona-sandboxes.ts
+
+      - name: Run Railway + Vercel integration tests (test-railway)
+        # Runs three real-service Jest specs that hit live Railway GraphQL API
+        # and Vercel REST API: railway-project-structure, railway-migrations,
+        # and platform-env-vars. These specs verify infrastructure state
+        # (project structure, applied migrations, env var configuration) that
+        # cannot be checked with fakes.
+        #
+        # DATABASE_URL is overridden to RAILWAY_DATABASE_URL (the Railway
+        # Postgres connection string) so the railway-migrations spec queries
+        # the real Railway Postgres, not the CI service container.
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: yarn nx run agent-be:test-railway
 
       - name: Run real-service smoke (--grep @real-service)
         # The webServer block in playwright.config.ts starts both dev servers
@@ -750,6 +859,9 @@ jobs:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           CREDENTIAL_ENCRYPTION_KEK: ${{ secrets.CREDENTIAL_ENCRYPTION_KEK }}
+          DAYTONA_API_URL: https://e2e-placeholder.daytona.io
+          DAYTONA_API_KEY: e2e-placeholder-daytona-key
+          ANTHROPIC_API_KEY: e2e-placeholder-anthropic-key
           AUTH_GITHUB_ID: e2e-placeholder-client-id
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
         run: yarn playwright test --grep @performance-spike --pass-with-no-tests

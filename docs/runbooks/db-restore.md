@@ -52,7 +52,7 @@ Enable both **Daily** and **Weekly** schedules for the Postgres volume to satisf
 
 ```bash
 curl --fail --max-time 30 -s -X POST "https://backboard.railway.com/graphql/v2" \
-  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Project-Access-Token: $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"query { project(id: \"30ab04b2-132c-440b-92ca-bc57be294d6f\") { services { edges { node { id name } } } } }"}' | jq '.data.project.services.edges[].node'
 ```
@@ -63,7 +63,7 @@ Find the service with "postgres" in the name. Note the `id` — this is the `<po
 
 ```bash
 curl --fail --max-time 30 -s -X POST "https://backboard.railway.com/graphql/v2" \
-  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Project-Access-Token: $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"query { project(id: \"30ab04b2-132c-440b-92ca-bc57be294d6f\") { volumes { edges { node { id name service { id name } } } } } }"}' | jq '.data.project.volumes.edges[].node'
 ```
@@ -87,7 +87,7 @@ After the human configures schedules via the dashboard, verify via the Railway G
 
 ```bash
 curl --fail --max-time 30 -s -X POST "https://backboard.railway.com/graphql/v2" \
-  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Project-Access-Token: $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"query { volumeInstanceBackupScheduleList(volumeInstanceId: \"<volume-instance-id>\") { id name cron kind retentionSeconds createdAt } }"}' | jq '.data.volumeInstanceBackupScheduleList'
 ```
@@ -98,7 +98,7 @@ Verify both Daily and Weekly schedules exist in the response. The `kind` field i
 
 ```bash
 curl --fail --max-time 30 -s -X POST "https://backboard.railway.com/graphql/v2" \
-  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Project-Access-Token: $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"query { volumeInstanceBackupList(volumeInstanceId: \"<volume-instance-id>\") { id name createdAt expiresAt usedMB referencedMB } }"}' | jq '.data.volumeInstanceBackupList'
 ```
@@ -109,7 +109,7 @@ To create an ad-hoc backup (external service call with side effects — the huma
 
 ```bash
 curl --fail --max-time 30 -s -X POST "https://backboard.railway.com/graphql/v2" \
-  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Project-Access-Token: $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"mutation { volumeInstanceBackupCreate(volumeInstanceId: \"<volume-instance-id>\") { id name createdAt } }"}' | jq '.data.volumeInstanceBackupCreate'
 ```
@@ -227,7 +227,7 @@ Or via the GraphQL API (external service call with side effects — the human ex
 
 ```bash
 curl --fail --max-time 30 -s -X POST "https://backboard.railway.com/graphql/v2" \
-  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Project-Access-Token: $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"mutation { volumeInstanceBackupRestore(volumeInstanceBackupId: \"<backup-id>\", volumeInstanceId: \"<volume-instance-id>\") { id name createdAt } }"}' | jq '.data.volumeInstanceBackupRestore'
 ```
@@ -262,7 +262,7 @@ This rollback section is independently executable — it includes the commands t
 
 ```bash
 curl --fail --max-time 30 -s -X POST "https://backboard.railway.com/graphql/v2" \
-  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Project-Access-Token: $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"query { project(id: \"30ab04b2-132c-440b-92ca-bc57be294d6f\") { volumes { edges { node { id name service { id name } } } } } }"}' | jq '.data.project.volumes.edges[].node'
 ```
@@ -273,7 +273,7 @@ Find the volume attached to the Postgres service. Note the `id` — this is the 
 
 ```bash
 curl --fail --max-time 30 -s -X POST "https://backboard.railway.com/graphql/v2" \
-  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Project-Access-Token: $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"query { volumeInstanceBackupList(volumeInstanceId: \"<volume-instance-id>\") { id name createdAt expiresAt usedMB referencedMB } }"}' | jq '.data.volumeInstanceBackupList'
 ```
@@ -284,7 +284,7 @@ Select the backup from before the problematic restore. Note the `id` — this is
 
 ```bash
 curl --fail --max-time 30 -s -X POST "https://backboard.railway.com/graphql/v2" \
-  -H "Authorization: Bearer $RAILWAY_TOKEN" \
+  -H "Project-Access-Token: $RAILWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"mutation { volumeInstanceBackupRestore(volumeInstanceBackupId: \"<backup-id>\", volumeInstanceId: \"<volume-instance-id>\") { id name createdAt } }"}' | jq '.data.volumeInstanceBackupRestore'
 ```

@@ -1,4 +1,10 @@
-import { test, expect, type Page } from '../../support/merged-fixtures';
+import { type Page } from '@playwright/test';
+import { test, expect } from '../../support/merged-fixtures';
+import {
+  setupStreamingMocks as baseSetupStreamingMocks,
+  readySession,
+  type MockHandle,
+} from '../../support/streaming-mocks';
 
 /**
  * Story 3.2: Invoke BMAD Skills via Slash Command
@@ -31,19 +37,6 @@ const MOCK_SKILLS = [
 const CONVERSATION_ID = 'conv-e2e-picker';
 const TURN_TITLE = 'Semantic Title';
 
-interface FetchCall {
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-}
-
-interface MockHandle {
-  waitForEventSource: () => Promise<void>;
-  emit: (type: string, data?: unknown) => Promise<void>;
-  fetchCalls: () => Promise<FetchCall[]>;
-  waitForFetchCount: (count: number) => Promise<void>;
-}
-
 async function setupConversationMocks(
   page: Page,
   options: {
@@ -52,126 +45,11 @@ async function setupConversationMocks(
     turnTitle?: string;
   } = {},
 ): Promise<MockHandle> {
-  const {
-    conversationId = CONVERSATION_ID,
-    skills = MOCK_SKILLS,
-    turnTitle = TURN_TITLE,
-  } = options;
-
-  await page.addInitScript(
-    ({ conversationId, skills, turnTitle }) => {
-      class MockEventSource {
-        url: string;
-        readyState = 0;
-        onerror: ((event: Event) => void) | null = null;
-        private readonly listeners: Record<string, Array<(event: { data: string }) => void>> = {};
-
-        constructor(url: string) {
-          this.url = url;
-          (window as unknown as Record<string, unknown>).__mockEventSource = this;
-        }
-
-        addEventListener(type: string, handler: (event: { data: string }) => void): void {
-          (this.listeners[type] = this.listeners[type] || []).push(handler);
-        }
-
-        removeEventListener(): void {
-          // no-op for test mock
-        }
-
-        close(): void {
-          this.readyState = 2;
-        }
-
-        __emit(type: string, data: unknown): void {
-          const event = { data: typeof data === 'string' ? data : JSON.stringify(data) };
-          (this.listeners[type] || []).forEach((handler) => handler(event));
-        }
-      }
-
-      (window as unknown as Record<string, unknown>).EventSource = MockEventSource;
-
-      const w = window as unknown as Record<string, unknown>;
-      if (!w.__mockFetchInstalled) {
-        w.__mockFetchInstalled = true;
-        const originalFetch = window.fetch.bind(window);
-        w.__mockFetchCalls = [] as FetchCall[];
-        w.__mockSkills = skills;
-        w.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-          const url = typeof input === 'string' ? input : input.toString();
-          const method = init?.method ?? 'GET';
-          const rawHeaders = (init?.headers as Record<string, string>) ?? {};
-          const headers: Record<string, string> = {};
-          for (const k of Object.keys(rawHeaders)) headers[k.toLowerCase()] = rawHeaders[k];
-          (w.__mockFetchCalls as FetchCall[]).push({ url, method, headers });
-
-          if (url.includes('/turns') && method === 'POST') {
-            return new Response(JSON.stringify({ conversationId, title: turnTitle }), {
-              status: 201,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-
-          if (url.includes('/skills') && method === 'GET') {
-            return new Response(JSON.stringify(w.__mockSkills), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-
-          if (url.includes('/api/conversations') && method === 'POST') {
-            return new Response(JSON.stringify({ id: conversationId }), {
-              status: 201,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-
-          return originalFetch(input as RequestInfo, init);
-        };
-      }
-    },
-    { conversationId, skills, turnTitle } as {
-      conversationId: string;
-      skills: typeof MOCK_SKILLS;
-      turnTitle: string;
-    },
-  );
-
-  return {
-    waitForEventSource: () =>
-      page
-        .waitForFunction(() => (window as unknown as Record<string, unknown>).__mockEventSource != null)
-        .then(() => undefined),
-    emit: (type: string, data: unknown = {}) =>
-      page.evaluate(
-        ({ type, data }) => {
-          const es = (window as unknown as Record<string, unknown>).__mockEventSource as
-            | { __emit: (type: string, data: unknown) => void }
-            | undefined;
-          es?.__emit(type, data);
-        },
-        { type, data },
-      ),
-    fetchCalls: () =>
-      page.evaluate(() => {
-        const calls = (window as unknown as Record<string, unknown>).__mockFetchCalls as FetchCall[];
-        return calls ?? [];
-      }),
-    waitForFetchCount: (count: number) =>
-      page
-        .waitForFunction(
-          (n) =>
-            ((window as unknown as Record<string, unknown>).__mockFetchCalls as FetchCall[] | undefined)?.length ?? 0 >= n,
-          count,
-        )
-        .then(() => undefined),
-  };
-}
-
-async function readySession(mocks: MockHandle): Promise<void> {
-  await mocks.waitForEventSource();
-  await mocks.emit('SESSION_READY', { sandboxId: 'sb-1' });
-  await mocks.waitForFetchCount(2);
+  return baseSetupStreamingMocks(page, {
+    conversationId: options.conversationId ?? CONVERSATION_ID,
+    turnTitle: options.turnTitle ?? TURN_TITLE,
+    skills: options.skills ?? MOCK_SKILLS,
+  });
 }
 
 test.describe('Story 3.2: Slash Command Picker', () => {
@@ -297,7 +175,7 @@ test.describe('Story 3.2: Slash Command Picker', () => {
     await input.fill('/');
     await expect(page.getByRole('listbox')).toBeVisible();
 
-    await page.getByText('Press `/` to browse available skills').click();
+    await page.getByText(/Press.*to browse available skills/).click();
 
     await expect(page.getByRole('listbox')).toHaveCount(0);
   });

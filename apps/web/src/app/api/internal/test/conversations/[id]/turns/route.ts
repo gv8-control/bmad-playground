@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPrisma } from '@/lib/prisma';
+import { isTestEndpointEnabled } from '@/lib/test-endpoint-guard';
 import type { Prisma } from '@bmad-easy/database-schemas';
 
 type SeedTurn = {
@@ -13,7 +14,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (process.env.NODE_ENV === 'production' || !process.env.TEST_ENV) {
+  if (!isTestEndpointEnabled()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -43,7 +44,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (process.env.NODE_ENV === 'production' || !process.env.TEST_ENV) {
+  if (!isTestEndpointEnabled()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

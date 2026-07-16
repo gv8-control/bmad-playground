@@ -1,4 +1,5 @@
 import { test, expect } from '../../support/merged-fixtures';
+import { rscActionPayload } from '../../support/rsc-mock';
 
 /**
  * ATDD — Story 2.3: Manually Refresh the Project Map
@@ -22,10 +23,6 @@ import { test, expect } from '../../support/merged-fixtures';
  * the refresh button with the real (unmocked) Server Action. These tests
  * complement them with mocked-action verification for more isolated coverage.
  */
-
-function rscActionPayload(result: unknown): string {
-  return `0:{"a":"$@1","f":"","b":"development","q":"","i":false}\n1:D{"time":0.5}\n1:${JSON.stringify(result)}\n`;
-}
 
 const SYNC_SUCCESS = {
   success: true,

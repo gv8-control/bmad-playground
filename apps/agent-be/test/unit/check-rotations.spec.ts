@@ -7,11 +7,12 @@
  *
  * Verifies:
  * - Script outputs valid JSON array for all scenarios
- * - Script exits 0 always (no reminders needed is not an error)
+ * - Script exits 0 for expected empty results (no launch date, no secrets due)
+ * - Script exits non-zero for unexpected errors (file not found, invalid JSON)
  * - Past-due secrets produce reminders (floor formula: most recent due date)
  * - Approaching secrets (within reminderWindowDays) produce reminders
  * - Future-due secrets produce no reminders
- * - Placeholder date (<YYYY-MM-DD>) produces empty array (invalid date)
+ * - null productionLaunchDate produces empty array with stderr warning
  * - Missing config path argument produces empty array
  * - Output fields: name, dueDate, runbookSection, runbookRef
  * - Multiple secrets due at once are all reported
@@ -27,7 +28,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 
 const SCRIPT_PATH = path.resolve(
   __dirname,
@@ -42,7 +43,7 @@ interface Reminder {
 }
 
 interface TestConfig {
-  productionLaunchDate: string;
+  productionLaunchDate: string | null;
   reminderWindowDays: number;
   secrets: Array<{
     name: string;
@@ -59,6 +60,24 @@ function runScript(configPath: string): Reminder[] {
     timeout: 10_000,
   });
   return JSON.parse(output.trim()) as Reminder[];
+}
+
+interface ScriptResult {
+  stdout: string;
+  stderr: string;
+  status: number | null;
+}
+
+function runScriptWithStderr(configPath: string): ScriptResult {
+  const result = spawnSync('node', [SCRIPT_PATH, configPath], {
+    encoding: 'utf8',
+    timeout: 10_000,
+  });
+  return {
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+    status: result.status,
+  };
 }
 
 function writeTempConfig(config: TestConfig): string {
@@ -121,10 +140,10 @@ describe('Story 4.12 — check-rotations.js due-date calculation', () => {
     });
   });
 
-  describe('Placeholder and invalid dates', () => {
-    test('[P0] placeholder date <YYYY-MM-DD> produces empty array', () => {
+  describe('Null and invalid dates', () => {
+    test('[P0] null productionLaunchDate produces empty array with stderr warning', () => {
       const config: TestConfig = {
-        productionLaunchDate: '<YYYY-MM-DD>',
+        productionLaunchDate: null,
         reminderWindowDays: 7,
         secrets: [
           {
@@ -137,8 +156,11 @@ describe('Story 4.12 — check-rotations.js due-date calculation', () => {
       };
       const tmpFile = writeTempConfig(config);
       try {
-        const result = runScript(tmpFile);
-        expect(result).toEqual([]);
+        const result = runScriptWithStderr(tmpFile);
+        expect(result.status).toBe(0);
+        expect(JSON.parse(result.stdout.trim())).toEqual([]);
+        expect(result.stderr).toMatch(/productionLaunchDate is not set/i);
+        expect(result.stderr).toMatch(/inactive/i);
       } finally {
         cleanupTmpFile(tmpFile);
       }
@@ -161,6 +183,42 @@ describe('Story 4.12 — check-rotations.js due-date calculation', () => {
       try {
         const result = runScript(tmpFile);
         expect(result).toEqual([]);
+      } finally {
+        cleanupTmpFile(tmpFile);
+      }
+    });
+  });
+
+  describe('Unexpected errors exit non-zero (H3)', () => {
+    test('[P0] file not found exits with code 1', () => {
+      const nonexistentPath = path.join(
+        os.tmpdir(),
+        `nonexistent-config-${Date.now()}.json`,
+      );
+      const result = spawnSync('node', [SCRIPT_PATH, nonexistentPath], {
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/check-rotations error/i);
+      expect(JSON.parse(result.stdout.trim())).toEqual([]);
+    });
+
+    test('[P0] invalid JSON exits with code 1', () => {
+      const tmpDir = os.tmpdir();
+      const tmpFile = path.join(
+        tmpDir,
+        `check-rotations-invalid-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
+      );
+      fs.writeFileSync(tmpFile, '{ not valid json }', 'utf8');
+      try {
+        const result = spawnSync('node', [SCRIPT_PATH, tmpFile], {
+          encoding: 'utf8',
+          timeout: 10_000,
+        });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toMatch(/check-rotations error/i);
+        expect(JSON.parse(result.stdout.trim())).toEqual([]);
       } finally {
         cleanupTmpFile(tmpFile);
       }
@@ -264,9 +322,12 @@ describe('Story 4.12 — check-rotations.js due-date calculation', () => {
         const result = runScript(tmpFile);
         expect(result).toHaveLength(1);
         expect(result[0].dueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-        const launchMs = new Date(config.productionLaunchDate).getTime();
-        const expectedDueDate = new Date(launchMs + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        expect(result[0].dueDate).toBe(expectedDueDate);
+        // Use calendar arithmetic (setDate) to match the script's H5 fix.
+        const launchDate = new Date(config.productionLaunchDate as string);
+        const expectedDueDate = new Date(launchDate);
+        expectedDueDate.setDate(expectedDueDate.getDate() + 180);
+        const expectedDueDateStr = expectedDueDate.toISOString().split('T')[0];
+        expect(result[0].dueDate).toBe(expectedDueDateStr);
       } finally {
         cleanupTmpFile(tmpFile);
       }

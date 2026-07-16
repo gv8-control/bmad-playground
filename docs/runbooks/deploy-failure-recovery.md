@@ -102,7 +102,7 @@ If `apps/agent-be` crashes on startup (e.g., missing `DATABASE_URL` or `ANTHROPI
 
 ```
 POST https://backboard.railway.com/graphql/v2
-Authorization: Bearer $RAILWAY_TOKEN
+Project-Access-Token: $RAILWAY_TOKEN
 ```
 
 Query: `service(id: "4df7d0d1-0040-4395-89c8-bd166c4863cf") { deployments { edges { node { status createdAt } } } }`
@@ -126,6 +126,8 @@ To manually trigger a redeploy of the latest deployment:
 railway deployment redeploy --service <service-id> --environment <environment-id> --project <project-id> --yes
 ```
 
+> **⚠ Critical:** `railway deployment redeploy` may require `railway login` (interactive auth), not just `RAILWAY_TOKEN`. If the command fails with an auth error, run `railway login` first.
+
 Or to deploy a new image from the source:
 
 ```bash
@@ -133,9 +135,7 @@ Or to deploy a new image from the source:
 railway up --service <service-id> --environment <environment-id> --project <project-id>
 ```
 
-> **Note:** `railway up` may prompt for confirmation in an interactive terminal. In the deploy workflow, CI is non-interactive so no prompt appears. If prompted, confirm the deploy.
-
-**Note:** The `RAILWAY_TOKEN` environment variable works for `railway up` (as used in the deploy workflow). However, `railway deployment redeploy` may require authentication via `railway login` (OAuth flow) — the API token may not be accepted for all CLI subcommands. If a CLI command returns "Unauthorized", use `railway login` to authenticate, or use the Railway dashboard instead.
+> **Note:** `railway up` may prompt for confirmation in an interactive terminal. In the deploy workflow, CI is non-interactive so no prompt appears. If prompted, confirm the deploy. `railway up` works with `RAILWAY_TOKEN` as used in the deploy workflow.
 
 **Verification (2026-07-13):** The `railway deployment redeploy` command is available (Railway CLI). CLI authentication via `railway login` (OAuth flow) was required for `railway deployment redeploy` — the API token did not work for that subcommand. However, `railway up` works with `RAILWAY_TOKEN` as shown in the deploy workflow. The command syntax is documented above. The Railway GraphQL API verification confirms the deployment status and manual redeploy capability.
 
@@ -310,7 +310,43 @@ The reverse case — Vercel fails but Railway succeeds — is also possible. If 
 
 The deploy workflow uses `set -e` in the shell, so a failed Railway step causes the job to exit with a failure status. GitHub Actions sends a failure notification to the repo owner by default. The Vercel deployment is already updated at this point — the split-brain state is active.
 
-### Recovery Option A (Recommended — Roll Back Vercel)
+### Automated Rollback
+
+The deploy workflow (`.github/workflows/deploy.yml`) now includes an automated
+Vercel rollback step. When the Railway deploy step or the Railway health check
+step fails, the workflow automatically rolls back the Vercel deployment to the
+previous production version (captured before the new deploy began). This
+resolves the split-brain state without manual intervention.
+
+**How it works:**
+
+1. Before deploying to Vercel, the workflow captures the current production
+   deployment URL via `vercel ls --prod --format json` and stores it in
+   `PREVIOUS_VERCEL_DEPLOYMENT`.
+2. If the Railway deploy step (`id: railway_deploy`) or Railway health check
+   step (`id: railway_health`) fails, the rollback step runs:
+   `vercel rollback "$PREVIOUS_VERCEL_DEPLOYMENT" --yes --cwd=apps/web`.
+3. If the rollback succeeds, both services are on the previous version — the
+   split-brain state is resolved.
+4. If the rollback fails (no previous deployment was captured, or the
+   `vercel rollback` command errored), the workflow fails with an `::error::`
+   annotation directing the operator to manual recovery (Option A below).
+
+**When auto-rollback does NOT trigger:**
+
+- Vercel deploy or Vercel health check fails (Railway steps are `skipped`, not
+  `failure` — no split-brain exists because Vercel didn't promote a new version).
+- The workflow is cancelled before reaching the Railway steps.
+- A step before the Vercel deploy fails (quality gate, checkout, etc.).
+
+In these cases, follow the manual recovery procedures below.
+
+### Recovery Option A — Manual Roll Back Vercel (when auto-rollback fails)
+
+> **Note:** This option is now automated in the deploy workflow (see
+> "Automated Rollback" above). Follow these manual steps only if the
+> auto-rollback step failed or was not triggered (e.g., the workflow was
+> cancelled mid-deploy).
 
 When the Railway failure is not quickly fixable, roll back Vercel to the previous deployment to restore both services to the known-good previous version:
 

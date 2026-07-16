@@ -28,7 +28,7 @@
 - Marius (Project Lead)
 - Vera (Test Fidelity Auditor, invoked skill) — guest; external audit triggered the fix and confirmed fidelity post-fix
 
-This is an incident retrospective, not an epic completion retro. Epic 3's 12 stories were marked `done` in `sprint-status.yaml` prior to this session; `epic-3-retrospective` remains `optional` and is out of scope here — this document closes the SDK fidelity incident only.
+This is an incident retrospective, not an epic completion retro. Epic 3's 12 stories were marked `done` in `sprint-status.yaml` prior to this session; `epic-3-retrospective` was `optional` at the time of this incident retro but was later set to `done`. The full Epic 3 epic-completion retro artifact was reconstructed on 2026-07-15 at `_bmad-output/implementation-artifacts/epic-3-retro-2026-07-06.md`; this document closes the SDK fidelity incident only.
 
 ---
 
@@ -229,6 +229,6 @@ Per `CLAUDE.md`, changes to `_bmad-output` files are not auto-committed. All act
 
 ## Housekeeping notes
 
-- **Epic 3's `epic-3-retrospective` key in `sprint-status.yaml` remains `optional`.** This incident retrospective does not flip that key. The full Epic 3 epic-completion retro is a separate session; this document covers only the SDK fidelity incident that surfaced at Epic 3 closeout.
+- **Epic 3's `epic-3-retrospective` key in `sprint-status.yaml`** was `optional` at the time of this incident retro (2026-07-06). It was later set to `done`, and the full Epic 3 epic-completion retro artifact was reconstructed on 2026-07-15 at `_bmad-output/implementation-artifacts/epic-3-retro-2026-07-06.md`. This incident retrospective covers only the SDK fidelity incident that surfaced at Epic 3 closeout.
 - **Predecessor retro continuity.** Epic 2 retro Action Item 3 ("Re-commit to Epic 1 retro action items 3 and 6") is partly addressed by Pipeline feedback loop item 1 (extending the Reflect reading set). Epic 2 retro Action Item 2 ("2-strike escalation rule for deferred findings") is generalized here from intra-epic deferrals to cross-epic open concerns — Action item 1.
 - **Fidelity Auditor as a recurring instrument.** This incident validated the `bmad-agent-fidelity-auditor` skill (Vera) as a load-bearing quality instrument, not just a one-off. Action item 7 (audit other SDK-consuming code) suggests a standing practice of invoking the fidelity auditor at epic closeout for any code that consumes an external contract — a practice that should be added to the Epic-closeout checklist once Epic 3's full retro runs.

@@ -1,5 +1,15 @@
 /**
- * Unit tests for scripts/run-migrations.ts — Story 4.4
+ * @jest-environment node
+ *
+ * Credential-isolation unit tests for scripts/run-migrations.ts — Story 4.4
+ *
+ * Scope note (Fix M11): the file name `run-migrations-credential-isolation`
+ * reflects what these tests actually cover. They fully mock `child_process`
+ * (`execSync`), so they verify command-STRING composition and credential
+ * isolation — NOT that Prisma actually runs migrations end-to-end. The live
+ * migration execution is verified separately (manually against the Railway
+ * Postgres instance, per the runbook). Do not interpret a green run here as
+ * evidence that `prisma migrate deploy` succeeds against a real database.
  *
  * Verifies:
  * - AC-2: describeDatabase() parses valid postgresql:// URLs, returns host:port/dbname
@@ -7,7 +17,7 @@
  * - Regression guard: execSync command string does not interpolate DATABASE_URL
  *   (credential isolation + input injection invariants)
  *
- * Run: yarn nx test agent-be -- --testPathPattern=run-migrations
+ * Run: yarn nx test agent-be -- --testPathPattern=run-migrations-credential-isolation
  */
 
 jest.mock('child_process', () => ({

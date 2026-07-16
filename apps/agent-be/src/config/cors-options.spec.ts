@@ -93,6 +93,17 @@ describe('resolveCorsOptions', () => {
     });
   });
 
+  it('[P1] rejects wildcard subdomain patterns with a clear error', () => {
+    process.env.CORS_ALLOWED_ORIGINS = 'https://*.example.com';
+    expect(() => resolveCorsOptions()).toThrow(/wildcard subdomain/i);
+  });
+
+  it('[P1] rejects wildcard subdomain mixed with explicit origins', () => {
+    process.env.CORS_ALLOWED_ORIGINS =
+      'http://localhost:3000,https://*.example.com';
+    expect(() => resolveCorsOptions()).toThrow(/wildcard subdomain/i);
+  });
+
   it('[P1] falls back to default when value is whitespace-only', () => {
     process.env.CORS_ALLOWED_ORIGINS = '   ';
     expect(resolveCorsOptions()).toEqual({

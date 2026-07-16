@@ -17,9 +17,15 @@ push / PR / schedule
    ┌────┴────┐
 [unit]    [e2e x4 shards]
               │
-          [burn-in]   ← PRs and weekly schedule only
-              │
-          [report]    ← always runs; aggregates all results
+          [report]     ← always runs; aggregates all results
+
+weekly schedule (Sunday 02:00 UTC)
+        │
+   [e2e x4 shards]
+        │
+    [burn-in]         ← weekly only (full suite 10×, ~55 min)
+        │
+    [report]
 ```
 
 | Job | Timeout | Trigger |
@@ -27,7 +33,7 @@ push / PR / schedule
 | lint | 5 min | all |
 | unit (Jest via Nx) | 15 min | all |
 | e2e shard 1–4 (Playwright) | 30 min | all |
-| burn-in (10× Playwright) | 60 min | PR + weekly cron |
+| burn-in (10× Playwright) | 60 min | weekly cron only |
 | report | — | always |
 
 ---
@@ -40,7 +46,7 @@ push / PR / schedule
 | P1 | ≥ 95% | Pipeline fails; burn-in uploads artifacts |
 
 - `fail-fast: false` on E2E matrix — all 4 shards run even if one fails, giving full visibility.
-- Burn-in failure does not block merge but is highlighted in the PR summary.
+- Burn-in failure does not block merge but is highlighted in the weekly run summary.
 
 ---
 

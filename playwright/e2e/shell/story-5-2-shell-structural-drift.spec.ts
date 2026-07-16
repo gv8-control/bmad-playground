@@ -74,7 +74,7 @@ test.describe.serial('Story 5.2 — Shell Structural Drift', () => {
     test('[P0] settings link contains visible "Settings" text', async ({ page, withRepoConnection }) => {
       await page.goto('/project-map');
 
-      const settingsLink = page.getByRole('link', { name: /e2e test user.*settings/i });
+      const settingsLink = page.getByRole('link', { name: /e2e worker \d+.*settings/i });
       await expect(settingsLink).toBeVisible();
       // The link should contain the text "Settings" as visible content (not just aria-label)
       await expect(settingsLink).toContainText('Settings');
@@ -83,9 +83,9 @@ test.describe.serial('Story 5.2 — Shell Structural Drift', () => {
     test('[P1] settings label sits beside the avatar, not replacing it', async ({ page, withRepoConnection }) => {
       await page.goto('/project-map');
 
-      const settingsLink = page.getByRole('link', { name: /e2e test user.*settings/i });
+      const settingsLink = page.getByRole('link', { name: /e2e worker \d+.*settings/i });
       // Avatar initials should still be present
-      await expect(settingsLink).toContainText('EU');
+      await expect(settingsLink).toContainText(/E\d/);
       // And the "Settings" text should also be present
       await expect(settingsLink).toContainText('Settings');
     });

@@ -56,6 +56,6 @@ test.describe.serial('Hydration & Console-Error Guard', () => {
   }) => {
     await page.goto('/settings');
 
-    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   });
 });

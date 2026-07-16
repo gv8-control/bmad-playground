@@ -17,6 +17,14 @@
         "command": "next dev --port 3000"
       }
     },
+    "start": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/web",
+        "command": "next start --port 3000"
+      }
+    },
     "lint": {
       "executor": "@nx/eslint:lint",
       "options": {
@@ -26,6 +34,7 @@
     },
     "test": {
       "executor": "@nx/jest:jest",
+      "dependsOn": ["^generate"],
       "options": {
         "jestConfig": "apps/web/jest.config.ts",
         "passWithNoTests": true
@@ -35,7 +44,8 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "tsc --noEmit -p apps/web/tsconfig.json"
-      }
+      },
+      "dependsOn": ["^generate"]
     }
   }
 }

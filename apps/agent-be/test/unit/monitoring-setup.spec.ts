@@ -194,7 +194,10 @@ describe('Story 4.11 — Monitoring Setup Runbook', () => {
 
     test('[P0] runbook documents that monitor creation is human-executed', () => {
       const content = loadRunbook();
-      expect(content).toMatch(/human.executed/i);
+      // Match "human executed", "human-executed", or "human_executed" only.
+      // The previous `/human.executed/i` (`.` = any char) matched unrelated
+      // strings like "humanXexecuted" for any X.
+      expect(content).toMatch(/human[\s_-]executed/i);
     });
 
     // Reliability NFR: the operator must know about the UptimeRobot free tier

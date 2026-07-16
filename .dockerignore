@@ -1,5 +1,8 @@
 # Dependencies
 node_modules/
+# .yarn/patches, .yarn/plugins, .yarn/releases are tracked by git (see .gitignore)
+# and will be included in the build context when they exist. .yarn/install-state.gz
+# and other cache files are gitignored and excluded from the context.
 
 # Git
 .git/

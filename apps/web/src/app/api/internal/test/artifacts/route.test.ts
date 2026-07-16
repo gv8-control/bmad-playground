@@ -132,13 +132,22 @@ describe('POST /api/internal/test/artifacts', () => {
   });
 
   it('[P0] returns 404 in production', async () => {
-    const prev = process.env.NODE_ENV;
+    const prevEnv = process.env.NODE_ENV;
+    const prevCI = process.env.CI;
     Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', configurable: true });
+    delete process.env.CI;
     const res = await POST(
       makeRequest({ repoConnectionId: 'c', artifacts: [] }),
     );
     expect(res.status).toBe(404);
-    Object.defineProperty(process.env, 'NODE_ENV', { value: prev, configurable: true });
+    Object.defineProperty(process.env, 'NODE_ENV', { value: prevEnv, configurable: true });
+    if (prevCI === undefined) delete process.env.CI; else process.env.CI = prevCI;
+  });
+
+  it('[P0] returns 404 when TEST_ENV is unset', async () => {
+    delete process.env.TEST_ENV;
+    const res = await POST(makeRequest({ repoConnectionId: 'c', artifacts: [] }));
+    expect(res.status).toBe(404);
   });
 });
 
@@ -160,10 +169,13 @@ describe('DELETE /api/internal/test/artifacts', () => {
   });
 
   it('[P0] returns 404 in production', async () => {
-    const prev = process.env.NODE_ENV;
+    const prevEnv = process.env.NODE_ENV;
+    const prevCI = process.env.CI;
     Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', configurable: true });
+    delete process.env.CI;
     const res = await DELETE(makeRequest({ repoConnectionId: 'c' }));
     expect(res.status).toBe(404);
-    Object.defineProperty(process.env, 'NODE_ENV', { value: prev, configurable: true });
+    Object.defineProperty(process.env, 'NODE_ENV', { value: prevEnv, configurable: true });
+    if (prevCI === undefined) delete process.env.CI; else process.env.CI = prevCI;
   });
 });

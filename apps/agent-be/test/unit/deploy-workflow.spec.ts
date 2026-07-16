@@ -33,6 +33,7 @@ const WORKFLOW_PATH = path.resolve(
 
 interface WorkflowStep {
   name?: string;
+  id?: string;
   run?: string;
   env?: Record<string, string>;
   uses?: string;
@@ -143,12 +144,14 @@ describe('Story 4.6 — Deploy Workflow', () => {
     test('[P0] deploy job includes a Vercel deploy step (apps/web)', () => {
       const workflow = loadWorkflow();
       const steps = getSteps(workflow);
-      const vercelStep = steps.find(
-        (s) => s.run?.includes('vercel deploy') || s.run?.includes('vercel'),
-      );
+      const vercelStep = steps.find((s) => s.run?.includes('vercel deploy'));
       expect(vercelStep).toBeDefined();
       expect(vercelStep?.run).toContain('--prod');
-      expect(vercelStep?.run).toContain('--cwd=apps/web');
+      // --cwd=apps/web must NOT be present: the Vercel project dashboard has
+      // "Root Directory" set to apps/web, so --cwd=apps/web doubles the path
+      // to apps/web/apps/web (deploy run #8 failure). VERCEL_PROJECT_ID/
+      // VERCEL_ORG_ID env vars handle project association without --cwd.
+      expect(vercelStep?.run).not.toContain('--cwd=apps/web');
     });
 
     test('[P0] deploy job includes a Railway deploy step (apps/agent-be)', () => {
@@ -219,6 +222,40 @@ describe('Story 4.6 — Deploy Workflow', () => {
       expect(gateStep).toBeDefined();
       expect(gateStep?.env?.GH_TOKEN).toContain('GITHUB_TOKEN');
     });
+
+    test('[P0] quality-gate step fetches headSha and asserts it matches github.sha', () => {
+      // Regression guard for NFR finding C2: the gate previously checked only
+      // conclusion=success, never comparing the run's headSha to github.sha.
+      // A stale green run on an older commit could satisfy the gate. This
+      // test asserts the gate now references headSha (fetched via --json) and
+      // compares it to the deploy commit SHA (passed through an env:
+      // intermediary, never direct ${{ }} interpolation).
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const gateStep = steps.find((s) => s.run?.includes('gh run list'));
+      expect(gateStep).toBeDefined();
+      // headSha must be one of the --json fields fetched from gh run list.
+      expect(gateStep?.run).toContain('headSha');
+      // The deploy commit SHA must be passed through an env: intermediary.
+      expect(gateStep?.env?.SHA).toContain('github.sha');
+      // The run block must compare the fetched headSha to $SHA (no direct
+      // ${{ github.sha }} interpolation in the run: block).
+      expect(gateStep?.run).toContain('$SHA');
+      expect(gateStep?.run).not.toMatch(/\$\{\{[^}]*sha[^}]*\}\}/i);
+    });
+
+    test('[P0] quality-gate step filters for push/pull_request events (not schedule)', () => {
+      // Regression guard for NFR finding C2: nightly schedule runs skip
+      // PR-tier jobs and conclude success with only nightly-specific jobs.
+      // The gate must only accept runs triggered by push or pull_request.
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const gateStep = steps.find((s) => s.run?.includes('gh run list'));
+      expect(gateStep).toBeDefined();
+      expect(gateStep?.run).toContain('event');
+      expect(gateStep?.run).toMatch(/["']push["']/);
+      expect(gateStep?.run).toMatch(/["']pull_request["']/);
+    });
   });
 
   describe('AC-3: GitHub Environment with protection rules', () => {
@@ -283,9 +320,31 @@ describe('Story 4.6 — Deploy Workflow', () => {
     test('[P0] no credential values appear in the workflow YAML (credential isolation)', () => {
       const text = loadWorkflowText();
       expect(text).not.toMatch(/vcp_[A-Za-z0-9]/);
-      expect(text).not.toMatch(/d49618b7/);
-      expect(text).not.toMatch(/sk-[A-Za-z0-9]/);
+      // Vercel tokens are long-lived secrets prefixed with `sk-` followed by a
+      // long alphanumeric string. Require a minimum length so benign short
+      // matches (e.g. a hypothetical `sk-i` substring in a step name) don't
+      // trip the guard. The previous `/sk-[A-Za-z0-9]/` matched any single
+      // alphanumeric char after `sk-`.
+      expect(text).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
       expect(text).not.toMatch(/postgresql:\/\/[^:]+:[^@]+@/);
+      // Railway token: previously guarded by a hardcoded token fragment
+      // (`d49618b7`) which breaks on the next token rotation. Instead assert
+      // the Railway token is referenced via an env-var intermediary
+      // (`${{ secrets.RAILWAY_TOKEN }}` mapped into a step `env:`), never
+      // hardcoded inline in a `run:` block.
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const railwayEnvIntermediary = steps.some(
+        (s) =>
+          s.env?.RAILWAY_TOKEN === '${{ secrets.RAILWAY_TOKEN }}',
+      );
+      expect(railwayEnvIntermediary).toBe(true);
+      for (const step of steps) {
+        if (!step.run) continue;
+        // The Railway token must never appear inline in a run: block — it
+        // must be consumed via the $RAILWAY_TOKEN env var reference only.
+        expect(step.run).not.toMatch(/RAILWAY_TOKEN\s*=\s*['"][^'"]+['"]/);
+      }
     });
 
     test('[P0] VERCEL_PROJECT_ID and VERCEL_ORG_ID are in env: (not secrets, but not in run: blocks)', () => {
@@ -352,6 +411,134 @@ describe('Story 4.6 — Deploy Workflow', () => {
       );
       expect(summaryStep).toBeDefined();
       expect(summaryStep?.run).toContain('GITHUB_STEP_SUMMARY');
+    });
+  });
+
+  describe('Auto-rollback: Vercel rollback on Railway failure', () => {
+    test('[P0] capture step exists and runs vercel ls --prod --format json', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const captureStep = steps.find(
+        (s) => s.run?.includes('vercel ls') && s.run?.includes('--format json'),
+      );
+      expect(captureStep).toBeDefined();
+      expect(captureStep?.run).toContain('--prod');
+      // --cwd=apps/web removed to prevent path doubling (see deploy step comment).
+      expect(captureStep?.run).not.toContain('--cwd=apps/web');
+    });
+
+    test('[P0] capture step stores PREVIOUS_VERCEL_DEPLOYMENT in GITHUB_ENV', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const captureStep = steps.find((s) => s.run?.includes('vercel ls'));
+      expect(captureStep).toBeDefined();
+      expect(captureStep?.run).toContain('PREVIOUS_VERCEL_DEPLOYMENT');
+      expect(captureStep?.run).toContain('GITHUB_ENV');
+    });
+
+    test('[P0] capture step handles no-previous-deployment case (sets empty)', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const captureStep = steps.find((s) => s.run?.includes('vercel ls'));
+      expect(captureStep).toBeDefined();
+      expect(captureStep?.run).toMatch(/No previous READY production deployment/i);
+      expect(captureStep?.run).toMatch(/PREVIOUS_VERCEL_DEPLOYMENT=\s*["']?\s*>>/);
+    });
+
+    test('[P0] capture step runs BEFORE the Vercel deploy step', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const captureIdx = steps.findIndex((s) => s.run?.includes('vercel ls'));
+      const deployIdx = steps.findIndex((s) => s.run?.includes('vercel deploy'));
+      expect(captureIdx).toBeGreaterThanOrEqual(0);
+      expect(deployIdx).toBeGreaterThanOrEqual(0);
+      expect(captureIdx).toBeLessThan(deployIdx);
+    });
+
+    test('[P0] capture step uses env: intermediaries for Vercel credentials (no --token flag)', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const captureStep = steps.find((s) => s.run?.includes('vercel ls'));
+      expect(captureStep).toBeDefined();
+      expect(captureStep?.env?.VERCEL_TOKEN).toBe('${{ secrets.VERCEL_TOKEN }}');
+      expect(captureStep?.run).not.toMatch(/--token\b/);
+    });
+
+    test('[P0] Railway deploy step has id: railway_deploy', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const railwayStep = steps.find((s) => s.run?.includes('railway up'));
+      expect(railwayStep).toBeDefined();
+      expect(railwayStep?.id).toBe('railway_deploy');
+    });
+
+    test('[P0] Railway health check step has id: railway_health', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const healthStep = steps.find(
+        (s) => s.name?.toLowerCase().includes('agent-be') && s.run?.includes('curl'),
+      );
+      expect(healthStep).toBeDefined();
+      expect(healthStep?.id).toBe('railway_health');
+    });
+
+    test('[P0] rollback step exists with vercel rollback command', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const rollbackStep = steps.find((s) => s.run?.includes('vercel rollback'));
+      expect(rollbackStep).toBeDefined();
+      expect(rollbackStep?.run).toContain('--yes');
+      // --cwd=apps/web removed to prevent path doubling (see deploy step comment).
+      expect(rollbackStep?.run).not.toContain('--cwd=apps/web');
+    });
+
+    test('[P0] rollback step has if: failure() condition', () => {
+      const text = loadWorkflowText();
+      expect(text).toMatch(/if:\s*failure\(\)/);
+    });
+
+    test('[P0] rollback step if: condition references railway_deploy and railway_health outcomes', () => {
+      const text = loadWorkflowText();
+      expect(text).toMatch(/steps\.railway_deploy\.outcome/);
+      expect(text).toMatch(/steps\.railway_health\.outcome/);
+    });
+
+    test('[P0] rollback step handles empty PREVIOUS_VERCEL_DEPLOYMENT with ::error:: and exit 1', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const rollbackStep = steps.find((s) => s.run?.includes('vercel rollback'));
+      expect(rollbackStep).toBeDefined();
+      expect(rollbackStep?.run).toContain('PREVIOUS_VERCEL_DEPLOYMENT');
+      expect(rollbackStep?.run).toMatch(/::error::/);
+      expect(rollbackStep?.run).toMatch(/exit 1/);
+    });
+
+    test('[P0] rollback step handles vercel rollback failure with ::error:: and exit 1', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const rollbackStep = steps.find((s) => s.run?.includes('vercel rollback'));
+      expect(rollbackStep).toBeDefined();
+      expect(rollbackStep?.run).toMatch(/if\s*!/);
+      expect(rollbackStep?.run).toMatch(/::error::.*rollback.*failed/i);
+    });
+
+    test('[P0] rollback step uses env: intermediaries for Vercel credentials (no --token flag)', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const rollbackStep = steps.find((s) => s.run?.includes('vercel rollback'));
+      expect(rollbackStep).toBeDefined();
+      expect(rollbackStep?.env?.VERCEL_TOKEN).toBe('${{ secrets.VERCEL_TOKEN }}');
+      expect(rollbackStep?.run).not.toMatch(/--token\b/);
+    });
+
+    test('[P0] rollback step runs AFTER Railway health check step', () => {
+      const workflow = loadWorkflow();
+      const steps = getSteps(workflow);
+      const rollbackIdx = steps.findIndex((s) => s.run?.includes('vercel rollback'));
+      const healthIdx = steps.findIndex((s) => s.id === 'railway_health');
+      expect(rollbackIdx).toBeGreaterThanOrEqual(0);
+      expect(healthIdx).toBeGreaterThanOrEqual(0);
+      expect(rollbackIdx).toBeGreaterThan(healthIdx);
     });
   });
 });

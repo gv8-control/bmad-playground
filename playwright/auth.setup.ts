@@ -4,6 +4,8 @@ import { encode } from 'next-auth/jwt';
 import { writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { dirname } from 'path';
 import * as OTPAuth from 'otpauth';
+import { WORKER_USER_COUNT, E2E_GITHUB_ID_DEFAULT, getWorkerGithubId, getWorkerUserIdentifier } from './support/worker-user';
+import { withApiRetry } from './support/api-retry';
 
 // Create the directory and empty storage state file before any test worker starts.
 // No explicit environment — defaults to process.env.TEST_ENV || 'local', which
@@ -17,8 +19,9 @@ authStorageInit();
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 
 // Fixed githubId used for the synthetic E2E test user — stable across runs so that
-// upsert works correctly without accumulating duplicate rows.
-const E2E_GITHUB_ID = 'e2e-test-default-99999';
+// upsert works correctly without accumulating duplicate rows. Kept as the
+// fallback default user; active code paths use per-worker githubIds.
+const E2E_GITHUB_ID = E2E_GITHUB_ID_DEFAULT;
 
 setup('authenticate', async ({ page, request }) => {
   // Real OAuth flow only for real-service tier (needs a real GitHub test account
@@ -158,10 +161,56 @@ async function syntheticSession({ request }: { request: APIRequestContext }) {
   const authSecret = process.env.AUTH_SECRET;
   if (!authSecret) throw new Error('AUTH_SECRET is required for synthetic E2E session seeding');
 
-  // Upsert a stable test user in the DB.
-  const seedResponse = await request.post(`${BASE_URL}/api/internal/test/seed-user`, {
-    data: { githubId: E2E_GITHUB_ID, githubLogin: 'e2e-test-user', name: 'E2E Test User' },
+  const environment = process.env.TEST_ENV || 'local';
+
+  // Default user — kept as a fallback for tests that don't use per-worker
+  // isolation (e.g. the real OAuth flow only creates the default storage
+  // state, and the merged-fixtures authOptions override falls back to
+  // 'default' when the per-worker file doesn't exist).
+  await createSyntheticSession(request, {
+    githubId: E2E_GITHUB_ID,
+    githubLogin: 'e2e-test-user',
+    name: 'E2E Test User',
+    storagePath: getStorageStatePath({ environment, userIdentifier: 'default' }),
   });
+
+  // Per-worker users — each worker gets its own user, RepoConnection, and
+  // storage state so parallel workers don't fight over a single singleton
+  // RepoConnection row. The merged-fixtures authOptions override selects
+  // the per-worker storage state based on workerIndex.
+  for (let i = 0; i < WORKER_USER_COUNT; i++) {
+    await createSyntheticSession(request, {
+      githubId: getWorkerGithubId(i),
+      githubLogin: `e2e-test-worker-${i}`,
+      name: `E2E Worker ${i}`,
+      storagePath: getStorageStatePath({ environment, userIdentifier: getWorkerUserIdentifier(i) }),
+    });
+  }
+}
+
+/**
+ * Creates a synthetic Auth.js session for a single test user and writes the
+ * storage state (session cookie) to the given path.
+ *
+ * Extracted from syntheticSession so both the default user and per-worker
+ * users can be created with the same logic.
+ */
+async function createSyntheticSession(
+  request: APIRequestContext,
+  opts: { githubId: string; githubLogin: string; name: string; storagePath: string },
+): Promise<void> {
+  const authSecret = process.env.AUTH_SECRET;
+  if (!authSecret) throw new Error('AUTH_SECRET is required for synthetic E2E session seeding');
+
+  // Upsert the test user in the DB. Wrapped in withApiRetry because this call
+  // has timed out at 15s against a cold dev server during test runs — and if
+  // auth setup fails, the entire suite is skipped (it's a dependency of all
+  // projects). Same transient-failure wrapper the fixtures use.
+  const seedResponse = await withApiRetry(() =>
+    request.post(`${BASE_URL}/api/internal/test/seed-user`, {
+      data: { githubId: opts.githubId, githubLogin: opts.githubLogin, name: opts.name },
+    }),
+  );
   if (!seedResponse.ok()) {
     throw new Error(`seed-user failed: ${seedResponse.status()} ${await seedResponse.text()}`);
   }
@@ -172,25 +221,22 @@ async function syntheticSession({ request }: { request: APIRequestContext }) {
   const token = await encode({
     token: {
       sub: userId,
-      name: 'E2E Test User',
+      name: opts.name,
       email: 'e2e-test@example.com',
       userId,
       iat: now,
       exp: now + 8 * 60 * 60,
-      jti: `e2e-${Date.now()}`,
+      jti: `e2e-${Date.now()}-${opts.githubId}`,
     },
     secret: authSecret,
     // Auth.js v5 uses the cookie name as the JWE salt.
     salt: 'authjs.session-token',
   });
 
-  // Write the storage state so the chromium project can pick it up.
-  // No explicit environment — defaults to process.env.TEST_ENV || 'local',
-  // matching the fixtures that load this file in the test project.
-  const storagePath = getStorageStatePath();
-  mkdirSync(dirname(storagePath), { recursive: true });
+  // Write the storage state so the test project can pick it up.
+  mkdirSync(dirname(opts.storagePath), { recursive: true });
   writeFileSync(
-    storagePath,
+    opts.storagePath,
     JSON.stringify({
       cookies: [
         {

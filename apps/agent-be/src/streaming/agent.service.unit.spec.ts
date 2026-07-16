@@ -1430,7 +1430,7 @@ describe('AgentService (real — sandbox-based execution via AguiEventBridgeServ
       bridge: { streamAgentEvents: jest.Mock; stop: jest.Mock };
       getParams: () => { command: string; cwd?: string; sandboxId?: string };
     } {
-      let capturedParams = { command: '' };
+      let capturedParams: { command: string; cwd?: string; sandboxId?: string } = { command: '' };
       const bridge = {
         streamAgentEvents: jest.fn(async (params: {
           command?: string;

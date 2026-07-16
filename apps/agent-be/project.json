@@ -68,8 +68,17 @@
     },
     "test-integration": {
       "executor": "nx:run-commands",
+      "dependsOn": ["^generate"],
       "options": {
         "command": "jest --config test/jest-integration.config.ts --passWithNoTests",
+        "cwd": "apps/agent-be"
+      }
+    },
+    "test-railway": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["^generate"],
+      "options": {
+        "command": "jest --config test/jest-railway.config.ts",
         "cwd": "apps/agent-be"
       }
     },

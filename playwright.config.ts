@@ -1,13 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
-import { config as loadDotenv } from 'dotenv';
 
-// Load env files into the Playwright runner process. .env provides
-// AUTH_SECRET, DATABASE_URL, etc. needed by auth.setup.ts syntheticSession().
-// .env.local provides test-specific vars (TEST_GITHUB_*). Both are loaded
-// with override: false so real env vars always win.
-// The webServer processes (Next.js, NestJS) read their own env files at startup.
-loadDotenv({ path: '.env', override: false });
-loadDotenv({ path: '.env.local', override: false });
+// The test:e2e script wraps Playwright with `dotenv -e .env.test`, which loads
+// .env.test into process.env before this config runs. We deliberately do NOT
+// load .env.local here — it contains personal/tooling credentials (including
+// real GitHub test-account creds) that leak TEST_GITHUB_USERNAME/TEST_GITHUB_PASSWORD
+// into the E2E environment, triggering the real OAuth flow in auth.setup.ts
+// instead of the synthetic session. .env.test has these set to empty strings.
+//
+// The webServer process (next dev / agent-be) inherits the shell env, so it
+// reads .env.local itself at startup — the runner doesn't need to inject it.
 
 // The storageState path is overridden by @seontechnologies/playwright-utils
 // fixtures (which use process.env.TEST_ENV || 'local'), but we set it here
@@ -23,8 +24,14 @@ const storageStatePath = `.auth/${process.env.TEST_ENV || 'local'}/default/stora
 // single config file can serve both tiers without source-level branching.
 // See `_bmad-output/test-artifacts/test-design-qa.md` → Execution Strategy.
 const isRealServiceTier = process.env.PLAYWRIGHT_REAL_SERVICE === '1';
+// Real-service tier starts fresh servers (120s timeout); PR tier reuses the
+// servers the CI workflow already started on the same ports.
+const webServerReuse = isRealServiceTier
+  ? { reuseExistingServer: false, timeout: 120_000 }
+  : { reuseExistingServer: true };
 
 export default defineConfig({
+  globalSetup: 'playwright/global-setup.ts',
   testDir: './playwright',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -86,6 +93,13 @@ export default defineConfig({
       ? [
           {
             name: 'real-service',
+            // Shared default user — the real OAuth flow only creates one
+            // session, so the real-service tier has no per-worker isolation.
+            // Without this, parallel real-service tests mutating the same
+            // RepoConnection row race the same way the PR tier did before
+            // per-worker users. Per-project `workers` is supported in
+            // Playwright 1.61.0+ (test.d.ts TestProject.workers).
+            workers: 1,
             grep: /@real-service/,
             retries: 3,
             use: {
@@ -99,35 +113,12 @@ export default defineConfig({
   ],
 
   // webServer is global in Playwright (no per-project webServer). The tier flag
-  // selects which dev-server block to use so the real-service tier never reuses
-  // a stale fake-backed server started for a PR-tier run. The SandboxServiceFake
+  // selects whether servers are reused so the real-service tier never reuses a
+  // stale fake-backed server started for a PR-tier run. The SandboxServiceFake
   // cannot be injected here regardless — `yarn nx run agent-be:serve` always uses
   // the production AppModule. The flag exists for webServer hygiene + diagnostics.
-  webServer: isRealServiceTier
-    ? [
-        {
-          command: 'yarn nx run web:dev',
-          url: 'http://localhost:3000',
-          reuseExistingServer: false,
-          timeout: 120_000,
-        },
-        {
-          command: 'yarn nx run agent-be:serve',
-          url: 'http://localhost:3001/health',
-          reuseExistingServer: false,
-          timeout: 120_000,
-        },
-      ]
-    : [
-        {
-          command: 'yarn nx run web:dev',
-          url: 'http://localhost:3000',
-          reuseExistingServer: !process.env.CI,
-        },
-        {
-          command: 'yarn nx run agent-be:serve',
-          url: 'http://localhost:3001/health',
-          reuseExistingServer: !process.env.CI,
-        },
-      ],
+  webServer: [
+    { command: 'yarn nx run web:dev',        url: 'http://localhost:3000',        ...webServerReuse },
+    { command: 'yarn nx run agent-be:serve', url: 'http://localhost:3001/health', ...webServerReuse },
+  ],
 });
