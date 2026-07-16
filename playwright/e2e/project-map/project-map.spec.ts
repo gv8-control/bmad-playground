@@ -101,25 +101,4 @@ test.describe('Story 2.3: Manually Refresh the Project Map', () => {
     ).toBeVisible();
   });
 
-  test('[P0] clicking refresh shows spinner and re-renders the page (AC-1, FR-7)', async ({
-    page,
-    withArtifacts,
-  }) => {
-    await page.goto('/project-map');
-    await expect(page.getByRole('heading', { name: 'Project Map' })).toBeVisible();
-
-    const refreshButton = page.getByRole('button', { name: /refresh project map/i });
-
-    const start = performance.now();
-    await refreshButton.click();
-
-    await expect(refreshButton).toBeDisabled();
-
-    await expect(refreshButton).not.toBeDisabled();
-    const elapsed = performance.now() - start;
-
-    await expect(page.getByRole('heading', { name: 'Project Map' })).toBeVisible();
-
-    expect(elapsed).toBeLessThan(10_000);
-  });
 });

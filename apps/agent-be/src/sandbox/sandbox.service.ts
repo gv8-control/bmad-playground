@@ -90,13 +90,9 @@ const SESSION_COMMAND_TIMEOUT_S = 30;
 export class SandboxService implements ISandboxService {
   private readonly logger = new Logger(SandboxService.name);
 
-  constructor(@Inject(DAYTONA_CLIENT) private readonly daytona: Daytona | null) {}
+  constructor(@Inject(DAYTONA_CLIENT) private readonly daytona: Daytona) {}
 
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
-    if (!this.daytona) {
-      throw new Error('Daytona client is not configured');
-    }
-
     // Fail fast before allocating any Daytona resource — env validation guards
     // this at boot, but an explicit guard here prevents a silent empty-key
     // injection if the var is unset at provision time (AC-5 loud-failure intent).
@@ -105,36 +101,41 @@ export class SandboxService implements ISandboxService {
       throw new Error('ANTHROPIC_API_KEY is not configured — cannot provision sandbox');
     }
 
-    const sandbox = await this.daytona.create({
-      labels: { conversationId: params.conversationId },
-      envVars: {
-        ANTHROPIC_API_KEY: anthropicApiKey,
-        GITHUB_TOKEN: params.credential,
-      },
-      networkAllowList: SANDBOX_NETWORK_ALLOW_LIST,
-    });
-
-    // installBinaries runs AFTER create() succeeds — if it throws, the sandbox
-    // is already allocated in Daytona. Clean it up before re-throwing so the
-    // failure does not leak a zombie sandbox (the caller's catch cannot clean
-    // up because provision() rejects before returning the sandbox id).
+    // null-fallback + cleanup-on-failure: if create() throws after partial
+    // allocation, or installBinaries() throws after create() succeeds, clean
+    // up the allocated sandbox before re-throwing so the failure does not leak
+    // a zombie sandbox (the caller's catch cannot clean up because provision()
+    // rejects before returning the sandbox id).
+    let sandbox: Sandbox | null = null;
     try {
-      await this.installBinaries(sandbox);
-    } catch (err) {
-      await this.daytona.delete(sandbox).catch((deleteErr) => {
-        this.logger.error(
-          `Failed to clean up sandbox ${sandbox.id} after installBinaries failure: ${deleteErr}`,
-        );
+      sandbox = await this.daytona.create({
+        labels: { conversationId: params.conversationId },
+        envVars: {
+          ANTHROPIC_API_KEY: anthropicApiKey,
+          GITHUB_TOKEN: params.credential,
+        },
+        networkAllowList: SANDBOX_NETWORK_ALLOW_LIST,
       });
+      await this.installBinaries(sandbox);
+      return {
+        sandboxId: sandbox.id,
+        conversationId: params.conversationId,
+        status: 'ready',
+        provisionedAt: new Date(),
+      };
+    } catch (err) {
+      if (sandbox) {
+        const sandboxId = sandbox.id;
+        try {
+          await this.daytona.delete(sandbox);
+        } catch (cleanupErr) {
+          this.logger.error(
+            `Failed to clean up sandbox ${sandboxId} after provision failure: ${cleanupErr}`,
+          );
+        }
+      }
       throw err;
     }
-
-    return {
-      sandboxId: sandbox.id,
-      conversationId: params.conversationId,
-      status: 'ready',
-      provisionedAt: new Date(),
-    };
   }
 
   async clone(sandboxId: string, repoUrl: string, credential: string): Promise<void> {
@@ -150,9 +151,6 @@ export class SandboxService implements ISandboxService {
   }
 
   async resume(sandboxId: string): Promise<SandboxInfo> {
-    if (!this.daytona) {
-      throw new Error('Daytona client is not configured');
-    }
     const sandbox = await this.getSandbox(sandboxId);
     await this.daytona.start(sandbox);
     return {
@@ -164,9 +162,6 @@ export class SandboxService implements ISandboxService {
   }
 
   async destroy(sandboxId: string): Promise<void> {
-    if (!this.daytona) {
-      return;
-    }
     try {
       const sandbox = await this.daytona.get(sandboxId);
       await this.daytona.delete(sandbox);
@@ -282,9 +277,6 @@ export class SandboxService implements ISandboxService {
   }
 
   private async getSandbox(sandboxId: string): Promise<Sandbox> {
-    if (!this.daytona) {
-      throw new Error('Daytona client is not configured');
-    }
     return this.daytona.get(sandboxId);
   }
 
