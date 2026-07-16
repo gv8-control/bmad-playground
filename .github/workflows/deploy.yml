@@ -71,8 +71,8 @@ jobs:
           VERCEL_ORG_ID: team_DV9hczWkgqbOEoMGnX9Pta3t
         run: |
           npm install -g vercel@latest
-          # No --cwd: the Vercel project dashboard has "Root Directory" set to
-          # apps/web. Adding --cwd=apps/web would double the path to
+          # No cwd override: the Vercel project dashboard has "Root Directory"
+          # set to apps/web. Passing a cwd flag here would double the path to
           # apps/web/apps/web. VERCEL_PROJECT_ID/VERCEL_ORG_ID env vars handle
           # project association without a local .vercel/ directory.
           DEPLOYMENTS=$(vercel ls --prod --format json --yes)
