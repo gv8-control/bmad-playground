@@ -83,4 +83,4 @@ The `RAILWAY_TOKEN` in `.env.local` is a **project token** (UUID format). Projec
 
 ## n8n
 
-When doing changes to n8n workflow, apply them over MCP to the live n8n instance. Do not modify the workflows in n8n/workflows/ - those will be auto-exported.
+When doing changes to n8n workflow, apply them over MCP to the live n8n instance. Make sure to Activate (Publish) the updated workflows if applicable. Do not modify the workflows in n8n/workflows/ - those will be auto-exported.
