@@ -39,7 +39,7 @@ The pipeline now classifies each agent response into one of four outcomes:
 | Outcome | When | Routing |
 | --- | --- | --- |
 | `COMPLETE` | Agent finished cleanly | → Output (success) |
-| `QUESTION` | Agent genuinely asks a human decision | → human form (no timeout — see F-11) |
+| `QUESTION` | Agent genuinely asks a human decision | → human form |
 | `INCOMPLETE` | Agent quit mid-stream (timeout, provider error salvaged, or partial non-question text) — resumable | → auto-continue (resume session with `"Continue"`), capped at `incompleteContinueCap` (10) |
 | `UNKNOWN` | Empty output, unclassifiable, classifier failure | → failed (sets `error`, step retries via existing machinery) |
 
@@ -110,11 +110,10 @@ falls back to `QUESTION`. Unrecognised output returns
 `{ outcome: 'UNKNOWN', rawOutcome: raw, classificationFallback: true }`. The
 enum is `['COMPLETE', 'QUESTION', 'INCOMPLETE']`.
 
-### R4 — Phantom-halt chain is broken (resolved)
+### R4 — Misclassified salvaged output reaching the question form (resolved)
 
-The multi-hour stalls documented in `pipeline-slowness-investigation-2026-07-14.md`
-were the product of a chain: timeout/provider error → salvaged output →
-classification as `QUESTION` → form fires with no timeout → multi-hour stall.
+Timeout/provider errors produced salvaged output that was classified as
+`QUESTION`, firing the question form for non-questions.
 
 The chain is now broken at three points:
 
@@ -126,21 +125,6 @@ The chain is now broken at three points:
    `UNKNOWN` → failed. The throw is gone.
 3. **`outcomeHistory` captures the real sequence** (R2), so the reflector can
    distinguish a genuine `QUESTION` from a phantom one.
-
-The form timeout (the fourth link in the original chain) is **not** implemented —
-the `Get response` Wait node still has no `limitWaitTime`. This is a deliberate
-deferral (the owner responds to forms manually). If a `QUESTION` classification
-is wrong, the form still stalls until the owner acts. The deterministic
-front-end makes this far less likely, but it is not eliminated.
-
-### R5 — Pipeline state at review time
-
-A `Develop Epic` execution (id 13) is marked `running` but has a `stoppedAt`;
-recent executions 90 and 94 are `crashed`. The pipeline state is uncertain. The
-remaining fixes below are sequenced so that script-layer fixes (which take effect
-on the next invocation, not the current one) come first, and workflow
-publications (which create a new active version without disturbing in-flight
-executions) come after.
 
 ---
 
@@ -400,13 +384,11 @@ needed.
 
 This workstream is complete. The INCOMPLETE outcome, deterministic front-end,
 auto-continue with cap, counter separation, signal threading, stderr redaction,
-and outcomeHistory accretion are all implemented and published. The form timeout
-(F-3.2) was deliberately deferred.
+and outcomeHistory accretion are all implemented and published.
 
 | Step | Finding | Status |
 | ---- | ---- | ---- |
 | B1 | F-3.1 | **Done.** `salvaged`/`rc` threaded via `runner_meta` → `Parse` → `Determine outcome`. |
-| B2 | F-3.2 | **Deferred.** No `limitWaitTime` on `Get response`. Owner responds manually. |
 | B3 | F-3.3 | **Done.** `Validate Classification` defaults to `UNKNOWN`, not `QUESTION`. |
 | B4 | F-4 | **Done.** Accretion via staticData keyed by `$execution.id`. |
 | B5 | F-10 | **Done.** `onError: continueRegularOutput` + `retryOnFail: true, maxTries: 2`. |
@@ -489,12 +471,6 @@ same table at the start of each execution (`getStaticDataById`). **This means
 cross-execution data leakage in the sequential-execution model (each execution
 writes to its own key). The `delete staticData[key]` at `Output` prevents
 unbounded growth. The pipeline runs sequentially, so this is safe today.
-
-### V2 — Wait node `limitWaitTime` support — CONFIRMED (but not used)
-
-**Finding:** The Wait node defines `limitWaitTime` and `limitType` parameters.
-The form-timeout fix is viable but was deliberately deferred. The `Get response`
-Wait node has no timeout. This is a recorded decision, not a gap.
 
 ### V3 — `EDITOR_BASE_URL` / `WEBHOOK_URL` control resume and execution URLs — CONFIRMED
 
