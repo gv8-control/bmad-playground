@@ -11,17 +11,17 @@ inputDocuments:
 
 ## Overview
 
-This document provides the complete epic and story breakdown for bmad-easy, decomposing the requirements from the PRD, UX Design, and Architecture requirements into implementable stories.
+Epic and story breakdown for bmad-easy, decomposing PRD, UX, and Architecture requirements into implementable stories.
 
 ## Requirements Inventory
 
 ### Functional Requirements
 
-FR1: Repository Connection via URL — User connects a GitHub Repository by URL; platform uses the OAuth access token (authorized with `repo` scope at sign-in) to validate write access and complete setup. No token entry field. Token stored encrypted at rest, never returned to client.
+FR1: Repository Connection via URL — User connects a GitHub Repository by URL; platform uses the OAuth access token (`repo` scope at sign-in) to validate write access and complete setup. No token entry field. Token stored encrypted at rest, never returned to client.
 
 FR2: BMAD Initialization Validation — Platform validates the connected Repository contains `_bmad/`, `_bmad-output/`, `.claude/`, and that BMAD is v6.x, before activating the connection. Blocking messages with documentation links on failure (missing directories, unsupported version, no Skills found).
 
-FR3: Commit Attribution per User — Commits produced through Conversations are attributed to the individual user's GitHub OAuth identity (name/email, injected into Sandbox git config at session init), not a shared platform credential.
+FR3: Commit Attribution per User — Commits produced through Conversations are attributed to the user's GitHub OAuth identity (name/email, injected into Sandbox git config at session init), not a shared platform credential.
 
 FR4: Credential Health Monitoring — Platform monitors stored Repository credentials; any git operation returning 401 updates credential health to `failed` within one operation cycle; 403 responses are classified (rate limit, org restriction, permission denial) without marking the credential as failed; Project Map shows a re-auth notification with a re-authorize flow.
 
@@ -114,8 +114,8 @@ NFR-O1: Platform must track per-user LLM spend via the Agent SDK's cost reportin
 - NestJS shutdown hooks must drain SSE connections on deploy (notify clients, allow reconnect) rather than hard-killing them, given the single-container constraint.
 - Sandbox idle timeout: a Sandbox provisioned on page open that receives no first message within a configurable timeout (default 60s) must be torn down.
 - Sandbox initialization sequence (ordered, every provision and every resume): provision → clone (or restore on resume) → inject per-user git config → run `git status --porcelain` → emit `WORKING_TREE_*` event → emit `SESSION_READY`.
-- `sandbox-agent` (JSONL→AG-UI bridge): pin to an exact binary version in the Dockerfile; before any upgrade, diff the event-mapping changelog and validate against a recorded BMAD session replay. This is a PR-review checklist item enforced by process, not a story acceptance criterion or automated test.
-- AG-UI packages (`@assistant-ui/react-ag-ui`, `@ag-ui/client`, `@ag-ui/core`): pin to exact versions; same changelog-review + session-replay-validation discipline before any upgrade, enforced the same way (PR-review checklist, not an AC).
+- `sandbox-agent` (JSONL→AG-UI bridge): pin to an exact binary version in the Dockerfile; before any upgrade, diff the event-mapping changelog and validate against a recorded BMAD session replay. Enforced by PR-review checklist, not a story AC.
+- AG-UI packages (`@assistant-ui/react-ag-ui`, `@ag-ui/client`, `@ag-ui/core`): pin to exact versions; same changelog-review + session-replay-validation discipline before any upgrade. Enforced by PR-review checklist, not an AC.
 - Circuit-breaker: if `sandbox-agent` fails to emit events within a timeout, or crashes, the backend must terminate the Claude Code agent process via the Daytona process management API before emitting an error event to the user (prevents a runaway, unobserved agent from continuing to act/commit).
 - SSE channel must emit heartbeat comments on a fixed interval so the browser can detect dead connections even when `sandbox-agent` is stalled.
 - Frontend session-start timeout (distinct from the server-side idle timeout) for the case where `SESSION_READY` never arrives, with a retry affordance — prevents the "Starting session…" state from spinning indefinitely.
@@ -228,7 +228,7 @@ A user can open a Conversation, invoke BMAD Skills via slash command, converse w
 **FRs covered:** FR9, FR10, FR11, FR12, FR13, FR14, FR15
 
 ### Epic 4: MVP Cloud Deployment Provisioning
-Provision the platform's single production environment (per architecture's "production only, no staging" constraint): `apps/web` on Vercel, `apps/agent-be` (Docker) and Postgres on Railway, secrets wired on both platforms, migrations applied, and CI able to trigger a deploy manually. Added via Sprint Change Proposal 2026-07-03 — independent of Epic 2/3 sequencing; owns provisioning mechanics only, not the SSE-drain (Story 3.12) or spend-monitoring (Story 3.8) verification that depend on Epic 3 code.
+Provision the platform's single production environment (per architecture's "production only, no staging" constraint): `apps/web` on Vercel, `apps/agent-be` (Docker) and Postgres on Railway, secrets wired on both platforms, migrations applied, and CI able to trigger a deploy manually. Independent of Epic 2/3 sequencing; owns provisioning mechanics only, not the SSE-drain (Story 3.12) or spend-monitoring (Story 3.8) verification that depend on Epic 3 code.
 **Additional Requirements covered:** deployment infra, CI/CD manual deploy trigger
 
 ### Epic 5: UX Mockup Fidelity — Close Visual Drift
@@ -242,6 +242,10 @@ Migrates agent execution from host-based (`@anthropic-ai/claude-agent-sdk` `quer
 ### Epic 7: Live-Usage UX Improvements
 Five UX gaps discovered from live-app usage after Epic 5 closed. These are not mockup drift — they are live-usage findings about states and feedback that the design never fully specified (loading feedback during in-app navigation, relative timestamps beyond one minute, prominence of focus rings on navigation surfaces) and about inconsistency in how already-specified patterns render (error presentation in the conversation view). Frontend presentation changes only; independent of Epic 6.
 **Change proposal:** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-13.md`
+
+### Epic 8: Sandbox Reconciliation via Environment-Scoped Labels
+Daytona sandboxes from local dev, the dev deployment, tests, and production share one account and a 30GiB disk quota, with no reconciliation mechanism — sandboxes leak on crashes, provisioning-window failures, and transient destroy failures, exhausting the quota. This epic adds an environment-scope label to every sandbox at creation time and a periodic background reaper that lists sandboxes by that label, reconciles them against the database, and destroys orphans. Defense-in-depth for the in-process cleanup paths in Epic 3 (Stories 3.1, 3.9, 3.12) that cannot run when the process crashes.
+**Change proposal:** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-17-sandbox-reaper.md`
 
 ## Epic 1: Authentication & Repository Connection
 
@@ -886,10 +890,10 @@ As a user juggling multiple BMAD workflows,
 I want to have several Conversations active at once,
 So that I'm not blocked working through one Skill at a time.
 
-**Prerequisites (deferred items absorbed from prior story reviews):**
+**Prerequisites:**
 
-- **Concurrent-turn guard** (from 3-4 review): `circuitBreakerTimers` orphaned by concurrent `runTurn` calls on same `conversationId` — no guard against concurrent invocation; second call overwrites first's `activeRuns` and `circuitBreakerTimers` entries, orphaning the first run. The 3-4 review explicitly tagged this as "Story 3.11 scope." [`apps/agent-be/src/streaming/agent.service.ts:runTurn`]
-- **handleRetry leak** (from 3-2 review, originally tagged 3-5 scope but unresolved): `handleRetry` mints a new conversation on every click when `initialConversationId` is undefined — previous in-flight provisioning not cancelled; leaks Daytona sandboxes and DB rows. Story 3.5 shipped without resolving this; it lands here. [`apps/web/src/components/conversation/ConversationPane.tsx:275`]
+- **Concurrent-turn guard:** `circuitBreakerTimers` orphaned by concurrent `runTurn` calls on same `conversationId` — no guard against concurrent invocation; second call overwrites first's `activeRuns` and `circuitBreakerTimers` entries, orphaning the first run. [`apps/agent-be/src/streaming/agent.service.ts:runTurn`]
+- **handleRetry leak:** `handleRetry` mints a new conversation on every click when `initialConversationId` is undefined — previous in-flight provisioning not cancelled; leaks Daytona sandboxes and DB rows. [`apps/web/src/components/conversation/ConversationPane.tsx:275`]
 
 **Acceptance Criteria:**
 
@@ -916,11 +920,11 @@ As a user with an active Conversation when the platform deploys a new version,
 I want my connection to end cleanly and let me reconnect without losing history,
 So that routine deploys never look like a crash or lose my work.
 
-**Prerequisites (deferred items absorbed from prior story reviews):**
+**Prerequisites:**
 
-- **In-memory sandbox state, no recovery on restart** (from 3-1/3-3 reviews): `sandboxStatuses` and `sandboxIds` are in-memory `Map`s, never persisted to DB. Server restart loses all sandbox state — `getStatus` reports `'provisioning'` (fallback) for conversations whose sandboxes are ready or dead. Sandboxes orphaned in Daytona with no record to destroy. Graceful drain requires knowing what's running; this must be persisted to Postgres. [`apps/agent-be/src/conversations/conversations.service.ts`]
-- **ManualCommitService.onModuleDestroy drops pending commits** (from 3-6 review): `onModuleDestroy` silently drops pending commits without emitting `MANUAL_SAVE_FAILED`. The 3-6 spec said "clear pending commits on shutdown," but draining must either complete or notify — silent drop loses work. [`apps/agent-be/src/conversations/manual-commit.service.ts:91-93`]
-- **Dependency (confirm resolved, not fixed here):** `SandboxService.resume` returns `conversationId: sandboxId` — conflates sandbox ID with conversation ID (from 3-1/3-2 reviews, tagged 3-5 scope but 3-5 shipped without resolving). This story's "clients can reconnect and resume" AC depends on resume returning the correct conversationId. Verify 3-5 resolved it; if not, resolve as part of this story. [`apps/agent-be/src/sandbox/sandbox.service.ts:64`]
+- **In-memory sandbox state, no recovery on restart:** `sandboxStatuses` and `sandboxIds` are in-memory `Map`s, never persisted to DB. Server restart loses all sandbox state — `getStatus` reports `'provisioning'` (fallback) for conversations whose sandboxes are ready or dead. Sandboxes orphaned in Daytona with no record to destroy. Graceful drain requires knowing what's running; this must be persisted to Postgres. [`apps/agent-be/src/conversations/conversations.service.ts`]
+- **ManualCommitService.onModuleDestroy drops pending commits:** `onModuleDestroy` silently drops pending commits without emitting `MANUAL_SAVE_FAILED`. The spec said "clear pending commits on shutdown," but draining must either complete or notify — silent drop loses work. [`apps/agent-be/src/conversations/manual-commit.service.ts:91-93`]
+- **Dependency (confirm resolved, not fixed here):** `SandboxService.resume` returns `conversationId: sandboxId` — conflates sandbox ID with conversation ID. This story's "clients can reconnect and resume" AC depends on resume returning the correct conversationId. Verify 3-5 resolved it; if not, resolve as part of this story. [`apps/agent-be/src/sandbox/sandbox.service.ts:64`]
 
 **Acceptance Criteria:**
 
@@ -940,7 +944,7 @@ So that routine deploys never look like a crash or lose my work.
 
 ## Epic 4: MVP Cloud Deployment Provisioning
 
-Provision the platform's single production environment: `apps/web` on Vercel, `apps/agent-be` (Docker) and Postgres on Railway, secrets wired on both platforms, migrations applied, and CI able to trigger a deploy manually. Added via Sprint Change Proposal 2026-07-03, independent of Epic 2/3 sequencing. Out of scope: verifying SSE graceful drain (Epic 3, Story 3.12) and NFR-O1 spend monitoring (Epic 3, Story 3.8) — both require Epic 3 code that doesn't exist yet; this epic confirms platform-level capability only (Story 4.7).
+Provision the platform's single production environment: `apps/web` on Vercel, `apps/agent-be` (Docker) and Postgres on Railway, secrets wired on both platforms, migrations applied, and CI able to trigger a deploy manually. Independent of Epic 2/3 sequencing. Out of scope: verifying SSE graceful drain (Epic 3, Story 3.12) and NFR-O1 spend monitoring (Epic 3, Story 3.8) — both require Epic 3 code that doesn't exist yet; this epic confirms platform-level capability only (Story 4.7).
 
 ### Story 4.1: Provision the Vercel Project for `apps/web`
 
@@ -963,8 +967,6 @@ So that the frontend has a deployable production target.
 **When** this story completes
 **Then** at least a placeholder `*.vercel.app` production URL exists
 
-> *Note (2026-07-11): API automation verified. `VERCEL_TOKEN` is available in `.env.local` (team: `marius-projects-a878add7`, id: `team_DV9hczWkgqbOEoMGnX9Pta3t`). Project creation and deletion were confirmed via `POST/DELETE https://api.vercel.com/v10/projects` — a coding agent can execute this story autonomously via the Vercel REST API. The original "human-executed" note (2026-07-03) is superseded; it assumed no API token was available.*
-
 ### Story 4.2: Provision the Railway Project with Postgres for `apps/agent-be`
 
 As the platform operator,
@@ -980,8 +982,6 @@ So that the backend and its database share operational lifecycle per architectur
 **Given** the Postgres service
 **When** it is provisioned
 **Then** a `DATABASE_URL` connection string is available for Story 4.4 and Story 4.5
-
-> *Note (2026-07-11): API automation verified. `RAILWAY_TOKEN` is available in `.env.local` (workspace: `marius321967's Projects`, id: `a1f06762-5fbd-431e-811f-5183b80576e5`). Project creation and deletion were confirmed via the Railway GraphQL API (`POST https://backboard.railway.app/graphql/v2`, `projectCreate` mutation requires `workspaceId`) — a coding agent can execute this story autonomously via the Railway GraphQL API. The original "human-executed" note (2026-07-03) is superseded; it assumed no API token was available.*
 
 ### Story 4.3: Add a Dockerfile for `apps/agent-be`
 
@@ -1038,20 +1038,16 @@ So that both services run with the correct production configuration.
 
 **Given** `apps/agent-be` on Railway
 **When** environment variables are set
-**Then** `DATABASE_URL`, `CREDENTIAL_ENCRYPTION_KEK` (generated via `openssl rand -hex 32`), `DAYTONA_API_URL`, `DAYTONA_API_KEY`, `ANTHROPIC_API_KEY` (Claude Agent SDK credential, required per PRD §8 Assumption A-3 — consumed by the agent-be Anthropic proxy endpoint that sandboxes reach via `ANTHROPIC_BASE_URL`; never injected into a Daytona sandbox, per NFR-S1) are present
+**Then** `DATABASE_URL`, `CREDENTIAL_ENCRYPTION_KEK` (generate via `openssl rand -hex 32` — current `.env` value is a test placeholder), `DAYTONA_API_URL`, `DAYTONA_API_KEY`, and `ANTHROPIC_API_KEY` are present
+**And** the boundary JWT uses `AUTH_SECRET` for both signing and validation — no separate `AGENT_BACKEND_JWT_SECRET` is needed
 
 **Given** either platform
 **When** variables are reviewed
-**Then** `TEST_ENV` is confirmed absent — on `apps/web`, the existing `assertTestEnvNotInProduction()` guard (in `apps/web/src/lib/env-guard.ts`, invoked from `apps/web/src/instrumentation.ts`) must not fail startup; on `apps/agent-be`, an equivalent check (or documented manual verification) confirms `TEST_ENV` is not set in the Railway environment
+**Then** `TEST_ENV` is confirmed absent — `apps/web`'s `assertTestEnvNotInProduction()` guard (in `env-guard.ts`, invoked from `instrumentation.ts`) fails startup if set; `apps/agent-be` requires equivalent verification
 
-**Given** the GitHub OAuth App requirement
+**Given** the GitHub OAuth App
 **When** `AUTH_GITHUB_ID`/`AUTH_GITHUB_SECRET` are needed
-**Then** the OAuth App itself is registered manually by the user at `github.com/settings/developers` (no API exists for this) using the Story 4.1 Vercel domain as the callback URL — this sub-step is manual, not attempted by the agent
-
-> *Note (2026-07-11): Three corrections to the ACs above, verified against the implementation:*
-> *1. `AGENT_BACKEND_JWT_SECRET` is stale — the boundary JWT implementation (`boundary-jwt.guard.ts`, `streaming.controller.ts`) uses `AUTH_SECRET` for both signing and validation, not a separate key. Remove `AGENT_BACKEND_JWT_SECRET` from both the Vercel and Railway env var lists; `AUTH_SECRET` is already present on both.*
-> *2. The GitHub OAuth App already exists (`AUTH_GITHUB_ID=Ov23liwPSopCBFh9nMRN` in `.env`) with callback URL `http://localhost:3000/api/auth/callback/github`. The only manual step remaining is updating the callback URL to the production `*.vercel.app` domain once Story 4.1 completes — no new OAuth App registration needed.*
-> *3. `ANTHROPIC_API_KEY` is already in `.env` and in the GitHub Actions secrets. `DAYTONA_API_URL` and `DAYTONA_API_KEY` are already in `.env`. `AUTH_SECRET` is already in `.env`. The only value that needs generating for production is `CREDENTIAL_ENCRYPTION_KEK` (current value is a test placeholder `0000…0000`).*
+**Then** the OAuth App already exists in `.env` — the only manual step is updating its callback URL to the production `*.vercel.app` domain once Story 4.1 completes (no API exists for OAuth App management)
 
 ### Story 4.6: Add the Manual-Trigger Deploy Step to CI
 
@@ -1072,8 +1068,6 @@ So that shipping to production is deliberate, per Story 1.1's manual-trigger dep
 **Given** the deploy job targets production
 **When** it is configured
 **Then** it uses a GitHub Environment (e.g. `production`) with required reviewers enabled, a required reviewer count of at least 1, and a branch restriction pinning deploys to the default branch (e.g. `main`) — so that no maintainer can trigger a production deploy without human approval and no deploy originates from an unmerged branch
-
-> *Note (2026-07-11): Required reviewer is `marius321967`. The `production` GitHub Environment does not exist yet (only `copilot` exists) and must be created via `gh api` or repo settings. The `GITHUB_TOKEN` in `.env` has sufficient scope to create environments and configure protection rules.*
 
 ### Story 4.7: Confirm HTTP/2-Capable Reverse Proxy in Front of `apps/agent-be`
 
@@ -1115,13 +1109,9 @@ So that a production incident doesn't become a prolonged outage because no one k
 **When** the health check fails post-deploy
 **Then** the deploy is blocked from receiving traffic (Vercel build-step failure or Railway health-check failure prevents promotion), and the previous working deployment continues serving until the secret is corrected and a new deploy succeeds
 
-> *Note (2026-07-11): API automation verified. Vercel and Railway tokens in `.env.local` are sufficient for rollback verification via their respective APIs. The runbook authoring is standard code/doc work. The Prisma migration recovery procedure can be validated against a throwaway local Postgres. A coding agent can execute this story autonomously — the original "human-executed" note (2026-07-03) is superseded.*
-
 ### Story 4.9: Configure Custom Domain and Stable Production URL
 
-> *Note (2026-07-11): Deferred for MVP. The `*.vercel.app` production URL from Story 4.1 is stable (does not change between deploys) and sufficient for OAuth callback, Auth.js sessions, and SSE. A custom domain is a branding upgrade, not a functional requirement — neither the architecture nor PRD requires it. Skip this story unless a branded domain is needed before sharing the platform with non-dev users. If reactivated later, the only genuinely manual step is updating the GitHub OAuth App callback URL at `github.com/settings/developers` (no API exists for OAuth App management).*
->
-> *Update (2026-07-14): Reactivated and completed. Runbook committed at `docs/runbooks/custom-domain-setup.md` with regression guard test at `apps/agent-be/test/unit/custom-domain-setup.spec.ts` (24 tests, all passing).*
+**Status: Completed (2026-07-14).** Runbook at `docs/runbooks/custom-domain-setup.md`; regression guard test at `apps/agent-be/test/unit/custom-domain-setup.spec.ts` (28 tests, all passing).
 
 As the platform operator,
 I want a custom domain configured for the production deployment,
@@ -1145,10 +1135,6 @@ So that the GitHub OAuth callback URL and `AUTH_URL` env var point at a stable d
 **When** a user signs in
 **Then** the full OAuth flow (sign-in → callback → session establishment) works end-to-end against the custom domain, verified by a manual sign-in test
 
-**Given** this story's scope
-**When** considering execution
-**Then** this story is executed manually via the Vercel dashboard, DNS provider, and GitHub OAuth App settings — a coding agent cannot provision DNS or OAuth App configuration autonomously. Treat completion as a human-executed setup step, not a code-and-test implementation loop.
-
 ### Story 4.10: Configure Database Backups and Verify Restore
 
 As the platform operator,
@@ -1168,8 +1154,6 @@ So that a data loss event is recoverable rather than catastrophic.
 **Given** the restore procedure
 **When** it is documented
 **Then** a runbook is committed to the repository at `docs/runbooks/db-restore.md` covering: how to trigger a restore from Railway, how to point `apps/agent-be` at the restored instance, and the steps to verify integrity post-restore
-
-> *Note (2026-07-11): API automation verified. `RAILWAY_TOKEN` in `.env.local` is sufficient for backup configuration and restore testing via the Railway GraphQL API. The runbook authoring is standard code/doc work. A coding agent can execute this story autonomously — the original "human-executed" note (2026-07-03) is superseded. One uncertainty to resolve during implementation: verify whether Railway's API supports configuring backup retention policy (daily/7d, weekly/4w) or just triggering ad-hoc backups — if retention config is dashboard-only, that specific sub-step remains manual.*
 
 ### Story 4.11: Configure Launch-Window Monitoring and Alerting
 
@@ -1195,8 +1179,6 @@ So that I know the platform is broken before a user reports it.
 **When** considering what is out of scope
 **Then** NFR-O1 per-user LLM spend monitoring (Epic 3 Story 3.8), distributed tracing, and APM tools are explicitly out of scope — this story covers only the minimal observability needed to detect and respond to platform-level outages during the MVP launch window
 
-> *Note (2026-07-11): Monitoring service selected: UptimeRobot (free tier, 50 monitors at 5-minute intervals, email alerts). Chosen for independence from GitHub/Vercel/Railway — if GitHub Actions is degraded, monitoring still works. Two monitors needed: `apps/web` homepage + `apps/agent-be` `/health`. Implementation requires the operator's UptimeRobot API key (account-specific key from My Settings → API Keys). This is the only remaining credential not already in `.env.local`.*
-
 ### Story 4.12: Secret Rotation Reminder Mechanism
 
 As the platform operator,
@@ -1220,6 +1202,7 @@ So that rotations are not forgotten and secrets do not exceed their safe lifetim
 **Given** this story's scope
 **When** considering what is out of scope
 **Then** automated secret rotation (no human in the loop) is explicitly out of scope — this story delivers reminders only, not rotation automation
+
 ## Epic 5: UX Mockup Fidelity — Close Visual Drift
 
 A comprehensive audit (`_bmad-output/implementation-artifacts/investigations/ux-visual-drift-investigation.md`) identified 102 findings of visual drift between the authoritative UX mockups (7 HTML files + DESIGN.md + EXPERIENCE.md) and the implemented application across all 7 surfaces and the shared shell. Token values match exactly (42/42); the drift is structural (missing containers, wrong layouts), token-usage (wrong tokens applied), and copy-level. This epic closes the drift by restoring missing visual containers, fixing structural divergences, correcting token-usage, and addressing token-config gaps. The mockups are authoritative; the code aligns to them.
@@ -1294,10 +1277,6 @@ So that navigation feels consistent and polished on every page.
 **When** they render
 **Then** a 1px header bottom divider (`border-b`) is present on each — currently missing on all depth-1 pages (investigation: Shell Finding 15, missing header bottom divider)
 
-**Dev Notes:**
-
-- The two shell findings flagged by the investigation's Missing Evidence have been resolved: both are confirmed drift, not intentional redesigns. (a) Nav links relocated from a top-grouped cluster to bottom-pinned — DESIGN.md (§Side Navigation, items 5–6) and EXPERIENCE.md (§Side Navigation, items 5–7) both specify Project Map and Artifact Browser links in the main navigation flow after the separator, not bottom-pinned; the mockup (`key-project-map.html:287-298`) groups them inside `.nav-conversations` (flex:1) with the conversation list. The implementation's separate `flex-1` conversation container (present since the first commit, `659258e`, 2026-07-01) was never a deliberate relocation — no commit, proposal, or decision logs a layout change. (b) "Settings" label removed — DESIGN.md (§Side Navigation, item 6) states "Settings label appears as tooltip or beside it"; the mockup (`key-project-map.html:302`) renders a visible `<span class="nav-bottom-label">Settings</span>`. The label was never present in the code (absent since first commit) — an oversight, not a removal. Per the Epic 5 principle (line 931: "The mockups are authoritative; the code aligns to them"), all ACs in this story should be implemented as written.
-
 ### Story 5.3: Fix Conversation Stream Structural Drift
 
 As a user in a conversation,
@@ -1328,7 +1307,7 @@ So that messages, input, and session states feel integrated and readable.
 
 **Dev Notes:**
 
-- The inline tool/semantic pills AC was originally part of this story but has been split into Story 5.5 ("Interleave Tool and Semantic Pills Within the Agent Markdown Stream") because it requires a data model refactor, not just a visual fix. Implement Story 5.5 before or independently of this story — the remaining ACs here (column centering, empty-state, spinner placement, button styling, micro-drift) are genuine visual drift fixes with no architectural impact.
+- The inline tool/semantic pills AC was split into Story 5.5 because it requires a data model refactor, not just a visual fix. Implement Story 5.5 before or independently of this story — the remaining ACs here are genuine visual drift fixes with no architectural impact.
 
 ### Story 5.4: Fix Token-Usage Drift and Token-Config Gaps
 
@@ -1459,11 +1438,11 @@ So that I can follow the Agent's reasoning and actions as a single continuous na
 
 ## Epic 6: Sandbox-Based Agent Execution
 
-Migrates agent execution from host-based (`@anthropic-ai/claude-agent-sdk` `query()` subprocess) to sandbox-based execution inside the Daytona sandbox, per PRD §3 (lines 100, 105, 258, 262, 318, 479) and architecture.md data flow (line 668). Story 3.3 shipped host-based execution as a deviation (DP-2); this epic brings the implementation back in line with the prescribed architecture. Fixes Stories 3.3 (execution), 3.6 (working tree), and 3.10 (commit identity) at the execution layer.
+Migrates agent execution from host-based (`@anthropic-ai/claude-agent-sdk` `query()` subprocess) to sandbox-based execution inside the Daytona sandbox, per PRD §3 and architecture.md data flow. Story 3.3 shipped host-based execution as a deviation (DP-2); this epic brings the implementation back in line with the prescribed architecture. Fixes Stories 3.3 (execution), 3.6 (working tree), and 3.10 (commit identity) at the execution layer.
 
 **Change proposal:** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-11.md`
 
-**Process note — pattern-establishment all-files map (from Epic 5 retro action item #6):** every story in this epic that establishes or modifies a pattern (canonical headers, `no-scrollbar` utility, design-system tokens) must include an all-files matching-pattern map in its spec. The dev must audit completion against that map at review time. This is the process change that would have caught the `conversations/[conversationId]/loading.tsx` canonical header miss (Epic 5 L1, now resolved).
+**Process note — pattern-establishment all-files map:** every story in this epic that establishes or modifies a pattern (canonical headers, `no-scrollbar` utility, design-system tokens) must include an all-files matching-pattern map in its spec. The dev must audit completion against that map at review time.
 
 ### Story 6.1: Install sandbox-agent + Claude Code Binaries in Sandbox During Provision
 
@@ -1502,7 +1481,7 @@ So that the agent can run inside the sandbox where the repository lives, not on 
 - **Env validation:** add `ANTHROPIC_API_KEY` as a required string to `apps/agent-be/src/config/env.validation.ts` (Zod schema). Do NOT add `AGENT_WORKDIR` (irrelevant after Epic 6 — the agent runs inside the sandbox, not on the host).
 - **Existing provision code:** `SandboxService.provision()` (Story 3.1) currently provisions the sandbox, clones the repo, injects git identity, and emits session-ready. This story extends the provision sequence — the new steps (binary installation, `networkAllowList`, `ANTHROPIC_API_KEY` injection) are inserted before the clone step.
 - **`ISandboxService` test seam:** `SandboxServiceFake` must be updated to reflect the new provision steps (binary installation, `networkAllowList` application) so integration tests can assert on them.
-- **SandboxService fidelity audit findings (CF3, 2026-07-14):** the fidelity audit (`_bmad-output/test-artifacts/sandbox-service-fidelity-audit-2026-07-14.md`) found 5 false-confidence gaps in SandboxService tests. This story touches the provision sequence and SandboxService directly — fix the 3 findings that fall in its scope:
+- **SandboxService fidelity audit findings:** fix the 3 findings that fall in this story's scope:
   - **F1 (Gap A+B):** `destroy()` has zero SDK-boundary test coverage. `isNotFoundError()` (`sandbox.service.ts:179-185`) uses string matching (`includes('not found') || includes('404')`) instead of the real `DaytonaNotFoundError` class (`@daytonaio/sdk` errors/DaytonaError.d.ts) with `statusCode === 404`. Fix: replace string heuristic with `err instanceof DaytonaNotFoundError || (err instanceof DaytonaError && err.statusCode === 404)`. Add SDK-boundary tests for `destroy()` using `mock-daytona.ts` (both not-found idempotent-return and non-404 error-propagation paths).
   - **F2 (Gap A+C):** `provision()`'s catch-block cleanup (`sandbox.service.ts:39-45`) is dead code — `daytona.create` either resolves (sandbox assigned) or rejects (sandbox never assigned), so `if (sandbox)` is always false in the catch. The "no zombie sandboxes" integration test (`sandbox-lifecycle.integration.spec.ts:140-148`) is vacuously true because `SandboxServiceFake.failNextProvision` throws before allocation. Fix: either delete the dead branch (the SDK's `create` already waits for readiness internally) or implement real partial-allocation cleanup by surfacing the sandbox ID from `DaytonaError` metadata. If deleting, update the integration test to use `mock-daytona` at the SDK boundary to model the real partial-allocation failure mode.
   - **F3 (Gap C):** `resume()`'s `daytona.start(sandbox)` call (`sandbox.service.ts:67`) is only tested against the success-only mock (`mock-daytona.ts:107`). The real contract throws `DaytonaTimeoutError` / `DaytonaError` on start failures and lets sandboxes enter non-recoverable error states. Add a test with `mockDaytona.start.mockRejectedValueOnce(new DaytonaTimeoutError(...))` and assert the error propagates to the caller. Consider whether `sandbox.recover()` (exists on the `Sandbox` class) should be called before re-throwing.
@@ -1580,7 +1559,7 @@ So that the agent has direct filesystem access to the cloned repository and can 
 - **`terminateProcess` was a no-op:** Story 3.3 DP-2 documented that `terminateProcess(sandboxId, 'agent-${conversationId}')` was kept for `IAgentService` test compliance but was effectively a no-op for host-process agents. After this story, it terminates a real sandbox process.
 - **Cost tracking:** the SDK's terminal `result` message carries cost data. In the sandbox-based model, sandbox-agent's normalized event stream must still surface this cost data. Verify that the `result` message (or equivalent) is part of sandbox-agent's event schema. The `Number.isFinite` guard on cost values before persisting (Story 3.8) still applies.
 - **`FILE_MODIFYING_TOOLS` Set:** the module-level `Set` of Claude Code tool names that can modify the working tree (`Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit`) and the fire-and-forget `getWorkingTreeStatus` check after these tool calls — these now work correctly because the agent modifies files inside the sandbox where `git status` runs. In the host-based model, these checks ran against the sandbox while the agent modified the host — they never matched.
-- **Replace fabricated `MockEventSource` event shapes with recorded-session replay fixture (carry-forward from SDK fidelity retro Recommendation 2 + 2026-07-12/13 retro action items):** `ConversationPane.test.tsx` drives `MockEventSource` with hand-fabricated event shapes. The recorded-session replay fixture already exists at `apps/agent-be/test/fixtures/sdk-session-replay.jsonl` (23 messages, implemented during the SDK fidelity retro). The work is replacing the fabricated shapes in `ConversationPane.test.tsx` with this existing fixture — not creating the fixture. This closes SDK fidelity retro Finding 2 / Recommendation 2 and partially closes TD-3 for `ConversationPane`. Owner: Murat for the testing pattern; Amelia for the test files.
+- **Replace fabricated `MockEventSource` event shapes with recorded-session replay fixture:** `ConversationPane.test.tsx` drives `MockEventSource` with hand-fabricated event shapes. The recorded-session replay fixture already exists at `apps/agent-be/test/fixtures/sdk-session-replay.jsonl` (23 messages). The work is replacing the fabricated shapes in `ConversationPane.test.tsx` with this existing fixture — not creating the fixture.
 
 ### Story 6.4: Verify Working Tree, Commit, and Credential Flows
 
@@ -1616,7 +1595,7 @@ So that the Stories 3.6, 3.7, and 3.10 flows that were broken by host-based exec
 - **Why they work now:** with sandbox-based execution, the agent runs inside the sandbox where the repository is cloned. File modifications, git commands, and working-tree checks all operate on the same filesystem. The existing `getWorkingTreeStatus` / `ManualCommitService` / `tool-pill-classifier.service.ts` code should work without changes — the fix is the execution location, not the flow logic.
 - **Scope:** this story is verification, not new implementation. If a flow doesn't work, the fix is in the execution layer (Stories 6.1–6.3), not in the flow logic (Stories 3.6, 3.7, 3.10). Only adapt the flow logic if the sandbox-based execution surfaces a genuine edge case the host-based model didn't exercise.
 - **`executing*` Set guard:** `ManualCommitService`'s `executingCommits` Set guard (Story 3.6) still applies — concurrent commit requests for the same conversation are still prevented. The guard is transport-agnostic.
-- **SandboxService fidelity audit findings (CF3, 2026-07-14):** the fidelity audit (`_bmad-output/test-artifacts/sandbox-service-fidelity-audit-2026-07-14.md`) found 2 findings in the commit/skills paths that this story verifies:
+- **SandboxService fidelity audit findings:** fix the 2 findings in the commit/skills paths that this story verifies:
   - **F4 (Gap C):** `commit()`'s `exitCode !== 0` failure path (`sandbox.service.ts:130-131, 139-140`) is not tested for `git add` or `git commit`. Hidden bug: `git add` writes failures to stderr, but the SDK's `ExecuteResponse.result` is stdout-only — so `throw new Error(addResponse.result)` throws `Error('')`, and the user sees `MANUAL_SAVE_FAILED { error: '' }`. The sibling `injectGitConfig` failure path IS tested (`nfr-s1.spec.ts:207-223`), giving false confidence. Fix: add failure-path tests for both `git add` and `git commit` non-zero exitCode; consider whether the error message should include the exitCode or a generic diagnostic since `result` is empty for `git add` failures.
   - **F5 (Gap C):** `listSkills()`'s catch-block silent-swallow (`sandbox.service.ts:162-165`) is never exercised. Broad `catch (err)` returns `[]` indistinguishably for "no skills", "sandbox unreachable", "sandbox archived". Also reads `result` without checking `exitCode` first. Fix: add tests for `executeCommand` rejection and non-zero exitCode; assert `[]` is returned (current behavior is acceptable but should be an explicit asserted contract, not an unexercised code path).
 
@@ -1665,10 +1644,11 @@ So that we can confirm the agent can read the repo, run tools, commit, and meet 
 
 Stories 7.1–7.5 are UX gaps discovered from live-app usage after Epic 5 closed. These are not mockup drift — they are live-usage findings about states and feedback that the design never fully specified (loading feedback during in-app navigation, relative timestamps beyond one minute, prominence of focus rings on navigation surfaces) and about inconsistency in how already-specified patterns render (error presentation in the conversation view). Stories 7.1–7.5 are frontend presentation changes only; independent of Epic 6.
 
-**Extended 2026-07-16:** A deeper UX audit by Sally surfaced nine additional live-usage findings — dead ends and missing maintenance hatches the spec never specified. Stories 7.6–7.14 cover sign-out (avatar dropdown), repository disconnect, conversation management (delete, rename, search/show-all), the new-conversation intro prompt, the side-nav empty state, a global 404 page, and artifact-browser search/filter. Like 7.1–7.5 these are live-usage findings, not mockup drift; unlike 7.1–7.5, five of the nine also touch backend (a new bulk-terminate endpoint for repo disconnect, frontend wiring of the existing delete endpoint, Server Actions for rename and the full-conversation-list query) — but all remain independent of Epic 6 (they concern Auth.js session lifecycle, the `RepoConnection`/sandbox data model, and Prisma reads, not where the agent executes).
+**Extended 2026-07-16:** A deeper UX audit surfaced nine additional live-usage findings — dead ends and missing maintenance hatches the spec never specified. Stories 7.6–7.14 cover sign-out (avatar dropdown), repository disconnect, conversation management (delete, rename, search/show-all), the new-conversation intro prompt, the side-nav empty state, a global 404 page, and artifact-browser search/filter. Like 7.1–7.5 these are live-usage findings, not mockup drift; unlike 7.1–7.5, five of the nine also touch backend (a new bulk-terminate endpoint for repo disconnect, frontend wiring of the existing delete endpoint, Server Actions for rename and the full-conversation-list query) — but all remain independent of Epic 6 (they concern Auth.js session lifecycle, the `RepoConnection`/sandbox data model, and Prisma reads, not where the agent executes).
 
 **Change proposal (7.1–7.5):** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-13.md`
 **Change proposal (7.6–7.14):** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-16-ux-dead-ends.md`
+**Change proposal (Story 7.1 AC amendment — error mockups):** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-16-error-mockups.md`
 
 ### Story 7.1: Unify Error State Presentation in Conversation View
 
@@ -1676,30 +1656,57 @@ As a user in a conversation,
 I want every error that occurs within the conversation context to render inline in the same place and treatment as the happy-path greeting and the Claude Code error,
 So that errors feel like part of the conversation, not a disconnected popup somewhere else on the page.
 
+**Reference artifacts:**
+
+- Error-state mockups — the authoritative visual reference for the states this story unifies:
+  - `mockups/key-conversation-errors.html` — 7 error states on the Conversation surface, in full page context
+  - `mockups/key-new-conversation-errors.html` — 4 states on the New Conversation surface (3 blocking + 1 transient)
+  - `mockups/error-pattern-gallery.html` — cross-surface gallery of all 6 distinct error rendering patterns; every location labelled
+- Component specifications (DESIGN.md, the visual identity reference):
+  - `{components.blocking-content-message}` — the surface-replacement component used by every error state that hides the chat input and replaces the chat-messages panel. Max-width 480px; `negative-bg` background, 2px `negative` left border, `negative` icon, `sm`/`semibold`/`text-1` title, `sm`/`text-2` body, outlined action button.
+  - `{components.error-state-tool-pill}` — the tool-pill variant used when a single agent tool call fails. Inherits base `{components.tool-pill}` styling (no visual override); error signal is carried by an adjacent Access Notice (`{components.access-notice}`) or the full-width Credential Error Banner (`{components.credential-error-banner}`), not by the pill itself. Status text "✕ failed" differentiates from success "✓ done".
+- On any conflict between mockups and spines, the spines (DESIGN.md and EXPERIENCE.md §Conversation Surface States, §New Conversation) win (per EXPERIENCE.md Foundation).
+
 **Acceptance Criteria:**
 
 **Given** the new-conversation happy-path greeting
 **When** it renders
 **Then** it is the reference treatment: inline in the chat-messages panel, centered in the 824px column, with the established empty-state treatment
-**And** every error state that occurs within the conversation context matches this placement and visual treatment (inline, centered in the chat-messages panel) — including at minimum the sandbox-setup error ("Failed to set up the sandbox. Please try again or contact support.")
+**And** every error state that occurs within the conversation context matches this placement and visual treatment (inline, centered in the chat-messages panel)
+**And** blocking errors — those that hide the chat input and replace the chat-messages panel — including at minimum the session-start / sandbox-setup error — use the Blocking Content Message component (`{components.blocking-content-message}`) per `mockups/key-new-conversation-errors.html` State 1
 
-**Given** the sandbox-setup error with its Retry button
+**Given** a blocking error state with a Retry action — including the session-start / sandbox-setup error (`mockups/key-new-conversation-errors.html` State 1), the history-load failure (`mockups/key-conversation-errors.html` State 1), and the reconnecting-session timeout (`mockups/key-conversation-errors.html` State 2)
 **When** it renders
-**Then** the error message and the Retry action render co-located, inline in the chat-messages panel — not detached above/below the conversation flow
+**Then** the error message and Retry action render co-located, inline in the chat-messages panel — not detached above/below the conversation flow — using the Blocking Content Message component (`{components.blocking-content-message}`)
 **And** the Retry button's behavior is unchanged — only its placement and visual treatment change
 
-**Given** a sweep of conversation-context error states performed during implementation
-**When** any additional error state is found that renders outside the conversation flow (e.g. session-start timeout, reconnect failure, history-load error)
-**Then** it is brought inline to the same treatment
+**Given** the cross-surface error inventory in `mockups/error-pattern-gallery.html` (all 6 distinct error rendering patterns: Pattern 1 Inline field error; Pattern 2 Auth error card; Pattern 3 Blocking Content Message; Pattern 4 Credential Error Banner; Pattern 5 Access Notice; Pattern 6 Error-State Tool Pill)
+**When** the implementer runs the conversation-context error-state sweep
+**Then** every conversation-context error state is traceable to a labelled gallery pattern (Patterns 3–6 for in-conversation surfaces; Patterns 1–2 are pre-app-shell states this story does not touch)
+**And** any state that renders outside the conversation flow is brought inline per its gallery pattern's treatment
+**And** any state found during implementation that is NOT covered by the gallery is brought inline per the same treatment AND registered as a finding before the story can close
 
-**Given** an error within the conversation context and the Credential Error Banner (UX-DR10)
+**Given** a single agent tool call fails mid-turn — a 401 credential failure on a git operation, or a 403 access-denied (`ACCESS_DENIED` with code `RATE_LIMITED` / `ORG_RESTRICTION` / `INSUFFICIENT_PERMISSION`)
+**When** the failing tool call renders in the message stream
+**Then** the failing operation renders as the Error-State Tool Pill (`{components.error-state-tool-pill}`) — same styling as the base Tool Pill, no visual override; status text "✕ failed" differentiates from success "✓ done"
+**And** the error signal is carried by an adjacent component, NOT by the pill itself:
+  - For a credential failure (401 git operation), the Credential Error Banner (`{components.credential-error-banner}`) appears full-width above the message panel — see `mockups/key-conversation-errors.html` State 3
+  - For an access-denied (403 git operation), an Access Notice (`{components.access-notice}`) renders inline in the message stream directly below the failing pill, with copy derived from the `ACCESS_DENIED` event's `code` field — see `mockups/key-conversation-errors.html` States 4–6
+**And** clicking the Error-State Tool Pill expands to show the raw error output (same expand behavior as the base Tool Pill)
+**And** the agent turn does not halt on an access-denied — the tool call's error result is returned to the agent, which adapts (per `architecture.md` §ACCESS_DENIED classification; the agent-process-terminated case in AC 2's gallery is distinct and only fires on a circuit-breaker event, not a single tool-call failure)
+
+**Given** an error within the conversation context and the Credential Error Banner (UX-DR10, `{components.credential-error-banner}`)
 **When** both could appear
-**Then** the inline error (this story) is distinct from the Credential Error Banner — the banner is the already-specified full-width re-auth surface; this story covers sandbox/session/agent errors that belong in the conversation stream, not credential-health banners
+**Then** the inline error (this story) is distinct from the Credential Error Banner — the banner is the already-specified full-width re-auth surface above the message panel (`mockups/key-conversation-errors.html` State 3 renders both together as the reference); this story covers sandbox/session/agent errors that belong in the conversation stream, not credential-health banners
 
 **Scope notes:**
 - Reference treatment = the happy-path new-conversation greeting.
-- Presentation (placement + visual treatment) is in scope. Rewriting error message copy wholesale is out of scope — only bring copy into compliance if a message clearly violates the Voice & Tone rules (EXPERIENCE.md §Voice and Tone).
+- Two design decisions (Marius, 2026-07-16):
+  1. **Blocking content messages carry the `negative` color family** — `negative-bg` background, 2px `negative` left border, `negative` icon. Captured in DESIGN.md `{components.blocking-content-message}`.
+  2. **Error-state Tool Pills stay neutral** — they inherit base `{components.tool-pill}` styling with no visual override; the error signal is carried by the adjacent Access Notice or Credential Error Banner. Status text ("✕ failed") differentiates from success ("✓ done"). Captured in DESIGN.md `{components.error-state-tool-pill}`.
+- Presentation (placement + visual treatment) is in scope. Rewriting error message copy wholesale is out of scope — only bring copy into compliance if a message clearly violates the Voice & Tone rules (EXPERIENCE.md §Voice and Tone). The example copy quoted in the original AC ("Failed to set up the sandbox. Please try again or contact support.") is illustrative; canonical copy lives in the spine (EXPERIENCE.md and the mockups) — defer to those at edit time.
 - The Retry button's behavior is unchanged.
+- Mockups are the visual reference; DESIGN.md and EXPERIENCE.md win on any conflict (per EXPERIENCE.md Foundation).
 
 ### Story 7.2: Loading State for Sidebar Page Navigation
 
@@ -2109,3 +2116,75 @@ So that they are not inaccessible except by direct URL.
 - For MVP (max 10 active conversations per FR-11), the search input filters the returned list client-side (same pattern as Story 7.13). Post-MVP, server-side `where: { title: { contains: searchQuery, mode: 'insensitive' } }` Prisma filtering and pagination could be added. The `Conversation` table has `@@index([userId, lastActiveAt])`, so the query is a simple indexed read.
 - Reference: architecture review §9 (Finding 9), EXPERIENCE.md §Conversation List Interactions → Show All.
 - Soft dependency on Story 7.5 (relative-time treatment for the timestamp column); acceptable to ship 7.14 with an alternate fallback (relative-only without live updates, or absolute time) if 7.5 is delayed.
+
+## Epic 8: Sandbox Reconciliation via Environment-Scoped Labels
+
+Daytona sandboxes from local dev, the dev deployment, tests, and production share one account and a 30GiB disk quota, with no reconciliation mechanism — sandboxes leak on crashes, provisioning-window failures, and transient destroy failures, exhausting the quota. This epic adds an environment-scope label to every sandbox at creation time and a periodic background reaper that lists sandboxes by that label, reconciles them against the database, and destroys orphans. Defense-in-depth for the in-process cleanup paths in Epic 3 (Stories 3.1, 3.9, 3.12) that cannot run when the process crashes.
+
+**Change proposal:** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-17-sandbox-reaper.md`
+
+### Story 8.1: Reconcile Orphaned Sandboxes via Environment-Scoped Labels
+
+As the platform operator,
+I want every Daytona sandbox tagged with the environment that created it and a background reaper that destroys orphaned sandboxes scoped to its own environment,
+So that sandbox leaks from crashes, provisioning-window failures, and transient destroy failures do not accumulate against the shared 30GiB disk quota and block provisioning across environments.
+
+**Acceptance Criteria:**
+
+**Given** the `apps/agent-be` environment validation schema in `env.validation.ts`
+**When** the Zod schema is extended
+**Then** `SANDBOX_ENV_LABEL` is a required, non-empty string (`z.string().min(1)`) — startup fails loudly if it is unset or empty, rather than silently provisioning unlabeled sandboxes
+**And** `SANDBOX_REAPER_INTERVAL_MS` is an optional string parsed to an integer with a default of `900000` (15 minutes) when unset or invalid, matching the `MID_SESSION_IDLE_TIMEOUT_MS` env-parsing pattern in `idle-timeout.service.ts`
+**And** `configuration.ts` maps both to config keys (`sandboxEnvLabel`, `sandboxReaperIntervalMs`) so they are injectable via `ConfigService`
+
+**Given** `SandboxService.provision()` calls `daytona.create()` in `sandbox.service.ts`
+**When** the create call is made
+**Then** the `labels` object includes both `conversationId` (unchanged) and `scope` set to the `SANDBOX_ENV_LABEL` value — `labels: { conversationId: params.conversationId, scope: config.sandboxEnvLabel }` — so every sandbox is attributable to its environment at the Daytona API level
+**And** the existing `envVars` and `networkAllowList` arguments are unchanged
+**And** a sandbox created without the `scope` label (e.g. a pre-existing sandbox from before this story) is not destroyed by the reaper on the basis of a missing label alone — it is logged and skipped, not guessed at
+
+**Given** the typed mock factory `mock-daytona.ts` is the sole test seam for the Daytona SDK boundary
+**When** it is extended to support the reaper
+**Then** the `MockDaytona` interface gains a `list` method typed as `jest.Mock<AsyncIterableIterator<MockSandbox>, [ListSandboxesQuery?]>` matching the real SDK signature `list(query?: ListSandboxesQuery): AsyncIterableIterator<Sandbox>`
+**And** the `createMockDaytona` factory accepts a list of pre-built mock sandboxes (or a filtering function) so a test can seed sandboxes with mixed labels and assert the reaper iterates only those matching its `scope` label
+**And** the existing `create`/`get`/`delete`/`start` mocks are unchanged
+
+**Given** a new `SandboxReaperService` in `apps/agent-be/src/sandbox/sandbox-reaper.service.ts`, registered as a provider in `SandboxModule`
+**When** its `reap()` method runs
+**Then** it calls `daytona.list({ labels: { scope: config.sandboxEnvLabel } })` — server-side label filtering returns only sandboxes belonging to this environment, not every sandbox in the account
+**And** for each returned sandbox it reconciles against the database: it looks up the conversation by the sandbox's `conversationId` label (or by `sandboxId` against `conversation.sandboxId`)
+**And** it destroys a sandbox only if the conversation record is gone, or `conversation.sandboxStatus` is `'idle-timeout'` or `'failed'` (terminal statuses where the sandbox should no longer be alive)
+**And** it skips (does not destroy) any sandbox whose conversation has status `'ready'` or `'provisioning'` — these are active sandboxes, even if the in-memory `sandboxIds` Map has lost them (e.g. post-restart)
+**And** destroy failures are logged but do not abort the reap pass — the next interval retries them (transient Daytona failures)
+**And** the reaper does not depend on `ConversationsService`'s in-memory `sandboxIds`/`sandboxStatuses` Maps (which are lost on restart) — it reads Postgres, which survives
+
+**Given** the reaper must run periodically without a new dependency
+**When** `SandboxReaperService` implements `OnModuleInit` and `OnModuleDestroy`
+**Then** `onModuleInit` starts a `setInterval` with the configured `SANDBOX_REAPER_INTERVAL_MS` (default 15 minutes) calling `reap()`, and the timer is `.unref()`'d so it does not keep the process alive on shutdown (matching `IdleTimeoutService`'s pattern)
+**And** `onModuleDestroy` clears the interval (matching `IdleTimeoutService.onModuleDestroy` → `clearAll`)
+**And** no `@nestjs/schedule` dependency is added — `setInterval` is the scheduling primitive
+**And** the first `reap()` does not fire immediately on boot (it waits one interval) so a rolling deploy does not race against in-flight provisioning
+
+**Given** the existing `scripts/cleanup-daytona-sandboxes.ts` lists and deletes all sandboxes unscoped
+**When** it is updated
+**Then** it accepts an optional `--scope <value>` flag (parsed from `process.argv`) that, when present, filters `daytona.list({ labels: { scope: value } })` so the script destroys only sandboxes belonging to that scope
+**And** when the flag is absent, the existing behavior (list and delete all) is preserved with a deprecation warning printed to stderr recommending `--scope` for safety
+**And** the script's existing `DAYTONA_API_URL` / `DAYTONA_API_KEY` env-var requirement and `process.exit(0)` on failure are unchanged
+
+**Given** each environment (local dev, dev deployment, tests, production) shares one Daytona account
+**When** environment configuration is applied
+**Then** `SANDBOX_ENV_LABEL` is set to a distinct value in each: `local` for local development, `dev` for the dev deployment, `prod` for production, and `test` for the test suite
+**And** the values are documented in `.env.example` (or the equivalent env-var reference) so a new contributor cannot start `apps/agent-be` without setting `SANDBOX_ENV_LABEL` (the Zod validation enforces this at boot)
+**And** `SANDBOX_REAPER_INTERVAL_MS` is optionally tunable per environment (e.g. a shorter interval in `test`) but ships with the 15-minute default everywhere
+
+**Scope notes:**
+
+- **Defense-in-depth, not a replacement.** The reaper is the reconciliation backstop for leaks the in-process cleanup paths (Story 3.1 provision-failure cleanup, Story 3.9 mid-session idle teardown, Story 3.12 graceful drain) cannot reach — crashes, `SIGKILL`, OOM, and transient Daytona destroy failures. Those in-process paths remain the first line of defense and are not removed or weakened. Optionally, Story 8.1 may also add an `onModuleDestroy` hook to `ConversationsService` to destroy known-active sandboxes on graceful `SIGTERM` (closing cause 1's graceful-shutdown case directly); this is in-scope as a first-line improvement but not required for the story to close — the reaper covers it.
+- **Why `scope` and not `env`.** `env` is a common Daytona label name; `scope` avoids collision and reads clearly as "the scope this sandbox belongs to." The label value is the environment identifier (`local`/`dev`/`prod`/`test`).
+- **Why reconcile against Postgres, not in-memory Maps.** `ConversationsService.sandboxStatuses` and `sandboxIds` are in-memory `Map`s lost on restart (the gap Story 3.12's prerequisite flagged). A reaper that read those Maps would itself be blind immediately after a crash — the exact scenario that orphans sandboxes. Postgres `conversation.sandboxStatus` / `conversation.sandboxId` survive restarts.
+- **Terminal-status gate.** `'idle-timeout'` and `'failed'` are the statuses `ConversationsService` sets when it believes it has torn down (or failed to set up) a sandbox. If a sandbox with one of these statuses is still alive in Daytona, the in-process destroy either never ran (crash) or failed (transient error) — the reaper finishes the job. `'ready'` and `'provisioning'` mean the application believes the sandbox is active; the reaper leaves them alone even if no in-memory record exists, because a post-restart `ready` sandbox may be serving a resumed conversation.
+- **No schema migration.** The reaper reads existing `Conversation.sandboxStatus` and `Conversation.sandboxId` columns (persisted by `ConversationsService.persistSandboxState`). No new column or table.
+- **`setInterval` + `.unref()` rationale.** Matches `IdleTimeoutService` exactly. `.unref()` ensures the reaper timer does not prevent `apps/agent-be` from exiting on shutdown; `onModuleDestroy` clears it. No `@nestjs/schedule` dependency — the project does not use it and one periodic task does not justify adding it.
+- **First reap deferred one interval.** A rolling deploy starts a new instance while the old instance's sandboxes are still active. Firing `reap()` immediately on boot could destroy a sandbox the old instance is still serving. Waiting one interval gives the old instance time to drain (Story 3.12's graceful-drain window).
+- **Pre-existing unlabeled sandboxes.** Sandboxes created before this story ships have no `scope` label and will not be returned by `daytona.list({ labels: { scope } })`. They are not destroyed by the reaper (it cannot see them). A one-time manual cleanup using the updated `cleanup-daytona-sandboxes.ts` (without `--scope`, or with a one-off label injection) clears them; this is an operational cutover step, not a story AC.
+- **No dependencies on other stories or epics.** Epic 8 is independent of Epic 7 (frontend) and the done Epics 1–6.
