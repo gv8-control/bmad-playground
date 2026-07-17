@@ -493,7 +493,7 @@ describe('[P0] Story 6.1 AC-1 — provision() installs sandbox-agent and Claude 
     expect(remotePaths.some((p) => p.includes('sandbox-agent'))).toBe(true);
   });
 
-  it('[P0] makes sandbox-agent executable via executeCommand(chmod +x ...)', async () => {
+  it('[P0] makes sandbox-agent executable via executeCommand(install -m 755 ...)', async () => {
     await service.provision({
       conversationId: 'conv-1',
       repoUrl: 'https://github.com/test/repo.git',
@@ -503,7 +503,10 @@ describe('[P0] Story 6.1 AC-1 — provision() installs sandbox-agent and Claude 
     const commands = mockSandbox.process.executeCommand.mock.calls.map(
       (c) => c[0] as string,
     );
-    expect(commands.some((cmd) => cmd.includes('chmod') && cmd.includes('+x'))).toBe(true);
+    // AC-1 invariant: the sandbox-agent binary is made executable during provision.
+    // `sudo install -m 755` atomically copies and sets the executable bit (replaces
+    // the earlier `chmod +x` approach, which could not write to /usr/local/bin).
+    expect(commands.some((cmd) => cmd.includes('install') && cmd.includes('755'))).toBe(true);
   });
 
   it('[P0] installs Claude Code via executeCommand(npm install -g @anthropic-ai/claude-code@<version>)', async () => {
@@ -646,7 +649,7 @@ describe('[P0] Story 6.1 AC-1 — credential-isolation + input-injection regress
     expect(allCommands).not.toContain('GITHUB_TOKEN');
   });
 
-  it('[P0] chmod and npm install commands use constant paths (no user-controlled input injection)', async () => {
+  it('[P0] install and npm install commands use constant paths (no user-controlled input injection)', async () => {
     await service.provision({
       conversationId: 'conv-1',
       repoUrl: 'https://github.com/test/repo.git',
@@ -658,7 +661,7 @@ describe('[P0] Story 6.1 AC-1 — credential-isolation + input-injection regress
     );
     // No user-controlled values (conversationId, repoUrl, credential) in binary install commands
     const binaryInstallCommands = commands.filter(
-      (cmd) => cmd.includes('chmod') || cmd.includes('npm install') || cmd.includes('--version') || cmd.includes('--help'),
+      (cmd) => cmd.includes('install') || cmd.includes('npm install') || cmd.includes('--version') || cmd.includes('--help'),
     );
     for (const cmd of binaryInstallCommands) {
       expect(cmd).not.toContain('conv-1');
@@ -692,9 +695,9 @@ describe('[P0] Story 6.1 AC-7 F4 — installBinaries() failure-path tests (empty
     delete process.env.ANTHROPIC_API_KEY;
   });
 
-  it('[P0] throws a non-empty diagnostic (incl. exit code) when chmod fails with empty result', async () => {
+  it('[P0] throws a non-empty diagnostic (incl. exit code) when install fails with empty result', async () => {
     mockSandbox.process.executeCommand.mockImplementation((cmd: string) => {
-      if (cmd.includes('chmod')) {
+      if (cmd.includes('install') && !cmd.includes('npm')) {
         return Promise.resolve({ exitCode: 1, result: '' });
       }
       return Promise.resolve({ exitCode: 0, result: '' });
@@ -760,10 +763,10 @@ describe('[P0] Story 6.1 AC-7 F4 — installBinaries() failure-path tests (empty
     ).rejects.toThrow(/exit code 1/);
   });
 
-  it('[P0] throws the result message when chmod fails with non-empty result (primary branch)', async () => {
+  it('[P0] throws the result message when install fails with non-empty result (primary branch)', async () => {
     mockSandbox.process.executeCommand.mockImplementation((cmd: string) => {
-      if (cmd.includes('chmod')) {
-        return Promise.resolve({ exitCode: 1, result: 'chmod: operation not permitted' });
+      if (cmd.includes('install') && !cmd.includes('npm')) {
+        return Promise.resolve({ exitCode: 1, result: 'install: operation not permitted' });
       }
       return Promise.resolve({ exitCode: 0, result: '' });
     });
@@ -774,7 +777,7 @@ describe('[P0] Story 6.1 AC-7 F4 — installBinaries() failure-path tests (empty
         repoUrl: 'https://github.com/test/repo.git',
         credential: 'fake-oauth-token',
       }),
-    ).rejects.toThrow('chmod: operation not permitted');
+    ).rejects.toThrow('install: operation not permitted');
   });
 });
 
@@ -843,10 +846,10 @@ describe('[P0] Story 6.1 NFR — stall-detection timeouts on all installBinaries
 
     const calls = mockSandbox.process.executeCommand.mock.calls;
     const npmCall = calls.find((c) => (c[0] as string).includes('npm install'));
-    const chmodCall = calls.find((c) => (c[0] as string).includes('chmod'));
+    const installCall = calls.find((c) => (c[0] as string).includes('install') && !(c[0] as string).includes('npm'));
     expect(npmCall).toBeDefined();
-    expect(chmodCall).toBeDefined();
-    expect((npmCall![3] as number)).toBeGreaterThan((chmodCall![3] as number));
+    expect(installCall).toBeDefined();
+    expect((npmCall![3] as number)).toBeGreaterThan((installCall![3] as number));
   });
 });
 
