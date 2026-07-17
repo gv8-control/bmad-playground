@@ -23,7 +23,7 @@ sources:
 
 **DESIGN.md reference:** Visual identity (color tokens, typography, radii, component specifications) is fully defined in DESIGN.md. This document specifies behavior, information architecture, states, and interactions only. DESIGN.md tokens are referenced as `{colors.*}`, `{typography.*}`, etc.
 
-**Mockups:** Key-screen HTML mockups for all seven surfaces live in [mockups/](mockups/), linked from each surface's State Patterns section. Mockups show one representative state per surface; the full state inventory lives in the tables here. On any conflict, DESIGN.md and EXPERIENCE.md win over the mockups. Mocks are rendered at 1280px viewport width for readability; the 1024px minimum layout and the 768–1023px tablet collapsed-nav behavior are spine-only.
+**Mockups:** Key-screen HTML mockups for all seven surfaces live in [mockups/](mockups/), linked from each surface's State Patterns section. Error states for Conversation and New Conversation are in [mockups/key-conversation-errors.html](mockups/key-conversation-errors.html) and [mockups/key-new-conversation-errors.html](mockups/key-new-conversation-errors.html). A cross-surface [error pattern gallery](mockups/error-pattern-gallery.html) renders every distinct error rendering pattern on one page for style reference. Mockups show one representative state per surface; the full state inventory lives in the tables here. On any conflict, DESIGN.md and EXPERIENCE.md win over the mockups. Mocks are rendered at 1280px viewport width for readability; the 1024px minimum layout and the 768–1023px tablet collapsed-nav behavior are spine-only.
 
 ---
 
@@ -288,7 +288,7 @@ GitHub is the sole identity provider. There is no separate sign-up screen — a 
 
 ### New Conversation
 
-Mockup: [mockups/key-new-conversation.html](mockups/key-new-conversation.html)
+Mockup: [mockups/key-new-conversation.html](mockups/key-new-conversation.html) (idle, slash picker, starting session). Error states: [mockups/key-new-conversation-errors.html](mockups/key-new-conversation-errors.html) — session timeout, conversation limit, seat limit, starting session (transient).
 
 Entry point: "New Conversation" button in side nav, or at `/conversations/new`.
 
@@ -319,7 +319,7 @@ When a user opens an existing Conversation from the side nav or a direct URL:
 
 ### Conversation Surface States
 
-Mockup: [mockups/key-conversation.html](mockups/key-conversation.html)
+Mockup: [mockups/key-conversation.html](mockups/key-conversation.html) (active state). Error states: [mockups/key-conversation-errors.html](mockups/key-conversation-errors.html) — all 7 error states rendered in full page context.
 
 | State | Display |
 |---|---|

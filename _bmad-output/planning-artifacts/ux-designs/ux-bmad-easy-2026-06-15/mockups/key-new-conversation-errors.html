@@ -252,7 +252,8 @@
     font-style: italic;
   }
 
-  /* === Blocking error message (replaces empty state) === */
+  /* === Blocking error message (replaces empty state) ===
+     Decision (2026-07-16): carries negative color — negative-bg + negative left border + negative icon. */
   .blocking-message {
     display: flex;
     flex-direction: column;
@@ -260,6 +261,10 @@
     gap: 16px;
     max-width: 480px;
     text-align: center;
+    background: rgba(240,107,107,0.08);
+    border-left: 2px solid #F06B6B;
+    border-radius: 4px;
+    padding: 16px 20px;
   }
   .blocking-icon {
     width: 48px;
@@ -271,7 +276,7 @@
     align-items: center;
     justify-content: center;
     font-size: 1.25rem;
-    color: #56556A;
+    color: #F06B6B;
   }
   .blocking-title {
     font-size: 1.125rem;
