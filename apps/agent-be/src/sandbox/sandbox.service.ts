@@ -50,7 +50,7 @@ const SANDBOX_AGENT_TEMP_PATH = '/tmp/sandbox-agent-upload';
 const CLAUDE_CODE_VERSION = '2.1.210';
 
 /**
- * Timeout (seconds) for short binary-install commands (chmod, --version
+ * Timeout (seconds) for short binary-install commands (sudo install, --version
  * verifications). Matches the stall-detection discipline applied to other
  * sandbox executeCommand calls (injectGitConfig/commit use 10s; these run
  * during cold-start provision so a slightly larger budget is reasonable).
