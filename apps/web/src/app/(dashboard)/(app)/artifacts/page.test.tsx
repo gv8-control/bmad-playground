@@ -452,10 +452,6 @@ describe('ArtifactsPage — page structure (AC-1, UX-DR16)', () => {
     });
   });
 
-  // ─── Story 5.4: Hairline border token (AC-6) ───────────────────────────────
-  //
-  // Story 5.4: AC-6: Artifact list pane divider uses border-surface-raised (not border-border-subtle).
-
   describe('[P0] Story 5.4, AC-6 — Artifact list pane border token', () => {
     it('list pane divider uses border-surface-raised, not border-border-subtle (AC-6)', async () => {
       setupArtifacts(ARTIFACTS);
@@ -465,10 +461,6 @@ describe('ArtifactsPage — page structure (AC-1, UX-DR16)', () => {
       expect(html).not.toContain('border-border-subtle');
     });
   });
-
-  // ─── Story 5.4: Scrollbar hiding (AC-7) ────────────────────────────────────
-  //
-  // Story 5.4: AC-7: Scrollable artifact list pane hides scrollbars via no-scrollbar.
 
   describe('[P0] Story 5.4, AC-7 — Scrollbar hiding on artifact list pane', () => {
     it('artifact list pane has no-scrollbar class (AC-7)', async () => {

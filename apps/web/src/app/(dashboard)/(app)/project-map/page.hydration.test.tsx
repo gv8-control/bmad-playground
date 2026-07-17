@@ -18,8 +18,6 @@
 import '@testing-library/jest-dom';
 import { renderAndHydrate } from '@/lib/test/hydrate-root-utils';
 
-// --- Data dependency mocks ---
-
 const mockRedirect = jest.fn();
 const mockUsePathname = jest.fn();
 const mockUseRouter = jest.fn();

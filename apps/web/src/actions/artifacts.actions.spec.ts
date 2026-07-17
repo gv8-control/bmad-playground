@@ -14,8 +14,6 @@
  * - Missing repo connection → NO_REPO_CONNECTION
  */
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
-
 const mockAuth = jest.fn();
 jest.mock('@/lib/auth', () => ({ auth: (...args: unknown[]) => mockAuth(...args) }));
 
@@ -51,12 +49,8 @@ jest.mock('@/lib/prisma', () => ({
   }),
 }));
 
-// ─── Subject under test ───────────────────────────────────────────────────────
-
 import { syncArtifactsAction } from './artifacts.actions';
 import { RateLimitError as RealRateLimitError } from '@/lib/repository-validation';
-
-// ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const SESSION = { userId: 'usr_abc123' };
 const DECRYPTED_TOKEN = 'gho_real_token';
@@ -80,8 +74,6 @@ beforeEach(() => {
 afterEach(() => {
   jest.restoreAllMocks();
 });
-
-// ─── Happy path ───────────────────────────────────────────────────────────────
 
 describe('syncArtifactsAction — happy path', () => {
   it('[P0] resolves session, token, repo connection and delegates to syncArtifacts with correct args', async () => {
@@ -139,8 +131,6 @@ describe('syncArtifactsAction — happy path', () => {
   });
 });
 
-// ─── Missing session ──────────────────────────────────────────────────────────
-
 describe('syncArtifactsAction — missing session', () => {
   it('[P0] returns NO_CREDENTIAL when session is missing', async () => {
     mockAuth.mockResolvedValue(null);
@@ -152,8 +142,6 @@ describe('syncArtifactsAction — missing session', () => {
   });
 });
 
-// ─── Missing repo connection ──────────────────────────────────────────────────
-
 describe('syncArtifactsAction — missing repo connection', () => {
   it('[P0] returns NO_REPO_CONNECTION when no RepoConnection exists for the user', async () => {
     mockFindUniqueRepoConnection.mockResolvedValue(null);
@@ -164,8 +152,6 @@ describe('syncArtifactsAction — missing repo connection', () => {
     expect(mockSyncArtifacts).not.toHaveBeenCalled();
   });
 });
-
-// ─── Credential failure from resolveOAuthToken ───────────────────────────────
 
 describe('syncArtifactsAction — credential failure from resolveOAuthToken', () => {
   it('[P0] returns NO_CREDENTIAL and calls markCredentialFailed when resolveOAuthToken throws CredentialFailureError', async () => {
@@ -188,8 +174,6 @@ describe('syncArtifactsAction — credential failure from resolveOAuthToken', ()
     expect(mockSyncArtifacts).not.toHaveBeenCalled();
   });
 });
-
-// ─── Errors from syncArtifacts ────────────────────────────────────────────────
 
 describe('syncArtifactsAction — errors from syncArtifacts', () => {
   it('[P0] returns RATE_LIMITED when syncArtifacts throws RateLimitError', async () => {
@@ -219,8 +203,6 @@ describe('syncArtifactsAction — errors from syncArtifacts', () => {
   });
 });
 
-// ─── Invalid repo URL ─────────────────────────────────────────────────────────
-
 describe('syncArtifactsAction — invalid repo URL', () => {
   it('[P1] returns UNKNOWN when repoUrl does not match GitHub URL pattern', async () => {
     mockFindUniqueRepoConnection.mockResolvedValue({
@@ -234,8 +216,6 @@ describe('syncArtifactsAction — invalid repo URL', () => {
     expect(mockSyncArtifacts).not.toHaveBeenCalled();
   });
 });
-
-// ─── Cooldown (per-user rate limiting) ───────────────────────────────────────
 
 describe('syncArtifactsAction — cooldown', () => {
   it('[P0] returns RATE_LIMITED when cooldown is active (lastSyncedAt within 30s)', async () => {
@@ -284,8 +264,6 @@ describe('syncArtifactsAction — cooldown', () => {
     expect(updateManyCallOrder).toBeLessThan(resolveTokenCallOrder);
   });
 });
-
-// ─── Token never returned ─────────────────────────────────────────────────────
 
 describe('syncArtifactsAction — security', () => {
   it('[P0] decrypted access token is NEVER returned to the client', async () => {

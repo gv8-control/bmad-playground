@@ -21,8 +21,6 @@
 import type { ExecuteResponse } from '@daytonaio/sdk/cjs/types/ExecuteResponse';
 import type { GitStatus, FileStatus, Status } from '@daytona/toolbox-api-client';
 
-// --- Typed mock interfaces (structurally compatible with real SDK types) ---
-
 export type MockExecuteCommand = jest.Mock<
   Promise<ExecuteResponse>,
   [string, string?, Record<string, string>?, number?]
@@ -102,8 +100,6 @@ export interface MockDaytona {
   start: jest.Mock<Promise<void>, [MockSandbox]>;
 }
 
-// --- Factory functions ---
-
 /**
  * Creates a mock Sandbox with all git/process methods as jest.fn() returning
  * success defaults. Override individual methods per-test as needed.
@@ -166,8 +162,6 @@ export function createMockDaytonaWithSandbox(
   const mockDaytona = createMockDaytona(mockSandbox);
   return { mockDaytona, mockSandbox };
 }
-
-// --- Helper builders for GitStatus / FileStatus ---
 
 /**
  * Builds a FileStatus object for test assertions.

@@ -7,8 +7,6 @@
  * token never returned to client), AC-4 (descriptive per-cause error messages).
  */
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
-
 const mockAuth = jest.fn();
 jest.mock('@/lib/auth', () => ({ auth: (...args: unknown[]) => mockAuth(...args) }));
 
@@ -49,14 +47,10 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-// ─── Subject under test ───────────────────────────────────────────────────────
-
 import { connectRepository } from './repo-connection.actions';
 import { getCredentialHealth } from '@/lib/credential-health';
 import { BMAD_DOCUMENTATION_LINK, type CredentialHealthStatus } from '@bmad-easy/shared-types';
 import { clearGithubCache } from '@/lib/repository-validation';
-
-// ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const SESSION = { userId: 'usr_abc123' };
 const VALID_URL = 'https://github.com/my-org/my-repo';
@@ -112,8 +106,6 @@ function setupValidationHappyPath() {
   });
 }
 
-// ─── URL validation (AC-2, Task 4.2) ─────────────────────────────────────────
-
 describe('connectRepository — URL validation (AC-2)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -155,8 +147,6 @@ describe('connectRepository — URL validation (AC-2)', () => {
   });
 });
 
-// ─── Session and credential retrieval (AC-2, AC-3) ───────────────────────────
-
 describe('connectRepository — session and credential checks', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -194,8 +184,6 @@ describe('connectRepository — session and credential checks', () => {
     expect(mockMarkCredentialFailed).toHaveBeenCalledWith(SESSION.userId, expect.any(Date));
   });
 });
-
-// ─── GitHub API error cases (AC-4, Task 4.5) ─────────────────────────────────
 
 describe('connectRepository — GitHub API errors (AC-4)', () => {
   beforeEach(() => {
@@ -383,8 +371,6 @@ describe('connectRepository — GitHub API errors (AC-4)', () => {
   });
 });
 
-// ─── Successful connection (AC-2, AC-3, Task 4.6) ────────────────────────────
-
 describe('connectRepository — successful connection (AC-2, AC-3)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -440,8 +426,6 @@ describe('connectRepository — successful connection (AC-2, AC-3)', () => {
     expect(JSON.stringify(result)).not.toContain(DECRYPTED_TOKEN);
   });
 });
-
-// ─── BMAD validation integration (Story 1.4) ────────────────────────────────
 
 describe('connectRepository — BMAD validation integration (Story 1.4)', () => {
   beforeEach(() => {
