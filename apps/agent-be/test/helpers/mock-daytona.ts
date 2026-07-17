@@ -28,6 +28,25 @@ export type MockExecuteCommand = jest.Mock<
   [string, string?, Record<string, string>?, number?]
 >;
 
+export type MockCreateSession = jest.Mock<Promise<void>, [string]>;
+
+export type MockExecuteSessionCommand = jest.Mock<
+  Promise<{ cmdId: string; exitCode?: number; output?: string; stderr?: string; stdout?: string }>,
+  [string, { command: string; runAsync: boolean; suppressInputEcho?: boolean; async?: boolean }, number?]
+>;
+
+export type MockGetSessionCommandLogs = jest.Mock<
+  Promise<void>,
+  // 2-arg overload (no callbacks) and 4-arg overload (with callbacks) share
+  // the same mock — tests inspect call args to distinguish.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any[]
+>;
+
+export type MockDeleteSession = jest.Mock<Promise<void>, [string]>;
+
+export type MockKillPtySession = jest.Mock<Promise<void>, [string]>;
+
 export type MockGitClone = jest.Mock<
   Promise<void>,
   [string, string, string?, string?, string?, string?, boolean?]
@@ -51,7 +70,21 @@ export interface MockGit {
 
 export interface MockProcess {
   executeCommand: MockExecuteCommand;
-  killPtySession: jest.Mock<Promise<void>, [string]>;
+  killPtySession: MockKillPtySession;
+  // Story 6.2 test seam — process session lifecycle methods
+  createSession: MockCreateSession;
+  executeSessionCommand: MockExecuteSessionCommand;
+  getSessionCommandLogs: MockGetSessionCommandLogs;
+  deleteSession: MockDeleteSession;
+}
+
+export type MockUploadFile = jest.Mock<
+  Promise<void>,
+  [Buffer | string, string, number?]
+>;
+
+export interface MockFileSystem {
+  uploadFile: MockUploadFile;
 }
 
 export interface MockSandbox {
@@ -59,6 +92,7 @@ export interface MockSandbox {
   labels?: Record<string, string>;
   process: MockProcess;
   git: MockGit;
+  fs: MockFileSystem;
 }
 
 export interface MockDaytona {
@@ -80,6 +114,11 @@ export function createMockSandbox(overrides?: Partial<MockSandbox>): MockSandbox
     process: {
       executeCommand: jest.fn().mockResolvedValue({ exitCode: 0, result: '' }),
       killPtySession: jest.fn().mockResolvedValue(undefined),
+      // Story 6.2 test seam — session lifecycle methods with sensible defaults
+      createSession: jest.fn().mockResolvedValue(undefined),
+      executeSessionCommand: jest.fn().mockResolvedValue({ cmdId: 'cmd-1', exitCode: 0 }),
+      getSessionCommandLogs: jest.fn().mockResolvedValue(undefined),
+      deleteSession: jest.fn().mockResolvedValue(undefined),
     },
     git: {
       clone: jest.fn().mockResolvedValue(undefined),
@@ -89,6 +128,9 @@ export function createMockSandbox(overrides?: Partial<MockSandbox>): MockSandbox
         currentBranch: 'main',
         fileStatus: [],
       }),
+    },
+    fs: {
+      uploadFile: jest.fn().mockResolvedValue(undefined),
     },
     ...overrides,
   };

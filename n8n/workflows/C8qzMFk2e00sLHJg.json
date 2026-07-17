@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-12T08:29:43.183Z",
+  "updatedAt": "2026-07-15T13:52:30.141Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "command": "=err=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ]; then\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $json.conversationTitle }} / initial run\" --argjson rc $rc --arg salvaged \"$([ -n \"$out\" ] && echo yes || echo no)\" --arg stderrTail \"$(tail -c 600 \"$err\")\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail}' >> _bmad-output/pipeline/runner-errors.jsonl\n  tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
+        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $json.conversationTitle }} / initial run\" --argjson rc $rc --arg salvaged \"$([ -n \"$out\" ] && echo yes || echo no)\" --arg stderrTail \"$stderrTail\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "command": "=err=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ]; then\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $('Variables').item.json.conversationTitle }} / follow-up run\" --argjson rc $rc --arg salvaged \"$([ -n \"$out\" ] && echo yes || echo no)\" --arg stderrTail \"$(tail -c 600 \"$err\")\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail}' >> _bmad-output/pipeline/runner-errors.jsonl\n  tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
+        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $('Variables').item.json.conversationTitle }} / follow-up run\" --argjson rc $rc --arg salvaged \"$([ -n \"$out\" ] && echo yes || echo no)\" --arg stderrTail \"$stderrTail\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -663,29 +663,29 @@
       }
     ]
   },
-  "versionId": "4730fb28-2fb2-495e-b946-84ac641f734e",
-  "activeVersionId": "347b4518-551e-43d6-a8b0-a0857b63652a",
-  "versionCounter": 169,
+  "versionId": "741e4355-9cdc-46ef-87cf-2ec59fe1088a",
+  "activeVersionId": "b49039e6-9351-4b7c-a72c-132d7baaf521",
+  "versionCounter": 171,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-01T03:43:25.204Z",
-      "createdAt": "2026-07-01T03:43:25.204Z",
+      "updatedAt": "2026-07-14T10:19:51.920Z",
+      "createdAt": "2026-07-14T10:19:51.920Z",
       "role": "workflow:owner",
       "workflowId": "C8qzMFk2e00sLHJg",
-      "projectId": "AYEhcVrohjJ82DQg",
+      "projectId": "0UQEQBKdspnqMAPk",
       "project": {
-        "updatedAt": "2026-06-30T18:07:25.243Z",
-        "createdAt": "2026-06-30T17:25:02.325Z",
-        "id": "AYEhcVrohjJ82DQg",
+        "updatedAt": "2026-07-14T10:09:51.931Z",
+        "createdAt": "2026-07-14T10:09:30.918Z",
+        "id": "0UQEQBKdspnqMAPk",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+        "creatorId": "f5b33b4f-eee7-42dc-8e3b-111a70218818"
       }
     }
   ],

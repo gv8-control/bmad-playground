@@ -32,6 +32,9 @@ __pycache__/
 # Build output
 dist/
 
+# Test coverage output
+coverage/
+
 # Prisma generated client (build artifact)
 libs/database-schemas/src/generated/
 

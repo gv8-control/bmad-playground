@@ -202,7 +202,6 @@ describe('ChatMessageList — Story 5.3 structural drift', () => {
   // ─── Story 5.4: Scrollbar hiding (AC-7) ────────────────────────────────────
   //
   // Story 5.4: AC-7: Scrollable message panel hides scrollbars via no-scrollbar.
-  // Test is active (GREEN) after Story 5.4 implementation.
 
   describe('[P0] Story 5.4, AC-7 — Scrollbar hiding on message panel', () => {
     it('message scroll panel has no-scrollbar class (AC-7)', () => {

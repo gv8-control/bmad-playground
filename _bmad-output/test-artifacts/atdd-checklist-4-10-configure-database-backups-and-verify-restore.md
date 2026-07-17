@@ -348,10 +348,10 @@ None — this story has no UI components.
 
 **Tasks to make this test pass:**
 
-- [ ] Create `docs/runbooks/db-restore.md` (Story Task 1.1)
-- [ ] Activate test: remove `test.skip()` from this test block
-- [ ] Run test: `yarn nx test agent-be -- --testPathPattern=db-restore`
-- [ ] Test passes
+- [x] Create `docs/runbooks/db-restore.md` (Story Task 1.1)
+- [x] Activate test: remove `test.skip()` from this test block
+- [x] Run test: `yarn nx test agent-be -- --testPathPattern=db-restore`
+- [x] Test passes
 
 ### Test: runbook has a markdown heading
 
@@ -359,10 +359,10 @@ None — this story has no UI components.
 
 **Tasks to make this test pass:**
 
-- [ ] Add a `# Heading` to the runbook (Story Task 1.1)
-- [ ] Activate test: remove `test.skip()` from this test block
-- [ ] Run test: `yarn nx test agent-be -- --testPathPattern=db-restore`
-- [ ] Test passes
+- [x] Add a `# Heading` to the runbook (Story Task 1.1)
+- [x] Activate test: remove `test.skip()` from this test block
+- [x] Run test: `yarn nx test agent-be -- --testPathPattern=db-restore`
+- [x] Test passes
 
 ### Test: runbook is non-trivial (at least 10 lines)
 
@@ -370,10 +370,10 @@ None — this story has no UI components.
 
 **Tasks to make this test pass:**
 
-- [ ] Write the full runbook content (Story Task 1.1, ~120-180 lines)
-- [ ] Activate test: remove `test.skip()` from this test block
-- [ ] Run test: `yarn nx test agent-be -- --testPathPattern=db-restore`
-- [ ] Test passes
+- [x] Write the full runbook content (Story Task 1.1, ~120-180 lines)
+- [x] Activate test: remove `test.skip()` from this test block
+- [x] Run test: `yarn nx test agent-be -- --testPathPattern=db-restore`
+- [x] Test passes
 
 ### All other tests
 
@@ -456,7 +456,7 @@ Tests:       44 skipped, 487 passed, 531 total
 - Total tests: 44 (db-restore.spec.ts)
 - Skipped: 44 (expected before activation — all `test.skip()`)
 - Passing: 0 before runbook creation (expected for red-phase scaffolds)
-- Status: RED-phase scaffolds verified — all 44 tests skipped, all other agent-be tests unaffected
+- Status: All 44 scaffolds activated — describe.skip/test.skip removed, all tests passing
 
 ---
 

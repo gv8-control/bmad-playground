@@ -12,15 +12,17 @@ import { resetRepoConnection, seedRepoConnection } from '../../support/reset-rep
  * - AC-7: Scrollbar hiding on scrollable panels (class + computed style + overflow)
  *
  * NOT covered here (covered by co-located unit tests or build verification):
- * - AC-1 (ArtifactCard hover border): CSS class assertion in ArtifactCard.test.tsx.
- *   The withArtifacts E2E fixture is broken (unique constraint violations on
- *   [repoConnectionId, path]) with no planned fix; the hover border token is
- *   verified at the component level.
+ * - AC-1 (ArtifactCard hover border): className assertion in
+ *   ArtifactCard.test.tsx (hover:border-accent). E2E computed-style blocks
+ *   were restored in Story 6.5 Task 1.2 but removed during test-review
+ *   validation — behavior covered by the unit test, E2E blocks were
+ *   test.fixme() due to JWT issue and inflated count without verifying.
  * - AC-4 (Save button text color): CSS class assertion in WorkingTreeIndicator.test.tsx.
  *   Requires a conversation with working-tree state for E2E — complex setup for a
  *   token-color check already verified at the component level.
- * - AC-5 (ArtifactListEntry hover/date color): CSS class assertions in
- *   ArtifactListEntry.test.tsx. Verified at the component level.
+ * - AC-5 (ArtifactListEntry hover/date color): className assertions in
+ *   ArtifactListEntry.test.tsx (hover:bg-surface-raised, text-text-3).
+ *   E2E blocks restored then removed — same rationale as AC-1.
  * - AC-7 artifact list pane (P1): CSS class assertion in artifacts/page.test.tsx.
  *   Same withArtifacts fixture dependency as AC-1; verified at the component level.
  * - AC-9 (WorkingTreeIndicator floating shadow): CSS class assertion in
@@ -183,3 +185,14 @@ test.describe('Story 5.4 — AC-7: Scrollbar hiding', () => {
     expect(['auto', 'scroll']).toContain(overflowY);
   });
 });
+
+// ─── AC-1 and AC-5 E2E hover blocks — removed ────────────────────────────
+// These E2E blocks were restored in Story 6.5 Task 1.2 after the P4 fix made
+// the withArtifacts fixture idempotent, but were marked test.fixme() due to a
+// JWT decryption issue (Edge vs Node.js). The hover token behavior is covered
+// by active unit tests (className assertions) in:
+//   - ArtifactCard.test.tsx (AC-1: hover:border-accent)
+//   - ArtifactListEntry.test.tsx (AC-5: hover:bg-surface-raised, text-text-3)
+// Removed during test-review validation — the behavior is covered by other
+// tests, so the skipped E2E blocks were transitional artifacts that inflated
+// the count without verifying behavior.

@@ -287,7 +287,6 @@ describe('RepositoryUrlForm — BMAD validation errors (Story 1.4)', () => {
 //
 // Story 5.4: AC-2: Input background is bg-bg (recessed), label uses text-text-1.
 // AC-3: Focus ring offset uses ring-offset-bg, border transitions on focus/error.
-// Tests are active (GREEN) after Story 5.4 implementation.
 
 describe('RepositoryUrlForm — token-usage drift (Story 5.4, AC-2, AC-3)', () => {
   beforeEach(() => jest.clearAllMocks());

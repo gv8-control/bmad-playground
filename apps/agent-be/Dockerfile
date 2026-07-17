@@ -1,3 +1,16 @@
+# ── sandbox-agent stage ──
+# Downloads the pinned sandbox-agent binary (rivet-dev) and checksum-verifies
+# it at build time. Per architecture.md (line 76, 673) the sandbox-agent
+# version is pinned in the Dockerfile, not as a code constant. The binary is
+# uploaded to the sandbox during provision (SandboxService.installBinaries).
+FROM node:24-slim AS sandbox-agent
+ARG SANDBOX_AGENT_VERSION=0.4.2
+ARG SANDBOX_AGENT_SHA256=bab098abef874ade481aa7b50463662814fbf27294399f545307fedb638f029b
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL --max-time 120 --retry 3 "https://releases.rivet.dev/sandbox-agent/${SANDBOX_AGENT_VERSION}/binaries/sandbox-agent-x86_64-unknown-linux-musl" -o /opt/sandbox-agent \
+    && echo "${SANDBOX_AGENT_SHA256}  /opt/sandbox-agent" | sha256sum -c - \
+    && chmod +x /opt/sandbox-agent
+
 # ── Install stage ──
 FROM node:24-slim AS install
 RUN corepack enable
@@ -30,6 +43,8 @@ COPY --from=build --chown=node:node /app/dist/apps/agent-be/ ./
 COPY --from=build --chown=node:node /app/.yarnrc.yml ./
 COPY --from=build --chown=node:node /app/package.json /tmp/root-package.json
 COPY --from=build --chown=node:node /app/yarn.lock /tmp/root-yarn.lock
+# Epic 6: copy the pinned sandbox-agent binary into the runtime image.
+COPY --from=sandbox-agent --chown=node:node /opt/sandbox-agent /opt/sandbox-agent
 # Merge root deps into the pruned runtime package.json and force-add `ws`:
 #   (1) NestJS runtime requires dependencies hoisted at the package root, but
 #       `generatePackageJson: true` (Nx build pruner) only emits the app's

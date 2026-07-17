@@ -12,7 +12,6 @@ export interface ValidationResult {
   valid: true;
   repositoryUrl: string;
   bmadVersion: string;
-  skillsCount: number;
   checkedAt: string;
 }
 

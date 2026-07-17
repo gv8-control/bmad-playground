@@ -2,7 +2,7 @@
 title: "DESIGN: bmad-easy"
 status: final
 created: 2026-06-15
-updated: 2026-07-08
+updated: 2026-07-16
 
 colors:
   # Backgrounds — elevation via lightness, no shadows
@@ -205,6 +205,28 @@ components:
     padding:       "8px 12px"
     font-size:     "{typography.scale.sm}"
     color:         "{colors.text-1}"
+
+  blocking-content-message:
+    max-width:     "480px"
+    background:    "{colors.negative-bg}"
+    border-left:   "2px solid {colors.negative}"
+    border-radius: "{rounded.sm}"
+    padding:       "16px 20px"
+    icon-color:    "{colors.negative}"
+    title-size:    "{typography.scale.sm}"
+    title-weight:  "{typography.weights.semibold}"
+    title-color:   "{colors.text-1}"
+    body-size:     "{typography.scale.sm}"
+    body-color:    "{colors.text-2}"
+    action-border: "1px solid {colors.border}"
+    action-color:  "{colors.text-1}"
+    action-radius: "{rounded.md}"
+
+  error-state-tool-pill:
+    inherits: "{components.tool-pill}"
+    # No visual override — stays neutral. Error signal carried by
+    # Access Notice or Credential Error Banner below/above it.
+    # Status text ("✕ failed") differentiates from success ("✓ done").
 ---
 
 # DESIGN: bmad-easy
@@ -419,6 +441,14 @@ Displayed in the chat input area, left-aligned, below the textarea.
 ### Access Notice
 
 `{components.access-notice}` — inline notice rendered in the message stream directly below the error-state Tool Pill for a failing git operation that returned a 403. Distinct from the Credential Error Banner: it is scoped to the single failing tool call (not full-width, not pinned to the content area top), dismissible, and never offers a re-auth action — re-authentication resolves none of the three 403 causes. Background `{colors.caution-bg}` (or `{colors.negative-bg}` for `INSUFFICIENT_PERMISSION`), left border `{colors.caution}` / `{colors.negative}`. Copy is derived from the `ACCESS_DENIED` event's `code` field (`RATE_LIMITED` / `ORG_RESTRICTION` / `INSUFFICIENT_PERMISSION`); the raw GitHub error text remains available in the Tool Pill's expanded output. Does not disable the input or halt the agent turn. (Component added 2026-07-02 alongside the architecture.md `ACCESS_DENIED` event contract; tokens resolved 2026-07-08 — `warning`/`warning-bg` references replaced with `caution`/`caution-bg`.)
+
+### Blocking Content Message
+
+`{components.blocking-content-message}` — replaces the content area (chat area or content pane) when a surface cannot proceed. Centered, max-width 480px. Background `{colors.negative-bg}`, left border `{colors.negative}` (2px), `{rounded.sm}` radius, 16px 20px padding. Contains: icon in `{colors.negative}`, title (`sm`/`semibold`/`text-1`), body (`sm`/`text-2`), optional action button (outlined — border `{colors.border}`, text `text-1`, `{rounded.md}` radius). Input is hidden (not disabled). Used for: history load failure, session start timeout, conversation limit reached, seat limit exceeded, artifact load error, agent process terminated system message. (Component added 2026-07-16; decision: carries negative color. Mockup: [mockups/key-conversation-errors.html](mockups/key-conversation-errors.html), [mockups/key-new-conversation-errors.html](mockups/key-new-conversation-errors.html).)
+
+### Error-State Tool Pill
+
+The error-state Tool Pill uses the same styling as the base Tool Pill (`{components.tool-pill}`) — no visual override. The error signal is carried by the Access Notice or Credential Error Banner rendered below/above it, not by the pill itself. Status text ("✕ failed") differentiates from the success state ("✓ done"). Clicking expands to show the raw error output, same as the base Tool Pill expand behavior. (Decision 2026-07-16: stays neutral — the Access Notice/Credential Error Banner carries the error signal. Mockup: [mockups/key-conversation-errors.html](mockups/key-conversation-errors.html).)
 
 ### Avatar Circle
 

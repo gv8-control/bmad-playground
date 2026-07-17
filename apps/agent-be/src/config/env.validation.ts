@@ -6,6 +6,7 @@ export const envSchema = z.object({
   DAYTONA_API_KEY: z.string().min(1),
   AUTH_SECRET: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
+  SANDBOX_AGENT_PATH: z.string().default('/opt/sandbox-agent'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

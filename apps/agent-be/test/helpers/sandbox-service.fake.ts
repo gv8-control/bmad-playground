@@ -6,6 +6,7 @@ import type {
   GitUserConfig,
   WorkingTreeStatus,
   SkillInfo,
+  AgentSessionHandle,
 } from '@bmad-easy/shared-types';
 
 /**
@@ -18,12 +19,23 @@ export class SandboxServiceFake implements ISandboxService {
   private readonly sandboxes = new Map<string, SandboxInfo>();
   private readonly injectedGitConfigs = new Map<string, GitUserConfig>();
   private readonly clonedSandboxes = new Set<string>();
+  private readonly binariesInstalled = new Set<string>();
+  private readonly provisionedEnvVars = new Map<string, Record<string, string>>();
   private provisionDelay = 0;
   private shouldFailNextProvision = false;
   private shouldFailNextCommit = false;
   private skills: SkillInfo[] = [];
   private sandboxCounter = 0;
   private readonly commitCalls: Array<{ sandboxId: string; message: string; author?: GitUserConfig }> = [];
+
+  // ─── Story 6.2 test seam — process session lifecycle state ──────────────
+  private readonly createdSessions: Array<{ sandboxId: string; sessionId: string; command: string; cwd?: string }> = [];
+  private readonly terminatedSessions: Array<{ sandboxId: string; sessionId: string }> = [];
+  private agentEvents: string[] = [];
+  private agentStderrEvents: string[] = [];
+  private agentStreamDelay = 0;
+  private shouldFailNextAgentStream = false;
+  private sessionCounter = 0;
 
   /** Control hook: simulate a slow provision (milliseconds). */
   setProvisionDelay(ms: number): void {
@@ -61,6 +73,25 @@ export class SandboxServiceFake implements ISandboxService {
     return this.clonedSandboxes.has(sandboxId);
   }
 
+  /**
+   * Inspection: whether binaries were installed during provision (AC-1).
+   * Story 6.1 test seam — the fake simulates the binary-install side effect
+   * that the real SandboxService.provision() performs.
+   */
+  areBinariesInstalled(sandboxId: string): boolean {
+    return this.binariesInstalled.has(sandboxId);
+  }
+
+  /**
+   * Inspection: env vars injected during provision (AC-2).
+   * Story 6.1 test seam — the fake simulates the envVars that the real
+   * SandboxService.provision() passes to daytona.create().
+   */
+  getProvisionedEnvVars(sandboxId: string): Record<string, string> | undefined {
+    const envVars = this.provisionedEnvVars.get(sandboxId);
+    return envVars ? { ...envVars } : undefined;
+  }
+
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
     if (this.shouldFailNextProvision) {
       this.shouldFailNextProvision = false;
@@ -79,6 +110,17 @@ export class SandboxServiceFake implements ISandboxService {
     };
 
     this.sandboxes.set(sandbox.sandboxId, sandbox);
+
+    // Story 6.1 test seam: simulate the provision side effects that the real
+    // SandboxService.provision() performs (binary install, envVars).
+    // The fake does NOT actually install binaries or call daytona.create() — it
+    // records what the real service WOULD have done so integration tests can assert.
+    this.binariesInstalled.add(sandbox.sandboxId);
+    this.provisionedEnvVars.set(sandbox.sandboxId, {
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
+      GITHUB_TOKEN: params.credential,
+    });
+
     return sandbox;
   }
 
@@ -114,11 +156,21 @@ export class SandboxServiceFake implements ISandboxService {
     };
   }
 
+  /**
+   * Story 6.1 F1 side effect: destroy() is idempotent — returns void (no-op)
+   * when the sandbox isn't tracked, matching the real SandboxService.destroy()
+   * contract (which returns void on DaytonaNotFoundError). Previously the fake
+   * threw "sandbox not found", which did NOT match the real service's
+   * idempotent-destroy behavior and caused spurious failures in integration
+   * tests that call destroy() on an already-destroyed sandbox.
+   */
   async destroy(sandboxId: string): Promise<void> {
-    if (!this.sandboxes.has(sandboxId)) throw new Error(`SandboxServiceFake: sandbox ${sandboxId} not found`);
+    if (!this.sandboxes.has(sandboxId)) return;
     this.sandboxes.delete(sandboxId);
     this.injectedGitConfigs.delete(sandboxId);
     this.clonedSandboxes.delete(sandboxId);
+    this.binariesInstalled.delete(sandboxId);
+    this.provisionedEnvVars.delete(sandboxId);
   }
 
   async injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void> {
@@ -142,6 +194,80 @@ export class SandboxServiceFake implements ISandboxService {
 
   async listSkills(_sandboxId: string): Promise<SkillInfo[]> {
     return this.skills;
+  }
+
+  // ─── Story 6.2 test seam — process session lifecycle methods ─────────────
+  // These mirror the real SandboxService session methods (createSession +
+  // executeSessionCommand + getSessionCommandLogs + deleteSession) without
+  // calling the Daytona SDK. The fake reproduces observable side effects that
+  // integration tests assert on (session creation, log streaming, termination).
+
+  /** Control hook: set the event chunks that streamAgentLogs delivers via onStdout. */
+  setAgentEvents(events: string[]): void {
+    this.agentEvents = events;
+  }
+
+  /** Control hook: set the stderr chunks that streamAgentLogs delivers via onStderr. */
+  setAgentStderrEvents(events: string[]): void {
+    this.agentStderrEvents = events;
+  }
+
+  /** Control hook: simulate a slow agent stream (delay between chunks in ms). */
+  setAgentStreamDelay(ms: number): void {
+    this.agentStreamDelay = ms;
+  }
+
+  /** Control hook: cause the next streamAgentLogs call to reject mid-stream. */
+  failNextAgentStream(): void {
+    this.shouldFailNextAgentStream = true;
+  }
+
+  /** Inspection: list of createAgentSession calls made. */
+  getCreatedSessions(): Array<{ sandboxId: string; sessionId: string; command: string; cwd?: string }> {
+    return [...this.createdSessions];
+  }
+
+  /** Inspection: list of terminateAgentSession calls made. */
+  getTerminatedSessions(): Array<{ sandboxId: string; sessionId: string }> {
+    return [...this.terminatedSessions];
+  }
+
+  async createAgentSession(sandboxId: string, command: string, cwd?: string): Promise<AgentSessionHandle> {
+    const sessionId = `agent-session-${this.sessionCounter++}`;
+    const commandId = `agent-cmd-${this.sessionCounter++}`;
+    this.createdSessions.push({ sandboxId, sessionId, command, cwd });
+    return { sessionId, commandId };
+  }
+
+  async streamAgentLogs(
+    _sandboxId: string,
+    _handle: AgentSessionHandle,
+    onStdout: (chunk: string) => void,
+    onStderr: (chunk: string) => void,
+  ): Promise<void> {
+    if (this.shouldFailNextAgentStream) {
+      this.shouldFailNextAgentStream = false;
+      throw new Error('SandboxServiceFake: simulated agent stream failure');
+    }
+    // When a stream delay is set, wait before delivering any output — this
+    // simulates a stalled agent (no events arriving) so the event bridge's
+    // circuit breaker can be exercised even with an empty event list.
+    if (this.agentStreamDelay > 0) {
+      await new Promise((r) => setTimeout(r, this.agentStreamDelay));
+    }
+    for (const chunk of this.agentEvents) {
+      if (this.agentStreamDelay > 0) {
+        await new Promise((r) => setTimeout(r, this.agentStreamDelay));
+      }
+      onStdout(chunk);
+    }
+    for (const chunk of this.agentStderrEvents) {
+      onStderr(chunk);
+    }
+  }
+
+  async terminateAgentSession(sandboxId: string, sessionId: string): Promise<void> {
+    this.terminatedSessions.push({ sandboxId, sessionId });
   }
 
   /** Inspection: sandboxes currently provisioned. */

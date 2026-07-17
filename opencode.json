@@ -1,7 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "default_agent": "coder",
-  "subagent_depth": 2,
   "permission": {
     "external_directory": {
       "/tmp/**": "allow"
@@ -27,7 +26,9 @@
       "model": "neuralwatt/glm-5.2",
       "temperature": 0.25,
       "reasoningEffort": "high",
-      "permission": { "task": "allow" }
+      "permission": {
+        "task": "allow"
+      }
     },
     "thinker": {
       "tools": {
@@ -66,17 +67,28 @@
     },
     "playwright": {
       "type": "local",
-      "command": ["npx", "@playwright/mcp@latest"],
+      "command": [
+        "npx",
+        "@playwright/mcp@latest"
+      ],
       "enabled": true
     },
     "playwright-test": {
       "type": "local",
-      "command": ["npx", "playwright", "run-test-mcp-server"],
+      "command": [
+        "npx",
+        "playwright",
+        "run-test-mcp-server"
+      ],
       "enabled": true
     },
     "daytona": {
       "type": "local",
-      "command": ["daytona", "mcp", "start"],
+      "command": [
+        "daytona",
+        "mcp",
+        "start"
+      ],
       "enabled": true,
       "environment": {
         "HOME": "{env:HOME}"

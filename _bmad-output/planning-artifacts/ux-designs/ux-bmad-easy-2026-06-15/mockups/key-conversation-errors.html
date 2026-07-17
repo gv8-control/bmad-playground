@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bmad-easy — Conversation error states</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0D0D11;
+    color: #EDECF5;
+    min-width: 1280px;
+  }
+
+  /* === State divider === */
+  .state-divider {
+    text-align: center;
+    padding: 48px 0 24px;
+    border-top: 1px solid #2B2B38;
+  }
+  .state-divider:first-child { border-top: none; padding-top: 24px; }
+  .state-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8D8CA0;
+  }
+  .state-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #EDECF5;
+    margin-top: 4px;
+  }
+  .state-desc {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    margin-top: 4px;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* === Screen frame === */
+  .screen-frame {
+    width: 1280px;
+    margin: 0 auto 48px;
+    border: 1px solid #232330;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  /* === Browser chrome (same as key-conversation.html) === */
+  .browser-chrome {
+    background: #1E1E26;
+    border-bottom: 1px solid #2B2B38;
+    padding: 0 12px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chrome-dots { display: flex; gap: 6px; }
+  .chrome-dot { width: 12px; height: 12px; border-radius: 9999px; }
+  .dot-red   { background: #FF5F57; }
+  .dot-yellow{ background: #FFBD2E; }
+  .dot-green { background: #28CA41; }
+  .chrome-address-bar {
+    flex: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    background: #16161C;
+    border: 1px solid #2B2B38;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chrome-lock { color: #3ECF8E; font-size: 10px; }
+
+  /* === App shell === */
+  .app-shell {
+    display: flex;
+    height: 600px;
+    overflow: hidden;
+  }
+
+  /* === Side nav (same as key-conversation.html) === */
+  .side-nav {
+    width: 240px;
+    flex-shrink: 0;
+    background: #16161C;
+    border-right: 1px solid #1E1E26;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+  .nav-wordmark {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #1E1E26;
+  }
+  .wordmark-text {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #EDECF5;
+    letter-spacing: -0.02em;
+  }
+  .wordmark-dot { color: #7B6EE8; }
+  .nav-new-btn {
+    margin: 12px 12px 8px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid #7B6EE8;
+    border-radius: 8px;
+    color: #7B6EE8;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    font-family: inherit;
+  }
+  .nav-conversations {
+    flex: 1;
+    overflow: hidden;
+    padding: 4px 0;
+  }
+  .nav-item {
+    display: block;
+    padding: 8px 8px;
+    margin: 0 8px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: none;
+  }
+  .nav-item:hover { background: #1E1E26; color: #EDECF5; }
+  .nav-item.active,
+  .nav-item.active-conv {
+    background: #1E1E26;
+    color: #EDECF5;
+  }
+  .nav-separator {
+    height: 1px;
+    background: #1E1E26;
+    margin: 8px 16px;
+  }
+  .nav-bottom {
+    padding: 8px 12px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .avatar-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+    background: #7B6EE8;
+    color: #FFFFFF;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .nav-bottom-label {
+    font-size: 0.75rem;
+    color: #8D8CA0;
+  }
+
+  /* === Content area === */
+  .content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0D0D11;
+  }
+
+  /* === Page header === */
+  .page-header {
+    padding: 24px 32px 16px;
+    flex-shrink: 0;
+    border-bottom: 1px solid #1E1E26;
+  }
+  .page-header-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .breadcrumb {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    cursor: pointer;
+  }
+  .breadcrumb:hover { color: #EDECF5; }
+  .page-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.75rem;
+    color: #EDECF5;
+  }
+
+  /* === Chat messages === */
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .chat-messages::-webkit-scrollbar { display: none; }
+
+  .message-row {
+    display: flex;
+    padding: 0 32px;
+    max-width: 824px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .message-row.user { justify-content: flex-end; }
+  .message-row.agent {
+    justify-content: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .msg-user {
+    background: #1E1E26;
+    border-radius: 12px;
+    padding: 12px 16px;
+    max-width: 80%;
+    font-size: 1rem;
+    line-height: 1.5rem;
+    color: #EDECF5;
+  }
+  .msg-agent {
+    font-size: 1rem;
+    line-height: 1.5rem;
+    color: #EDECF5;
+    max-width: 760px;
+  }
+  .msg-agent p { margin-bottom: 12px; }
+  .msg-agent p:last-child { margin-bottom: 0; }
+
+  .msg-timestamp {
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    margin-top: 4px;
+  }
+
+  /* === Tool pill (base, from key-conversation.html) === */
+  .tool-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #1E1E26;
+    border: 1px solid #2B2B38;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    color: #8D8CA0;
+    font-family: 'JetBrains Mono', 'Fira Mono', monospace;
+    margin: 4px 0;
+    cursor: pointer;
+  }
+  .tool-pill-icon {
+    font-size: 10px;
+    color: #56556A;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* === Error-state Tool Pill — stays neutral (decision 2026-07-16) ===
+     The error signal is carried by the Access Notice or Credential Error Banner,
+     not by the pill itself. Status text ("✕ failed") differentiates. */
+  .tool-pill.error {
+    /* no visual override — inherits base .tool-pill styling */
+  }
+
+  /* === Semantic pill (same as key-conversation.html) === */
+  .semantic-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(62,207,142,0.08);
+    border: 1px solid #3ECF8E;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.875rem;
+    color: #3ECF8E;
+    margin: 4px 0;
+  }
+
+  /* === Chat input === */
+  .chat-input-area {
+    flex-shrink: 0;
+    padding: 0 32px 24px;
+    max-width: 824px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .chat-input-box {
+    background: #1E1E26;
+    border: 1px solid #2B2B38;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .chat-textarea {
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 1rem;
+    line-height: 1.5rem;
+    color: #EDECF5;
+    width: 100%;
+    min-height: 28px;
+  }
+  .chat-textarea::placeholder { color: #56556A; }
+  .chat-input-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .working-tree-clean {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .send-button {
+    background: #7B6EE8;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .send-icon { font-size: 12px; }
+
+  /* === Chat input disabled state === */
+  .chat-input-box.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .reconnecting-label {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    padding: 12px 32px 24px;
+    max-width: 824px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .reconnecting-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #2B2B38;
+    border-top-color: #7B6EE8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* === Credential Error Banner === */
+  .credential-banner {
+    background: rgba(240,107,107,0.08);
+    border-bottom: 1px solid #F06B6B;
+    padding: 12px 32px;
+    font-size: 0.875rem;
+    color: #EDECF5;
+    flex-shrink: 0;
+    max-width: 824px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .credential-banner a {
+    color: #F06B6B;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  /* === Access Notice === */
+  .access-notice {
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    color: #EDECF5;
+    margin: 4px 0 8px;
+    max-width: 760px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.5rem;
+  }
+  .access-notice.caution {
+    background: rgba(242,169,68,0.08);
+    border-left: 2px solid #F2A944;
+  }
+  .access-notice.negative {
+    background: rgba(240,107,107,0.08);
+    border-left: 2px solid #F06B6B;
+  }
+  .access-notice-dismiss {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #56556A;
+    cursor: pointer;
+    font-size: 0.875rem;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+  .access-notice-dismiss:hover { color: #8D8CA0; }
+
+  /* === Blocking content message (replaces content area) ===
+     Decision (2026-07-16): carries negative color — negative-bg + negative left border + negative icon. */
+  .blocking-message {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    text-align: center;
+  }
+  .blocking-inner {
+    max-width: 480px;
+    background: rgba(240,107,107,0.08);
+    border-left: 2px solid #F06B6B;
+    border-radius: 4px;
+    padding: 16px 20px;
+  }
+  .blocking-icon {
+    font-size: 1.5rem;
+    color: #F06B6B;
+    margin-bottom: 12px;
+  }
+  .blocking-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #EDECF5;
+    margin-bottom: 8px;
+  }
+  .blocking-body {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    line-height: 1.5rem;
+    margin-bottom: 16px;
+  }
+  .blocking-action {
+    display: inline-block;
+    background: transparent;
+    border: 1px solid #2B2B38;
+    color: #EDECF5;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .blocking-action:hover { background: #1E1E26; }
+
+  /* === System message (in-stream) === */
+  .system-message {
+    font-size: 0.875rem;
+    color: #8D8CA0;
+    padding: 8px 0;
+    max-width: 760px;
+    line-height: 1.5rem;
+  }
+
+  /* === Skeleton loader === */
+  .skeleton {
+    background: #1E1E26;
+    border-radius: 8px;
+    margin: 0 32px;
+    max-width: 824px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .skeleton-line {
+    height: 16px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    background: #1E1E26;
+  }
+  .skeleton-line:last-child { margin-bottom: 0; }
+  .skeleton-row {
+    display: flex;
+    gap: 12px;
+    padding: 12px 0;
+  }
+  .skeleton-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+    background: #1E1E26;
+    flex-shrink: 0;
+  }
+  .skeleton-content { flex: 1; }
+  .skeleton-block {
+    padding: 16px 32px;
+    max-width: 824px;
+    margin: 0 auto;
+  }
+
+  /* === Thinking indicator === */
+  .thinking-dots {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px 0;
+  }
+  .thinking-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #56556A;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes pulse {
+    0%, 80%, 100% { opacity: 0.3; }
+    40% { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===================================================== -->
+<!-- STATE 1: History load failure                          -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 1 of 7</div>
+  <div class="state-title">History load failure</div>
+  <div class="state-desc">Content area replaced with error message + Refresh button. Input not shown. Chat history never loaded.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      <span>app.bmad-easy.com/conversations/c7f3a1b2</span>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item active-conv">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="page-header">
+        <div class="page-header-row">
+          <span class="breadcrumb">← Project Map</span>
+          <h1 class="page-title">Product requirements session</h1>
+        </div>
+      </div>
+
+      <div class="blocking-message">
+        <div class="blocking-inner">
+          <div class="blocking-icon">⚠</div>
+          <div class="blocking-title">Couldn't load this conversation</div>
+          <div class="blocking-body">The conversation history couldn't be loaded from storage.</div>
+          <button class="blocking-action">Refresh</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================================================== -->
+<!-- STATE 2: Reconnecting timeout                          -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 2 of 7</div>
+  <div class="state-title">Reconnecting timeout</div>
+  <div class="state-desc">Full history visible. Input replaced by timeout message + Retry button. Same pattern as session start timeout on New Conversation.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      <span>app.bmad-easy.com/conversations/c7f3a1b2</span>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item active-conv">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="page-header">
+        <div class="page-header-row">
+          <span class="breadcrumb">← Project Map</span>
+          <h1 class="page-title">Product requirements session</h1>
+        </div>
+      </div>
+
+      <div class="chat-messages" role="log" aria-live="polite">
+        <div class="message-row user">
+          <div class="msg-user">Let's use the existing brainstorming artifact as the starting point.</div>
+        </div>
+        <div class="message-row agent">
+          <div class="msg-agent">
+            <p>Good call — the brainstorming session has a lot of the raw material we need. Let me pull it in so we can work from it directly.</p>
+            <div class="tool-pill">
+              <span class="tool-pill-icon">↳</span>
+              read_file · _bmad-output/planning-artifacts/brainstorming.md
+            </div>
+          </div>
+          <div class="msg-timestamp">10:47 AM</div>
+        </div>
+      </div>
+
+      <div class="blocking-message" style="flex-shrink: 0; padding: 24px 32px; justify-content: flex-start;">
+        <div class="blocking-inner" style="text-align: left;">
+          <div class="blocking-title">Starting your session is taking longer than expected</div>
+          <button class="blocking-action">Retry</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================================================== -->
+<!-- STATE 3: Credential failed (mid-conversation)         -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 3 of 7</div>
+  <div class="state-title">Credential failed (mid-conversation)</div>
+  <div class="state-desc">Credential Error Banner appears above message panel. The failing git operation renders as an error-state Tool Pill in the stream. Banner is non-dismissible until credentials are replaced.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      <span>app.bmad-easy.com/conversations/c7f3a1b2</span>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item active-conv">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="page-header">
+        <div class="page-header-row">
+          <span class="breadcrumb">← Project Map</span>
+          <h1 class="page-title">Product requirements session</h1>
+        </div>
+      </div>
+
+      <div class="credential-banner">
+        Your repository connection needs attention. <a>Update access token</a>
+      </div>
+
+      <div class="chat-messages" role="log" aria-live="polite">
+        <div class="message-row user">
+          <div class="msg-user">Let's use the existing brainstorming artifact as the starting point.</div>
+        </div>
+        <div class="message-row agent">
+          <div class="msg-agent">
+            <p>Good call — let me pull in the brainstorming artifact.</p>
+            <div class="tool-pill">
+              <span class="tool-pill-icon">↳</span>
+              read_file · _bmad-output/planning-artifacts/brainstorming.md
+            </div>
+            <p>I've reviewed it. Now let me commit the draft PRD.</p>
+            <div class="tool-pill error">
+              <span class="tool-pill-icon">✕</span>
+              git_commit · failed
+            </div>
+            <p style="color: #8D8CA0; font-size: 0.875rem;">The commit failed because the repository connection needs attention. You can update your access token using the banner above, and I'll retry.</p>
+          </div>
+          <div class="msg-timestamp">10:47 AM</div>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-box">
+          <textarea class="chat-textarea" rows="1" placeholder="Message…"></textarea>
+          <div class="chat-input-footer">
+            <span class="working-tree-clean" role="status" aria-live="polite">✓ All saved</span>
+            <button class="send-button">Send <span class="send-icon">↑</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================================================== -->
+<!-- STATE 4: Access denied — RATE_LIMITED                  -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 4 of 7</div>
+  <div class="state-title">Access denied — RATE_LIMITED</div>
+  <div class="state-desc">Failing git operation renders as error-state Tool Pill. Access Notice (caution treatment) appears inline below it. Dismissible. Agent turn continues — input stays enabled.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      <span>app.bmad-easy.com/conversations/c7f3a1b2</span>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item active-conv">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="page-header">
+        <div class="page-header-row">
+          <span class="breadcrumb">← Project Map</span>
+          <h1 class="page-title">Product requirements session</h1>
+        </div>
+      </div>
+
+      <div class="chat-messages" role="log" aria-live="polite">
+        <div class="message-row user">
+          <div class="msg-user">Can you check the repository status?</div>
+        </div>
+        <div class="message-row agent">
+          <div class="msg-agent">
+            <p>Let me check that for you.</p>
+            <div class="tool-pill error">
+              <span class="tool-pill-icon">✕</span>
+              git_status · failed
+            </div>
+            <div class="access-notice caution">
+              <span>GitHub is rate-limiting this request. Wait a moment and try again.</span>
+              <button class="access-notice-dismiss">✕</button>
+            </div>
+            <p style="color: #8D8CA0; font-size: 0.875rem;">I'll wait a moment and retry the status check.</p>
+          </div>
+          <div class="msg-timestamp">10:52 AM</div>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-box">
+          <textarea class="chat-textarea" rows="1" placeholder="Message…"></textarea>
+          <div class="chat-input-footer">
+            <span class="working-tree-clean" role="status" aria-live="polite">✓ All saved</span>
+            <button class="send-button">Send <span class="send-icon">↑</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================================================== -->
+<!-- STATE 5: Access denied — ORG_RESTRICTION               -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 5 of 7</div>
+  <div class="state-title">Access denied — ORG_RESTRICTION</div>
+  <div class="state-desc">Same pattern as RATE_LIMITED but different copy. Caution treatment. Dismissible. Agent turn continues.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      <span>app.bmad-easy.com/conversations/c7f3a1b2</span>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item active-conv">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="page-header">
+        <div class="page-header-row">
+          <span class="breadcrumb">← Project Map</span>
+          <h1 class="page-title">Product requirements session</h1>
+        </div>
+      </div>
+
+      <div class="chat-messages" role="log" aria-live="polite">
+        <div class="message-row user">
+          <div class="msg-user">Read the architecture document for me.</div>
+        </div>
+        <div class="message-row agent">
+          <div class="msg-agent">
+            <p>Let me pull that up.</p>
+            <div class="tool-pill error">
+              <span class="tool-pill-icon">✕</span>
+              read_file · failed
+            </div>
+            <div class="access-notice caution">
+              <span>Your organization hasn't approved this app. Ask an org admin to grant access.</span>
+              <button class="access-notice-dismiss">✕</button>
+            </div>
+            <p style="color: #8D8CA0; font-size: 0.875rem;">I can't access this repository until an org admin approves the bmad-easy app. Once that's done, I'll be able to read the file.</p>
+          </div>
+          <div class="msg-timestamp">10:55 AM</div>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-box">
+          <textarea class="chat-textarea" rows="1" placeholder="Message…"></textarea>
+          <div class="chat-input-footer">
+            <span class="working-tree-clean" role="status" aria-live="polite">✓ All saved</span>
+            <button class="send-button">Send <span class="send-icon">↑</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================================================== -->
+<!-- STATE 6: Access denied — INSUFFICIENT_PERMISSION       -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 6 of 7</div>
+  <div class="state-title">Access denied — INSUFFICIENT_PERMISSION</div>
+  <div class="state-desc">Same pattern but negative treatment (not caution). The only Access Notice variant that uses negative color instead of caution. Dismissible. Agent turn continues.</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      <span>app.bmad-easy.com/conversations/c7f3a1b2</span>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item active-conv">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="page-header">
+        <div class="page-header-row">
+          <span class="breadcrumb">← Project Map</span>
+          <h1 class="page-title">Product requirements session</h1>
+        </div>
+      </div>
+
+      <div class="chat-messages" role="log" aria-live="polite">
+        <div class="message-row user">
+          <div class="msg-user">Commit the draft PRD to the repository.</div>
+        </div>
+        <div class="message-row agent">
+          <div class="msg-agent">
+            <p>I'll commit the PRD draft now.</p>
+            <div class="tool-pill error">
+              <span class="tool-pill-icon">✕</span>
+              git_commit · failed
+            </div>
+            <div class="access-notice negative">
+              <span>Your account doesn't have access to this resource.</span>
+              <button class="access-notice-dismiss">✕</button>
+            </div>
+            <p style="color: #8D8CA0; font-size: 0.875rem;">The commit failed because your account doesn't have write access to this repository. You may need to contact a repository admin to get the necessary permissions.</p>
+          </div>
+          <div class="msg-timestamp">10:58 AM</div>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-box">
+          <textarea class="chat-textarea" rows="1" placeholder="Message…"></textarea>
+          <div class="chat-input-footer">
+            <span class="working-tree-clean" role="status" aria-live="polite">✓ All saved</span>
+            <button class="send-button">Send <span class="send-icon">↑</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================================================== -->
+<!-- STATE 7: Agent process terminated (circuit breaker)    -->
+<!-- ===================================================== -->
+<div class="state-divider">
+  <div class="state-label">State 7 of 7</div>
+  <div class="state-title">Agent process terminated (circuit breaker)</div>
+  <div class="state-desc">System message appears in-stream at the point the stream stopped. Partial response stays visible above it. Input re-enables — no automatic retry. Distinct from a single failed tool call (States 3–6).</div>
+</div>
+
+<div class="screen-frame">
+  <div class="browser-chrome">
+    <div class="chrome-dots">
+      <div class="chrome-dot dot-red"></div>
+      <div class="chrome-dot dot-yellow"></div>
+      <div class="chrome-dot dot-green"></div>
+    </div>
+    <div class="chrome-address-bar">
+      <span class="chrome-lock">🔒</span>
+      <span>app.bmad-easy.com/conversations/c7f3a1b2</span>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <nav class="side-nav">
+      <div class="nav-wordmark">
+        <span class="wordmark-text">bmad<span class="wordmark-dot">·</span>easy</span>
+      </div>
+      <button class="nav-new-btn">+ New Conversation</button>
+      <div class="nav-conversations">
+        <div class="nav-item active-conv">Product requirements session</div>
+        <div class="nav-item">Architecture review prep</div>
+        <div class="nav-item">Sprint planning — Q3</div>
+        <div class="nav-item">Onboarding docs review</div>
+        <div class="nav-item">Competitor research</div>
+        <div class="nav-separator"></div>
+        <div class="nav-item">Project Map</div>
+        <div class="nav-item">Artifact Browser</div>
+      </div>
+      <div class="nav-bottom">
+        <div class="avatar-circle" aria-label="Sarah Reynolds">SR</div>
+        <span class="nav-bottom-label">Settings</span>
+      </div>
+    </nav>
+
+    <div class="content-area">
+      <div class="page-header">
+        <div class="page-header-row">
+          <span class="breadcrumb">← Project Map</span>
+          <h1 class="page-title">Product requirements session</h1>
+        </div>
+      </div>
+
+      <div class="chat-messages" role="log" aria-live="polite">
+        <div class="message-row user">
+          <div class="msg-user">Let's use the existing brainstorming artifact as the starting point.</div>
+        </div>
+        <div class="message-row agent">
+          <div class="msg-agent">
+            <p>Good call — the brainstorming session has a lot of the raw material we need. Let me pull it in so we can work from it directly.</p>
+            <div class="tool-pill">
+              <span class="tool-pill-icon">↳</span>
+              read_file · _bmad-output/planning-artifacts/brainstorming.md
+            </div>
+            <p>I've reviewed the brainstorming artifact. Here's what I'm taking forward as the foundation for the PRD:</p>
+            <p>Core problem: Non-dev team members cannot access BMAD workflows without a developer intermediary — the methodology's team-wide promise breaks at the access layer.</p>
+            <p>Primary users: Product Managers, Business Analysts, and Delivery Leads on BMAD-adopting…</p>
+          </div>
+          <div class="msg-timestamp">10:47 AM</div>
+        </div>
+        <div class="message-row agent">
+          <div class="system-message">The agent stopped unexpectedly. Send a new message to try again.</div>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-box">
+          <textarea class="chat-textarea" rows="1" placeholder="Message…"></textarea>
+          <div class="chat-input-footer">
+            <span class="working-tree-clean" role="status" aria-live="polite">✓ All saved</span>
+            <button class="send-button">Send <span class="send-icon">↑</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -35,7 +35,7 @@ export class CostTrackingService {
       await this.checkBudgetAlert(params.userId);
     } catch (err) {
       this.logger.error(
-        `Failed to record cost for user ${params.userId}: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to record cost for user ${params.userId} (conversation ${params.conversationId}): ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

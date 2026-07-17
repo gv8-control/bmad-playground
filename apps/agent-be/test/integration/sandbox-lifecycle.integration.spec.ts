@@ -141,6 +141,14 @@ describe('Sandbox lifecycle (integration)', () => {
   });
 
   it('[P0] cleans up partial Daytona allocation when provision() throws (no zombie sandboxes)', async () => {
+    // Story 6.1 F2 note: This test uses SandboxServiceFake.failNextProvision which
+    // throws BEFORE allocation (the fake never assigns a sandbox). The real SDK
+    // failure mode — daytona.create() rejecting AFTER allocating a partial sandbox —
+    // is NOT modeled by the fake. Per the @daytonaio/sdk 0.187.0 contract, create()
+    // either resolves (sandbox assigned) or rejects (sandbox never assigned), so
+    // there is no partial-allocation cleanup path in the real SandboxService.provision().
+    // The dead catch-block cleanup branch (if (sandbox) { await daytona.delete(sandbox) })
+    // is removed in Task 6.1 — see sandbox.service.nfr-s1.spec.ts F2 tests.
     sandboxFake.failNextProvision();
     const destroySpy = jest.spyOn(sandboxFake, 'destroy');
 
@@ -334,5 +342,117 @@ describe('Sandbox lifecycle (integration)', () => {
       expect(drainIndex).toBeGreaterThan(-1);
       expect(manualFailIndex).toBeLessThan(drainIndex);
     });
+  });
+});
+
+// ============================================================================
+// Story 6.1: Install sandbox-agent + Claude Code Binaries in Sandbox During Provision
+// Covers: AC-1 (binaries installed via fake inspection), AC-2 (envVars injected),
+//         AC-4 (provision sequence order).
+// ============================================================================
+
+describe('[P0] Story 6.1 — provision injects envVars and binaries (AC: 1, 2, 4)', () => {
+  let conversationsService: ConversationsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let sandboxFake: any;
+
+  beforeEach(async () => {
+    let conversationCounter = 0;
+    const conversationDb = new Map<string, { id: string; userId: string; title: string | null; sandboxId: string | null; sandboxStatus: string | null; lastActiveAt: Date }>();
+
+    const mockPrisma = {
+      conversation: {
+        create: jest.fn().mockImplementation(({ data }) => {
+          const conv = {
+            id: `conv-${++conversationCounter}`,
+            userId: data.userId,
+            title: data.title ?? null,
+            sandboxId: null as string | null,
+            sandboxStatus: data.sandboxStatus ?? null,
+            lastActiveAt: data.lastActiveAt ?? new Date(),
+          };
+          conversationDb.set(conv.id, conv);
+          return Promise.resolve(conv);
+        }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'conv-1' }),
+        findFirst: jest.fn().mockImplementation(({ where }) => {
+          const conv = conversationDb.get(where.id);
+          if (!conv) return Promise.resolve(null);
+          if (where.userId && conv.userId !== where.userId) return Promise.resolve(null);
+          return Promise.resolve({ ...conv });
+        }),
+        findMany: jest.fn().mockResolvedValue([]),
+        delete: jest.fn().mockResolvedValue({ id: 'conv-1' }),
+        update: jest.fn().mockImplementation(({ where, data }) => {
+          const existing = conversationDb.get(where.id) ?? { id: where.id, userId: 'user-1', title: null, sandboxId: null, sandboxStatus: null, lastActiveAt: new Date() };
+          const updated = { ...existing, ...data };
+          conversationDb.set(where.id, updated);
+          return Promise.resolve(updated);
+        }),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      turn: { create: jest.fn().mockResolvedValue({ id: 'turn-1' }) },
+      repoConnection: { findUnique: jest.fn().mockResolvedValue({ repoUrl: 'https://github.com/test/repo.git' }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ name: 'Test User', email: 'test@example.com', githubLogin: 'testuser' }) },
+    };
+
+    const { module: m, sandboxFake: sf } = await buildTestModule([ConversationsModule], [
+      { provide: PrismaService, useValue: mockPrisma },
+      { provide: DAYTONA_CLIENT, useValue: null },
+      {
+        provide: CredentialsService,
+        useValue: {
+          resolveOAuthToken: jest.fn().mockResolvedValue('fake-token'),
+          isCredentialHealthFailed: jest.fn().mockResolvedValue(false),
+        },
+      },
+    ]);
+
+    conversationsService = m.get(ConversationsService);
+    sandboxFake = sf;
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.useRealTimers();
+  });
+
+  it('[P0] provision records binaries as installed (AC-1)', async () => {
+    const result = await conversationsService.createConversation('user-1');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const sandboxId = conversationsService['sandboxIds'].get(result.id);
+    expect(sandboxId).toBeDefined();
+    expect(sandboxFake.areBinariesInstalled(sandboxId)).toBe(true);
+  });
+
+  it('[P0] provision injects ANTHROPIC_API_KEY and GITHUB_TOKEN as envVars (AC-2)', async () => {
+    const result = await conversationsService.createConversation('user-1');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const sandboxId = conversationsService['sandboxIds'].get(result.id);
+    const envVars = sandboxFake.getProvisionedEnvVars(sandboxId);
+    expect(envVars).toBeDefined();
+    expect(Object.keys(envVars)).toContain('ANTHROPIC_API_KEY');
+    expect(Object.keys(envVars)).toContain('GITHUB_TOKEN');
+    expect(Object.keys(envVars)).not.toContain('DATABASE_URL');
+    expect(Object.keys(envVars)).not.toContain('AUTH_SECRET');
+  });
+
+  it('[P0] provision sequence runs in order: provision → clone → injectGitConfig → git status → emit events (AC-4)', async () => {
+    const emitSpy = jest.spyOn(conversationsService['sessionEvents'], 'emit');
+
+    await conversationsService.provisionSandbox('conv-1', 'user-1');
+
+    const events = emitSpy.mock.calls.map((c) => c[1].event);
+    // Working tree event emits before SESSION_READY
+    const workingTreeIndex = Math.max(
+      events.indexOf('WORKING_TREE_DIRTY'),
+      events.indexOf('WORKING_TREE_CLEAN'),
+    );
+    const readyIndex = events.indexOf('SESSION_READY');
+    expect(workingTreeIndex).toBeGreaterThan(-1);
+    expect(readyIndex).toBeGreaterThan(-1);
+    expect(workingTreeIndex).toBeLessThan(readyIndex);
   });
 });

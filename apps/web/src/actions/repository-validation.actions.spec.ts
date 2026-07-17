@@ -75,7 +75,6 @@ describe('inspectBmadSetup — successful validation (AC-1)', () => {
     expect(result).toMatchObject({
       valid: true,
       bmadVersion: '6.8.0',
-      skillsCount: 2,
     });
   });
 
@@ -101,7 +100,7 @@ describe('inspectBmadSetup — successful validation (AC-1)', () => {
     expect(bmadOutputContentsCall).toBeUndefined();
   });
 
-  it('[P1] counts only skill .md files — README.md and non-md files excluded', async () => {
+  it('[P1] passes the gate when at least one non-hygiene .md file exists — README.md and non-md files ignored', async () => {
     const skillsWithMixedFiles = [
       { name: 'bmad-dev-story.md', type: 'file' },
       { name: 'README.md', type: 'file' },
@@ -113,7 +112,7 @@ describe('inspectBmadSetup — successful validation (AC-1)', () => {
     });
 
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
-    expect(result).toMatchObject({ valid: true, skillsCount: 1 });
+    expect(result).toMatchObject({ valid: true });
   });
 });
 
@@ -159,8 +158,8 @@ describe('inspectBmadSetup — GitHub contents pagination beyond a single page',
     });
 
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
-    // All 3 pages' entries must be counted — a truncated single-page read would only see 1.
-    expect(result).toMatchObject({ valid: true, skillsCount: 3 });
+    // All 3 pages' entries must be considered — a truncated single-page read would only see 1.
+    expect(result).toMatchObject({ valid: true });
   });
 
   it('[P1] does not follow pagination when the Link header has no rel="next" (single-page, existing behavior preserved)', async () => {
@@ -455,57 +454,38 @@ describe('inspectBmadSetup — skills directory validation (AC-4, AC-5)', () => 
     expect(result.meta.documentationLink).toBe(BMAD_DOCUMENTATION_LINK);
   });
 
-  it('[P0] counts a directory-style skill when SKILL.md exists inside it', async () => {
+  it('[P0] passes the gate when skills are directory-style entries (no per-directory SKILL.md probe)', async () => {
     setupFetchWithOverrides(mockFetch, {
       '.claude/skills': githubDirListing(SKILLS_WITH_SUBDIRS),
-      '.claude/skills/bmad-agent-architect/SKILL.md': githubFileContent('# Architect'),
-      '.claude/skills/bmad-agent-dev/SKILL.md': githubFileContent('# Dev'),
     });
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
-    expect(result).toMatchObject({ valid: true, skillsCount: 2 });
+    expect(result).toMatchObject({ valid: true });
+    // The gate must NOT issue per-directory SKILL.md probes — the directory
+    // listing alone is sufficient evidence that skills exist.
+    const skillMdProbes = mockFetch.mock.calls
+      .map((c) => c[0] as string)
+      .filter((u) => u.includes('/.claude/skills/') && u.endsWith('/SKILL.md'));
+    expect(skillMdProbes).toHaveLength(0);
   });
 
-  it('[P0] excludes a directory-style entry with no SKILL.md inside it', async () => {
-    setupFetchWithOverrides(mockFetch, {
-      '.claude/skills': githubDirListing(SKILLS_WITH_SUBDIRS),
-      '.claude/skills/bmad-agent-architect/SKILL.md': githubFileContent('# Architect'),
-      '.claude/skills/bmad-agent-dev/SKILL.md': github404(),
-    });
-    const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
-    expect(result).toMatchObject({ valid: true, skillsCount: 1 });
-  });
-
-  it('[P0] sums flat .md files and valid skill directories in a mixed layout', async () => {
+  it('[P0] passes the gate for a mixed layout of flat .md files and skill directories', async () => {
     setupFetchWithOverrides(mockFetch, {
       '.claude/skills': githubDirListing([
         { name: 'bmad-dev-story.md', type: 'file' },
         { name: 'bmad-agent-architect', type: 'dir' },
         { name: 'bmad-agent-dev', type: 'dir' },
       ]),
-      '.claude/skills/bmad-agent-architect/SKILL.md': githubFileContent('# Architect'),
-      '.claude/skills/bmad-agent-dev/SKILL.md': github404(),
     });
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
-    expect(result).toMatchObject({ valid: true, skillsCount: 2 });
+    expect(result).toMatchObject({ valid: true });
   });
 
-  it('[P0] returns NO_SKILLS_FOUND when all entries are dirs and none contain SKILL.md', async () => {
+  it('[P0] passes the gate when all entries are dirs (directory entries count as skills)', async () => {
     setupFetchWithOverrides(mockFetch, {
       '.claude/skills': githubDirListing(SKILLS_WITH_SUBDIRS),
-      '.claude/skills/bmad-agent-architect/SKILL.md': github404(),
-      '.claude/skills/bmad-agent-dev/SKILL.md': github404(),
     });
     const result = await inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO);
-    expect(result).toMatchObject({ code: 'NO_SKILLS_FOUND' });
-  });
-
-  it('[P1] propagates a GitHub error from a per-directory SKILL.md probe', async () => {
-    setupFetchWithOverrides(mockFetch, {
-      '.claude/skills': githubDirListing(SKILLS_WITH_SUBDIRS),
-      '.claude/skills/bmad-agent-architect/SKILL.md': github500(),
-      '.claude/skills/bmad-agent-dev/SKILL.md': githubFileContent('# Dev'),
-    });
-    await expect(inspectBmadSetup(ACCESS_TOKEN, OWNER, REPO)).rejects.toThrow();
+    expect(result).toMatchObject({ valid: true });
   });
 });
 
@@ -709,7 +689,6 @@ describe('validateRepository — Server Action', () => {
       valid: true,
       repositoryUrl: REPO_URL,
       bmadVersion: '6.8.0',
-      skillsCount: 2,
     });
   });
 

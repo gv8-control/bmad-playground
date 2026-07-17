@@ -154,7 +154,7 @@ export class ConversationsService {
         try {
           await this.sandboxService.destroy(sandboxId!);
         } catch (err) {
-          this.logger.error(`Failed to destroy sandbox ${sandboxId} on idle timeout: ${err}`);
+          this.logger.error(`Failed to destroy sandbox ${sandboxId} on idle timeout for conversation ${conversationId}: ${err}`);
         } finally {
           this.sessionEvents.complete(conversationId);
         }
@@ -166,7 +166,7 @@ export class ConversationsService {
       }
       if (isCredentialFailureError(err)) {
         await this.credentialsService.markCredentialFailed(userId, new Date()).catch((markErr) => {
-          this.logger.error(`Failed to mark credential as failed for user ${userId}: ${markErr}`);
+          this.logger.error(`Failed to mark credential as failed for user ${userId} (conversation ${conversationId}): ${markErr}`);
         });
       }
       this.logger.error(`provisionSandbox pipeline failed for conversation ${conversationId}: ${err}`);
@@ -174,7 +174,7 @@ export class ConversationsService {
         try {
           await this.sandboxService.destroy(sandboxId);
         } catch (destroyErr) {
-          this.logger.error(`Failed to destroy sandbox ${sandboxId} after provision failure: ${destroyErr}`);
+          this.logger.error(`Failed to destroy sandbox ${sandboxId} after provision failure for conversation ${conversationId}: ${destroyErr}`);
         }
       }
       this.sandboxStatuses.set(conversationId, 'failed');
@@ -213,7 +213,7 @@ export class ConversationsService {
       try {
         await this.sandboxService.destroy(sandboxId);
       } catch (err) {
-        this.logger.error(`Failed to destroy sandbox ${sandboxId} on abandon: ${err}`);
+        this.logger.error(`Failed to destroy sandbox ${sandboxId} on abandon for conversation ${conversationId}: ${err}`);
       }
     }
 
@@ -373,7 +373,7 @@ export class ConversationsService {
       await this.sandboxService.destroy(sandboxId);
     } catch (err) {
       this.logger.error(
-        `Failed to destroy sandbox ${sandboxId} on mid-session idle timeout: ${err}`,
+        `Failed to destroy sandbox ${sandboxId} on mid-session idle timeout for conversation ${conversationId}: ${err}`,
       );
     } finally {
       this.sessionEvents.complete(conversationId);

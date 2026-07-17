@@ -386,7 +386,6 @@ describe('SideNavigation', () => {
   // ─── Story 5.4: Hairline border token (AC-6) ───────────────────────────────
   //
   // Story 5.4: AC-6: Nav right border uses border-surface-raised (not border-border-subtle).
-  // Test is active (GREEN) after Story 5.4 implementation.
 
   describe('[P0] Story 5.4, AC-6 — Nav right border token', () => {
     it('nav element uses border-surface-raised on right border, not border-border-subtle (AC-6)', () => {
@@ -400,7 +399,6 @@ describe('SideNavigation', () => {
   // ─── Story 5.4: Scrollbar hiding (AC-7) ────────────────────────────────────
   //
   // Story 5.4: AC-7: Scrollable conversation list panel hides scrollbars via no-scrollbar.
-  // Test is active (GREEN) after Story 5.4 implementation.
 
   describe('[P0] Story 5.4, AC-7 — Scrollbar hiding on conversation list', () => {
     it('conversation list scrollable panel has no-scrollbar class (AC-7)', () => {
