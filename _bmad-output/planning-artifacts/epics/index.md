@@ -241,9 +241,9 @@ Migrates agent execution from host-based (`@anthropic-ai/claude-agent-sdk` `quer
 Five UX gaps discovered from live-app usage after Epic 5 closed. These are not mockup drift — they are live-usage findings about states and feedback that the design never fully specified (loading feedback during in-app navigation, relative timestamps beyond one minute, prominence of focus rings on navigation surfaces) and about inconsistency in how already-specified patterns render (error presentation in the conversation view). Frontend presentation changes only; independent of Epic 6.
 **Change proposal:** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-13.md`
 
-## Epic 8: Sandbox Reconciliation via Environment-Scoped Labels
-Daytona sandboxes from local dev, the dev deployment, tests, and production share one account and a 30GiB disk quota, with no reconciliation mechanism — sandboxes leak on crashes, provisioning-window failures, and transient destroy failures, exhausting the quota. This epic adds an environment-scope label to every sandbox at creation time and a periodic background reaper that lists sandboxes by that label, reconciles them against the database, and destroys orphans. Defense-in-depth for the in-process cleanup paths in Epic 3 (Stories 3.1, 3.9, 3.12) that cannot run when the process crashes.
-**Change proposal:** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-17-sandbox-reaper.md`
+## Epic 8: Sandbox Lifecycle and Transport Correction
+Two structural gaps in the sandbox infrastructure: (1) Daytona sandboxes from local dev, the dev deployment, tests, and production share one account and a 30GiB disk quota, with no reconciliation mechanism — sandboxes leak on crashes, provisioning-window failures, and transient destroy failures, exhausting the quota; (2) the event bridge's transport mechanism is built on a stale architectural assumption (JSONL-on-stdout) that contradicts the research-established truth (sandbox-agent is an HTTP server on port 2468) — no conversation can succeed against the current code. This epic adds an environment-scope label and background reaper for orphan reconciliation (Story 8.1), rewrites the event bridge's transport from JSONL-on-stdout to HTTP SSE consumption of port 2468 (Story 8.2), and establishes local dev parity plus real-service E2E verification (Story 8.3). Architecture document reconciliation is a handoff item for the Architect per the change proposal, not a story.
+**Change proposals:** `sprint-change-proposal-2026-07-17-sandbox-reaper.md` (8.1), `sprint-change-proposal-2026-07-17-sandbox-agent-transport.md` (8.2–8.3)
 
 ## Table of Contents
 
@@ -317,5 +317,7 @@ Daytona sandboxes from local dev, the dev deployment, tests, and production shar
   - [Story 7.12: Conversation rename](./epic-7.md#story-712-conversation-rename)
   - [Story 7.13: Artifact Browser search and filter](./epic-7.md#story-713-artifact-browser-search-and-filter)
   - [Story 7.14: Conversation search / show all](./epic-7.md#story-714-conversation-search-show-all)
-- [Epic 8: Sandbox Reconciliation via Environment-Scoped Labels](./epic-8.md)
+- [Epic 8: Sandbox Lifecycle and Transport Correction](./epic-8.md)
   - [Story 8.1: Reconcile Orphaned Sandboxes via Environment-Scoped Labels](./epic-8.md#story-81-reconcile-orphaned-sandboxes-via-environment-scoped-labels)
+  - [Story 8.2: Replace AguiEventBridgeService Transport with HTTP SSE on Port 2468](./epic-8.md#story-82-replace-aguieventbridgeservice-transport-with-http-sse-on-port-2468)
+  - [Story 8.3: Local Dev Parity + Real-Service E2E Verification](./epic-8.md#story-83-local-dev-parity--real-service-e2e-verification)

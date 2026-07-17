@@ -1,8 +1,10 @@
-# Epic 8: Sandbox Reconciliation via Environment-Scoped Labels
+# Epic 8: Sandbox Lifecycle and Transport Correction
 
-Daytona sandboxes from local dev, the dev deployment, tests, and production share one account and a 30GiB disk quota, with no reconciliation mechanism — sandboxes leak on crashes, provisioning-window failures, and transient destroy failures, exhausting the quota. This epic adds an environment-scope label to every sandbox at creation time and a periodic background reaper that lists sandboxes by that label, reconciles them against the database, and destroys orphans. Defense-in-depth for the in-process cleanup paths in Epic 3 (Stories 3.1, 3.9, 3.12) that cannot run when the process crashes.
+Two structural gaps in the sandbox infrastructure: (1) Daytona sandboxes from local dev, the dev deployment, tests, and production share one account and a 30GiB disk quota, with no reconciliation mechanism — sandboxes leak on crashes, provisioning-window failures, and transient destroy failures, exhausting the quota; (2) the event bridge's transport mechanism is built on a stale architectural assumption (JSONL-on-stdout) that contradicts the research-established truth (sandbox-agent is an HTTP server on port 2468) — no conversation can succeed against the current code. This epic adds an environment-scope label and background reaper for orphan reconciliation (Story 8.1), rewrites the event bridge's transport from JSONL-on-stdout to HTTP SSE consumption of port 2468 (Story 8.2), and establishes local dev parity plus real-service E2E verification (Story 8.3). Architecture document reconciliation is a handoff item for the Architect per the change proposal, not a story.
 
-**Change proposal:** `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-17-sandbox-reaper.md`
+**Change proposals:**
+- `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-17-sandbox-reaper.md` (Story 8.1)
+- `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-17-sandbox-agent-transport.md` (Stories 8.2–8.3)
 
 ## Story 8.1: Reconcile Orphaned Sandboxes via Environment-Scoped Labels
 
@@ -68,4 +70,83 @@ So that sandbox leaks from crashes, provisioning-window failures, and transient 
 - **`setInterval` + `.unref()` rationale.** Matches `IdleTimeoutService` exactly. `.unref()` ensures the reaper timer does not prevent `apps/agent-be` from exiting on shutdown; `onModuleDestroy` clears it. No `@nestjs/schedule` dependency — the project does not use it and one periodic task does not justify adding it.
 - **First reap deferred one interval.** A rolling deploy starts a new instance while the old instance's sandboxes are still active. Firing `reap()` immediately on boot could destroy a sandbox the old instance is still serving. Waiting one interval gives the old instance time to drain (Story 3.12's graceful-drain window).
 - **Pre-existing unlabeled sandboxes.** Sandboxes created before this story ships have no `scope` label and will not be returned by `daytona.list({ labels: { scope } })`. They are not destroyed by the reaper (it cannot see them). A one-time manual cleanup using the updated `cleanup-daytona-sandboxes.ts` (without `--scope`, or with a one-off label injection) clears them; this is an operational cutover step, not a story AC.
-- **No dependencies on other stories or epics.** Epic 8 is independent of Epic 7 (frontend) and the done Epics 1–6.
+- **Story 8.1 has no dependencies on other stories or epics.** The reaper is independent of Epic 7 (frontend) and the done Epics 1–6. Stories 8.2–8.3 (transport correction) have dependencies on Epic 6 retro action items — see their individual scope notes.
+
+## Story 8.2: Replace AguiEventBridgeService Transport with HTTP SSE on Port 2468
+
+As the developer,
+I want the event bridge to consume sandbox-agent's HTTP SSE API on port 2468 instead of parsing JSONL on stdout,
+So that agent events actually flow from the real sandbox-agent binary to the browser SSE pipeline — the current transport is structurally broken and no conversation can succeed against it.
+
+**Acceptance Criteria:**
+
+**Given** `AguiEventBridgeService.streamAgentEvents()` (lines 91-225) currently calls `sandboxService.streamAgentLogs()` and registers an `onStdout` callback that splits on newlines and JSON-parses each line
+**When** the transport is rewritten
+**Then** `streamAgentEvents()` opens an HTTP SSE connection to `http://<sandbox-tunnel-host>:2468/runs/:runId/events` (or equivalent endpoint per sandbox-agent's API contract) and consumes SSE events
+**And** the `onStdout` callback, `MAX_LINE_BUFFER_BYTES` buffer cap, and `buffer += chunk` / `lines.split('\n')` logic (lines 132-150) are removed — they are unused under the HTTP SSE transport
+**And** `processAgentEvent()` JSON-parsing (lines 267-290) is reused — sandbox-agent's SSE events are still JSON-per-frame, only the input source changes
+**And** the transport-agnostic patterns are preserved: circuit breaker (120s timeout), `OnModuleDestroy` cleanup, lifecycle event ownership, `onEvent` callback seam, abort sentinel handling, `ABORT_SENTINELS` / `AGENT_STREAM_CRASHED` flow
+
+**Given** `SandboxService.createAgentSession()` (lines 381-405) currently receives `sandbox-agent --agent claude-code --prompt <message>` as the command string
+**When** the invocation is updated
+**Then** the daemon is started as `sandbox-agent server` (recommended: once per provision in `installBinaries()`, surviving across turns — design decision confirmed in implementation)
+**And** `createAgentSession` either becomes a no-op (daemon-per-provision) or starts the daemon per conversation (daemon-per-conversation) per the design decision
+**And** `AgentService.runTurn()` no longer constructs the `--agent claude-code --prompt` placeholder — it POSTs to `POST http://<sandbox-tunnel-host>:2468/run` with the user message and receives a `runId`
+**And** `terminateAgentSession()` cancels an in-flight run via `POST http://.../runs/:runId/cancel` (if daemon-per-provision) or terminates the daemon (if daemon-per-conversation)
+
+**Given** the `ISandboxService` interface (`libs/shared-types/src/sandbox.interface.ts`) may need new methods
+**When** the interface is updated
+**Then** it exposes methods matching the new transport (e.g. `startSandboxAgent(sandboxId): Promise<{ port: number; baseUrl: string }>` + `stopSandboxAgent(sandboxId): Promise<void>`) or the existing `createAgentSession` / `streamAgentLogs` / `terminateAgentSession` signatures are replaced to match the HTTP SSE contract
+**And** the `AgentSessionHandle` type evolves if the handle is no longer `{ sessionId, commandId }` but `{ runId: string; baseUrl: string }`
+
+**Given** Story 6.2's 44 ATDD tests mock JSONL chunks on stdout via `SandboxServiceFake`
+**When** the tests are re-evaluated
+**Then** tests exercising transport-agnostic patterns (circuit breaker timer reset, lifecycle event ownership, `onEvent` callback seam, `OnModuleDestroy` cleanup, abort sentinel handling) survive with their assertions intact
+**And** tests exercising the JSONL-parsing logic (`onStdout` buffer split, `MAX_LINE_BUFFER_BYTES` cap, `processAgentEvent` JSON-parsing against stdout chunks) are rewritten against the new HTTP-SSE consumption contract
+**And** `SandboxServiceFake` is extended to expose the HTTP-SSE channel mock (a fake HTTP server emitting SSE events, or a mock that returns an async iterator of SSE frames)
+
+**Given** the Daytona SDK must provide a tunnel or bridge to the sandbox's port 2468
+**When** agent-be connects to the sandbox-agent HTTP API
+**Then** the connection uses the Daytona SDK's per-sandbox hostname or tunnel (validated in Story 8.3 against a real sandbox)
+**And** no new npm packages are required unless `eventsource` is preferred over Node 24's native `fetch` + `ReadableStream` for cleaner SSE consumption (decision deferred to implementation)
+
+**Scope notes:**
+
+- **Central dev story.** This is the heaviest story in Epic 8 — transport rewrite of the only path from sandbox-agent to the browser SSE pipeline. Estimated 4-6 dev days.- **Transport-agnostic layer is sound.** Epic 6's central insight (event vocabulary preservation, `onEvent` callback seam, lifecycle ownership, circuit breaker, `SessionEventsService` / `StreamingController`, cost tracking, working-tree side-effect emission) is provably independent of how events arrive at the event bridge. Only the bottom of the stack changes.
+- **No conversation can succeed against the current code.** The placeholder invocation `sandbox-agent --agent claude-code --prompt <message>` starts the HTTP server; `getSessionCommandLogs` streams startup logs then blocks forever; the circuit breaker fires after 120s and emits `RUN_ERROR`. This story fixes that.
+- **False-confidence tests.** Story 6.2's 44 tests are green but exercise a fictional contract (mocked JSONL chunks the real binary never produces). Per Epic 6 retro: "A green test asserts the specific contract, not the presence of the contract's bytes."
+- **Pre-implementation fidelity audit recommended.** Murat (Test Architect) should run a fidelity audit before this story starts, mirroring the CF3 SandboxService audit before Epic 6 — identifies which of Story 6.2's 44 tests survive, which need replacement, which become no longer applicable.
+- **Design decision: daemon-per-provision vs. daemon-per-conversation.** Recommended: daemon-per-provision (matches architecture's "agent-be is the active party, sandbox never initiates outbound" contract and minimizes per-turn startup cost for NFR-P1's 1,500ms first-token target). Confirm in implementation.
+- **sandbox-agent HTTP/SSE API contract.** Research-documented but not contract-tested against this codebase. Endpoints: `POST /run` (start agent run, returns `{ run_id, session_id }`), `GET /runs/:run_id/events` (SSE stream), `POST /runs/:run_id/cancel` (cancel in-flight run). Each SSE event is JSON: `{ event_id, session_id, type, data }`. Exact paths and verbs confirmed against real binary in Story 8.3.
+
+## Story 8.3: Local Dev Parity + Real-Service E2E Verification
+
+As the developer and operator,
+I want `nx serve agent-be` to work locally without the sandbox-agent binary and the real-service E2E specs to actually run against a real Daytona sandbox,
+So that the transport rewrite is verified end-to-end and local development is not blocked by a missing binary that only exists in the Docker image.
+
+**Acceptance Criteria:**
+
+**Given** `nx serve agent-be` locally fails on first conversation request because `/opt/sandbox-agent` binary doesn't exist on the host (baked into the Docker image per `Dockerfile` lines 10-12, 47)
+**When** local dev parity is established
+**Then** `SandboxServiceFake` handles the new HTTP SSE path so `nx serve agent-be` works for full-stack smoke without the real binary
+**And** the binary requirement remains for production / Docker-based smoke (documented in local dev setup)
+**And** a developer running `nx serve agent-be` locally can send a message and receive a simulated agent event stream without ENOENT errors
+
+**Given** Story 6.5's 5 real-service E2E specs are written with `beforeAll` env-var skip guards (`PLAYWRIGHT_REAL_SERVICE=1` not set in CI)
+**When** the real-service verification runs
+**Then** `PLAYWRIGHT_REAL_SERVICE=1 yarn playwright test --grep @real-service` discovers and runs all 5 specs (egress-control, functional-file-access, functional-git-commands, functional-stop-agent, functional-host-isolation)
+**And** the specs run against a real Daytona sandbox + real sandbox-agent + real Anthropic API
+**And** the specs pass (or surface real contract gaps that Story 8.2's implementation must address)
+
+**Given** NFR-O1 (per-user LLM spend tracking) depends on cost data arriving via sandbox-agent's `RUN_FINISHED` event
+**When** the real-service E2E verifies cost tracking
+**Then** cost data arrives via the `RUN_FINISHED` event's `data` payload and `CostTrackingService` records it
+**And** if the schema differs from what Story 6.3's cost capture expects, the gap is surfaced and addressed (compat shim in Story 8.2 or documented as a follow-up)
+
+**Scope notes:**
+
+- **Gated on Epic 6 retro Action Item #1** (operational prerequisites: GitHub test account with 2FA, CI secrets, OAuth callback setup, Anthropic API key for testing). Marius owns this workstream. Story 8.3 cannot run until these are resolved.
+- **Gated on Epic 6 retro Action Item #2** (JWT Edge-vs-Node decryption) for the 3 PR-tier Playwright specs. The 5 functional real-service specs (Tier 3, agent-be to Daytona to Anthropic) don't require the JWT fix — they hit agent-be directly with a boundary JWT minted in Node.
+- **This is the verification gate.** Story 8.2 implements the transport rewrite against the documented contract; Story 8.3 validates it against the real binary. Without this story, the transport is still unvalidated — the same gap that allowed the JSONL-on-stdout assumption to persist through all of Epic 6.
+- **Closes Epic 6 retro Action Item #1's verification gap.** The retro flagged that real-service E2E never ran. This story is where it finally runs.

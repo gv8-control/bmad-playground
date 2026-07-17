@@ -141,10 +141,18 @@ development_status:
   7-13-artifact-browser-search-and-filter: backlog
   7-14-conversation-search-show-all: backlog
 
-  # ── Epic 8: Sandbox Reconciliation via Environment-Scoped Labels ──
-  # Background reaper that reconciles Daytona sandboxes against the DB,
-  # scoped to its own environment by a `scope` label. Defense-in-depth for
-  # the in-process cleanup paths in Epic 3 that cannot run on crash.
-  # See: sprint-change-proposal-2026-07-17-sandbox-reaper.md
+  # ── Epic 8: Sandbox Lifecycle and Transport Correction ──
+  # Story 8.1: Background reaper that reconciles Daytona sandboxes against
+  # the DB, scoped to its own environment by a `scope` label. Defense-in-depth
+  # for the in-process cleanup paths in Epic 3 that cannot run on crash.
+  # Stories 8.2–8.3: Correct the event bridge transport from JSONL-on-stdout
+  # (stale architecture assumption) to HTTP SSE on port 2468 (research-validated
+  # truth). No conversation can succeed against the current transport.
+  # Architecture doc reconciliation is a handoff item for the Architect,
+  # not a story — see change proposal Section 5 handoff table.
+  # See: sprint-change-proposal-2026-07-17-sandbox-reaper.md (8.1)
+  #      sprint-change-proposal-2026-07-17-sandbox-agent-transport.md (8.2–8.3)
   epic-8: backlog
   8-1-reconcile-orphaned-sandboxes-via-environment-scoped-labels: backlog
+  8-2-replace-agui-event-bridge-transport-with-http-sse-on-port-2468: backlog
+  8-3-local-dev-parity-and-real-service-e2e-verification: backlog
