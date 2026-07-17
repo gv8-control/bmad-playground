@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-12T08:29:46.479Z",
+  "updatedAt": "2026-07-17T20:20:21.072Z",
   "createdAt": "2026-07-02T23:24:43.066Z",
   "id": "GGiJ7KGUez94SaOc",
   "name": "Develop Story (Playbook)",
@@ -648,29 +648,29 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "9e693193-4969-473c-86b5-f3201ef4164b",
-  "activeVersionId": "f3785835-cd03-4fa7-ab96-d16c701ad733",
-  "versionCounter": 5,
+  "versionId": "0d8d21c4-6914-40be-a3e3-8ea709e39ba3",
+  "activeVersionId": "a6e1a71d-ad8b-47de-aea5-a25fdb7be79a",
+  "versionCounter": 7,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-02T23:24:43.066Z",
-      "createdAt": "2026-07-02T23:24:43.066Z",
+      "updatedAt": "2026-07-14T10:19:51.920Z",
+      "createdAt": "2026-07-14T10:19:51.920Z",
       "role": "workflow:owner",
       "workflowId": "GGiJ7KGUez94SaOc",
-      "projectId": "AYEhcVrohjJ82DQg",
+      "projectId": "0UQEQBKdspnqMAPk",
       "project": {
-        "updatedAt": "2026-06-30T18:07:25.243Z",
-        "createdAt": "2026-06-30T17:25:02.325Z",
-        "id": "AYEhcVrohjJ82DQg",
+        "updatedAt": "2026-07-14T10:09:51.931Z",
+        "createdAt": "2026-07-14T10:09:30.918Z",
+        "id": "0UQEQBKdspnqMAPk",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+        "creatorId": "f5b33b4f-eee7-42dc-8e3b-111a70218818"
       }
     }
   ],

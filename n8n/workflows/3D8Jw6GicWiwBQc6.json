@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-14T20:37:13.672Z",
+  "updatedAt": "2026-07-17T20:04:52.846Z",
   "createdAt": "2026-06-21T12:41:40.926Z",
   "id": "3D8Jw6GicWiwBQc6",
   "name": "BMAD Outcome",
@@ -34,53 +34,6 @@
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const item = $input.first().json;\nconst response = String(item.response ?? '');\nconst salvaged = String(item.salvaged ?? '');\nconst rc = Number(item.rc);\n\n// Rule 1: empty response → UNKNOWN (failed)\nif (response.trim() === '') {\n  return [{ json: { outcome: 'UNKNOWN', rawOutcome: '', classificationFallback: true } }];\n}\n\n// Rule 2: response starts with \"[opencode error]\" → INCOMPLETE (provider error)\nif (response.startsWith('[opencode error]')) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 3: salvaged==yes OR rc!=0 → INCOMPLETE (timeout/crash)\nif (salvaged === 'yes' || (Number.isFinite(rc) && rc !== 0)) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 4-5: fall through to LLM\nreturn [{ json: { outcome: null, response } }];"
-      },
-      "id": "determine-outcome-001",
-      "name": "Determine outcome",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        200,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "if-outcome-null",
-              "leftValue": "={{ $json.outcome === null }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "if-outcome-null-001",
-      "name": "Outcome is null?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        400,
-        0
-      ]
-    },
-    {
-      "parameters": {
         "promptType": "define",
         "text": "=--- Start Input ---\n{{ $json.response }}\n--- End Input ---\n\nTask: evaluate the message. Respond only with the classifier that you chose.\nIF it:\n  - asks for input before proceeding\n  - reports an error\n  - indicates that work should not proceed before addressing important issues \nTHEN respond only with QUESTION;\nIF it:\n  - confirms a successful operation\n  - indicates only minor issues and does not indicate critical issues\n  - politely asks for next steps following successful completion\nTHEN respond only with COMPLETE;\nIF it:\n  - is a partial or truncated response\n  - is mid-thought text where work was interrupted\n  - indicates work was interrupted but no question is asked\nTHEN respond only with INCOMPLETE;\n\nExamples:\n- 'what task do you want to do next?' -> COMPLETE\n- 'do you want to solve these issues move onto next task?' -> QUESTION\n- 'Now I will implement the' -> INCOMPLETE\n\nOutput: Respond with only the word COMPLETE, QUESTION, or INCOMPLETE. No quotes, no punctuation, no other text.",
         "options": {}
@@ -88,8 +41,8 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
       "position": [
-        640,
-        -120
+        400,
+        0
       ],
       "id": "o4",
       "name": "Classify response"
@@ -103,7 +56,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
+        704,
         0
       ]
     },
@@ -117,10 +70,10 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
       "typeVersion": 1,
       "position": [
-        640,
-        72
+        400,
+        208
       ],
-      "id": "ee5118c9-bec3-46fd-a26c-32c81f3fed9d",
+      "id": "5cd1d87f-d283-44df-9bcf-b79a54591cc8",
       "name": "Mistral Cloud Chat Model",
       "credentials": {
         "mistralCloudApi": {
@@ -128,9 +81,78 @@
           "name": "Mistral Cloud account"
         }
       }
+    },
+    {
+      "id": "ae3739b4-8928-48a3-aa91-37ef06a05116",
+      "name": "Determine outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst response = String(item.response ?? '');\nconst salvaged = String(item.salvaged ?? '');\nconst rc = Number(item.rc);\n\n// Rule 1: empty response → UNKNOWN (failed)\nif (response.trim() === '') {\n  return [{ json: { outcome: 'UNKNOWN', rawOutcome: '', classificationFallback: true } }];\n}\n\n// Rule 2: response starts with \"[opencode error]\" → INCOMPLETE (provider error)\nif (response.startsWith('[opencode error]')) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 3: salvaged==yes OR rc!=0 → INCOMPLETE (timeout/crash)\nif (salvaged === 'yes' || (Number.isFinite(rc) && rc !== 0)) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 4-5: fall through to LLM\nreturn [{ json: { outcome: null, response } }];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "ce350b10-921f-4e62-a895-cb1718b7f246",
+      "name": "Outcome is null?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        400,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "if-outcome-null",
+              "leftValue": "={{ $json.outcome === null }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      }
     }
   ],
   "connections": {
+    "Classify response": {
+      "main": [
+        [
+          {
+            "node": "Validate Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mistral Cloud Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify response",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Start": {
       "main": [
         [
@@ -170,28 +192,6 @@
           }
         ]
       ]
-    },
-    "Classify response": {
-      "main": [
-        [
-          {
-            "node": "Validate Classification",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Mistral Cloud Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Classify response",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
   "settings": {
@@ -217,29 +217,29 @@
       }
     ]
   },
-  "versionId": "fc1c7cdf-ad21-408a-b339-599ba6f90e4c",
-  "activeVersionId": "2d1c2049-e054-4976-a45e-b4afee1fa120",
+  "versionId": "b9c7aba7-d3e8-4d71-a7d2-ff5f9900a834",
+  "activeVersionId": "2b9f78bc-3d57-49fd-9bc1-59d91227e13c",
   "versionCounter": 58,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-01T03:43:25.204Z",
-      "createdAt": "2026-07-01T03:43:25.204Z",
+      "updatedAt": "2026-07-14T10:19:51.920Z",
+      "createdAt": "2026-07-14T10:19:51.920Z",
       "role": "workflow:owner",
       "workflowId": "3D8Jw6GicWiwBQc6",
-      "projectId": "AYEhcVrohjJ82DQg",
+      "projectId": "0UQEQBKdspnqMAPk",
       "project": {
-        "updatedAt": "2026-06-30T18:07:25.243Z",
-        "createdAt": "2026-06-30T17:25:02.325Z",
-        "id": "AYEhcVrohjJ82DQg",
+        "updatedAt": "2026-07-14T10:09:51.931Z",
+        "createdAt": "2026-07-14T10:09:30.918Z",
+        "id": "0UQEQBKdspnqMAPk",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+        "creatorId": "f5b33b4f-eee7-42dc-8e3b-111a70218818"
       }
     }
   ],
