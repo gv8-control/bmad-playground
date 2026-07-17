@@ -3,7 +3,7 @@
 Extracted from the n8n Workflow Review (2026-07-17). Workstream B (phantom-halt
 elimination) is closed; these changes address the security perimeter.
 
-This workstream should land alongside Workstream E after Workstream A. Note:
+This workstream should land after Workstream A. Note:
 F-1 is Critical and the D1/D2 fixes are Small effort — treat as urgent
 regardless of broader sequencing, because the webhook URL is published to a
 public ntfy topic and the exposure compounds with time.
