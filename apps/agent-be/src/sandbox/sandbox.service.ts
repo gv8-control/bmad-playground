@@ -15,17 +15,30 @@ import { DAYTONA_CLIENT } from './daytona-client.provider';
 const REPO_SUBDIRECTORY = 'repo';
 
 /**
- * Path to the sandbox-agent binary baked into the agent-be Docker image
- * (downloaded + checksum-verified at Docker build time — see Dockerfile).
+ * Path to the sandbox-agent binary on the agent-be host. Overridable via the
+ * `SANDBOX_AGENT_PATH` env var; defaults to `/opt/sandbox-agent`, the path
+ * baked into the agent-be Docker image (downloaded + checksum-verified at
+ * Docker build time — see Dockerfile). For local dev (nx serve) the binary
+ * is not at that path — run `scripts/download-sandbox-agent.sh` to download
+ * the pinned binary, then either leave the var unset (if the script placed
+ * it at /opt/sandbox-agent) or point it to your local download path.
  * Uploaded to the sandbox during provision.
  */
-const SANDBOX_AGENT_LOCAL_PATH = '/opt/sandbox-agent';
+const SANDBOX_AGENT_LOCAL_PATH = process.env.SANDBOX_AGENT_PATH ?? '/opt/sandbox-agent';
 
 /**
  * Remote path inside the sandbox where the sandbox-agent binary is placed
  * and made executable.
  */
 const SANDBOX_AGENT_REMOTE_PATH = '/usr/local/bin/sandbox-agent';
+
+/**
+ * Temp upload path inside the sandbox. `/usr/local/bin/` is not writable by
+ * the Daytona sandbox's default user, so the binary is uploaded here first
+ * (always writable) and then moved to `SANDBOX_AGENT_REMOTE_PATH` via
+ * `sudo install -m 755`, which atomically copies and sets permissions.
+ */
+const SANDBOX_AGENT_TEMP_PATH = '/tmp/sandbox-agent-upload';
 
 /**
  * Pinned exact version of the Claude Code CLI installed inside the sandbox
@@ -294,30 +307,34 @@ export class SandboxService implements ISandboxService {
    * cannot run the agent. All paths and versions are constants (no user input).
    */
   private async installBinaries(sandbox: Sandbox): Promise<void> {
+    // `/usr/local/bin/` is not writable by the Daytona sandbox's default user,
+    // and `sandbox.fs.uploadFile` runs as that user (bulk upload endpoint).
+    // Upload to the always-writable /tmp first, then `sudo install` to the
+    // final destination — `install` atomically copies and sets permissions.
     await sandbox.fs.uploadFile(
       SANDBOX_AGENT_LOCAL_PATH,
-      SANDBOX_AGENT_REMOTE_PATH,
+      SANDBOX_AGENT_TEMP_PATH,
       SANDBOX_UPLOAD_TIMEOUT_S,
     );
 
-    const chmodResponse = await sandbox.process.executeCommand(
-      `chmod +x ${SANDBOX_AGENT_REMOTE_PATH}`,
+    const installResponse = await sandbox.process.executeCommand(
+      `sudo install -m 755 ${SANDBOX_AGENT_TEMP_PATH} ${SANDBOX_AGENT_REMOTE_PATH}`,
       undefined,
       undefined,
       SANDBOX_AGENT_CMD_TIMEOUT_S,
     );
-    if (chmodResponse.exitCode !== 0) {
-      // chmod writes failure diagnostics to stderr; the SDK's
+    if (installResponse.exitCode !== 0) {
+      // install writes failure diagnostics to stderr; the SDK's
       // ExecuteResponse.result is stdout-only, so it may be empty.
       // Fall back to a diagnostic that includes the exit code (F4 pattern,
       // matching injectGitConfig() and commit()).
       throw new Error(
-        chmodResponse.result || `Failed to make sandbox-agent executable (exit code ${chmodResponse.exitCode})`,
+        installResponse.result || `Failed to install sandbox-agent binary (exit code ${installResponse.exitCode})`,
       );
     }
 
     const npmInstallResponse = await sandbox.process.executeCommand(
-      `npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}`,
+      `sudo -E env "PATH=$PATH" npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}`,
       undefined,
       undefined,
       SANDBOX_NPM_INSTALL_TIMEOUT_S,

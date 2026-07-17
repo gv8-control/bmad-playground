@@ -4,4 +4,5 @@ export default () => ({
   daytonaApiKey: process.env.DAYTONA_API_KEY,
   authSecret: process.env.AUTH_SECRET,
   port: parseInt(process.env.PORT ?? '3001', 10),
+  sandboxAgentPath: process.env.SANDBOX_AGENT_PATH ?? '/opt/sandbox-agent',
 });

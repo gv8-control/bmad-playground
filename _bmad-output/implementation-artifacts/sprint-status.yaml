@@ -146,13 +146,16 @@ development_status:
   # the DB, scoped to its own environment by a `scope` label. Defense-in-depth
   # for the in-process cleanup paths in Epic 3 that cannot run on crash.
   # Stories 8.2–8.3: Correct the event bridge transport from JSONL-on-stdout
-  # (stale architecture assumption) to HTTP SSE on port 2468 (research-validated
-  # truth). No conversation can succeed against the current transport.
+  # (stale architecture assumption) to ACP HTTP SSE on port 2468 (verified
+  # against real binary 2026-07-17). Also fix agent installation: replace
+  # `sudo npm install -g @anthropic-ai/claude-code` with
+  # `sandbox-agent install-agent claude` (correct ACP agent process, no sudo).
+  # No conversation can succeed against the current transport or installation.
   # Architecture doc reconciliation is a handoff item for the Architect,
   # not a story — see change proposal Section 5 handoff table.
   # See: sprint-change-proposal-2026-07-17-sandbox-reaper.md (8.1)
   #      sprint-change-proposal-2026-07-17-sandbox-agent-transport.md (8.2–8.3)
   epic-8: backlog
   8-1-reconcile-orphaned-sandboxes-via-environment-scoped-labels: backlog
-  8-2-replace-agui-event-bridge-transport-with-http-sse-on-port-2468: backlog
+  8-2-replace-agui-event-bridge-transport-with-acp-sse-on-port-2468-and-fix-agent-installation: backlog
   8-3-local-dev-parity-and-real-service-e2e-verification: backlog

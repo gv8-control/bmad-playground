@@ -1,6 +1,6 @@
 # Epic 8: Sandbox Lifecycle and Transport Correction
 
-Two structural gaps in the sandbox infrastructure: (1) Daytona sandboxes from local dev, the dev deployment, tests, and production share one account and a 30GiB disk quota, with no reconciliation mechanism — sandboxes leak on crashes, provisioning-window failures, and transient destroy failures, exhausting the quota; (2) the event bridge's transport mechanism is built on a stale architectural assumption (JSONL-on-stdout) that contradicts the research-established truth (sandbox-agent is an HTTP server on port 2468) — no conversation can succeed against the current code. This epic adds an environment-scope label and background reaper for orphan reconciliation (Story 8.1), rewrites the event bridge's transport from JSONL-on-stdout to HTTP SSE consumption of port 2468 (Story 8.2), and establishes local dev parity plus real-service E2E verification (Story 8.3). Architecture document reconciliation is a handoff item for the Architect per the change proposal, not a story.
+Two structural gaps in the sandbox infrastructure: (1) Daytona sandboxes from local dev, the dev deployment, tests, and production share one account and a 30GiB disk quota, with no reconciliation mechanism — sandboxes leak on crashes, provisioning-window failures, and transient destroy failures, exhausting the quota; (2) the event bridge's transport mechanism is built on a stale architectural assumption (JSONL-on-stdout) that contradicts the research-established truth (sandbox-agent is an HTTP server on port 2468) — no conversation can succeed against the current code. Direct binary inspection on 2026-07-17 revealed two additional defects: the wrong npm package is installed (`@anthropic-ai/claude-code` CLI instead of the ACP agent process), and the assumed API endpoints were wrong (ACP JSON-RPC, not REST-style `/run`). This epic adds an environment-scope label and background reaper for orphan reconciliation (Story 8.1), rewrites the event bridge's transport from JSONL-on-stdout to ACP HTTP SSE consumption of port 2468 and fixes agent installation via `install-agent` (Story 8.2), and establishes local dev parity plus real-service E2E verification (Story 8.3). Architecture document reconciliation is a handoff item for the Architect per the change proposal, not a story.
 
 **Change proposals:**
 - `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-17-sandbox-reaper.md` (Story 8.1)
@@ -72,38 +72,45 @@ So that sandbox leaks from crashes, provisioning-window failures, and transient 
 - **Pre-existing unlabeled sandboxes.** Sandboxes created before this story ships have no `scope` label and will not be returned by `daytona.list({ labels: { scope } })`. They are not destroyed by the reaper (it cannot see them). A one-time manual cleanup using the updated `cleanup-daytona-sandboxes.ts` (without `--scope`, or with a one-off label injection) clears them; this is an operational cutover step, not a story AC.
 - **Story 8.1 has no dependencies on other stories or epics.** The reaper is independent of Epic 7 (frontend) and the done Epics 1–6. Stories 8.2–8.3 (transport correction) have dependencies on Epic 6 retro action items — see their individual scope notes.
 
-## Story 8.2: Replace AguiEventBridgeService Transport with HTTP SSE on Port 2468
+## Story 8.2: Replace AguiEventBridgeService Transport with ACP HTTP SSE on Port 2468 + Fix Agent Installation
 
 As the developer,
-I want the event bridge to consume sandbox-agent's HTTP SSE API on port 2468 instead of parsing JSONL on stdout,
-So that agent events actually flow from the real sandbox-agent binary to the browser SSE pipeline — the current transport is structurally broken and no conversation can succeed against it.
+I want the event bridge to consume sandbox-agent's ACP HTTP SSE API on port 2468 instead of parsing JSONL on stdout, and Claude Code installed via `install-agent` instead of `npm install -g`,
+So that agent events actually flow from the real sandbox-agent binary to the browser SSE pipeline — the current transport is structurally broken, the wrong package is installed, and no conversation can succeed against it.
 
 **Acceptance Criteria:**
 
 **Given** `AguiEventBridgeService.streamAgentEvents()` (lines 91-225) currently calls `sandboxService.streamAgentLogs()` and registers an `onStdout` callback that splits on newlines and JSON-parses each line
 **When** the transport is rewritten
-**Then** `streamAgentEvents()` opens an HTTP SSE connection to `http://<sandbox-tunnel-host>:2468/runs/:runId/events` (or equivalent endpoint per sandbox-agent's API contract) and consumes SSE events
-**And** the `onStdout` callback, `MAX_LINE_BUFFER_BYTES` buffer cap, and `buffer += chunk` / `lines.split('\n')` logic (lines 132-150) are removed — they are unused under the HTTP SSE transport
-**And** `processAgentEvent()` JSON-parsing (lines 267-290) is reused — sandbox-agent's SSE events are still JSON-per-frame, only the input source changes
+**Then** `streamAgentEvents()` opens an HTTP SSE connection to `GET http://<sandbox-tunnel-host>:2468/v1/acp/{server_id}` (verified endpoint — ACP JSON-RPC envelopes) and consumes SSE events
+**And** the `onStdout` callback, `MAX_LINE_BUFFER_BYTES` buffer cap, and `buffer += chunk` / `lines.split('\n')` logic (lines 132-150) are removed — they are unused under the ACP SSE transport
+**And** `processAgentEvent()` JSON-parsing (lines 267-290) is reused — sandbox-agent's SSE events are still JSON-per-frame, but the envelope schema is ACP JSON-RPC (not the `{ event_id, session_id, type, data }` shape originally assumed) — the exact envelope shapes must be discovered by inspecting the real SSE stream during implementation
 **And** the transport-agnostic patterns are preserved: circuit breaker (120s timeout), `OnModuleDestroy` cleanup, lifecycle event ownership, `onEvent` callback seam, abort sentinel handling, `ABORT_SENTINELS` / `AGENT_STREAM_CRASHED` flow
+
+**Given** `SandboxService.installBinaries()` (lines 309-359) currently runs `sudo -E env "PATH=$PATH" npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}` which installs the wrong package (the CLI, not the ACP agent process the server manages)
+**When** the installation is corrected
+**Then** `installBinaries()` runs `sandbox-agent install-agent claude` (first-class subcommand, no sudo, installs to `~/.local/share/sandbox-agent/bin/`) which installs both the native binary and the `@agentclientprotocol/claude-agent-acp` agent process
+**And** the `CLAUDE_CODE_VERSION` constant (line 50) is removed or renamed — `install-agent` resolves the latest compatible version by default, or pins via `--agent-version` if exact pinning is still required
+**And** the npm install verification step (lines 350-358) is replaced with a `GET /v1/agents` health check confirming `{"id":"claude","installed":true}`
+**And** the NFR-S1 test at `sandbox.service.nfr-s1.spec.ts:509` (asserts `npm install -g @anthropic-ai/claude-code@<version>`) is rewritten to assert `install-agent claude`
 
 **Given** `SandboxService.createAgentSession()` (lines 381-405) currently receives `sandbox-agent --agent claude-code --prompt <message>` as the command string
 **When** the invocation is updated
 **Then** the daemon is started as `sandbox-agent server` (recommended: once per provision in `installBinaries()`, surviving across turns — design decision confirmed in implementation)
 **And** `createAgentSession` either becomes a no-op (daemon-per-provision) or starts the daemon per conversation (daemon-per-conversation) per the design decision
-**And** `AgentService.runTurn()` no longer constructs the `--agent claude-code --prompt` placeholder — it POSTs to `POST http://<sandbox-tunnel-host>:2468/run` with the user message and receives a `runId`
-**And** `terminateAgentSession()` cancels an in-flight run via `POST http://.../runs/:runId/cancel` (if daemon-per-provision) or terminates the daemon (if daemon-per-conversation)
+**And** `AgentService.runTurn()` no longer constructs the `--agent claude-code --prompt` placeholder — it sends ACP JSON-RPC envelopes via `POST http://<sandbox-tunnel-host>:2468/v1/acp/{server_id}` with the user message
+**And** `terminateAgentSession()` closes the ACP stream via `POST http://.../v1/acp/{server_id}/close` (if daemon-per-provision) or terminates the daemon (if daemon-per-conversation)
 
 **Given** the `ISandboxService` interface (`libs/shared-types/src/sandbox.interface.ts`) may need new methods
 **When** the interface is updated
 **Then** it exposes methods matching the new transport (e.g. `startSandboxAgent(sandboxId): Promise<{ port: number; baseUrl: string }>` + `stopSandboxAgent(sandboxId): Promise<void>`) or the existing `createAgentSession` / `streamAgentLogs` / `terminateAgentSession` signatures are replaced to match the HTTP SSE contract
-**And** the `AgentSessionHandle` type evolves if the handle is no longer `{ sessionId, commandId }` but `{ runId: string; baseUrl: string }`
+**And** the `AgentSessionHandle` type evolves if the handle is no longer `{ sessionId, commandId }` but `{ serverId: string; baseUrl: string }` (ACP uses `server_id`, not `runId`)
 
 **Given** Story 6.2's 44 ATDD tests mock JSONL chunks on stdout via `SandboxServiceFake`
 **When** the tests are re-evaluated
 **Then** tests exercising transport-agnostic patterns (circuit breaker timer reset, lifecycle event ownership, `onEvent` callback seam, `OnModuleDestroy` cleanup, abort sentinel handling) survive with their assertions intact
-**And** tests exercising the JSONL-parsing logic (`onStdout` buffer split, `MAX_LINE_BUFFER_BYTES` cap, `processAgentEvent` JSON-parsing against stdout chunks) are rewritten against the new HTTP-SSE consumption contract
-**And** `SandboxServiceFake` is extended to expose the HTTP-SSE channel mock (a fake HTTP server emitting SSE events, or a mock that returns an async iterator of SSE frames)
+**And** tests exercising the JSONL-parsing logic (`onStdout` buffer split, `MAX_LINE_BUFFER_BYTES` cap, `processAgentEvent` JSON-parsing against stdout chunks) are rewritten against the new ACP-SSE consumption contract
+**And** `SandboxServiceFake` is extended to expose the ACP-SSE channel mock (a fake HTTP server emitting ACP JSON-RPC SSE events, or a mock that returns an async iterator of SSE frames)
 
 **Given** the Daytona SDK must provide a tunnel or bridge to the sandbox's port 2468
 **When** agent-be connects to the sandbox-agent HTTP API
@@ -112,12 +119,14 @@ So that agent events actually flow from the real sandbox-agent binary to the bro
 
 **Scope notes:**
 
-- **Central dev story.** This is the heaviest story in Epic 8 — transport rewrite of the only path from sandbox-agent to the browser SSE pipeline. Estimated 4-6 dev days.- **Transport-agnostic layer is sound.** Epic 6's central insight (event vocabulary preservation, `onEvent` callback seam, lifecycle ownership, circuit breaker, `SessionEventsService` / `StreamingController`, cost tracking, working-tree side-effect emission) is provably independent of how events arrive at the event bridge. Only the bottom of the stack changes.
+- **Central dev story.** This is the heaviest story in Epic 8 — transport rewrite of the only path from sandbox-agent to the browser SSE pipeline, plus fixing the agent installation. Estimated 4-6 dev days.
+- **Transport-agnostic layer is sound.** Epic 6's central insight (event vocabulary preservation, `onEvent` callback seam, lifecycle ownership, circuit breaker, `SessionEventsService` / `StreamingController`, cost tracking, working-tree side-effect emission) is provably independent of how events arrive at the event bridge. Only the bottom of the stack changes.
 - **No conversation can succeed against the current code.** The placeholder invocation `sandbox-agent --agent claude-code --prompt <message>` starts the HTTP server; `getSessionCommandLogs` streams startup logs then blocks forever; the circuit breaker fires after 120s and emits `RUN_ERROR`. This story fixes that.
+- **Wrong package installed (verified 2026-07-17).** `sudo npm install -g @anthropic-ai/claude-code` installs the Claude Code CLI, not the ACP agent process (`@agentclientprotocol/claude-agent-acp`) that the sandbox-agent server manages. The server does not discover globally-installed npm packages. Even with the transport rewritten, the server would report Claude as `"installed": false` and reject run requests. `install-agent` is the correct mechanism — no sudo, installs to `~/.local/share/sandbox-agent/bin/`, server discovers automatically.
 - **False-confidence tests.** Story 6.2's 44 tests are green but exercise a fictional contract (mocked JSONL chunks the real binary never produces). Per Epic 6 retro: "A green test asserts the specific contract, not the presence of the contract's bytes."
 - **Pre-implementation fidelity audit recommended.** Murat (Test Architect) should run a fidelity audit before this story starts, mirroring the CF3 SandboxService audit before Epic 6 — identifies which of Story 6.2's 44 tests survive, which need replacement, which become no longer applicable.
 - **Design decision: daemon-per-provision vs. daemon-per-conversation.** Recommended: daemon-per-provision (matches architecture's "agent-be is the active party, sandbox never initiates outbound" contract and minimizes per-turn startup cost for NFR-P1's 1,500ms first-token target). Confirm in implementation.
-- **sandbox-agent HTTP/SSE API contract.** Research-documented but not contract-tested against this codebase. Endpoints: `POST /run` (start agent run, returns `{ run_id, session_id }`), `GET /runs/:run_id/events` (SSE stream), `POST /runs/:run_id/cancel` (cancel in-flight run). Each SSE event is JSON: `{ event_id, session_id, type, data }`. Exact paths and verbs confirmed against real binary in Story 8.3.
+- **sandbox-agent ACP API contract (verified 2026-07-17).** Direct binary inspection confirmed the API is ACP (Agent Client Protocol) based, NOT the REST-style `/run` / `/runs/:id/events` pattern the research docs assumed. Verified endpoints: `GET /v1/agents` (list agents + install status), `POST /v1/acp/{server_id}` (send ACP JSON-RPC envelope), `GET /v1/acp/{server_id}` (stream ACP JSON-RPC envelopes via SSE), `POST /v1/acp/{server_id}/close` (close stream). The `server_id` identifies the agent (e.g. `claude`). The exact ACP JSON-RPC envelope schema carried by the SSE stream is NOT yet verified — Story 8.2 must inspect the real SSE stream output during implementation to discover the envelope shapes and map them to AG-UI events. See change proposal Resolved Unknown #1 for full details.
 
 ## Story 8.3: Local Dev Parity + Real-Service E2E Verification
 
