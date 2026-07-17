@@ -73,7 +73,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const run = $('Prep run').first().json;\nconst steps = JSON.parse($input.first().json.stdout);\nreturn steps.map(s => ({ json: { ...s, RunId: run.RunId } }));"
+        "jsCode": "const run = $('Prep run').first().json;\nconst parsed = JSON.parse($input.first().json.stdout);\nconst steps = Array.isArray(parsed) ? parsed : parsed.steps;\nconst incompleteContinueCap = Array.isArray(parsed) ? 10 : (Number(parsed.incompleteContinueCap) || 10);\nreturn steps.map(s => ({ json: { ...s, RunId: run.RunId, incompleteContinueCap } }));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -99,7 +99,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const step = $input.first().json;\nconst startedAt = Date.now();\nconst payload = { type: 'step_start', story: step.story, runId: step.RunId, step: step.id, index: step.index, total: step.total };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { ...step, startedAt, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
+        "jsCode": "const step = $input.first().json;\nconst startedAt = Date.now();\nconst payload = { type: 'step_start', story: step.story, runId: step.RunId, step: step.id, index: step.index, total: step.total };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { ...step, startedAt, incompleteContinueCap: Number(step.incompleteContinueCap) || 10, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -139,7 +139,8 @@
             "Skill": "={{ $('Prep step').first().json.skill }}",
             "Initial prompt (without story ID)": "={{ $('Prep step').first().json.prompt }}",
             "Conversation label": "={{ $('Prep step').first().json.label }}",
-            "Agent": "={{ $('Prep step').first().json.agent }}"
+            "Agent": "={{ $('Prep step').first().json.agent }}",
+            "incompleteContinueCap": "={{ $('Prep step').first().json.incompleteContinueCap }}"
           },
           "matchingColumns": [
             "Story"
@@ -218,7 +219,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst step = $('Prep step').first().json;\nconst failed = item.error !== undefined;\nconst payload = {\n  type: 'step_end',\n  story: step.story,\n  runId: step.RunId,\n  step: step.id,\n  index: step.index,\n  status: failed ? 'failed' : 'success',\n  durationMs: Date.now() - step.startedAt,\n  halts: Number(item.questionCount) || 0,\n};\nlet outcomeHistory = [];\nif (typeof item.outcomeHistory === 'string' && item.outcomeHistory) {\n  try { outcomeHistory = JSON.parse(item.outcomeHistory); } catch {}\n} else if (Array.isArray(item.outcomeHistory)) {\n  outcomeHistory = item.outcomeHistory;\n}\npayload.outcomeHistory = outcomeHistory;\nlet error;\nif (failed) {\n  error = String(item.error?.message ?? item.error).slice(0, 500);\n  payload.error = error;\n} else {\n  payload.responseExcerpt = String(item.finalResponse ?? '').slice(0, 2000);\n}\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nconst sessionId = item.sessionId || '';\nconst traceCmd = sessionId\n  ? `node scripts/pipeline/record-trace.mjs \"${sessionId}\" \"${step.RunId}\" \"${step.id}\"`\n  : 'echo \"no sessionId — skipping trace\"';\nreturn [{ json: { failed, stepId: step.id, stepLabel: step.label, story: step.story, RunId: step.RunId, sessionId, error, halts: payload.halts, outcomeHistory, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}`, traceCmd } }];"
+        "jsCode": "const item = $input.first().json;\nconst step = $('Prep step').first().json;\nconst failed = item.error !== undefined;\nconst payload = {\n  type: 'step_end',\n  story: step.story,\n  runId: step.RunId,\n  step: step.id,\n  index: step.index,\n  status: failed ? 'failed' : 'success',\n  durationMs: Date.now() - step.startedAt,\n  halts: Number(item.questionCount) || 0,\n  incompleteCount: Number(item.incompleteCount) || 0,\n  salvaged: item.salvaged || '',\n  classificationFallback: item.classificationFallback || false,\n};\nlet outcomeHistory = [];\nif (typeof item.outcomeHistory === 'string' && item.outcomeHistory) {\n  try { outcomeHistory = JSON.parse(item.outcomeHistory); } catch {}\n} else if (Array.isArray(item.outcomeHistory)) {\n  outcomeHistory = item.outcomeHistory;\n}\npayload.outcomeHistory = outcomeHistory;\nlet error;\nif (failed) {\n  error = String(item.error?.message ?? item.error).slice(0, 500);\n  payload.error = error;\n} else {\n  payload.responseExcerpt = String(item.finalResponse ?? '').slice(0, 2000);\n}\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nconst sessionId = item.sessionId || '';\nconst traceCmd = sessionId\n  ? `node scripts/pipeline/record-trace.mjs \"${sessionId}\" \"${step.RunId}\" \"${step.id}\"`\n  : 'echo \"no sessionId — skipping trace\"';\nreturn [{ json: { failed, stepId: step.id, stepLabel: step.label, story: step.story, RunId: step.RunId, sessionId, error, halts: payload.halts, incompleteCount: payload.incompleteCount, outcomeHistory, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}`, traceCmd } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

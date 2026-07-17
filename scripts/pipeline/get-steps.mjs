@@ -25,4 +25,10 @@ const items = steps.map((s, i) => ({
   story,
 }));
 
-process.stdout.write(JSON.stringify(items) + '\n');
+const incompleteContinueCap = Number(playbook.policy?.incompleteContinueCap);
+process.stdout.write(
+  JSON.stringify({
+    steps: items,
+    incompleteContinueCap: Number.isFinite(incompleteContinueCap) ? incompleteContinueCap : 10,
+  }) + '\n'
+);
