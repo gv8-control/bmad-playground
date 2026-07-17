@@ -15,18 +15,6 @@ import { DAYTONA_CLIENT } from './daytona-client.provider';
 const REPO_SUBDIRECTORY = 'repo';
 
 /**
- * Comma-separated CIDR allow-list passed to daytona.create() to activate
- * egress restriction. Daytona pre-whitelists package registries, GitHub/GitLab,
- * container registries, and AI/ML APIs (Anthropic, OpenAI) on all tiers
- * regardless of the custom allow-list. Setting networkAllowList activates the
- * restriction (only pre-whitelisted + allow-listed hosts are reachable),
- * closing the credential exfiltration path for sandbox-resident credentials
- * (GITHUB_TOKEN, ANTHROPIC_API_KEY). The dummy CIDR forces activation while
- * relying on the pre-whitelisted hosts for legitimate egress.
- */
-const SANDBOX_NETWORK_ALLOW_LIST = '0.0.0.0/32';
-
-/**
  * Path to the sandbox-agent binary baked into the agent-be Docker image
  * (downloaded + checksum-verified at Docker build time — see Dockerfile).
  * Uploaded to the sandbox during provision.
@@ -125,7 +113,6 @@ export class SandboxService implements ISandboxService {
           ANTHROPIC_API_KEY: anthropicApiKey,
           GITHUB_TOKEN: params.credential,
         },
-        networkAllowList: SANDBOX_NETWORK_ALLOW_LIST,
       });
       this.conversationIdBySandbox.set(sandbox.id, params.conversationId);
       await this.installBinaries(sandbox);

@@ -56,7 +56,7 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
       delete process.env.ANTHROPIC_API_KEY;
     });
 
-    it('calls daytona.create() with labels + envVars + networkAllowList — no resources, no metadata', async () => {
+    it('calls daytona.create() with labels + envVars — no resources, no metadata', async () => {
       await service.provision({
         conversationId: 'conv-1',
         repoUrl: 'https://github.com/test/repo.git',
@@ -67,7 +67,6 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
       const createArg = mockDaytona.create.mock.calls[0][0];
       expect(Object.keys(createArg)).toContain('labels');
       expect(Object.keys(createArg)).toContain('envVars');
-      expect(Object.keys(createArg)).toContain('networkAllowList');
       expect(Object.keys(createArg)).not.toContain('resources');
       expect(Object.keys(createArg)).not.toContain('metadata');
     });
@@ -384,7 +383,7 @@ describe('SandboxService NFR-S1 — credential isolation regression guards (Stor
 
 // ============================================================================
 // Story 6.1: Install sandbox-agent + Claude Code Binaries in Sandbox During Provision
-// Covers: AC-1 (binaries installed), AC-2 (envVars injected), AC-3 (networkAllowList),
+// Covers: AC-1 (binaries installed), AC-2 (envVars injected),
 //         AC-7 (fidelity audit findings F1, F2, F3).
 // ============================================================================
 
@@ -455,47 +454,6 @@ describe('[P0] Story 6.1 AC-2 — provision() injects envVars into daytona.creat
 
     const createArg = mockDaytona.create.mock.calls[0][0];
     expect(createArg.envVars.GITHUB_TOKEN).toBe('gho-per-user-oauth-token');
-  });
-});
-
-describe('[P0] Story 6.1 AC-3 — provision() applies networkAllowList to daytona.create()', () => {
-  let mockDaytona: MockDaytona;
-  let service: SandboxService;
-
-  beforeEach(() => {
-    ({ mockDaytona } = createMockDaytonaWithSandbox());
-    service = new SandboxService(mockDaytona as unknown as Daytona);
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
-  });
-
-  afterEach(() => {
-    jest.clearAllMocks();
-    jest.restoreAllMocks();
-    delete process.env.ANTHROPIC_API_KEY;
-  });
-
-  it('[P0] passes networkAllowList to daytona.create()', async () => {
-    await service.provision({
-      conversationId: 'conv-1',
-      repoUrl: 'https://github.com/test/repo.git',
-      credential: 'fake-oauth-token',
-    });
-
-    const createArg = mockDaytona.create.mock.calls[0][0];
-    expect(Object.keys(createArg)).toContain('networkAllowList');
-  });
-
-  it('[P0] networkAllowList is non-empty (egress restriction activated)', async () => {
-    await service.provision({
-      conversationId: 'conv-1',
-      repoUrl: 'https://github.com/test/repo.git',
-      credential: 'fake-oauth-token',
-    });
-
-    const createArg = mockDaytona.create.mock.calls[0][0];
-    expect(createArg.networkAllowList).toBeTruthy();
-    expect(typeof createArg.networkAllowList).toBe('string');
-    expect(createArg.networkAllowList.length).toBeGreaterThan(0);
   });
 });
 

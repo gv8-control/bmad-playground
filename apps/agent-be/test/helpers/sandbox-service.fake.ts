@@ -21,7 +21,6 @@ export class SandboxServiceFake implements ISandboxService {
   private readonly clonedSandboxes = new Set<string>();
   private readonly binariesInstalled = new Set<string>();
   private readonly provisionedEnvVars = new Map<string, Record<string, string>>();
-  private readonly provisionedNetworkAllowLists = new Map<string, string>();
   private provisionDelay = 0;
   private shouldFailNextProvision = false;
   private shouldFailNextCommit = false;
@@ -93,15 +92,6 @@ export class SandboxServiceFake implements ISandboxService {
     return envVars ? { ...envVars } : undefined;
   }
 
-  /**
-   * Inspection: networkAllowList applied during provision (AC-3).
-   * Story 6.1 test seam — the fake simulates the networkAllowList that the
-   * real SandboxService.provision() passes to daytona.create().
-   */
-  getNetworkAllowList(sandboxId: string): string | undefined {
-    return this.provisionedNetworkAllowLists.get(sandboxId);
-  }
-
   async provision(params: ProvisionParams): Promise<SandboxInfo> {
     if (this.shouldFailNextProvision) {
       this.shouldFailNextProvision = false;
@@ -122,7 +112,7 @@ export class SandboxServiceFake implements ISandboxService {
     this.sandboxes.set(sandbox.sandboxId, sandbox);
 
     // Story 6.1 test seam: simulate the provision side effects that the real
-    // SandboxService.provision() performs (binary install, envVars, networkAllowList).
+    // SandboxService.provision() performs (binary install, envVars).
     // The fake does NOT actually install binaries or call daytona.create() — it
     // records what the real service WOULD have done so integration tests can assert.
     this.binariesInstalled.add(sandbox.sandboxId);
@@ -130,7 +120,6 @@ export class SandboxServiceFake implements ISandboxService {
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
       GITHUB_TOKEN: params.credential,
     });
-    this.provisionedNetworkAllowLists.set(sandbox.sandboxId, 'simulated-allow-list');
 
     return sandbox;
   }
@@ -182,7 +171,6 @@ export class SandboxServiceFake implements ISandboxService {
     this.clonedSandboxes.delete(sandboxId);
     this.binariesInstalled.delete(sandboxId);
     this.provisionedEnvVars.delete(sandboxId);
-    this.provisionedNetworkAllowLists.delete(sandboxId);
   }
 
   async injectGitConfig(sandboxId: string, config: GitUserConfig): Promise<void> {

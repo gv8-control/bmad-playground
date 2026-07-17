@@ -18,9 +18,9 @@ so that the agent can run inside the sandbox where the repository lives, not on 
 
 2. **AC-2: ANTHROPIC_API_KEY injected into sandbox env.** Given a Sandbox is provisioned, when provisioning completes, then `ANTHROPIC_API_KEY` is injected into the sandbox environment so the Claude Code agent can authenticate with the Anthropic API. The per-user `GITHUB_TOKEN` (OAuth access token) is also injected as an env var for git transport.
 
-3. **AC-3: networkAllowList egress control applied.** Given a Sandbox is provisioned, when the `networkAllowList` is applied, then egress is restricted to GitHub, the Anthropic API, and required package registries — closing the credential exfiltration path. When the agent attempts an outbound network call to a non-allow-listed host, the call is blocked at the sandbox network boundary.
+3. **AC-3: REMOVED.** Egress restriction (`networkAllowList`) was removed — sandboxes now use Daytona's default full internet access (Tiers 3–4). The credential exfiltration mitigation is deferred to credential scoping/rotation rather than network-level egress control.
 
-4. **AC-4: Provision sequence extended.** Given the provision sequence, when a new conversation is provisioned, then the sequence runs in order: provision (with envVars + networkAllowList) → install binaries → clone (or restore on resume) → inject git identity → `git status --porcelain` → emit working-tree event → emit session-ready.
+4. **AC-4: Provision sequence extended.** Given the provision sequence, when a new conversation is provisioned, then the sequence runs in order: provision (with envVars) → install binaries → clone (or restore on resume) → inject git identity → `git status --porcelain` → emit working-tree event → emit session-ready.
 
 5. **AC-5: ANTHROPIC_API_KEY fails loudly at startup.** Given `ANTHROPIC_API_KEY` is not set in `apps/agent-be`'s environment, when a provision is attempted, then it fails loudly at startup (Zod env validation), not silently after the sandbox is running.
 
@@ -30,10 +30,10 @@ so that the agent can run inside the sandbox where the repository lives, not on 
 
 ## Tasks / Subtasks
 
-- [x] **Task 1: Extend `SandboxService.provision()` to inject env vars and apply networkAllowList** (AC: #2, #3, #4, #5)
+- [x] **Task 1: Extend `SandboxService.provision()` to inject env vars** (AC: #2, #4, #5)
   - [x] 1.1: Read `ANTHROPIC_API_KEY` from the environment (codebase pattern: `process.env.ANTHROPIC_API_KEY` — see `apps/agent-be/src/streaming/agent.service.ts:99`, `apps/agent-be/src/anthropic-proxy/anthropic-proxy.controller.ts:27`). The env var is already validated at boot by `apps/agent-be/src/config/env.validation.ts` (Zod schema, line 8 — `ANTHROPIC_API_KEY: z.string().min(1)`). Do NOT re-add it to env validation — it is already there.
   - [x] 1.2: Extend the `daytona.create()` call in `provision()` (`sandbox.service.ts:29-31`) to pass `envVars: { ANTHROPIC_API_KEY: ..., GITHUB_TOKEN: params.credential }` alongside the existing `labels: { conversationId }`. The `GITHUB_TOKEN` is the per-user OAuth token already available as `params.credential` in `ProvisionParams`.
-  - [x] 1.3: Apply `networkAllowList` to the `daytona.create()` call. Daytona's `CreateSandboxBaseParams` accepts `networkAllowList?: string` (comma-separated CIDR entries) and `networkBlockAll?: boolean`. Per Daytona's docs: all tiers get pre-whitelisted access to package registries (npm, PyPI), GitHub/GitLab, container registries, and AI/ML APIs (Anthropic, OpenAI) regardless of custom allow-list entries. The custom allow-list closes the exfiltration path for sandbox-resident credentials. Research the exact mechanism: does setting `networkAllowList` to a minimal value activate restriction (with pre-whitelisted hosts always allowed), or do specific CIDR ranges need to be listed? Cap is 10 IPv4 CIDR entries, no hostname support. Define a module-level constant for the allow-list value.
+  - [x] 1.3: **REMOVED.** networkAllowList egress control was removed — sandboxes use Daytona's default full internet access.
   - [x] 1.4: Do NOT add `AGENT_WORKDIR` to env validation — it is irrelevant after Epic 6 (the agent runs inside the sandbox, not on the host). `AGENT_WORKDIR` removal from `agent.service.ts` is Story 6.3's scope, not this story.
 
 - [x] **Task 2: Install sandbox-agent and Claude Code binaries inside the sandbox during provision** (AC: #1, #4)
@@ -43,13 +43,13 @@ so that the agent can run inside the sandbox where the repository lives, not on 
   - [x] 2.4: Verify both binaries are executable after installation (`executeCommand` with `--version` or `--help` to confirm). Throw on installation failure — a sandbox without the binaries cannot run the agent.
   - [x] 2.5: The `conversations.service.ts` provision pipeline (`provisionSandbox`, lines 108-142) does NOT need changes for binary installation if it is inside `provision()`. The existing sequence `provision → clone → injectGitConfig → getWorkingTreeStatus → emit events` remains the same — `provision()` now internally does `create → install binaries → return`. Verify the cancellation checkpoint (line 115-119) still works: if cancelled after provision, `destroy()` cleans up the sandbox with binaries.
 
-- [x] **Task 3: VERIFY existing test seams in `SandboxServiceFake` (AC: #1, #2, #3)** — RED-PHASE SCAFFOLDS ALREADY APPLIED by ATDD workflow
+- [x] **Task 3: VERIFY existing test seams in `SandboxServiceFake` (AC: #1, #2)** — RED-PHASE SCAFFOLDS ALREADY APPLIED by ATDD workflow
   - [x] 3.1: VERIFY `areBinariesInstalled(sandboxId): boolean` — inspection method already added to the fake. The fake's `provision()` records binaries as installed. Adjust if the real implementation's side-effect contract differs.
-  - [x] 3.2: VERIFY `getProvisionedEnvVars(sandboxId): Record<string, string> | undefined` and `getNetworkAllowList(sandboxId): string | undefined` — inspection methods already added. The fake's `provision()` records `envVars: { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, GITHUB_TOKEN: params.credential }` and a `networkAllowList` constant. Adjust the simulated values if the real implementation differs.
+  - [x] 3.2: VERIFY `getProvisionedEnvVars(sandboxId): Record<string, string> | undefined` — inspection method already added. The fake's `provision()` records `envVars: { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, GITHUB_TOKEN: params.credential }`. Adjust the simulated values if the real implementation differs.
   - [x] 3.3: The fake's `provision()` already records these values but does NOT actually install binaries (it's a fake). VERIFY the recording matches the real service's behavior after implementing Tasks 1, 2. The fake's `destroy()` is already idempotent (returns void on not-found, matching the F1 fix) — VERIFY this matches the real service after Task 5.
 
-- [x] **Task 4: VERIFY existing mock support in `mock-daytona.ts` (AC: #2, #3)** — RED-PHASE SCAFFOLDS ALREADY APPLIED by ATDD workflow
-  - [x] 4.1: The `MockDaytona.create` mock already accepts any args (it's a `jest.fn()`). Tests inspect `mockDaytona.create.mock.calls[0][0]` to assert `envVars` and `networkAllowList` are passed. The `MockSandbox` interface now includes `fs: MockFileSystem` with `uploadFile: jest.fn()` — VERIFY this supports binary upload assertions. No structural change needed.
+- [x] **Task 4: VERIFY existing mock support in `mock-daytona.ts` (AC: #2)** — RED-PHASE SCAFFOLDS ALREADY APPLIED by ATDD workflow
+  - [x] 4.1: The `MockDaytona.create` mock already accepts any args (it's a `jest.fn()`). Tests inspect `mockDaytona.create.mock.calls[0][0]` to assert `envVars` are passed. The `MockSandbox` interface now includes `fs: MockFileSystem` with `uploadFile: jest.fn()` — VERIFY this supports binary upload assertions. No structural change needed.
   - [x] 4.2: The `MockSandbox.process.executeCommand` supports `mockResolvedValueOnce` chaining (standard jest.Mock). VERIFY the existing mock supports multiple sequential `executeCommand` calls with different responses for binary install + verification.
 
 - [x] **Task 5: Fix fidelity audit finding F1 — replace `isNotFoundError` string heuristic with typed SDK error class** (AC: #7)
@@ -65,9 +65,9 @@ so that the agent can run inside the sandbox where the repository lives, not on 
   - [x] 7.1: Add a test in `sandbox.service.nfr-s1.spec.ts` that sets `mockDaytona.start.mockRejectedValueOnce(new DaytonaTimeoutError('Sandbox failed to start'))` and asserts `resume()` propagates the error to the caller. Import `DaytonaTimeoutError` from `@daytonaio/sdk`.
   - [x] 7.2: Consider whether `sandbox.recover()` (exists on the `Sandbox` class per `Sandbox.d.ts:189`) should be called before re-throwing on start failure. **Decision (DP-3):** do NOT add `recover()` — it is a design decision beyond this story's ACs (DP-5: scope temptation). The current behavior (re-throw raw) is preserved; the test just makes the contract explicit. Document as a deferred finding if the recovery path is needed later.
 
-- [x] **Task 8: ACTIVATE existing NFR-S1 scaffolds for the new security model (AC: #2, #3)** — RED-PHASE SCAFFOLDS ALREADY APPLIED by ATDD workflow
+- [x] **Task 8: ACTIVATE existing NFR-S1 scaffolds for the new security model (AC: #2)** — RED-PHASE SCAFFOLDS ALREADY APPLIED by ATDD workflow
   - [x] 8.1: The existing NFR-S1 test at `sandbox.service.nfr-s1.spec.ts:51-64` asserts `expect(Object.keys(createArg)).not.toContain('env')`. This will BREAK when `envVars` is added to `create()`. AMEND the test to assert that `envVars` contains ONLY `ANTHROPIC_API_KEY` and `GITHUB_TOKEN` — no platform-internal credentials (`DATABASE_URL`, `AUTH_SECRET`, `DAYTONA_API_KEY`, `CREDENTIAL_ENCRYPTION_KEK`). The security model changes: `ANTHROPIC_API_KEY` and `GITHUB_TOKEN` are intentionally injected (the agent needs them); platform-internal credentials must never be injected. The skipped describe block "AC-2 — provision() injects envVars" (4 tests) already describes the target behavior — use those tests as the specification for the amendment.
-  - [x] 8.2: ACTIVATE the skipped describe block "AC-3 — provision() applies networkAllowList" (2 tests) — remove `describe.skip()`, confirm RED, then implement to GREEN. Asserts `networkAllowList` is passed to `daytona.create()` and is non-empty.
+  - [x] 8.2: **REMOVED.** AC-3 networkAllowList tests were removed — egress restriction is no longer applied.
   - [x] 8.3: ACTIVATE the skipped tests "ANTHROPIC_API_KEY value comes from process.env" and "GITHUB_TOKEN value comes from params.credential" — remove `describe.skip()`, confirm RED, then implement to GREEN. Asserts the values are the expected ones (from `process.env.ANTHROPIC_API_KEY` and `params.credential`), not hardcoded or leaked from other env vars.
 
 - [x] **Task 9: ACTIVATE existing scaffold and create `apps/agent-be/.env.example` (AC: #5)** — RED-PHASE SCAFFOLD ALREADY APPLIED by ATDD workflow
@@ -79,8 +79,8 @@ so that the agent can run inside the sandbox where the repository lives, not on 
 
 - **ATDD Checklist:** `_bmad-output/test-artifacts/atdd-checklist-6-1-install-claude-code-binary-in-sandbox-during-provision.md`
 - **Generated Test Files:**
-  - `apps/agent-be/src/sandbox/sandbox.service.nfr-s1.spec.ts` (22 tests — all activated — AC-1,2,3,7)
-  - `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts` (4 tests — all activated + F2 comment — AC-1,2,3,4)
+  - `apps/agent-be/src/sandbox/sandbox.service.nfr-s1.spec.ts` (20 tests — AC-1,2,7; AC-3 tests removed)
+  - `apps/agent-be/test/integration/sandbox-lifecycle.integration.spec.ts` (3 tests + F2 comment — AC-1,2,4; AC-3 test removed)
   - `apps/agent-be/test/unit/env-example.spec.ts` (NEW file, 2 tests — all activated — AC-5)
 - **Test Seams Applied (not skipped — active infrastructure):**
   - `apps/agent-be/test/helpers/mock-daytona.ts` — `MockSandbox.fs` with `uploadFile` added

@@ -348,10 +348,10 @@ describe('Sandbox lifecycle (integration)', () => {
 // ============================================================================
 // Story 6.1: Install sandbox-agent + Claude Code Binaries in Sandbox During Provision
 // Covers: AC-1 (binaries installed via fake inspection), AC-2 (envVars injected),
-//         AC-3 (networkAllowList applied), AC-4 (provision sequence order).
+//         AC-4 (provision sequence order).
 // ============================================================================
 
-describe('[P0] Story 6.1 — provision injects envVars, networkAllowList, and binaries (AC: 1, 2, 3, 4)', () => {
+describe('[P0] Story 6.1 — provision injects envVars and binaries (AC: 1, 2, 4)', () => {
   let conversationsService: ConversationsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let sandboxFake: any;
@@ -437,16 +437,6 @@ describe('[P0] Story 6.1 — provision injects envVars, networkAllowList, and bi
     expect(Object.keys(envVars)).toContain('GITHUB_TOKEN');
     expect(Object.keys(envVars)).not.toContain('DATABASE_URL');
     expect(Object.keys(envVars)).not.toContain('AUTH_SECRET');
-  });
-
-  it('[P0] provision applies networkAllowList (AC-3)', async () => {
-    const result = await conversationsService.createConversation('user-1');
-    await new Promise((resolve) => setImmediate(resolve));
-
-    const sandboxId = conversationsService['sandboxIds'].get(result.id);
-    const allowList = sandboxFake.getNetworkAllowList(sandboxId);
-    expect(allowList).toBeDefined();
-    expect(allowList.length).toBeGreaterThan(0);
   });
 
   it('[P0] provision sequence runs in order: provision → clone → injectGitConfig → git status → emit events (AC-4)', async () => {
