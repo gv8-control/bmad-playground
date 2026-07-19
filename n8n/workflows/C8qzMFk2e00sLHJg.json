@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-19T20:15:56.631Z",
+  "updatedAt": "2026-07-19T20:33:43.444Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -322,8 +322,7 @@
       ],
       "retryOnFail": true,
       "maxTries": 2,
-      "waitBetweenTries": 5000,
-      "onError": "continueRegularOutput"
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {
@@ -400,36 +399,10 @@
               },
               "renameOutput": true,
               "outputKey": "Incomplete"
-            },
-            {
-              "conditions": {
-                "combinator": "and",
-                "conditions": [
-                  {
-                    "id": "r4",
-                    "leftValue": "={{ $json.outcome }}",
-                    "operator": {
-                      "operation": "equals",
-                      "type": "string"
-                    },
-                    "rightValue": "UNKNOWN"
-                  }
-                ],
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                }
-              },
-              "renameOutput": true,
-              "outputKey": "Unknown"
             }
           ]
         },
-        "options": {
-          "fallbackOutput": "extra"
-        }
+        "options": {}
       },
       "id": "93489431-9544-4237-af9d-695f76fe7ad4",
       "name": "Routing",
@@ -637,8 +610,7 @@
           ]
         },
         "includeOtherFields": true,
-        "options": {},
-        "notes": null
+        "options": {}
       },
       "id": "30e4bd29-d548-4e10-b3e6-33b6197d3891",
       "name": "Output (cap exhausted)",
@@ -721,7 +693,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\n\n// Read incompleteRunIndex from Incomplete counter (if it executed)\nlet incompleteCount = 0;\ntry {\n  if ($('Incomplete counter').isExecuted) {\n    incompleteCount = Number($('Incomplete counter').last().json.incompleteRunIndex) || 0;\n  }\n} catch {}\n\n// totalTraversals from Run counter\nlet totalTraversals = 0;\ntry {\n  totalTraversals = Number($('Run counter').last().json.runIndex) || 0;\n} catch {}\n\nconst questionCount = Math.max(0, totalTraversals - incompleteCount);\n\n// Read accumulatedOutcomes from staticData\nconst staticData = $getWorkflowStaticData('global');\nconst key = $execution.id;\nconst accumulatedOutcomes = (staticData[key] ? [...staticData[key]] : []);\n// Clean up staticData for this execution to prevent unbounded growth\ndelete staticData[key];\n\n// Determine if this is a failure\nlet error = item.error;\n// On the cap-exhausted path, Notify cap (HTTP Request) replaces the payload\n// with its response, so error set by Output (cap exhausted) is lost. Pull from source.\ntry {\n  if (!error && $('Output (cap exhausted)').isExecuted) {\n    error = $('Output (cap exhausted)').last().json.error;\n  }\n} catch {}\nconst outcome = item.outcome;\nif (outcome === 'UNKNOWN' && !error) {\n  error = { message: 'outcome classified as UNKNOWN' };\n}\n\nreturn [{ json: {\n  ...item,\n  incompleteCount,\n  questionCount,\n  outcomeHistory: accumulatedOutcomes,\n  accumulatedOutcomes,\n  error,\n}}];"
+        "jsCode": "const item = $input.first().json;\n\n// Read incompleteRunIndex from Incomplete counter (if it executed)\nlet incompleteCount = 0;\ntry {\n  if ($('Incomplete counter').isExecuted) {\n    incompleteCount = Number($('Incomplete counter').last().json.incompleteRunIndex) || 0;\n  }\n} catch {}\n\n// totalTraversals from Run counter\nlet totalTraversals = 0;\ntry {\n  totalTraversals = Number($('Run counter').last().json.runIndex) || 0;\n} catch {}\n\nconst questionCount = Math.max(0, totalTraversals - incompleteCount);\n\n// Read accumulatedOutcomes from staticData\nconst staticData = $getWorkflowStaticData('global');\nconst key = $execution.id;\nconst accumulatedOutcomes = (staticData[key] ? [...staticData[key]] : []);\n// Clean up staticData for this execution to prevent unbounded growth\ndelete staticData[key];\n\n// Determine if this is a failure\nlet error = item.error;\n// On the cap-exhausted path, Notify cap (HTTP Request) replaces the payload\n// with its response, so error set by Output (cap exhausted) is lost. Pull from source.\ntry {\n  if (!error && $('Output (cap exhausted)').isExecuted) {\n    error = $('Output (cap exhausted)').last().json.error;\n  }\n} catch {}\n\nreturn [{ json: {\n  ...item,\n  incompleteCount,\n  questionCount,\n  outcomeHistory: accumulatedOutcomes,\n  accumulatedOutcomes,\n  error,\n}}];"
       },
       "id": "9c4a7026-80ea-47d4-85ec-edb753d733d7",
       "name": "Compute counts",
@@ -746,68 +718,20 @@
       ]
     },
     {
+      "parameters": {
+        "content": "# INCOMPLETE outcome classification\n\nopencode sessions can quit mid-stream (timeout, provider error, truncation) and are resumable. Previously these were misclassified as QUESTION, stalling the pipeline on a human form for hours.\n\n**3-rule routing:**\n- COMPLETE → output (success)\n- QUESTION → human form\n- INCOMPLETE → auto-continue (resume with \"Continue\", up to `incompleteContinueCap`, then fail). This was introduced to recover from opencode phantom quits.\n- Invalid LLM output → workflow crashes (error workflow fires)\n\nINCOMPLETE re-enters at `Agent run (follow-up)` (uses `--session <id>`), bypassing the Get response Wait form entirely.",
+        "height": 488,
+        "width": 500,
+        "color": 4
+      },
       "id": "7a158182-4f88-432d-b820-e39d69bd0699",
       "name": "Note: INCOMPLETE path overview",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        950,
-        -80
-      ],
-      "parameters": {
-        "color": 4,
-        "content": "# INCOMPLETE outcome classification\n\nopencode sessions can quit mid-stream (timeout, provider error, truncation) and are resumable. Previously these were misclassified as QUESTION, stalling the pipeline on a human form for hours.\n\n**4-rule routing:**\n- COMPLETE → output (success)\n- QUESTION → human form\n- INCOMPLETE → auto-continue (resume with \"Continue\", up to `incompleteContinueCap`, then fail)\n- UNKNOWN → fail (retries via existing machinery)\n\nINCOMPLETE re-enters at `Agent run (follow-up)` (uses `--session <id>`), bypassing the Get response Wait form entirely.",
-        "height": 280,
-        "width": 500
-      }
-    },
-    {
-      "id": "cdca3b8a-ebd7-469d-b8e0-759b9c00a0f3",
-      "name": "Note: Bug 2 fix — error assignment",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        1600,
-        800
-      ],
-      "parameters": {
-        "color": 5,
-        "content": "# Bug 2 fix: error assignment\n\nPreviously set no `error` field, so `Assess step result` (`failed = item.error !== undefined`) treated cap-exhaustion as success.\n\nFix: explicit `error` assignment. Chose this over `includeOtherFields: true` to keep the Output schema fixed at 8 fields for the Develop Story journal contract.",
-        "height": 200,
-        "width": 350
-      }
-    },
-    {
-      "id": "93d2548f-d0b5-49cf-b9e2-52c25b5adb09",
-      "name": "Note: Compute counts rationale",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        1450,
-        -50
-      ],
-      "parameters": {
-        "color": 4,
-        "content": "# Compute counts — branch-local counters\n\nDerives counts from branch-local `$runIndex` counters, not the shared Run counter spine:\n- `incompleteCount` = Incomplete counter's `$runIndex` (INCOMPLETE branch only)\n- `questionCount` = totalTraversals − incompleteTraversals\n\nUsing the shared spine for both would pollute `questionCount` — an INCOMPLETE-continue would count as a human-form halt (false autonomy signal).\n\nAlso cleans up `$getWorkflowStaticData('global')` entry keyed by `$execution.id`. If this node doesn't run (crash/cancel), the entry leaks — static data is never auto-deleted.",
-        "height": 250,
-        "width": 400
-      }
-    },
-    {
-      "id": "5e555249-da8e-498e-a46c-14e361e45bae",
-      "name": "Note: Accrete outcome rationale",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        850,
-        380
-      ],
-      "parameters": {
-        "color": 4,
-        "content": "# Accrete outcome — static data across Wait\n\nUses `$getWorkflowStaticData` because `$('BMAD Outcome').all()` does not aggregate across the Get response Wait-node resume boundary. Without this, mid-stream INCOMPLETE/QUESTION outcomes vanish from `outcomeHistory` and reflection sees only the final outcome.\n\nBoth Accrete nodes key on `$execution.id` and push to `staticData[key]`. Cleanup happens in Compute counts.",
-        "height": 220,
-        "width": 350
-      }
+        704,
+        -592
+      ]
     }
   ],
   "connections": {
@@ -911,13 +835,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Compute counts",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Parse OpenCode Response": {
@@ -1094,9 +1012,9 @@
       }
     ]
   },
-  "versionId": "27541f7c-b742-4fc6-9784-aeeaba0cf596",
-  "activeVersionId": "fbc30385-035b-455b-9d90-95ba5c10e708",
-  "versionCounter": 192,
+  "versionId": "94fc52a4-36a6-400e-ab57-964ffaca7fce",
+  "activeVersionId": "8c16c2e8-611c-43bd-8757-5496df7804f5",
+  "versionCounter": 211,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
