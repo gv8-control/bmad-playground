@@ -1,5 +1,12 @@
 # Workstream G — External accessibility of the dev machine
 
+> **Status: Implemented (2026-07-19).** Tailscale running inside the
+> devcontainer; tailnet joined; `WEBHOOK_URL` set to the Tailscale hostname;
+> form resume URLs verified end-to-end from phone. Persistence wired via
+> `.devcontainer/create.sh` (install) and `.devcontainer/start.sh` (start +
+> authenticate). E3 (Workstream F) is now a no-op — see
+> [Coordination with E3](#coordination-with-e3-webhook_url).
+
 Implementation plan for making n8n reachable from outside the local network,
 so the operator can interact with the pipeline from a phone when away from
 the devbox. Extracted from Workstream F (notification channels) —
@@ -74,27 +81,33 @@ this; it does not change the implementation.
 
 ## Environment
 
-The devbox is a devcontainer (Daytona-backed — `.devcontainer/start.sh` line 24
-runs `daytona login`). Concrete runtime facts an implementer needs:
+The devbox is a devcontainer running on the dev's local machine (image
+`mcr.microsoft.com/devcontainers/universal:5`). Concrete runtime facts an
+implementer needs:
 
 - **n8n process:** runs via PM2 inside the devcontainer, started by
-  `.devcontainer/start.sh` line 11:
-  `pm2 start "$(which n8n)" --name n8n`. A worker process is also started
-  (line 12). n8n is a native binary, not a container.
-- **Postgres + Redis:** run via `docker compose up -d` (start.sh line 7) using
+  `.devcontainer/start.sh`:
+  `pm2 start "$(which n8n)" --name n8n`. A worker process is also started.
+  n8n is a native binary, not a container.
+- **Postgres + Redis:** run via `docker compose up -d --wait` (start.sh) using
   `docker-compose.yml`. Only `postgres-n8n` and `redis-n8n` services are
   defined — n8n itself is not in the compose file.
-- **Env loading:** start.sh line 9 sources `.env` then `.env.local`:
+- **Env loading:** start.sh sources `.env` then `.env.local`:
   `set -a; . .env; [ -f .env.local ] && . .env.local; set +a`.
-- **n8n env vars:** live in `.env`, in the `# ─── n8n ───` section (around
-  lines 43–72). `N8N_HOST=0.0.0.0` (line 45) — n8n already listens on all
-  interfaces, so no bind change needed for tailnet access.
-- **`WEBHOOK_URL` is NOT currently set anywhere** (verified by grep across all
-  `.env*` files). E3 (Workstream F) plans to set it to
-  `http://localhost:5678`, but E3 has not landed. This workstream sets it
-  directly to the Tailscale URL — see step 5.
-- **Restart after env change:** `pm2 restart n8n n8n-worker` (see
-  `.devcontainer/import-workflows.sh` line 13 for the precedent).
+- **n8n env vars:** live in `.env`, in the `# ─── n8n ───` section.
+  `N8N_HOST=0.0.0.0` — n8n already listens on all interfaces, so no bind
+  change needed for tailnet access.
+- **`WEBHOOK_URL`:** now set to
+  `http://bmad-codespace.tail0d7953.ts.net:5678` in `.env` (set by this
+  workstream). Previously unset — the F-11/E3 baseline was unreachable
+  `0.0.0.0` URLs.
+- **Restart after env change:** `pm2 restart n8n n8n-worker --update-env`
+  (the `--update-env` flag is required so PM2 re-reads the environment;
+  a plain restart reuses the cached env).
+- **Tailscale daemon:** no systemd in the container, so `tailscaled` is
+  started directly (not via `systemctl`). State lives at
+  `/var/lib/tailscale/tailscaled.state`; the socket at
+  `/var/run/tailscale/tailscaled.sock`.
 
 ## Prerequisites
 
@@ -104,59 +117,60 @@ runs `daytona login`). Concrete runtime facts an implementer needs:
 
 ## Implementation steps
 
-1. **Install Tailscale on the devbox.**
-   - Follow https://tailscale.com/kb/1017/install for the devbox's OS.
-   - Authenticate to join the tailnet.
-   - **Placement question to resolve at implementation time:** the devbox is a
-     devcontainer (Daytona-backed). Tailscale may need to run on the
-     devcontainer host rather than inside the container, depending on whether
-     the container has kernel access for WireGuard. Verify Tailscale actually
-     joins the tailnet from inside the container before proceeding; if it
-     can't, install on the host and confirm n8n's `0.0.0.0` bind is reachable
-     from the host's tailnet interface.
+All steps completed 2026-07-19.
 
-2. **Install Tailscale on the phone.**
-   - iOS: App Store; Android: Play Store.
-   - Authenticate with the same account to join the same tailnet.
+1. **Install Tailscale on the devbox.** ✅
+   - Installed via `curl -fsSL https://tailscale.com/install.sh | sh` (v1.98.9).
+   - `tailscaled` started directly (no systemd in the container): 
+     `tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock --port=41641`.
+   - **Placement resolved:** Tailscale runs inside the container. `/dev/net/tun`
+     exists, UDP egress works (direct WireGuard, not DERP fallback). No host
+     fallback needed.
+   - **Persistence:** `.devcontainer/create.sh` installs Tailscale on
+     container creation/rebuild. `.devcontainer/start.sh` starts `tailscaled`
+     and authenticates on every start (if `TAILSCALE_AUTH_KEY` is set in
+     `.env.local`).
 
-3. **Enable MagicDNS on the tailnet.**
-   - In the Tailscale admin console (https://login.tailscale.com/admin/dns),
-     enable MagicDNS. This gives the devbox a stable hostname like
-     `<devbox-name>.<tailnet-name>.ts.net`.
+2. **Install Tailscale on the phone.** ✅
+   - Android (Samsung S23 FE). Authenticated with the same account.
 
-4. **Verify tailnet connectivity from the phone.**
-   - With the Tailscale app running and connected on the phone, open
-     `http://<tailscale-host>:5678` in the phone's browser. The n8n web UI
-     should load.
+3. **Enable MagicDNS on the tailnet.** ✅
+   - MagicDNS enabled. Hostname: `bmad-codespace.tail0d7953.ts.net`.
+   - `--accept-dns=true` used so the container self-resolves the hostname
+     (Tailscale's DNS forwards non-tailnet queries upstream; normal DNS
+     unaffected). This matters because n8n generates URLs with the Tailscale
+     hostname, and some workflow patterns (e.g., Workstream F's Telegram
+     handler) may internally call those URLs.
 
-5. **Set `WEBHOOK_URL` in `.env` (coordinates with E3).**
-   - Add `WEBHOOK_URL=http://<tailscale-host>:5678` to `.env`, in the
-     `# ─── n8n ───` section (around line 43–72).
-   - This makes form resume URLs generated by n8n resolve from the phone
-     over the tailnet.
-   - Apply the change: `pm2 restart n8n n8n-worker`.
-   - This is the single touchpoint with Workstream F's E3 env fix — see
+4. **Verify tailnet connectivity from the phone.** ✅
+   - n8n web UI loads at `http://bmad-codespace.tail0d7953.ts.net:5678`
+     from the phone.
+
+5. **Set `WEBHOOK_URL` in `.env` (coordinates with E3).** ✅
+   - `WEBHOOK_URL=http://bmad-codespace.tail0d7953.ts.net:5678` set in `.env`,
+     in the `# ─── n8n ───` section.
+   - Applied via `pm2 restart n8n n8n-worker --update-env` (the `--update-env`
+     flag is required so PM2 re-reads the environment).
+   - E3 (Workstream F) is now a no-op — see
      [Coordination with E3](#coordination-with-e3-webhook_url) below.
 
-6. **Verify the waiting-form channel end-to-end.**
-   - Trigger a workflow that pauses on a form node.
-   - Open the generated form resume URL from the phone (with Tailscale
-     connected). The form input page should render.
-   - Submit the form. The workflow should resume on the devbox.
+6. **Verify the waiting-form channel end-to-end.** ✅
+   - Created a test workflow (`WS-G Tailscale Verify`) with a manual trigger
+     → Wait node (resume: form). Executed it; n8n generated
+     `resumeFormUrl=http://bmad-codespace.tail0d7953.ts.net:5678/form-waiting/274`.
+   - Opened the form URL from the phone (Tailscale connected). Form rendered
+     with title "Workstream G — Tailscale Verification". Submitted a test
+     response. Execution resumed on the devbox (status: success).
+   - Test workflow archived after verification.
 
 ## Coordination with E3 (`WEBHOOK_URL`)
 
-E3 (owned by Workstream F) plans to set `WEBHOOK_URL=http://localhost:5678`,
-but **E3 has not landed** — `WEBHOOK_URL` is unset in all `.env*` files today
-(verified 2026-07-18). Two landing orders:
-
-- **If G lands first (expected):** this workstream sets `WEBHOOK_URL` directly
-  to `http://<tailscale-host>:5678`. E3 becomes a no-op — the Tailscale URL
-  is strictly more capable than localhost (localhost still works
-  localhost-to-localhost on the devbox because the tailnet interface is on
-  the same machine).
-- **If E3 lands first:** E3 sets `http://localhost:5678`. This workstream
-  updates it to `http://<tailscale-host>:5678`.
+E3 (owned by Workstream F) planned to set `WEBHOOK_URL=http://localhost:5678`.
+**G landed first** — this workstream set `WEBHOOK_URL` directly to
+`http://bmad-codespace.tail0d7953.ts.net:5678`. **E3 is now a no-op.** The
+Tailscale URL is strictly more capable than localhost: localhost still works
+localhost-to-localhost on the devbox because the tailnet interface is on the
+same machine, and the Tailscale URL also works from the phone.
 
 No other touchpoint with Workstream F.
 
@@ -172,12 +186,23 @@ No other touchpoint with Workstream F.
   long as the devbox's Tailscale node name doesn't change. If you rename the
   node in the admin console, update `WEBHOOK_URL` in `.env` and
   `pm2 restart n8n n8n-worker`.
-- **Devcontainer / Daytona networking.** The devbox is a devcontainer on a
-  Daytona sandbox. Tailscale placement (container vs. host) and whether
-  Daytona's network policy allows the WireGuard handshake must be verified at
-  implementation time. If Tailscale cannot run inside the container, the
-  fallback is to run it on the host and rely on n8n's `0.0.0.0` bind being
-  reachable from the host's tailnet interface.
+- **Devcontainer is not Daytona-backed.** The devbox is a devcontainer on the
+  dev's local machine, not a Daytona sandbox. Daytona is used as a client
+  from inside the container to spawn pipeline sandboxes — it is not the
+  container host. Tailscale runs inside the container directly: `/dev/net/tun`
+  exists, UDP egress works (direct WireGuard, not DERP fallback), and no host
+  fallback is needed. (The original draft of this doc incorrectly assumed a
+  Daytona-backed container and deferred Tailscale placement to implementation
+  time.)
+- **Tailscale hostname appears in ntfy payloads.** The 8 alert nodes' `click`
+  URLs use `bmad-codespace.tail0d7953.ts.net` (hardcoded in the node
+  parameters, not derived from `WEBHOOK_URL`). ntfy.sh receives this hostname
+  in the `click` body parameter of every alert notification. The operator
+  accepted this as fine — the hostname is unreachable without tailnet
+  membership, so leaking it to ntfy.sh does not create an attack vector. If
+  the tailnet is ever dissolved or the hostname changes, update both
+  `WEBHOOK_URL` in `.env` and the 8 alert nodes' `click` parameters (5 in
+  Develop Epic, 3 in BMAD Session).
 
 ## Alternatives (archived)
 
