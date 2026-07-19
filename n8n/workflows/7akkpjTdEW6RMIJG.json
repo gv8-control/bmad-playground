@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-17T21:17:51.133Z",
+  "updatedAt": "2026-07-19T20:15:53.952Z",
   "createdAt": "2026-07-02T23:24:43.130Z",
   "id": "7akkpjTdEW6RMIJG",
   "name": "Develop Epic",
@@ -221,7 +221,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -398,7 +398,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -447,7 +447,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -483,7 +483,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -519,7 +519,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -778,9 +778,9 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "37e57138-999d-450d-912a-8cd328a1c935",
-  "activeVersionId": "d4db41a5-2095-4050-89f8-42c22fbbe94b",
-  "versionCounter": 5,
+  "versionId": "b4c9a74a-f6c1-42f6-9ad6-724cbfcc4902",
+  "activeVersionId": "37e57138-999d-450d-912a-8cd328a1c935",
+  "versionCounter": 6,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],

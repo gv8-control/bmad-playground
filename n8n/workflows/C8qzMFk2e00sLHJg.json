@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-18T06:46:10.531Z",
+  "updatedAt": "2026-07-19T20:15:56.631Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -497,7 +497,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -533,7 +533,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -670,7 +670,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -1094,9 +1094,9 @@
       }
     ]
   },
-  "versionId": "fbc30385-035b-455b-9d90-95ba5c10e708",
-  "activeVersionId": "83f73100-8ade-4e19-8626-c275fba840a5",
-  "versionCounter": 191,
+  "versionId": "27541f7c-b742-4fc6-9784-aeeaba0cf596",
+  "activeVersionId": "fbc30385-035b-455b-9d90-95ba5c10e708",
+  "versionCounter": 192,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
