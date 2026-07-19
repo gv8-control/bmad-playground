@@ -4,28 +4,35 @@ Implementation spec for adding Telegram as a question/reply channel alongside
 the existing n8n form. Extracted from a discussion following the n8n Workflow
 Review (2026-07-17). F-11 and E3 (unreachable URLs, `WEBHOOK_URL` env fix) were
 moved here from Workstream E — they are notification-reachability issues, not
-loop-robustness issues. This doc owns the env-var fix (E3) and goes beyond it:
-it addresses how the operator interacts with the pipeline from a phone when
-away from the devbox.
+loop-robustness issues. This doc owns the env-var fix (E3) and the notification
+channel architecture (ntfy + Telegram). External accessibility of the dev
+machine (phone → n8n from outside the LAN) is owned by Workstream G
+(`docs/todo/n8n-workstream-g-external-accessibility.md`).
 
 > **Central constraint:** n8n runs on the dev machine, which is not
-> immediately accessible from outside the local network. The operator is
-> actively working on solving this (e.g., via Tailscale or similar). The
-> Telegram approach designed here does **not** depend on solving external
+> immediately accessible from outside the local network. External accessibility
+> is owned by Workstream G (`docs/todo/n8n-workstream-g-external-accessibility.md`).
+> The Telegram approach designed here does **not** depend on solving external
 > accessibility — getUpdates is outbound polling (n8n reaches Telegram, not
 > the reverse), and the form resume URL is localhost-to-localhost on the same
-> machine. Only the form-from-phone fallback requires external accessibility.
+> machine. Only the form-from-phone fallback (D7) requires Workstream G to
+> land.
 
 > **Verification basis (2026-07-17):** All workspace claims below were verified
 > against the n8n workflow JSON in `n8n/workflows/` and the agent code.
-> External claims (ntfy, Telegram, Tailscale, Cloudflare, GitHub) were verified
+> External claims (ntfy, Telegram, Cloudflare, GitHub) were verified
 > against official documentation only — see [Sources](#sources) at the end.
-> Claims that could not be verified against official docs are flagged as such.
+> Tailscale and OpenSSH claims were verified here on 2026-07-17 and have moved
+> to Workstream G with their sources. Claims that could not be verified
+> against official docs are flagged as such.
 
 The operator's requirement: **read pipeline alerts and respond to agent
-questions from a phone, when away from the network.** `localhost` and LAN IPs
-do not resolve when away, so the existing `0.0.0.0` / `localhost` URLs are
-unreachable from a phone regardless of the E3 env fix.
+questions from a phone.** The notification architecture below (ntfy for
+one-way alerts, Telegram for two-way questions) addresses this directly —
+both channels deliver to the phone without requiring the dev machine to be
+externally reachable. External accessibility of the dev machine (for direct
+form/UI access from a phone) is a separate problem owned by Workstream G
+(`docs/todo/n8n-workstream-g-external-accessibility.md`).
 
 ## Findings
 
@@ -48,13 +55,27 @@ unreachable from a phone regardless of the E3 env fix.
   editor/instance URLs but not the webhook-waiting base URL.
 - **Scope:** `localhost` resolves only from the devbox browser. When the
   operator is on a phone away from the network, neither `localhost` nor
-  `0.0.0.0` resolves. Full phone reachability is the architecture exploration
-  below. The human-question form inside `BMAD Session (OpenCode)` also has no
+  `0.0.0.0` resolves. Full phone reachability is owned by Workstream G
+  (`docs/todo/n8n-workstream-g-external-accessibility.md`). The human-question
+  form inside `BMAD Session (OpenCode)` also has no
   timeout (`docs/self-improving-pipeline.md:105`) — an unanswered question
   stalls the loop indefinitely regardless of URL reachability. The deferred
   form-timeout (F-3.2, decision #5 in the INCOMPLETE plan) is a separate
   robustness gap. E3 makes the URL reachable; it does not make the form
   responsive.
+- **Resolution (2026-07-19):** E3 is a no-op. Workstream G
+  (`docs/todo/n8n-workstream-g-external-accessibility.md`) landed first and
+  set `WEBHOOK_URL=http://bmad-codespace.tail0d7953.ts.net:5678` directly —
+  strictly more capable than the planned `localhost` value (localhost still
+  works localhost-to-localhost; the Tailscale URL also works from the phone).
+- **Alert node click URLs (resolved 2026-07-19):** the 8 alert nodes that
+  hardcoded `http://localhost:5678/...` as their ntfy `click` URL were updated
+  to `http://bmad-codespace.tail0d7953.ts.net:5678/...` via MCP (5 in Develop
+  Epic, 3 in BMAD Session). These are hardcoded in the node parameters, not
+  derived from `WEBHOOK_URL` — so they needed a separate update. The 2 nodes
+  that derive their click URL dynamically (`$execution.resumeUrl` for the
+  question Notify, `getInstanceBaseUrl()` for the Error Handler) were fixed
+  automatically by the `WEBHOOK_URL` env change.
 
 ## Relevant verifications
 
@@ -134,6 +155,10 @@ source — see runtime path note above) — reachable from the devbox browser.
 set; the fallback to `N8N_HOST=0.0.0.0` is what produces the unreachable
 `0.0.0.0` URLs.
 
+> **Update (2026-07-19):** `WEBHOOK_URL` is now set to
+> `http://bmad-codespace.tail0d7953.ts.net:5678` by Workstream G — strictly
+> more capable than the planned `localhost` value. E3 is a no-op.
+
 ## Context: what the question/response flow actually is
 
 Verified against the workflow definitions and the agent code [workspace:
@@ -164,10 +189,13 @@ OpenCode Response)]:
   `<conversation> - Action Needed`, message body set to the agent's actual
   response text (`={{ $('Parse OpenCode Response').item.json.response }}` —
   applied to live 2026-07-17), and a `click` URL set to
-  `$execution.resumeUrl.replace('webhook', 'form')`, which resolves to
+  `$execution.resumeUrl.replace('webhook', 'form')`, which resolved to
   `http://0.0.0.0:5678/form-executions/…` because `N8N_HOST=0.0.0.0` with no
-  `WEBHOOK_URL` override — unreachable / dead. The `click` URL is the
-  remaining broken piece; the message body is fixed.
+  `WEBHOOK_URL` override — unreachable / dead as of 2026-07-17. **Resolved
+  2026-07-19:** Workstream G set `WEBHOOK_URL` to the Tailscale hostname, so
+  the `click` URL now resolves to
+  `http://bmad-codespace.tail0d7953.ts.net:5678/form-executions/…`. The
+  message body was already fixed (2026-07-17).
 
 The free-text-both-ways structure eliminates ntfy-action-button architectures.
 ntfy supports four action types — `view`, `broadcast`, `http`, and `copy` — and
@@ -178,9 +206,10 @@ publish/#action-buttons]. Any solution must capture free text on a phone.
 
 Every solution assumes one of two architectures:
 
-1. **Expose n8n** — make the web UI / form reachable from the phone.
+1. **Expose n8n** — make the web UI / form reachable from the phone. Owned by
+   Workstream G (`docs/todo/n8n-workstream-g-external-accessibility.md`).
 2. **Flip the channel** — move the interaction into the notification layer;
-   n8n stays private (no inbound exposure).
+   n8n stays private (no inbound exposure). Owned by this doc.
 
 The flip architecture is more secure (nothing reaches in) and is where the
 creative combinations live. Exposing n8n is simpler conceptually but widens
@@ -208,10 +237,11 @@ The 8 alert-only ntfy nodes stay as they are — they are all one-way POSTs
 `"… - Action Needed"`) is modified: its message body now carries the agent's
 response text (applied to live 2026-07-17). A 10th node (`Notify cap`) was
 added by the INCOMPLETE-outcome work and already has `onError:
-continueRegularOutput`. Only the question-form flow (the `Get response` Wait
-node + the dead `0.0.0.0` recovery URL) is replaced with a Telegram send +
-long-poll. Smallest possible change, and each channel stops doing work it is
-bad at.
+  continueRegularOutput`. Only the question-form flow (the `Get response` Wait
+  node + the recovery URL, formerly dead `0.0.0.0` — now resolved to the
+  Tailscale hostname by Workstream G) is replaced with a Telegram send +
+  long-poll. Smallest possible change, and each channel stops doing work it is
+  bad at.
 
 ### Creative combination: ntfy as push trigger, Telegram as interaction layer
 
@@ -278,13 +308,14 @@ first-reply-wins is handled naturally by n8n's resume mechanism (D3).
 
 ### Prerequisites
 
-1. **F-11 / E3:** set `WEBHOOK_URL=http://localhost:5678` in n8n env. The
-   Telegram reply handler calls the form resume URL
-   (`http://localhost:5678/form-executions/<executionId>`) to unblock the
-   waiting execution. Without this fix, the resume URL resolves to `0.0.0.0`
-   and the handler cannot reach it. This is a one-line env var change and is
-   separate from the external-accessibility problem — it makes the resume URL
-   work at all (localhost-to-localhost), not reachable from outside.
+1. **F-11 / E3 (resolved — no-op):** Workstream G
+   (`docs/todo/n8n-workstream-g-external-accessibility.md`) set
+   `WEBHOOK_URL=http://bmad-codespace.tail0d7953.ts.net:5678` in n8n env,
+   which is strictly more capable than the planned `localhost` value. The
+   Telegram reply handler will call the form resume URL
+   (`http://bmad-codespace.tail0d7953.ts.net:5678/form-executions/<executionId>`)
+   to unblock the waiting execution — reachable both localhost-to-localhost
+   and from the phone via Tailscale. No further action needed on E3.
 2. **Create a Telegram bot** via @BotFather. Obtain the bot API token. Send
    `/start` to the bot from the operator's Telegram — required before the bot
    can send messages [Telegram Bot API: bots#how-are-bots-different-from-users].
@@ -331,7 +362,7 @@ Telegram Reply Handler (new, separate workflow):
 | D4 | `chat_id` source | Hardcode in credential | Locks bot to one recipient. Not meaningfully more secure (chat_id isn't a secret; the bot token is the real secret), but good practice. |
 | D5 | Concurrent questions | Reply-to-message threading | Each question is a separate Telegram message. The operator replies to a specific message; the handler matches `reply_to_message.message_id` back to the execution that sent it. Multiple agents can ask simultaneously; each gets its own message. |
 | D6 | `Agent MD to HTML` node | Keep | Telegram handles its own formatting, but the node stays as a fallback for the form path. |
-| D7 | Form fallback | Keep | If Telegram is down or misconfigured, the form path still works from the devbox. |
+| D7 | Form fallback | Keep | If Telegram is down or misconfigured, the form path still works from the devbox. Form-from-phone requires Workstream G (`docs/todo/n8n-workstream-g-external-accessibility.md`) to land. |
 | D8 | ntfy push trigger for questions | Documented as likely needed | Operator has not tested Telegram push on Samsung and recalls past issues. The two-app pattern (ntfy push → deep-link into Telegram) stays as a planned addition, not just a theoretical fallback. |
 | D9 | `message_id` → execution ID mapping storage | n8n Data Table node | `$getWorkflowStaticData` is NOT concurrency-safe — it uses a last-write-wins `UPDATE` on a single JSON blob column with no transaction or optimistic locking (verified from n8n source: `workflow-static-data.service.ts`; official docs carry a callout: "may behave unreliably under high-frequency workflow executions"). Two concurrent executions writing different keys silently clobber each other. Data Tables are safe: each data table is a dedicated SQL table (`data_table_user_<id>`), and INSERT/UPDATE/DELETE are atomic SQL statements wrapped in transactions (verified from n8n source: `data-table-rows.repository.ts`, `data-table-ddl.service.ts`). Each `message_id → executionId` pair is a separate row, writes are independent, and cleanup is a row deletion after resume. Use INSERT (not upsert) — the upsert operation has a check-then-act race that can create duplicate rows under concurrent access. Load is trivially light (a few messages per day). |
 
@@ -341,8 +372,12 @@ Telegram Reply Handler (new, separate workflow):
    question-notification node is already modified). ntfy is reliable enough
    in practice; no `onError` hardening needed (F-12 was evaluated and
    dropped).
-2. **Apply E3:** set `WEBHOOK_URL=http://localhost:5678`
-   in n8n env. Prerequisite for the Telegram handler's resume call.
+2. **Apply E3 (no-op — resolved by Workstream G):** `WEBHOOK_URL` is already
+   set to `http://bmad-codespace.tail0d7953.ts.net:5678` by Workstream G.
+   Prerequisite for the Telegram handler's resume call is met. The 8 alert
+   nodes' hardcoded `click` URLs were also updated from `localhost` to the
+   Tailscale hostname (separate from the `WEBHOOK_URL` env change, since
+   these are hardcoded in node parameters, not derived from the env var).
 3. **Add Telegram send node** on the QUESTION branch (parallel to the form):
    sends the agent's response text as a MarkdownV2 message to the operator's
    chat. Split at semantic boundaries if >4096 chars. Escape MarkdownV2 special
@@ -381,37 +416,10 @@ part of the channel-replacement work.
 ## Alternative architectures considered
 
 These were explored and are recorded here so future work does not re-litigate
-them.
-
-### Expose n8n (phone reaches the web UI)
-
-- **Tailscale (plain):** install on devbox + phone, stable hostname
-  (MagicDNS), `WEBHOOK_URL=http://<tailscale-host>:5678`. Uses WireGuard as
-  its data-plane encryption, NAT traversal built in, no port forwarding
-  [Tailscale docs: kb/1017/install, concepts/tailscale-encryption]. Trade-off:
-  phone needs the Tailscale app running and connected to the tailnet for links
-  to resolve (both endpoints must be tailnet members).
-- **Tailscale Funnel:** publishes a tailnet service to the public internet as
-  a stable `https://<machine>.<tailnet-name>.ts.net` URL [Tailscale docs:
-  kb/1223/funnel]. Phone needs nothing installed — "even if they don't use
-  Tailscale." Trade-off: URL is publicly reachable — with F-1's unauthenticated
-  webhook, this widens the RCE hole unless D2 lands first.
-- **Cloudflare Tunnel + Cloudflare Access:** `cloudflared` tunnels
-  `localhost:5678` to a public hostname with no port forwarding; Cloudflare
-  Access (Zero Trust) requires identity verification. Free tier supports up
-  to 50 users [Cloudflare: cloudflare.com/pricing]. Supported identity
-  providers include Google, GitHub, and one-time PIN (OTP) — among others
-  [Cloudflare docs: cloudflare-one/integrations/identity-providers]. Public
-  hostname + TLS + auth + zero inbound ports. Most infrastructure, but
-  incidentally hardens the F-1 perimeter. Effort: L.
-- **SSH reverse tunnel to a VPS:** `ssh -R` from devbox to a VPS with a
-  domain; `WEBHOOK_URL` points at the VPS. `-R` allocates a listener on the
-  remote (VPS) side, forwarding to the local devbox [OpenSSH man page:
-  man.openbsd.org/ssh]. Fully self-hosted, no third-party trust. Trade-off:
-  own the maintenance (reconnect logic — no built-in auto-reconnect; TLS;
-  key rotation; the remote listener binds to loopback by default, so
-  `GatewayPorts on` or a local proxy on the VPS is needed to expose it on the
-  public IP). Most control, most work.
+them. The "expose n8n" alternatives (Tailscale, Tailscale Funnel, Cloudflare
+Tunnel, SSH reverse tunnel) have moved to Workstream G
+(`docs/todo/n8n-workstream-g-external-accessibility.md`); only the
+"flip the channel" alternatives remain here.
 
 ### Flip the channel (n8n stays private)
 
@@ -500,14 +508,13 @@ them.
   `data-table-ddl.service.ts`). Use INSERT (not upsert) — upsert has a
   check-then-act race that can create duplicate rows. Cleanup is a row deletion
   after the execution resumes.
-- **External accessibility of the dev machine — IN PROGRESS.** n8n runs on
-  the dev machine, which is not immediately reachable from outside the local
-  network. The operator is actively working on solving this (e.g., Tailscale
-  or similar). The Telegram approach designed here does not depend on solving
-  this — getUpdates is outbound polling, and the form resume URL is
-  localhost-to-localhost. But the form-from-phone fallback does require
-  external accessibility. This is tracked here so the doc does not assume it
-  is solved.
+- **External accessibility of the dev machine — owned by Workstream G.** n8n
+  runs on the dev machine, which is not immediately reachable from outside
+  the local network. The Telegram approach designed here does not depend on
+  solving this — getUpdates is outbound polling, and the form resume URL is
+  localhost-to-localhost. The form-from-phone fallback (D7) does require
+  external accessibility; see
+  `docs/todo/n8n-workstream-g-external-accessibility.md`.
 - **Form-timeout (F-3.2) interaction.** Adding Telegram does not solve the
   stall-when-unreachable problem. If the operator is away and does not see
   the Telegram push, the question stalls indefinitely. Telegram's push is far
@@ -522,8 +529,11 @@ them.
   `Notify` node's message body now carries the agent's response text
   (`={{ $('Parse OpenCode Response').item.json.response }}`), applied to live
   2026-07-17. The question content travels in the notification itself, not
-  just "click here to see what's being asked."   The `click` URL remains dead
-  (`0.0.0.0`) until E3 or the Telegram channel replaces it.
+  just "click here to see what's being asked."   The `click` URL was dead
+  (`0.0.0.0`) as of 2026-07-17; it is now resolved — Workstream G set
+  `WEBHOOK_URL` to the Tailscale hostname, so `$execution.resumeUrl` (and
+  its `.replace('webhook', 'form')` derivative) now resolves to
+  `http://bmad-codespace.tail0d7953.ts.net:5678/form-executions/…`.
 
 ## Sources
 
@@ -556,20 +566,10 @@ All external claims verified against official documentation on 2026-07-17.
 | Push notification issues on Huawei/Xiaomi ("evil task killer services") | https://telegram.org/faq#notification-problems |
 | Cloud-based messaging; instant search (user-side persistence) | https://telegram.org/faq |
 
-### Tailscale
-
-| Claim | URL |
-| --- | --- |
-| Funnel: public internet access, `https://<machine>.<tailnet-name>.ts.net` | https://tailscale.com/kb/1223/funnel |
-| WireGuard data-plane encryption | https://tailscale.com/docs/concepts/tailscale-encryption |
-| NAT traversal, no port forwarding, MagicDNS stable hostnames | https://tailscale.com/kb/1017/install |
-
 ### Cloudflare
 
 | Claim | URL |
 | --- | --- |
-| Zero Trust free tier: up to 50 users | https://www.cloudflare.com/pricing/ |
-| Identity providers: Google, GitHub, OTP (among others) | https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/ |
 | Workers free tier: 100,000 requests/day | https://developers.cloudflare.com/workers/platform/limits/ |
 | KV free tier: 1 GB storage, 100K reads/day, 1K writes/day | https://www.cloudflare.com/pricing/ |
 
@@ -579,12 +579,6 @@ All external claims verified against official documentation on 2026-07-17.
 | --- | --- |
 | Authenticated rate limit: 5,000 requests/hour | https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api |
 | List issue comments endpoint | https://docs.github.com/en/rest/issues/comments |
-
-### OpenSSH
-
-| Claim | URL |
-| --- | --- |
-| `-R` remote port forwarding; loopback-only bind by default; `GatewayPorts` | https://man.openbsd.org/ssh |
 
 ### Workspace (verified against n8n workflow JSON and agent code)
 
