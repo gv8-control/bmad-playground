@@ -1,7 +1,13 @@
 # Plan: dependency-graph pipeline with parallel opencode agents
 
 Status: draft vision, not started. Written 2026-07-17, updated same day to make Daytona sandboxes
-the primary worker tier (was: local worktrees as first tier, sandboxes as graduation). Supersedes
+the primary worker tier (was: local worktrees as first tier, sandboxes as graduation), and again
+to pin down hosting: n8n runs on the devcontainer under pm2 (not Railway), and "woken by n8n"
+means locally invoked (see the n8n / dispatcher split). Updated 2026-07-19 to the current
+supervision design: per-worker supervision moves into n8n observer executions (the existing
+`BMAD Session (OpenCode)` loop with its agent command swapped for a sandbox wrapper), and the
+dispatcher becomes a short, lock-serialized, level-triggered reconcile pass instead of a
+resident event loop. Supersedes
 and replaces the discarded stage-group parallelization plan (`pipeline-parallelization-plan.md`,
 deleted the same day) — everything still relevant from that plan is folded in here. Read
 [docs/self-improving-pipeline.md](../self-improving-pipeline.md) first; this plan describes the
@@ -22,20 +28,37 @@ pipeline files are the record. Here the state is the engine:
   directed acyclic graph) instead of an ordered sequence. Any story whose dependencies are all
   merged is claimable. Story ordering — not n8n — was the real obstacle to cross-story
   parallelism; making dependencies explicit is planning work, not plumbing work.
-- **A dispatcher, not a loop.** A script/daemon claims ready work and launches one opencode agent
-  per claim in a Daytona sandbox from a warm pool. Machine-level isolation eliminates the collision
-  surfaces that same-machine concurrency creates (discovered in session-history analysis,
-  2026-07-17): cross-process homicide (`pkill -f` can't cross machine boundaries), fixed port
-  binding (each sandbox has its own port space), shared test databases (each sandbox runs its own
-  Postgres), and shared-file corruption (`sprint-status.yaml`, `deferred-work.md` are
-  per-sandbox). The opencode identity-collision risk is also removed — separate machine, separate
-  storage. Epic 6 built sandbox provisioning for the product; the pipeline copies the discipline
-  patterns, not the code.
+- **A dispatcher, not a loop.** The dispatcher is not a resident process. Each invocation is a
+  short reconcile pass, serialized by a lock: read all durable state, drive it to fixpoint
+  (fold new results, update graph state, claim ready nodes, start workers), exit in seconds.
+  A completion may unblock dependents, which become new claims, which produce new completions —
+  the graph unfolds depth-first (descends into a story's dependents before starting unrelated
+  siblings), not in planned waves. Passes are invoked by n8n on events (merge complete,
+  question answered, observer finished, schedule tick) — a local process call; n8n and the
+  dispatcher live on the same devcontainer, and overlapping invocations simply queue on the
+  lock and coalesce. Long-lived supervision is not the dispatcher's job: each claim is watched
+  by one n8n observer execution (see Observer executions under Dispatcher). Canonical pipeline
+  state (journal, ledger, graph.json, playbook.json) has at most one writer at a time — the
+  pass holding the lock; agents and observers never write it directly. Each claim launches one
+  opencode agent in a Daytona sandbox from a warm pool. Machine-level isolation eliminates the
+  collision surfaces that same-machine concurrency creates (discovered in session-history
+  analysis, 2026-07-17): cross-process homicide (`pkill -f` can't cross machine boundaries),
+  fixed port binding (each sandbox has its own port space), shared test databases (each sandbox
+  runs its own Postgres), and shared-file corruption (`sprint-status.yaml`, `deferred-work.md`
+  are per-sandbox). The opencode identity-collision risk is also removed — separate machine,
+  separate storage. Epic 6 built sandbox provisioning for the product; the pipeline copies the
+  discipline patterns, not the code.
 - **Git is the convergence point.** Every agent pushes a branch; a serial merge queue
   (rebase → test → merge) integrates one branch at a time. Integration is serialized, work is
   not — integration takes minutes, stories take hours.
-- **n8n keeps two jobs:** human-facing workflows (question forms, ntfy notifications) and an
-  event-ingest webhook that serializes journal appends from concurrent agents.
+- **n8n keeps two jobs:** human-facing workflows (question forms, ntfy notifications, sprint
+  status reporting, external triggers that invoke the dispatcher) and per-worker supervision —
+  one long-lived observer execution per claim, reusing the `BMAD Session (OpenCode)` loop that
+  already starts an agent, retries provider errors, surfaces questions, and returns when the
+  agent says it is done. n8n still never writes canonical pipeline state — observers record to
+  per-run spool files that a dispatcher pass folds in. The event-ingest webhook from the
+  earlier design stays eliminated: every result is durable on disk before the dispatcher is
+  invoked, and every invocation is a contentless "wake up".
 
 ## Graph management rules (decided)
 
@@ -46,19 +69,234 @@ pipeline files are the record. Here the state is the engine:
 - These rules are dispatcher claim-time policy — plain code, not a feature of any store or
   engine. Do not pick technology expecting it to enforce them.
 
+## Dispatcher
+
+The dispatcher is the bookkeeping engine. It is not a daemon and not a resident event loop — it
+is a short reconcile pass: invoked, it acquires the state lock, drives durable state to
+fixpoint, and exits in seconds. Supervision of running workers is not its job (the observer
+executions hold that — see below); a pass never waits on anything except the lock. "Woken by
+n8n" means *invoked*: n8n runs on the same devcontainer (under pm2, started by
+`.devcontainer/start.sh`) and launches a pass as a local process call (Execute Command, or HTTP
+to localhost). No network hop, no tunnel, no listener waiting on a socket. Multiple events in
+short succession launch multiple passes; they queue on the lock and coalesce.
+
+Two rules make overlapping invocations safe:
+
+- **Invocations carry no payload.** An invocation is a contentless "wake up". All information
+  is written durably before the invocation fires: n8n writes the question answer to disk, then
+  invokes; an observer writes its outcome to the inbox, then invokes; "merge complete" is
+  visible in git before the merge-queue workflow invokes. Nothing can be lost — the worst case
+  for a redundant invocation is a pass that finds nothing to do.
+- **Passes are level-triggered, not edge-triggered.** A pass never processes "the event that
+  woke it"; it reads the entire current state and processes everything that state implies. Two
+  events in short succession: the first pass to take the lock handles both; the second finds
+  fixpoint already reached and exits. This replaces the earlier single-instance-lock design
+  where a second invocation was a no-op — a no-op arriving while the running dispatcher is
+  deciding to exit can silently drop an event; a queued level-triggered pass cannot.
+
+### Reconcile pass
+
+Each invocation:
+
+1. **Acquire the lock** — blocking `flock` on a lockfile. Passes are seconds long, so waiting
+   is fine. `flock` releases automatically when the process dies, so a crashed pass cannot
+   leave a stale lock.
+2. **Reconcile** — cross-check the journal's parked and in-flight entries against reality:
+   sandboxes carrying the pipeline scope label (Daytona API) and their observer executions
+   (n8n API). Collect finished work whose observer died, attach a fresh observer to a running
+   orphan, destroy sandboxes no entry accounts for.
+3. **Fold the inbox** — consume outcome files and per-run journal spools written by observers:
+   append to the canonical journal first (the append is the commit point), then regenerate
+   `graph.json` (a derived view, rebuildable from the journal if a crash lands between the two
+   writes).
+4. **Re-evaluate** — which nodes are now ready? (Dependencies all merged, capacity available.)
+5. **Claim and launch** — claim ready nodes depth-first (journal the claim), acquire a sandbox
+   from the warm pool, `git checkout` to the claim's base, and start one observer execution per
+   claim. The observer records its execution ID to its spool as its first act, so later passes
+   can cross-check it during reconcile.
+6. **Release the lock and exit** — workers still running, observers still watching. Liveness
+   comes from observer-completion invocations, plus a periodic n8n schedule tick as a safety
+   net for anything that dies without invoking.
+
+The recursion of the old design survives across passes: a completion invokes a pass, the fold
+unblocks dependents, and the same pass claims and launches them. Workers stay busy because
+every completion immediately triggers the next claim — there is just no resident process
+between completions.
+
+### Atomicity
+
+All canonical state and the lock live on one local filesystem (co-location is load-bearing —
+see below). Three primitives cover every mutation:
+
+| Primitive | Guarantee |
+|---|---|
+| Blocking `flock` held for the whole pass | Mutual exclusion between passes; released automatically on process death — no stale-lock handling |
+| Single-`write` `O_APPEND` appends to `journal.jsonl` | Atomic appends on a local filesystem |
+| tmp-file + `renameSync` for `graph.json` | Atomic replace |
+
+Multi-file consistency comes from write ordering, not transactions: journal first (the commit
+point), `graph.json` second (derived, rebuildable). Claims are exclusive by construction — a
+claim is a journal append plus a graph mutation performed under the lock, so two passes cannot
+double-claim. SQLite would package the same guarantees but costs the human-readable jsonl that
+reflection reads; not needed at tens of nodes.
+
+### Observer executions (supervision)
+
+Each claim is supervised by one long-lived n8n execution of the observer workflow: the existing
+`BMAD Session (OpenCode)` loop with its two `Agent run` Execute Command nodes swapped from a
+local `opencode run` to a sandbox wrapper script. The wrapper spawns `opencode run` inside the
+sandbox via the Daytona session API, relays the log, and re-emits the same stdout contract the
+local runner produces (JSON lines plus a `runner_meta` line carrying exit code and salvage
+flag). Everything downstream of that contract carries over unchanged and already battle-tested:
+
+- **Outcome classification** — `Parse OpenCode Response` + `BMAD Outcome`: deterministic rules
+  first (empty output → UNKNOWN, `[opencode error]` → INCOMPLETE, salvaged output or rc≠0 →
+  INCOMPLETE), LLM fallback only for the COMPLETE/QUESTION/INCOMPLETE call.
+- **Provider-error recovery** — INCOMPLETE loops back into `opencode run --session <id>` up to
+  `incompleteContinueCap` (10) times. This loop is what lets a 137-minute `review-nfrs` step
+  survive the 90-minute per-run timeout, as repeated timeout → salvage → continue cycles.
+- **Question surfacing** — QUESTION suspends the execution on its Wait-form node (durable
+  across n8n restarts), fires ntfy with the resume URL, and the human's form answer resumes
+  into a `--session` follow-up. The suspended execution *is* the parked state.
+- **Machinery evidence** — non-zero exits are captured as `runner-errors` records exactly as
+  today (written to the run's spool, folded by a pass).
+
+n8n runs separate executions concurrently (the fact this whole plan is built on), so N claims
+get N observers with no new n8n primitives. Supervision is lighter than today's local tier:
+the heavy opencode process runs remotely; the local child only relays logs.
+
+One limitation is structural and is designed for, not hoped away: **an execution blocked inside
+Execute Command does not survive an n8n restart.** Wait-node suspensions are durable; a blocked
+`Agent run` is not — a pm2 restart or devcontainer sleep terminates it and n8n marks the
+execution crashed, while the sandbox agent keeps running. Observer death is therefore routine,
+not exceptional, and every reconcile pass handles it. Two mechanisms make that safe:
+
+- **Attach mode in the wrapper:** given a sandbox ID and session ID, resume relaying an
+  already-running session from its current position, so a pass can start a fresh observer
+  execution against a running orphan.
+- **The agent pushes its own branch** as the last act of its in-sandbox command, so a completed
+  result is durable in git even if nobody was watching when it finished.
+
+### n8n / dispatcher split
+
+n8n and the dispatcher are co-located on the devcontainer. n8n is not deployed to Railway and
+is not always-on in absolute terms — it runs under pm2 (`.devcontainer/start.sh`) and sleeps
+when the devcontainer sleeps. The real split is persistent service vs ephemeral process: n8n is
+up for as long as the devcontainer is up and owns schedules, forms, workflow events, and the
+long-lived observer executions; the dispatcher is a seconds-long reconcile pass that n8n
+invokes locally. The division of labor follows what each is good at — n8n handles scheduling,
+human-facing flows, and long-lived supervision (durable Wait suspensions, retry loops); the
+dispatcher handles graph algorithms and state writing.
+
+Two consequences of n8n being local, stated so nobody designs against the wrong model:
+
+- **No inbound path from the internet.** External webhooks (e.g. GitHub) cannot reach this n8n.
+  Every trigger originates locally: n8n schedules, n8n-internal workflow completions (the merge
+  queue is an n8n workflow, so "merge complete" is an internal event, not a webhook), and forms
+  opened from this machine's browser via forwarded ports.
+- **Co-location is load-bearing.** Dispatcher invocation, the merge queue's repo access, and
+  skill runs all assume n8n can execute commands on the machine that holds the repo. Moving n8n
+  off the devcontainer (e.g. to Railway) would be its own architecture change, not a deployment
+  detail.
+
+| Responsibility | Home | Why |
+|---|---|---|
+| Trigger the dispatcher | n8n | Persistent scheduler while the devcontainer is up; invokes a pass as a local process call. |
+| Per-worker supervision | n8n observer execution | Long-lived watching is what executions already do: blocking `Agent run`, INCOMPLETE retry loop, durable Wait-form suspension. |
+| Result collection + classification | n8n observer execution | `Parse OpenCode Response` + `BMAD Outcome` already parse and classify; the wrapper preserves their stdout contract. |
+| Merge queue | n8n | Sequential, API-driven, retry-on-conflict. Textbook n8n workflow. |
+| Question surfacing (forms, ntfy) | n8n | The observer's own Wait-form node; durable across restarts. |
+| Graph expansion (plan 2 ahead) | n8n | Triggered when graph is low on ready nodes. Calls a BMAD skill. |
+| Sprint status / reporting | n8n | Read state, format, notify. |
+| Graph traversal + claim logic | Dispatcher pass (JS) | DAG algorithm with stateful mutations. Needs testing, iteration. |
+| Workspace provisioning | Dispatcher pass (JS) | SDK calls + filesystem ops. |
+| Agent run + attach in sandbox | Wrapper script (JS) | Spawns or re-attaches to `opencode run` via the Daytona session API; re-emits the local stdout contract; its in-sandbox command ends with the branch push. |
+| State writing (journal, graph.json) | Dispatcher pass (JS) | At most one writer at a time — the pass holding the lock. |
+| Reconciliation | Dispatcher pass (JS) | Every pass: cross-check journal vs sandboxes vs observer executions; collect, re-attach, destroy. |
+
+Single-writer survives, restated: not "one resident process is the writer" but "at most one
+pass holds the lock at a time." Observers never touch canonical state — each records step
+events to its own per-run spool file and its final outcome to an inbox directory, and a pass
+folds both into the canonical journal and graph. (Today's `Develop Story (Playbook)` appends to
+`journal.jsonl` directly from its Journal nodes — safe with one execution at a time, a
+collision surface with N concurrent observers; redirecting those appends to the per-run spool
+is part of the port.) The event-ingest webhook from the earlier design stays eliminated — it
+was solving a concurrent-write problem the architecture itself created by putting n8n in the
+canonical data path. Session-history analysis (2026-07-17) confirmed agents already don't
+write to pipeline state files in the sequential architecture; the parallel architecture keeps
+that by construction.
+
+### Data flow
+
+```
+n8n (persistent service on the devcontainer, under pm2)
+  │
+  ├─ Observer execution per claim (BMAD Session loop + sandbox wrapper):
+  │    start agent → relay logs → classify → retry INCOMPLETE → suspend on QUESTION
+  │    → on finish: write outcome to inbox, invoke dispatcher
+  ├─ Merge queue workflow → invokes dispatcher when a merge lands
+  ├─ Question form + ntfy (the observer's own Wait-form node)
+  ├─ Schedule tick → invokes dispatcher (safety net)
+  └─ Sprint status / reporting
+       │  contentless invocations — every payload is already durable on disk
+       ▼
+Dispatcher pass (same devcontainer, seconds long, one at a time under flock)
+  1. Reconcile (journal vs sandboxes vs observer executions)
+  2. Fold inbox + spools → journal.jsonl (commit point) → graph.json (derived)
+  3. Re-evaluate ready nodes
+  4. Claim depth-first → start observer executions
+  5. Release lock, exit
+       │
+       ▼
+Daytona sandboxes (one opencode agent each; agent pushes its branch as its last act)
+```
+
+When an agent finishes:
+1. The agent's in-sandbox wrapper pushes the branch — durability does not depend on any
+   supervisor being alive.
+2. The observer classifies the outcome, writes it to the inbox (durable), invokes the
+   dispatcher, and ends.
+3. A pass folds the outcome: journal append, graph mutation, merge-queue trigger on SUCCESS.
+   The completion may unblock dependents → new claims → new observer executions.
+4. If the outcome is QUESTION: the observer records sandbox ID, session ID, and question to
+   its spool, stops the sandbox, and suspends on its Wait-form node — that suspension is the
+   parked state. ntfy carries the resume URL; the human's answer resumes the execution, and
+   the follow-up wrapper starts the sandbox and resumes the session. No dispatcher round-trip
+   is involved in asking or answering.
+
+### Implementation surface
+
+Rough estimate, ~700 lines of JS plus one n8n workflow port:
+
+| Module | Lines | Reuses |
+|---|---|---|
+| Graph management (CRUD, DAG traversal, claim) | ~250 | New |
+| Workspace provisioning (sandbox create, env, cleanup) | ~200 | Patterns from product's SandboxService |
+| Sandbox wrapper (run + attach, stdout contract, branch push) | ~120 | Command contract from `BMAD Session (OpenCode)`'s `Agent run` nodes |
+| Pass frame (flock, inbox/spool fold, reconcile) | ~150 | `scripts/pipeline/lib.mjs` |
+| Observer workflow | n8n port | Copy of `BMAD Session (OpenCode)` with the two `Agent run` commands swapped for the wrapper — classification, INCOMPLETE retry, question form, runner-error capture unchanged |
+
+Gone from the earlier estimate: the ~250-line agent-lifecycle module (spawn/monitor/collect/
+classify) — observer executions and the existing classification sub-workflows already do this —
+and the n8n signalling module (park/resume is n8n-internal via the Wait-form node).
+
 ## State
 
-- `graph.json` in `_bmad-output/pipeline/`, owned and mutated only by the dispatcher, with every
-  mutation journaled as an event — the same single-writer convention as `playbook.json` and
-  `journal.jsonl`. SQLite only if concurrent queried reads become a real need; at tens of nodes
-  they are not.
+- `graph.json` in `_bmad-output/pipeline/`, mutated only under the pass lock, with every
+  mutation journaled first. Canonical state — `graph.json`, `journal.jsonl`, `ledger.jsonl`,
+  `playbook.json`, `runner-errors.jsonl` — has at most one writer at a time: the pass holding
+  the lock. Observers write only their own per-run spool and inbox files (including their
+  runner-error records, folded the same way); agents write nothing shared. SQLite only if
+  concurrent queried reads become a real need; at tens of nodes they are not.
 - **Atomic writes required:** `scripts/pipeline/lib.mjs:24` currently uses plain
-  `fs.writeFileSync`, which a poller can catch mid-write. The dispatcher must write
-  tmp-file + `renameSync`; the viewer keeps last-good state on parse failure.
+  `fs.writeFileSync`, which a poller can catch mid-write. Passes must write tmp-file +
+  `renameSync` (see Atomicity under Dispatcher); the viewer keeps last-good state on parse
+  failure.
 - **No in-memory truth.** The devcontainer sleeps and gets rebuilt, so `graph.json` + journal on
-  disk must be sufficient to resume from cold. The startup sweep (below) is the standard boot
-  sequence, not edge-case cleanup. The dispatcher needs a resurrection path (devcontainer
-  postStart hook or a manual command).
+  disk must be sufficient to resume from cold. There is no separate startup sweep — every pass
+  reconciles, so recovery from sleep or rebuild is the same code path as a normal tick. The
+  pipeline needs a resurrection path (devcontainer postStart hook invoking a pass, plus the
+  n8n schedule tick).
 - Agents pin the playbook version they claimed against; amendments apply only at claim
   boundaries, never mid-flight.
 
@@ -66,11 +304,13 @@ pipeline files are the record. Here the state is the engine:
 
 Constraint first: the viewer belongs to the workflow silo, not the product. It must not live in
 or reuse code from `apps/web`/`apps/agent-be`, and must stay build-less and app-less — committed
-flat files only, provisioned (if at all) via `.devcontainer/`. Access is via Codespaces forwarded
-ports, same as n8n's UI.
+flat files only, provisioned (if at all) via `.devcontainer/`. Access is via VS Code's local
+port forwarding on the devcontainer, same as n8n's UI. (This is a local devcontainer on the
+user's machine — VS Code Dev Containers, not GitHub Codespaces; the `codespace` username is an
+artifact of the `devcontainers/universal` image.)
 
 1. **Start:** the dispatcher regenerates a Mermaid block in a markdown file on every graph
-   mutation. Viewable in VS Code preview inside the codespace (add the mermaid preview extension
+   mutation. Viewable in VS Code preview inside the devcontainer (add the mermaid preview extension
    to `devcontainer.json`) and on GitHub after push. Zero infrastructure.
 2. **Upgrade when interactivity is worth it:** one committed `viewer.html` + vendored
    Cytoscape.js + dagre (~717K across 3 plain UMD `<script>` files, no build step) + a ~10-line
@@ -103,21 +343,26 @@ no collision-mitigation discipline needed.
   has no depth parameter — use `executeCommand('git clone --depth 1 ...')` instead.
 - Copy `.env`, `.env.test`, `.auth/` from the dispatcher into the sandbox. These are gitignored,
   small, and contain secrets — never in the repo, never in the snapshot. The dispatcher holds
-  them and pushes per-sandbox at provision time.
+  them and pushes per-sandbox at provision time. This transfer is a non-issue: sandboxes are
+  trusted with secrets like the dev machine (see Credentials under Sandbox lifecycle).
 - Apply `domainAllowList` for egress control. The essential services allowlist already covers
   GitHub, npm, Anthropic, opencode, Playwright, Railway, and Docker registries — start with
   `networkBlockAll: false` (default) and tighten to an explicit allowlist when the pipeline is
   stable. Updatable at runtime without restart.
 
 **Per-claim (fast, from warm pool):**
-- Claim a sandbox from the pool. `git fetch && git checkout <base-commit>` to the claim's base.
-- Spawn `opencode run` inside the sandbox with `--dir <sandbox-repo-path>` and a per-run
-  `OPENCODE_DB=<tmp>/opencode.db`. The dispatcher streams output via Daytona's SDK session API
-  (`createSession` + `executeSessionCommand({ runAsync: true })` + `getSessionCommandLogs`
-  callbacks) — the pull-based transport model the product already uses. The sandbox never calls
-  back to the dispatcher.
-- Reuse the timeout/terminate wrapper and `runner-errors.jsonl` capture logic from
-  `BMAD Session (OpenCode)`'s `Agent run` nodes.
+- A pass claims a sandbox from the pool, journals the claim, and starts one observer
+  execution. `git fetch && git checkout <base-commit>` to the claim's base.
+- The observer's wrapper script spawns `opencode run` inside the sandbox with
+  `--dir <sandbox-repo-path>` and a per-run `OPENCODE_DB=<tmp>/opencode.db`, relaying output
+  via Daytona's SDK session API (`createSession` + `executeSessionCommand({ runAsync: true })`
+  + `getSessionCommandLogs` callbacks) — the pull-based transport model the product already
+  uses. The sandbox never calls back to the devcontainer.
+- The in-sandbox command ends with a branch push (`git push origin HEAD:pipeline/<runId>/<id>`)
+  so the result is durable in git regardless of supervisor liveness.
+- The timeout/terminate and runner-error capture logic from `BMAD Session (OpenCode)`'s
+  `Agent run` nodes carries over inside the wrapper; on timeout the wrapper must also
+  terminate the sandbox session, not just its local relay.
 
 **What this eliminates (from session-history analysis, 2026-07-17):**
 - Cross-process homicide via `pkill -f "next dev"` / `pkill -f "agent-be"` — can't cross
@@ -153,7 +398,7 @@ images, explicit resources, and a declarative builder for pre-baking snapshots.
 | Yarn 4 (Berry) | ✅ Likely works | Initial silent fetch failure was almost certainly the 3 GB disk limit, not a platform incompatibility. Needs verification with adequate disk |
 | Docker | ✅ Installable | Sandboxes have their own kernel and sudo. Install via `curl -fsSL https://get.docker.com \| sh` or pre-bake into a custom snapshot. Docker registries (`docker.io`, `*.docker.com`) are in the essential services allowlist. Not needed for pipeline agents (session history shows they use `gh` CLI and `curl`), but available if MCP servers are ever needed |
 | Browser external access | ✅ Likely works | Playwright is in the essential services allowlist. Initial `ERR_CONNECTION_RESET` was likely a snapshot-specific TLS/proxy issue. A custom snapshot with proper browser deps should resolve it |
-| Network to devcontainer | ❌ No path back | Sandboxes can't reach `localhost:5678` (n8n). Aligned with the architecture — the event-ingest webhook is the channel, not direct MCP. Linked sandboxes (parent-child) have bidirectional networking if the dispatcher itself ran as a sandbox, but that's a design choice, not a requirement |
+| Network to devcontainer | ❌ No path back | Sandboxes can't reach `localhost:5678` (n8n). Not a problem — nothing in the sandbox calls back. The observer's wrapper pulls logs via the Daytona session API from the devcontainer side; the agent's only outbound act is its final git push |
 | Custom snapshots | ✅ Declarative Builder | Build from any base image with `apt-get`, `run_commands()`, `dockerfile_commands()`, or `from_dockerfile()`. Pre-bake Node, Yarn, Postgres, Playwright, opencode, and repo deps. Cached for 24h; subsequent runs on the same runner are "almost instantaneous" |
 | Network allow-listing | ✅ Runtime-updatable | `domainAllowList` (wildcards, max 20) + `networkAllowList` (CIDR, max 10) + `networkBlockAll`. Updatable on a running sandbox without restart. Essential services (npm, GitHub, Anthropic, Docker, Playwright, Railway, opencode) are pre-allowed on all tiers |
 | Warm pool | ❌ Not provided by platform | The platform has no pool/acquire-release abstraction. Pre-built snapshots make cold starts fast (cached 24h), but the dispatcher must build its own pool management |
@@ -164,21 +409,29 @@ platform-supported.
 ### Sandbox lifecycle
 
 - On completion (success or failure): destroy the sandbox (or return to pool if warm and clean).
-  The agent's branch is pushed before destruction; git is the persistence layer. No worktree to
-  remove, no branch to delete — the sandbox's entire filesystem is ephemeral.
-- **Startup sweep:** on dispatcher boot, list sandboxes with the pipeline `scope` label and
-  cross-check against the journal; any sandbox with no matching parked or in-flight entry is
-  orphaned (crash, kill, rebuild mid-run) and gets destroyed. The product's
+  The agent's in-sandbox wrapper pushes the branch as its last act — completion is durable in
+  git even if no supervisor was alive when it happened; git is the persistence layer. No
+  worktree to remove, no branch to delete — the sandbox's entire filesystem is ephemeral.
+- **Reconcile on every pass:** list sandboxes with the pipeline `scope` label and cross-check
+  against the journal and n8n's executions API. A sandbox no entry accounts for is orphaned
+  (crash, kill, rebuild mid-run) and gets destroyed; a running sandbox whose observer execution
+  died gets a fresh observer attached; a finished one gets collected. The product's
   `cleanup-daytona-sandboxes.ts` is account-wide destructive — the pipeline needs a scoped
   reaper (Epic 8.1 adds one for the product; depend on it or build its own).
 - **Quota management:** the Daytona account has a 30 GiB shared disk quota across all
   environments. Shallow clones (`--depth 1`) reduce per-sandbox disk. The dispatcher must track
   disk usage and enforce a budget. Label every sandbox with `scope: pipeline` and a `runId` —
   the product's lack of scoping is a known problem the pipeline must not reproduce.
-- **Credential isolation:** inject only the minimum secrets as env vars (`ANTHROPIC_API_KEY`,
-  `GITHUB_TOKEN`, `NEURALWATT_API_KEY`). Never `DATABASE_URL`, `AUTH_SECRET`,
-  `CREDENTIAL_ENCRYPTION_KEK` — those are platform-internal and must not reach the sandbox.
-  Copy the product's discipline here exactly.
+- **Credentials: sandboxes carry the same trust as the dev machine (decided by Marius,
+  2026-07-17).** Pipeline sandboxes run our own agents on our own code — they are not a
+  lower-trust tier, so transferring secrets from the dispatcher into a sandbox is a non-issue
+  and no minimization boundary applies. Provision whatever the work needs (`.env`, `.env.test`,
+  `.auth/`, API keys); anything left out (e.g. platform-internal keys like `AUTH_SECRET` or
+  `CREDENTIAL_ENCRYPTION_KEK`) is omitted because agents have no use for it, not as a security
+  control. This deliberately relaxes the product's sandbox credential discipline — the
+  product's rules serve its own threat model, which the pipeline does not share. Secrets still
+  never go into the repo or the snapshot: a committed or cached-image copy is a different,
+  broader exposure surface than a live sandbox.
 
 ### opencode concurrency: resolved (both phases complete)
 
@@ -230,18 +483,23 @@ failure already paid for once:
 
 ### Park/resume for human questions — mandatory (decided by Marius)
 
-- When an agent's output classifies as outcome `QUESTION`, the step is **parked**, not failed:
-  record sandbox ID, session ID, and question text; journal status `parked` (a third status —
-  not `success`, not `failed` — so trends don't misread a question as a defect).
+- When an agent's output classifies as outcome `QUESTION`, the step is **parked**, not failed.
+  The parked state is the observer execution itself, suspended on its Wait-form node — the same
+  durable suspension questions use today, and it survives n8n restarts. Before suspending, the
+  observer records sandbox ID, session ID, and question text to its spool and invokes the
+  dispatcher, so the next pass journals status `parked` (a third status — not `success`, not
+  `failed` — so trends don't misread a question as a defect).
+- The sandbox is stopped while parked: disk and `OPENCODE_DB` survive a Daytona stop, so
+  parking costs nothing while the question waits (the human-response window is unbounded — the
+  existing no-timeout limitation on questions carries over).
 - Other agents are unaffected; nothing finished is discarded or re-run.
-- An answer resumes exactly one session: `opencode run --session <id> --dir <sandbox-repo-path>
-  "<answer>"`, executed inside the parked sandbox via the Daytona SDK session API. The
-  surfacing/answering plumbing is an n8n form (ntfy-notified) whose submission re-invokes the
-  dispatcher in resume mode for that one agent — this becomes the question inbox for N agents.
+- An answer resumes exactly one session: the human submits the observer's form, the execution
+  resumes, and the follow-up wrapper starts the sandbox and runs `opencode run --session <id>
+  --dir <sandbox-repo-path> "<answer>"` inside it via the Daytona session API. No dispatcher
+  round-trip: the dispatcher learns of the park and the resume from the spool, it does not
+  mediate them. Agents still never talk to n8n.
 - **Decision stands from the previous plan: park/resume is required from the first rollout step,
-  no fail-and-retry stopgap.** A parked sandbox lives until answered (inherits the existing
-  no-timeout limitation on human questions); it is the only sandbox allowed to outlive its run
-  and stay warm in the pool.
+  no fail-and-retry stopgap.**
 - Precondition to watch: the decision policy currently drives halts to zero (`haltsPerStory: {}`
   across measured stories). Every residual halt multiplies by N agents.
 
@@ -269,8 +527,16 @@ failure already paid for once:
 - The graph encodes *declared* dependencies only. Unknown coupling surfaces later as merge-queue
   conflicts and rework. This buys throughput (stories per day), not latency (a story still takes
   what it takes).
-- Journal/ledger/sprint-status assume one writer; agents must emit events through the ingest
-  webhook rather than editing shared files.
+- Canonical pipeline state (journal, ledger, graph.json, playbook.json) has at most one writer
+  at a time — the pass holding the lock. Observers record to per-run spool and inbox files
+  that passes fold in; agents write nothing shared. There are no concurrent writers to any
+  shared file, and no event can be lost: every payload is durable on disk before any
+  dispatcher invocation fires.
+- Observer executions are terminated by an n8n restart while blocked in Execute Command
+  (Wait-form suspensions survive; blocked commands do not), and the sandbox agent keeps
+  running without them. Observer death is therefore routine, and re-attach is ordinary
+  reconcile work. n8n's execution concurrency is also the practical cap on parallel workers,
+  alongside the Daytona quota.
 - 5 concurrent sandboxes consume Daytona account quota (30 GiB shared disk) and API rate limits.
   Shallow clones and scoped cleanup keep this bounded. The 30 GiB is shared across
   dev/test/prod — the pipeline must label and scope its sandboxes or reproduce the product's
@@ -280,11 +546,24 @@ failure already paid for once:
   sessions) shows agents use `gh` CLI and `curl` for GitHub operations, not Docker-based MCP.
   MCP tool calls were not recorded in any session; the pipeline does not depend on Docker-based
   MCP.
-- Sandboxes can't reach the devcontainer's localhost services (n8n on :5678). The event-ingest
-  webhook is the communication channel — this aligns with the architecture, not a workaround.
+- Sandboxes can't reach the devcontainer's localhost services (n8n on :5678). Not a problem —
+  nothing in the sandbox calls back. Observer wrappers pull logs via the Daytona session API,
+  and the agent's only outbound act is its final git push.
 - The platform provides no warm-pool abstraction. Pre-built snapshots make cold starts fast
   (cached 24h, near-instant on same runner), but acquire/release/reclaim logic is the
   dispatcher's responsibility.
+- The devcontainer sleeps and gets rebuilt. When it sleeps, n8n goes down with it (they are
+  co-located) — no schedules fire, no questions can be answered — and observer executions
+  blocked in Execute Command die, while their sandboxes keep running (or auto-stop on their
+  own intervals), consuming compute and quota with no supervisor. Parked questions survive
+  (Wait suspensions are durable) and finished work survives (agents push their own branches).
+  Pipeline availability is coupled to this machine's uptime; that is an accepted cost of the
+  local-first design, and the standing argument for moving n8n and the pipeline to an
+  always-on host if it starts to bite. On wake, the next pass reconciles: collect finished
+  sandboxes, re-attach observers to running ones, clean up the rest. This is the same
+  reconciliation every pass performs, but across a network boundary with more failure modes
+  (sandbox crashed, auto-stopped, auto-archived, quota exhausted while down). It must be
+  robust, not best-effort.
 - Human attention becomes the scarce resource; the question inbox and near-zero halt rate are
   what keep N agents from turning into N interruptions.
 
@@ -307,15 +586,24 @@ failure already paid for once:
      a `runId`.
    - Verify Yarn 4 Berry works with adequate disk (the initial failure was almost certainly the
      3 GB default disk, not a platform incompatibility).
-3. Build the per-agent machinery: sandbox acquire from the warm pool, `git checkout` to the
-   claim's base commit, env file copy, park/resume with a synthetic question, conflict-as-evidence
-   journaling. Test against disposable sandboxes with synthetic steps before any real BMAD skill run.
-4. Add `depends-on` edges to sprint planning output; introduce `graph.json` and the dispatcher
-   with the plan-2-ahead / depth-first policy. First taste of parallelism: two independent
-   stories as two concurrent n8n executions of the existing `Develop Story (Playbook)` workflow,
-   each in its own sandbox — no new n8n primitives.
-5. Move "done" from workflow-return to branch-merged: merge queue + event-ingest webhook +
-   Mermaid graph view.
+3. Build the per-agent machinery: the sandbox wrapper script (run + attach modes, the
+   `BMAD Session (OpenCode)` stdout contract, terminal branch push), the observer workflow
+   port (a copy of `BMAD Session (OpenCode)` with the two `Agent run` commands swapped for the
+   wrapper), sandbox acquire from the warm pool, `git checkout` to the claim's base commit,
+   env file copy, park/resume with a synthetic question (including sandbox stop/start around
+   the Wait suspension), observer-death re-attach (kill n8n mid-run, verify the next pass
+   re-attaches), and conflict-as-evidence journaling. Test against disposable sandboxes with
+   synthetic steps before any real BMAD skill run.
+4. Add `depends-on` edges to sprint planning output; introduce `graph.json` and the reconcile
+   pass with the plan-2-ahead / depth-first policy. First taste of parallelism: two independent
+   stories as two concurrent observer executions, each in its own sandbox — no new n8n
+   primitives. This is not a stopgap: concurrent n8n executions supervising sandboxed agents
+   *is* the permanent supervision design; the dispatcher only adds graph-driven claiming on
+   top.
+5. Move "done" from workflow-return to branch-merged: merge queue (n8n workflow) + Mermaid
+   graph view. Agents push their own branches; the pass that folds a SUCCESS outcome triggers
+   n8n's merge queue; no event-ingest webhook — canonical state is written only under the pass
+   lock.
 6. Upgrade the viewer to `viewer.html` when interactivity earns it.
 
 First real parallel run should be manual and supervised, including at least one supervised park —
@@ -339,7 +627,9 @@ same discipline the discarded plan prescribed.
    stories ahead," `maxAttemptsPerStory`, `pipeline/<runId>/<id>` branch naming, the park/resume
    boundary ("an agent's output"). Each of these needs to say which it operates on: the
    story-chain or the individual node. "Claim a node" and "claim a story" are different dispatch
-   policies; decide before Path step 3 machinery is built.
+   policies; decide before Path step 3 machinery is built. The observer model sharpens the
+   choice: claim-a-story means the observer is the `Develop Story (Playbook)` loop supervising
+   a whole chain in one sandbox; claim-a-node means one `BMAD Session` observer per skill run.
 3. Merge-queue test scope: full suite per merge, or affected-only (`nx affected`) with a
    periodic full run?
 4. Warm pool size: how many sandboxes to keep warm? 5 is the starting estimate, but the actual
