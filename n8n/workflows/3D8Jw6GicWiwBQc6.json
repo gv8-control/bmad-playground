@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-19T20:22:44.866Z",
+  "updatedAt": "2026-07-20T06:02:04.752Z",
   "createdAt": "2026-06-21T12:41:40.926Z",
   "id": "3D8Jw6GicWiwBQc6",
   "name": "BMAD Outcome",
@@ -13,9 +13,6 @@
           "values": [
             {
               "name": "response"
-            },
-            {
-              "name": "salvaged"
             },
             {
               "name": "rc"
@@ -49,15 +46,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json.output ?? '';\nconst outcome = raw\n  .trim()\n  .replace(/^[\"'\\u201c\\u201d]+|[\"'\\u201c\\u201d.!?;]+$/g, '')\n  .trim()\n  .toUpperCase();\nconst valid = ['COMPLETE', 'QUESTION', 'INCOMPLETE'];\nif (!valid.includes(outcome)) {\n  throw new Error(`Invalid LLM classification output: ${JSON.stringify(raw)}`);\n}\nreturn [{\n  json: {\n    outcome,\n    rawOutcome: raw,\n    classificationFallback: false,\n  },\n}];"
+        "jsCode": "const raw = $input.first().json.output ?? '';\nconst outcome = raw\n  .trim()\n  .replace(/^['\"\\u201c\\u201d]+|['\"\\u201c\\u201d.!?;]+$/g, '')\n  .trim()\n  .toUpperCase();\nconst valid = ['COMPLETE', 'QUESTION', 'INCOMPLETE'];\nreturn [{\n  json: {\n    outcome: valid.includes(outcome) ? outcome : 'UNKNOWN',\n    rawOutcome: raw,\n    classificationFallback: !valid.includes(outcome),\n  },\n}];"
       },
       "id": "45d22c63-30ba-45aa-afa5-a729229361e9",
       "name": "Validate Classification",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        848,
-        16
+        864,
+        -80
       ]
     },
     {
@@ -70,8 +67,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
       "typeVersion": 1,
       "position": [
-        576,
-        144
+        560,
+        160
       ],
       "id": "5cd1d87f-d283-44df-9bcf-b79a54591cc8",
       "name": "Mistral Cloud Chat Model",
@@ -84,7 +81,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst response = String(item.response ?? '');\nconst salvaged = String(item.salvaged ?? '');\nconst rc = Number(item.rc);\n\n// Rule 1: empty response → throw (structural failure)\nif (response.trim() === '') {\n  throw new Error('Empty response from opencode runner');\n}\n\n// Rule 2: response starts with \"[opencode error]\" → INCOMPLETE (provider error)\nif (response.startsWith('[opencode error]')) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 3: salvaged==yes OR rc!=0 → INCOMPLETE (timeout/crash)\nif (salvaged === 'yes' || (Number.isFinite(rc) && rc !== 0)) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 4-5: fall through to LLM\nreturn [{ json: { outcome: null, response } }]"
+        "jsCode": "const item = $input.first().json;\nconst response = String(item.response ?? '');\nconst rc = Number(item.rc);\n\n// Rule 1: empty response → UNKNOWN (failed)\nif (response.trim() === '') {\n  return [{ json: { outcome: 'UNKNOWN', rawOutcome: '', classificationFallback: true } }];\n}\n\n// Rule 2: response starts with \"[opencode error]\" → INCOMPLETE (provider error)\nif (response.startsWith('[opencode error]')) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 3: rc!=0 → INCOMPLETE (timeout/crash)\nif (Number.isFinite(rc) && rc !== 0) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 4-5: fall through to LLM\nreturn [{ json: { outcome: null, response } }];"
       },
       "id": "ae3739b4-8928-48a3-aa91-37ef06a05116",
       "name": "Determine outcome",
@@ -135,8 +132,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        848,
-        192
+        864,
+        144
       ]
     }
   ],
@@ -227,9 +224,9 @@
       }
     ]
   },
-  "versionId": "33f17f1a-255a-488e-95d4-23a26675b08d",
-  "activeVersionId": "afd01646-3dca-44e0-ba4e-74adbd69979d",
-  "versionCounter": 73,
+  "versionId": "59854319-fa9f-4e11-bcfc-cab3b5b3fa52",
+  "activeVersionId": "33f17f1a-255a-488e-95d4-23a26675b08d",
+  "versionCounter": 77,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

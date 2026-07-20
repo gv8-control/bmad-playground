@@ -53,7 +53,7 @@ And it introduces a set of **repo artifacts** that hold the state the loop reads
 | `_bmad-output/pipeline/journal.jsonl` | Append-only event stream: `story_start`, `step_start`, `step_end` (duration, response excerpt, halt count), `story_end`. The orchestration spine. |
 | `_bmad-output/pipeline/ledger.jsonl` | Learning memory: observations (with stable fingerprints), applied/rejected amendments, retirements. |
 | `_bmad-output/pipeline/proposals/<runId>.json` | One per story run. The reflection agent's proposal; consumed by the deterministic gatekeeper. |
-| `_bmad-output/pipeline/runner-errors.jsonl` | Machinery failures captured by the step runner wrapper (opencode exit code, stderr tail, whether output was salvaged). |
+| `_bmad-output/pipeline/runner-errors.jsonl` | Machinery failures captured by the step runner wrapper (opencode exit code, stderr tail, error category). |
 | `scripts/pipeline/*.mjs` | Dependency-free Node scripts: story selection, step resolution, journaling, trend aggregation, reflection-prompt building, amendment gating. |
 | `_bmad-output/decision-policy.md` | The autonomy boundary — which decisions agents make on their own and which must reach a human. Human-only to edit. |
 
@@ -61,7 +61,7 @@ The inversion in one line: **n8n stops being the process and becomes the interpr
 
 The only authorized changes to gen-1 are two surgical seams in `BMAD Session (OpenCode)`:
 
-1. The `Agent run` command wrapper now bounds runs with a timeout and salvages non-empty output on failure; any non-zero opencode exit appends a line to `runner-errors.jsonl` so provider errors (context-length overflows, terminated runs) survive into evidence reflection can read.
+1. The `Agent run` command wrapper now bounds runs with a timeout; any non-zero opencode exit appends a line to `runner-errors.jsonl` so provider errors (context-length overflows, terminated runs) survive into evidence reflection can read.
 2. The `Output` node adds a `questionCount` field counting how many times the human-question form fired during the session — journaled as `halts` on the `step_end` event, and treated as an autonomy signal.
 
 Everything else in gen-1 — outcome classification, the question form, the ntfy resume flow — carries over unchanged.

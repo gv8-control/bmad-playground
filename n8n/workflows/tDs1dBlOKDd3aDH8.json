@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-17T20:00:06.106Z",
+  "updatedAt": "2026-07-20T06:02:02.688Z",
   "createdAt": "2026-06-21T12:02:24.127Z",
   "id": "tDs1dBlOKDd3aDH8",
   "name": "Parse OpenCode Response",
@@ -37,7 +37,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const stdout = $input.first().json.stdout;\n\nif (!stdout) {\n  return [{ json: { response: \"\", rc: 0, salvaged: \"no\" } }];\n}\n\nconst lines = stdout.split(\"\\n\").filter(l => l.trim()).map(l => {\n  try { return JSON.parse(l); } catch { return null; }\n}).filter(l => l !== null);\n\n// Extract runner_meta (rc/salvaged signals from the shell)\nconst metaItem = lines.filter(item => item.type === \"runner_meta\").pop();\nconst rc = metaItem ? Number(metaItem.rc) || 0 : 0;\nconst salvaged = metaItem ? String(metaItem.salvaged || \"no\") : \"no\";\n\n// Prefer text-type messages (last one wins, as before)\nconst textItem = lines.filter(item => item.type === \"text\").pop();\nif (textItem && textItem.part && textItem.part.text) {\n  return [{ json: { response: textItem.part.text, rc, salvaged } }];\n}\n\n// Fall back to error-type messages so infra failures are surfaced\nconst errorItem = lines.filter(item => item.type === \"error\").pop();\nif (errorItem && errorItem.error) {\n  const msg = errorItem.error.data?.message || errorItem.error.name || JSON.stringify(errorItem.error);\n  return [{ json: { response: `[opencode error] ${msg}`, rc, salvaged } }];\n}\n\nreturn [{ json: { response: \"\", rc, salvaged } }];"
+        "jsCode": "const stdout = $input.first().json.stdout;\n\nif (!stdout) {\n  return [{ json: { response: \"\", rc: 0 } }];\n}\n\nconst lines = stdout.split(\"\\n\").filter(l => l.trim()).map(l => {\n  try { return JSON.parse(l); } catch { return null; }\n}).filter(l => l !== null);\n\n// Extract runner_meta (rc signal from the shell)\nconst metaItem = lines.filter(item => item.type === \"runner_meta\").pop();\nconst rc = metaItem ? Number(metaItem.rc) || 0 : 0;\n\n// Prefer text-type messages (last one wins, as before)\nconst textItem = lines.filter(item => item.type === \"text\").pop();\nif (textItem && textItem.part && textItem.part.text) {\n  return [{ json: { response: textItem.part.text, rc } }];\n}\n\n// Fall back to error-type messages so infra failures are surfaced\nconst errorItem = lines.filter(item => item.type === \"error\").pop();\nif (errorItem && errorItem.error) {\n  const msg = errorItem.error.data?.message || errorItem.error.name || JSON.stringify(errorItem.error);\n  return [{ json: { response: `[opencode error] ${msg}`, rc } }];\n}\n\nreturn [{ json: { response: \"\", rc } }];"
       }
     }
   ],
@@ -68,9 +68,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "8fcad9a6-d59b-42e6-970b-3eb197fae379",
-  "activeVersionId": "97a541b3-fe22-4351-b359-aa9697120a1d",
-  "versionCounter": 15,
+  "versionId": "21422e32-58f2-4d53-b6cf-0c1387d762ac",
+  "activeVersionId": "8fcad9a6-d59b-42e6-970b-3eb197fae379",
+  "versionCounter": 16,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
