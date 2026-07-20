@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T15:34:56.707Z",
+  "updatedAt": "2026-07-20T16:35:26.736Z",
   "createdAt": "2026-07-02T23:24:43.130Z",
   "id": "7akkpjTdEW6RMIJG",
   "name": "Develop Epic",
@@ -61,7 +61,7 @@
               "id": "dc3a046d-17d1-4179-9da2-2c0f8c6cc09a",
               "name": "Epic",
               "type": "string",
-              "value": "={{ /^\\d+$/.test($json.body?.epic ?? $json.Epic ?? '2') ? ($json.body?.epic ?? $json.Epic ?? '2') : '2' }}"
+              "value": "={{ /^\\d+$/.test($json.body.epic) ? $json.body.epic : '' }}"
             },
             {
               "id": "3c76937c-a3cb-4e53-97f0-47c41aa65995",
@@ -778,9 +778,9 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "c850f96d-047f-451c-b608-94de099cbe6d",
-  "activeVersionId": "8c90d0c9-c6e9-45b6-8c46-d4faf4f2a283",
-  "versionCounter": 11,
+  "versionId": "49fcf40b-b7af-4466-b31a-c29daf39ee76",
+  "activeVersionId": "51ca4236-65e8-4a40-88c8-cc568448ad8e",
+  "versionCounter": 13,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],
