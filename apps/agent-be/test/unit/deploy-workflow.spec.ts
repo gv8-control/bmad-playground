@@ -1,25 +1,4 @@
-/**
- * @jest-environment node
- *
- * Story 4.6: Add the Manual-Trigger Deploy Step to CI
- *
- * Verifies:
- * - AC-1: Manual trigger only (workflow_dispatch), deploys both apps/web (Vercel)
- *         and apps/agent-be (Railway). Never runs on push/PR/schedule.
- * - AC-2: Quality gate dependency — verifies latest Test Pipeline run on the same
- *         branch passed before deploying. Does not bypass the quality gate.
- * - AC-3: GitHub Environment with protection rules — uses environment: production.
- *
- * Security regression guards (uniform guard template for external commands with
- * user-controlled input):
- * - Credential-isolation invariants: no credentials leak via command arguments
- *   or environment variables (VERCEL_TOKEN, RAILWAY_TOKEN referenced only via
- *   secrets.*, never hardcoded).
- * - Input-injection invariants: github.ref_name passed through env: intermediaries,
- *   not direct ${{ }} interpolation in run: blocks. Branch name is safely quoted.
- *
- * Run: yarn nx test agent-be -- --testPathPattern=deploy-workflow
- */
+/** @jest-environment node */
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -224,12 +203,6 @@ describe('Story 4.6 — Deploy Workflow', () => {
     });
 
     test('[P0] quality-gate step fetches headSha and asserts it matches github.sha', () => {
-      // Regression guard for NFR finding C2: the gate previously checked only
-      // conclusion=success, never comparing the run's headSha to github.sha.
-      // A stale green run on an older commit could satisfy the gate. This
-      // test asserts the gate now references headSha (fetched via --json) and
-      // compares it to the deploy commit SHA (passed through an env:
-      // intermediary, never direct ${{ }} interpolation).
       const workflow = loadWorkflow();
       const steps = getSteps(workflow);
       const gateStep = steps.find((s) => s.run?.includes('gh run list'));
@@ -245,9 +218,6 @@ describe('Story 4.6 — Deploy Workflow', () => {
     });
 
     test('[P0] quality-gate step filters for push/pull_request events (not schedule)', () => {
-      // Regression guard for NFR finding C2: nightly schedule runs skip
-      // PR-tier jobs and conclude success with only nightly-specific jobs.
-      // The gate must only accept runs triggered by push or pull_request.
       const workflow = loadWorkflow();
       const steps = getSteps(workflow);
       const gateStep = steps.find((s) => s.run?.includes('gh run list'));

@@ -178,7 +178,7 @@ Before starting this workflow, verify:
 - [ ] One assertion per test (atomic design)
 - [ ] No hard waits or sleeps (explicit waits only)
 - [ ] Network-first pattern applied (route interception BEFORE navigation)
-- [ ] Clear Given-When-Then comments in test code
+- [ ] Clear Given-When-Then structure in test code (setup → action → assertion, expressed in test names and code organization, not inline comments)
 
 ### API Tests (If Applicable)
 
@@ -239,7 +239,7 @@ Before starting this workflow, verify:
 
 ### Quality Standards Enforced
 
-- [ ] All tests use Given-When-Then format with clear comments
+- [ ] All tests use Given-When-Then format with clear structure
 - [ ] All tests have descriptive names with priority tags
 - [ ] No duplicate tests (same behavior tested multiple times)
 - [ ] No flaky patterns (race conditions, timing issues)

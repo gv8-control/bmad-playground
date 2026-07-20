@@ -21,6 +21,8 @@ optimized_for_llm: true
 
 _This file contains critical rules and patterns that AI agents must follow when implementing code in this project. Focus on unobvious details that agents might otherwise miss._
 
+> **Convention:** Story references in this document (e.g. "(Story 3.8 — caught as a review patch)") are provenance for the rule, not a pattern to replicate in code comments. Do not add story/AC references to code.
+
 ---
 
 ## Technology Stack & Versions
@@ -319,7 +321,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 - **DO NOT add comments unless explicitly requested** (per `CLAUDE.md`). Code should be self-documenting.
 - JSDoc is used sparingly for public API contracts where the "why" isn't obvious (e.g. `resolveOAuthToken` tenant-scoping note, `rewrapDek` nonce-reuse warning). Follow that precedent — only document the non-obvious.
-- Test files include a header comment block citing the story, acceptance criteria, and red-phase status.
+- Test files may include a one-line `@jest-environment` pragma if needed. Do not add story/AC tracking headers — the test names and describe blocks are the documentation.
 
 #### Formatting
 

@@ -1,10 +1,5 @@
 /**
  * @jest-environment node
- *
- * Unit tests for the credential health service (Story 1.6).
- * Covers resolveOAuthToken (AC-2 tenant-scoped resolution),
- * markCredentialFailed (AC-1), markCredentialHealthy (AC-3),
- * and getCredentialHealth.
  */
 
 import type { CredentialHealthStatus } from '@bmad-easy/shared-types';

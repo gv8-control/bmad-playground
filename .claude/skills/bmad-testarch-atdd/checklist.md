@@ -93,7 +93,7 @@ Before starting this workflow, verify:
 
 ### Test Quality Validation
 
-- [ ] All tests use Given-When-Then structure with clear comments
+- [ ] All tests use Given-When-Then structure with clear code organization
 - [ ] All tests have descriptive names explaining what they test
 - [ ] No duplicate tests (same behavior tested multiple times)
 - [ ] No flaky patterns (race conditions, timing issues)

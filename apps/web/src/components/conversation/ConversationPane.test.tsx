@@ -1,34 +1,4 @@
-/**
- * @jest-environment jsdom
- *
- * Story 3.1: Provision a Sandbox When Opening a Conversation
- * Story 3.2: Invoke BMAD Skills via Slash Command
- * Story 3.3: Converse with the Streaming Agent
- * Story 3.5: Resume an Existing Conversation
- * Story 3.9: Terminate Idle Sandboxes Mid-Conversation
- * Story 3.11: Run Concurrent Conversations
- * Story 3.12: Drain Conversations Gracefully on Deploy
- * Unit tests for ConversationPane Client Component.
- *
- * Covers: AC-1 (provisioning on mount, streaming), AC-2 (auto-growing input),
- * AC-3 (stop button), AC-5 (client-side timeout with retry),
- * AC-6 (draft persistence).
- * Story 3.2 covers: AC-1 (slash picker opens on /), AC-2 (empty skills state),
- * AC-3 (message sending via POST /turns), AC-4 (URL transition on first message).
- * Story 3.3 covers: AC-1 (streaming agent response, thinking indicator),
- * AC-3 (stop button), AC-5 (scroll-to-bottom), AC-6 (draft persistence).
- * Story 3.5 covers: AC-1 (reconnecting state on resume), AC-2 (timeout + retry
- * reuses conversationId).
- * Story 3.9 covers: AC-3 (SESSION_TIMEOUT mid-session reason, onerror state preservation).
- * Story 3.11 covers: AC-2 (limit-reached blocking state), AC-4 (retry cancels
- * in-flight provisioning via DELETE before minting new conversation).
- * Story 3.12 covers: AC-1 (SESSION_DRAINING event handler sets state to
- * 'reconnecting' — reuses existing SessionState; onerror preserves state).
- * Story 5.5 covers: AC-1–AC-6, AC-8 (interleaved tool/semantic pills via segments,
- * SSE event handlers insert into streaming agent message segments, replay dedup,
- * manual save segments, CREDENTIAL_FAILURE/ACCESS_DENIED segment updates, resume
- * with segments).
- */
+/** @jest-environment jsdom */
 
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -2235,13 +2205,6 @@ describe('ConversationPane', () => {
     });
   });
 
-  // ─── Story 5.3: Fix Conversation Stream Structural Drift ───────────────
-  //
-  // AC-1: Chat-input area 824px column centering (matches messages container)
-  // AC-3: SessionStartSpinner centered in chat-messages panel (not input area)
-  // AC-10: Conversation limit copy "limit of 10 active conversations"
-  // AC-11: Retry button text color uses accent-fg (not text-bg)
-
   describe('Story 5.3 — structural drift', () => {
     describe('[P0] AC-1 — Chat-input area 824px column centering', () => {
       it('chat-input area has max-w-[824px] mx-auto w-full for column centering', async () => {
@@ -2375,17 +2338,6 @@ describe('ConversationPane', () => {
       });
     });
   });
-
-  // ─── Story 5.5: Interleave Tool and Semantic Pills Within the Agent Markdown Stream ──
-  //
-  // AC-1: Tool call indicator renders inline at stream position
-  // AC-2: Tool call result replaces indicator in place
-  // AC-3: Semantic Pill promoted in place
-  // AC-4: Error-state Tool Pill renders inline
-  // AC-5: Access Notice renders inline below error Tool Pill
-  // AC-6: Manual save Semantic Pill renders inline
-  // AC-8: SSE event handlers insert into streaming agent message
-  // AC-9: Resume restores tool pills at original positions
 
   describe('Story 5.5 — Interleaved tool calls in agent markdown stream', () => {
     beforeEach(() => {
