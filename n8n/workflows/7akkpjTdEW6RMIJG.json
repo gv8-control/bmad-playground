@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T16:35:26.736Z",
+  "updatedAt": "2026-07-20T16:44:11.312Z",
   "createdAt": "2026-07-02T23:24:43.130Z",
   "id": "7akkpjTdEW6RMIJG",
   "name": "Develop Epic",
@@ -346,7 +346,7 @@
       ],
       "id": "ae5f948e-fa1a-43f1-ba6f-631082ed7acf",
       "name": "Reflect",
-      "onError": "continueRegularOutput",
+      "onError": "stopWorkflow",
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 2000
@@ -778,9 +778,9 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "49fcf40b-b7af-4466-b31a-c29daf39ee76",
-  "activeVersionId": "51ca4236-65e8-4a40-88c8-cc568448ad8e",
-  "versionCounter": 13,
+  "versionId": "ed372902-c029-4446-903a-49d44c2b816e",
+  "activeVersionId": "49fcf40b-b7af-4466-b31a-c29daf39ee76",
+  "versionCounter": 14,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],
