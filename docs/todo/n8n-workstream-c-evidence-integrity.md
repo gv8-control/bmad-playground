@@ -14,7 +14,7 @@ for reflection.
 | ---- | ---- | ---- | ---- | ---- |
 | C1 | F-5 | Error Handler appends to `runner-errors.jsonl` (`source:"n8n-error-handler"`) | M | Closes the self-improvement contract gap for n8n failures |
 | C2 | F-6 | Restructure the Reflect command to avoid the pipe (capture output to a variable, then `tail` separately, checking exit code between) — `pipefail` is not available because n8n uses `sh`→`dash`, not `bash` (see V8); validate proposal file after Reflect; record `infra-reflection-failure` | M | Makes reflection failures visible |
-| C3 | F-6 | Long-term: route the reflector through the runner machinery | L | Reflection gets timeout salvage, INCOMPLETE auto-continue, and runner-errors for free |
+| C3 | F-6 | Long-term: route the reflector through the runner machinery | L | Reflection gets timeout handling, INCOMPLETE auto-continue, and runner-errors for free |
 
 ## Findings
 
@@ -58,7 +58,7 @@ for reflection.
   the proposal file exists and is valid JSON; if not, route to a "reflection
   failed" notification and record an `infra-reflection-failure` entry in
   `runner-errors.jsonl`. (3) Long-term, run the reflector through the same
-  runner machinery as step runs so it gets timeout salvage, INCOMPLETE
+  runner machinery as step runs so it gets timeout handling, INCOMPLETE
   auto-continue, and runner-errors logging for free.
 
 ## Relevant verifications
@@ -95,8 +95,7 @@ discovers agents from the `.opencode/agent/` directory. The agent is properly
 configured with a detailed system prompt covering evidence grading, signal-vs-
 noise discipline, hypothesis discipline, and output discipline. The
 `reflect-prompt.mjs` now includes an `INCOMPLETES` guidance block that
-distinguishes (a) genuine auto-continues that resolve, (b) cap-exhaustion
-(`infra-incomplete-cap-exhausted`), and (c) phantom INCOMPLETE from
+distinguishes (a) genuine auto-continues that resolve, and (b) phantom INCOMPLETE from
 misclassification (`infra-incomplete-misclassification`). F-6 (reflection
 failures invisible) is not caused by a missing agent or missing guidance — it
 is caused by the `Reflect` node swallowing the exit code (the pipe).
