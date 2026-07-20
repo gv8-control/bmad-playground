@@ -10,8 +10,7 @@
     "addStepRecurrenceThreshold": 2,
     "retireCleanStreak": 3,
     "maxLearnedSteps": 4,
-    "responseExcerptChars": 2000,
-    "incompleteContinueCap": 10
+    "responseExcerptChars": 2000
   },
   "steps": [
     {

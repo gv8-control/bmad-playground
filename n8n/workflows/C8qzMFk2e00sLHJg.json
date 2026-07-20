@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-19T20:33:43.444Z",
+  "updatedAt": "2026-07-20T06:12:52.841Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -25,9 +25,6 @@
             },
             {
               "name": "Agent"
-            },
-            {
-              "name": "incompleteContinueCap"
             }
           ]
         }
@@ -43,7 +40,7 @@
     },
     {
       "parameters": {
-        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null 2>\"$err\")\nrc=$?\nsalvaged=\"$([ -n \"$out\" ] && echo yes || echo no)\"\nprintf '%s\\n' \"$out\" | tail -n 10\nprintf '{\"type\":\"runner_meta\",\"rc\":%d,\"salvaged\":\"%s\"}\\n' \"$rc\" \"$salvaged\"\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  stderrTail=\"$(printf '%s' \"$stderrTail\" | sed -E 's/(Bearer [A-Za-z0-9._-]+)/Bearer [REDACTED]/g; s/(sk-[A-Za-z0-9._-]+)/sk-[REDACTED]/g')\"\n  category=\"unknown\"\n  if printf '%s' \"$stderrTail\" | grep -qi 'authorization\\|api.key\\|auth'; then category=\"auth\"; elif printf '%s' \"$stderrTail\" | grep -qi 'rate.limit\\|429\\|quota'; then category=\"rate-limit\"; elif printf '%s' \"$stderrTail\" | grep -qi 'context.length\\|token\\|too long'; then category=\"context-length\"; fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $json.conversationTitle }} / initial run\" --argjson rc $rc --arg salvaged \"$salvaged\" --arg stderrTail \"$stderrTail\" --arg category \"$category\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail,category:$category}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
+        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | jq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null) or .type==\"runner_meta\")' | tail -n 20\nprintf '{\"type\":\"runner_meta\",\"rc\":%d}\\n' \"$rc\"\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  stderrTail=\"$(printf '%s' \"$stderrTail\" | sed -E 's/(Bearer [A-Za-z0-9._-]+)/Bearer [REDACTED]/g; s/(sk-[A-Za-z0-9._-]+)/sk-[REDACTED]/g')\"\n  category=\"unknown\"\n  if printf '%s' \"$stderrTail\" | grep -qi 'authorization\\|api.key\\|auth'; then category=\"auth\"; elif printf '%s' \"$stderrTail\" | grep -qi 'rate.limit\\|429\\|quota'; then category=\"rate-limit\"; elif printf '%s' \"$stderrTail\" | grep -qi 'context.length\\|token\\|too long'; then category=\"context-length\"; fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $json.conversationTitle }} / initial run\" --argjson rc $rc --arg stderrTail \"$stderrTail\" --arg category \"$category\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,stderrTail:$stderrTail,category:$category}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -56,7 +53,7 @@
     },
     {
       "parameters": {
-        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null 2>\"$err\")\nrc=$?\nsalvaged=\"$([ -n \"$out\" ] && echo yes || echo no)\"\nprintf '%s\\n' \"$out\" | tail -n 10\nprintf '{\"type\":\"runner_meta\",\"rc\":%d,\"salvaged\":\"%s\"}\\n' \"$rc\" \"$salvaged\"\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  stderrTail=\"$(printf '%s' \"$stderrTail\" | sed -E 's/(Bearer [A-Za-z0-9._-]+)/Bearer [REDACTED]/g; s/(sk-[A-Za-z0-9._-]+)/sk-[REDACTED]/g')\"\n  category=\"unknown\"\n  if printf '%s' \"$stderrTail\" | grep -qi 'authorization\\|api.key\\|auth'; then category=\"auth\"; elif printf '%s' \"$stderrTail\" | grep -qi 'rate.limit\\|429\\|quota'; then category=\"rate-limit\"; elif printf '%s' \"$stderrTail\" | grep -qi 'context.length\\|token\\|too long'; then category=\"context-length\"; fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $('Variables').item.json.conversationTitle }} / follow-up run\" --argjson rc $rc --arg salvaged \"$salvaged\" --arg stderrTail \"$stderrTail\" --arg category \"$category\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail,category:$category}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
+        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | jq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null) or .type==\"runner_meta\")' | tail -n 20\nprintf '{\"type\":\"runner_meta\",\"rc\":%d}\\n' \"$rc\"\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  stderrTail=\"$(printf '%s' \"$stderrTail\" | sed -E 's/(Bearer [A-Za-z0-9._-]+)/Bearer [REDACTED]/g; s/(sk-[A-Za-z0-9._-]+)/sk-[REDACTED]/g')\"\n  category=\"unknown\"\n  if printf '%s' \"$stderrTail\" | grep -qi 'authorization\\|api.key\\|auth'; then category=\"auth\"; elif printf '%s' \"$stderrTail\" | grep -qi 'rate.limit\\|429\\|quota'; then category=\"rate-limit\"; elif printf '%s' \"$stderrTail\" | grep -qi 'context.length\\|token\\|too long'; then category=\"context-length\"; fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $('Variables').item.json.conversationTitle }} / follow-up run\" --argjson rc $rc --arg stderrTail \"$stderrTail\" --arg category \"$category\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,stderrTail:$stderrTail,category:$category}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -94,12 +91,6 @@
               "name": "Recovery URL",
               "type": "string",
               "value": "={{ $execution.resumeUrl.replace('webhook', 'form') }}"
-            },
-            {
-              "id": "86929567-73ce-43f0-bf2a-55faeb1fbbb7",
-              "name": "incompleteContinueCap",
-              "type": "number",
-              "value": "={{ Number($('Start').item.json.incompleteContinueCap) || 10 }}"
             }
           ]
         },
@@ -194,12 +185,6 @@
               "value": "={{ $('Extract SessionID').item.json.sessionId }}"
             },
             {
-              "id": "salvaged-output-001",
-              "name": "salvaged",
-              "type": "string",
-              "value": "={{ $('Parse OpenCode Response').last().json.salvaged }}"
-            },
-            {
               "id": "classification-fallback-output-001",
               "name": "classificationFallback",
               "type": "boolean",
@@ -288,14 +273,6 @@
             {
               "canBeUsedToMatch": true,
               "display": true,
-              "displayName": "salvaged",
-              "id": "salvaged",
-              "required": false,
-              "type": "string"
-            },
-            {
-              "canBeUsedToMatch": true,
-              "display": true,
               "displayName": "rc",
               "id": "rc",
               "required": false,
@@ -304,8 +281,7 @@
           ],
           "value": {
             "rc": "={{ $json.rc }}",
-            "response": "={{ $json.response }}",
-            "salvaged": "={{ $json.salvaged }}"
+            "response": "={{ $json.response }}"
           }
         },
         "options": {
@@ -523,20 +499,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return [{ json: { ...$input.first().json, runIndex: $runIndex } }];"
-      },
-      "id": "f7a1c2d3-0000-0000-0000-000000000001",
-      "name": "Run counter",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        768,
-        128
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst key = $execution.id;\nif (!staticData[key]) staticData[key] = [];\nstaticData[key].push(item.outcome);\nreturn [{ json: { ...item, accumulatedOutcomes: [...staticData[key]] } }];"
+        "jsCode": "const item = $input.first().json;\nlet outcomeHistory = [];\ntry {\n  if ($('Accrete outcome (Q)').isExecuted) {\n    const last = $('Accrete outcome (Q)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\ntry {\n  if ($('Accrete outcome (I)').isExecuted) {\n    const last = $('Accrete outcome (I)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\noutcomeHistory.push(item.outcome);\nreturn [{ json: { ...item, outcomeHistory } }];"
       },
       "id": "c84f833e-f2ad-4fd4-805d-ad4139dd121b",
       "name": "Accrete outcome (Q)",
@@ -549,7 +512,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst key = $execution.id;\nif (!staticData[key]) staticData[key] = [];\nstaticData[key].push(item.outcome);\nreturn [{ json: { ...item, accumulatedOutcomes: [...staticData[key]] } }];"
+        "jsCode": "const item = $input.first().json;\nlet outcomeHistory = [];\ntry {\n  if ($('Accrete outcome (Q)').isExecuted) {\n    const last = $('Accrete outcome (Q)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\ntry {\n  if ($('Accrete outcome (I)').isExecuted) {\n    const last = $('Accrete outcome (I)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\noutcomeHistory.push(item.outcome);\nreturn [{ json: { ...item, outcomeHistory } }];"
       },
       "id": "eee1d235-2399-4352-979c-e83da5e4f399",
       "name": "Accrete outcome (I)",
@@ -557,19 +520,6 @@
       "typeVersion": 2,
       "position": [
         1104,
-        608
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{ json: { ...$input.first().json, incompleteRunIndex: $runIndex } }];"
-      },
-      "id": "a879ace3-222f-4e88-b2ec-fff0c58ea4e4",
-      "name": "Incomplete counter",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1280,
         608
       ]
     },
@@ -599,101 +549,7 @@
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "cap-exhausted-001",
-              "name": "error",
-              "type": "object",
-              "value": "={{ { message: \"incomplete-continue cap exhausted (\" + (Number($(\"Variables\").item.json.incompleteContinueCap) || 10) + \")\" } }}"
-            }
-          ]
-        },
-        "includeOtherFields": true,
-        "options": {}
-      },
-      "id": "30e4bd29-d548-4e10-b3e6-33b6197d3891",
-      "name": "Output (cap exhausted)",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        1648,
-        688
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://ntfy.sh",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "topic",
-              "value": "agent-outcome"
-            },
-            {
-              "name": "title",
-              "value": "={{ $(\"Variables\").item.json.conversationTitle }} - Incomplete cap exhausted"
-            },
-            {
-              "name": "message",
-              "value": "BMAD run exhausted incomplete-continue cap and failed"
-            },
-            {
-              "name": "click",
-              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "7b306759-856c-4b31-a137-793764310f8f",
-      "name": "Notify cap",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1824,
-        688
-      ],
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "cap-check",
-              "leftValue": "={{ Number($('Incomplete counter').last().json.incompleteRunIndex) + 1 }}",
-              "operator": {
-                "operation": "gt",
-                "type": "number"
-              },
-              "rightValue": "={{ Number($('Variables').item.json.incompleteContinueCap) || 10 }}"
-            }
-          ],
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
-          }
-        },
-        "options": {}
-      },
-      "id": "8fd553b5-57ee-4d6d-a5e6-4c7d9da15db0",
-      "name": "Check incomplete cap",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1472,
-        608
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const item = $input.first().json;\n\n// Read incompleteRunIndex from Incomplete counter (if it executed)\nlet incompleteCount = 0;\ntry {\n  if ($('Incomplete counter').isExecuted) {\n    incompleteCount = Number($('Incomplete counter').last().json.incompleteRunIndex) || 0;\n  }\n} catch {}\n\n// totalTraversals from Run counter\nlet totalTraversals = 0;\ntry {\n  totalTraversals = Number($('Run counter').last().json.runIndex) || 0;\n} catch {}\n\nconst questionCount = Math.max(0, totalTraversals - incompleteCount);\n\n// Read accumulatedOutcomes from staticData\nconst staticData = $getWorkflowStaticData('global');\nconst key = $execution.id;\nconst accumulatedOutcomes = (staticData[key] ? [...staticData[key]] : []);\n// Clean up staticData for this execution to prevent unbounded growth\ndelete staticData[key];\n\n// Determine if this is a failure\nlet error = item.error;\n// On the cap-exhausted path, Notify cap (HTTP Request) replaces the payload\n// with its response, so error set by Output (cap exhausted) is lost. Pull from source.\ntry {\n  if (!error && $('Output (cap exhausted)').isExecuted) {\n    error = $('Output (cap exhausted)').last().json.error;\n  }\n} catch {}\n\nreturn [{ json: {\n  ...item,\n  incompleteCount,\n  questionCount,\n  outcomeHistory: accumulatedOutcomes,\n  accumulatedOutcomes,\n  error,\n}}];"
+        "jsCode": "const item = $input.first().json;\n\nlet outcomeHistory = [];\ntry {\n  if ($('Accrete outcome (Q)').isExecuted) {\n    const last = $('Accrete outcome (Q)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\ntry {\n  if ($('Accrete outcome (I)').isExecuted) {\n    const last = $('Accrete outcome (I)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\n\n// Push the final outcome — fixes the gap where COMPLETE-path\n// (no accrete node runs) would leave the array missing the final entry.\noutcomeHistory.push(item.outcome);\n\nconst incompleteCount = outcomeHistory.filter(o => o === 'INCOMPLETE').length;\nconst questionCount = outcomeHistory.filter(o => o === 'QUESTION').length;\n\nreturn [{ json: {\n  ...item,\n  incompleteCount,\n  questionCount,\n  outcomeHistory,\n  error: item.error,\n}}];"
       },
       "id": "9c4a7026-80ea-47d4-85ec-edb753d733d7",
       "name": "Compute counts",
@@ -719,7 +575,7 @@
     },
     {
       "parameters": {
-        "content": "# INCOMPLETE outcome classification\n\nopencode sessions can quit mid-stream (timeout, provider error, truncation) and are resumable. Previously these were misclassified as QUESTION, stalling the pipeline on a human form for hours.\n\n**3-rule routing:**\n- COMPLETE → output (success)\n- QUESTION → human form\n- INCOMPLETE → auto-continue (resume with \"Continue\", up to `incompleteContinueCap`, then fail). This was introduced to recover from opencode phantom quits.\n- Invalid LLM output → workflow crashes (error workflow fires)\n\nINCOMPLETE re-enters at `Agent run (follow-up)` (uses `--session <id>`), bypassing the Get response Wait form entirely.",
+        "content": "# INCOMPLETE outcome classification\n\nopencode sessions can quit mid-stream (timeout, provider error, truncation) and are resumable. Previously these were misclassified as QUESTION, stalling the pipeline on a human form for hours.\n\n**3-rule routing:**\n- COMPLETE → output (success)\n- QUESTION → human form\n- INCOMPLETE → auto-continue (resume with \"Continue\" until the agent produces COMPLETE or QUESTION). This was introduced to recover from opencode phantom quits.\n- Invalid LLM output → workflow crashes (error workflow fires)\n\nINCOMPLETE re-enters at `Agent run (follow-up)` (uses `--session <id>`), bypassing the Get response Wait form entirely.",
         "height": 488,
         "width": 500,
         "color": 4
@@ -838,28 +694,6 @@
         []
       ]
     },
-    "Parse OpenCode Response": {
-      "main": [
-        [
-          {
-            "node": "Run counter",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run counter": {
-      "main": [
-        [
-          {
-            "node": "BMAD Outcome",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Accrete outcome (Q)": {
       "main": [
         [
@@ -876,73 +710,11 @@
         ]
       ]
     },
-    "Accrete outcome (I)": {
-      "main": [
-        [
-          {
-            "node": "Incomplete counter",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Incomplete counter": {
-      "main": [
-        [
-          {
-            "node": "Check incomplete cap",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check incomplete cap": {
-      "main": [
-        [
-          {
-            "node": "Output (cap exhausted)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Prepare continue",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Prepare continue": {
       "main": [
         [
           {
             "node": "Agent run (follow-up)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Output (cap exhausted)": {
-      "main": [
-        [
-          {
-            "node": "Notify cap",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Notify cap": {
-      "main": [
-        [
-          {
-            "node": "Compute counts",
             "type": "main",
             "index": 0
           }
@@ -981,6 +753,28 @@
           }
         ]
       ]
+    },
+    "Parse OpenCode Response": {
+      "main": [
+        [
+          {
+            "node": "BMAD Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accrete outcome (I)": {
+      "main": [
+        [
+          {
+            "node": "Prepare continue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -1012,9 +806,9 @@
       }
     ]
   },
-  "versionId": "94fc52a4-36a6-400e-ab57-964ffaca7fce",
-  "activeVersionId": "8c16c2e8-611c-43bd-8757-5496df7804f5",
-  "versionCounter": 211,
+  "versionId": "9c67dad3-b3fe-4369-a1d2-409d080b9308",
+  "activeVersionId": "c80dac89-a6d8-4b3f-8b24-5984c3a1061e",
+  "versionCounter": 215,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
