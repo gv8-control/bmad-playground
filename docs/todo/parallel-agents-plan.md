@@ -22,6 +22,20 @@ observer design with three linked decisions:
    not carried over. Self-improvement is out of scope for this generation; a future reflector is
    a separate consumer that reads gen-3's own artifacts.
 
+Same-day addition (2026-07-20): a human-initiated pause/resume control — active nodes run to
+completion, no new nodes are claimed. See Pause/resume under Dispatcher.
+
+Second same-day addition (2026-07-20): chain composition is a per-story judgment call by the
+planning agent, guided by advisory chain-composition guidelines — the gen-2 step sequence
+becomes a suggestion, not a template. See Graph management rules and open question 4.
+
+Third same-day addition (2026-07-20, hosting refined same day): graph expansion is not a
+graph node. It runs on the devcontainer as an async planning run — a pass decides when,
+journals the launch, and supervises; a small n8n workflow hosts the run and invokes the
+dispatcher when it exits; the planning lock serializes; the output is a graph delta folded by
+the next pass. Every node in the graph is authored by the planning agent; only the trigger is
+machinery. See Planning runs under Dispatcher.
+
 Supersedes and replaces the discarded stage-group parallelization plan
 (`pipeline-parallelization-plan.md`, deleted 2026-07-17) — everything still relevant from that
 plan is folded in here. Read [docs/self-improving-pipeline.md](../self-improving-pipeline.md)
@@ -41,9 +55,10 @@ nothing to join.
 The architecture inverts. Today n8n is the engine driving a sequential story loop and the
 pipeline files are the record. Here the state is the engine:
 
-- **A work graph, not a list.** Sprint planning emits nodes — one skill run each — with explicit
-  `depends-on` edges (a directed acyclic graph) instead of an ordered sequence. A story is a
-  chain of nodes; review steps are nodes of their own with explicit ordering edges. Any node
+- **A work graph, not a list.** A planning agent emits nodes — one skill run each — with
+  explicit `depends-on` edges (a directed acyclic graph) instead of an ordered sequence. A
+  story is a chain of nodes composed for that story, not stamped from a fixed sequence (see
+  Graph management rules); review steps are nodes of their own with explicit ordering edges. Any node
   whose dependencies are satisfied is claimable. Step and story ordering — not n8n — was the
   real obstacle to parallelism; making dependencies explicit is planning work, not plumbing
   work. Node granularity also buys back some story latency: independent review steps can run
@@ -72,8 +87,10 @@ pipeline files are the record. Here the state is the engine:
   (rebase → test → merge) integrates one branch at a time. Integration is serialized, work is
   not — integration takes minutes, skill runs take hours.
 - **n8n keeps only small workflows:** the schedule tick that invokes the dispatcher, the
-  question form + ntfy flow, the merge queue, error notification, and sprint status reporting.
-  Nothing long-lived, nothing per-worker, and n8n never writes canonical pipeline state — its
+  question form + ntfy flow, the merge queue, the planning-run host, error notification, and
+  sprint status reporting. Nothing per-worker, and nothing whose survival matters: the merge
+  queue and the planning host block on commands for minutes, but canonical state never depends
+  on an n8n execution surviving. n8n never writes canonical pipeline state — its
   workflows write only inbox files (a question answer, an external event) that a pass folds in.
   The event-ingest webhook from the earlier design stays eliminated: every result is durable on
   disk (or in git) before the dispatcher is invoked, and every invocation is a contentless
@@ -88,7 +105,7 @@ into gen-3 structures, and gen-2's state files stay with gen-2.
 | Gen-2 piece | Fate in gen-3 |
 |---|---|
 | `Develop Epic` (n8n) | Dissolved — the epic loop becomes the graph plus dispatcher claiming; its reflect/learn steps are out of scope (see below) |
-| `Develop Story (Playbook)` (n8n) + `playbook.json` | Dissolved — a story's step sequence becomes chain edges in the graph; each node spec carries its own skill/agent/prompt, so there is no playbook interpreter and no playbook file |
+| `Develop Story (Playbook)` (n8n) + `playbook.json` | Dissolved — a story's chain is composed per story by the planning agent; each node spec carries its own skill/agent/prompt, so there is no playbook interpreter and no playbook file. The step sequence itself survives only as content for the advisory chain-composition guidelines (see Graph management rules) |
 | `BMAD Session (OpenCode)` (n8n) | Dissolved — its behaviors (bounded runs, INCOMPLETE auto-continue, outcome classification, question form + ntfy resume) are reimplemented as pass logic plus one small question-form workflow; the workflow itself is not ported |
 | `Parse OpenCode Response`, `BMAD Outcome` (n8n sub-workflows) | Logic ported — the deterministic rules and the LLM classification prompt move into the dispatcher's classification module; the sub-workflows stay with gen-2 |
 | Reflect step, `apply-amendments.mjs`, `ledger.jsonl`, trends | Not inherited — self-improvement is out of scope for gen-3 (rationale below) |
@@ -115,13 +132,23 @@ journal.
 
 - **Node = one skill run** (BMAD-agnostic — any skill, or another atomic action like a CLI
   command). A story is a *chain* of nodes connected by `depends-on` edges.
+- **Chains are composed per story, not stamped from a template.** The planning run reads the
+  story's content plus a human-authored, agent-facing guidelines document — the successor of
+  the gen-2 playbook sequence, demoted to a suggestion; same category as `decision-policy.md` —
+  and decides which nodes the story's chain gets. Stories differ: a story whose substance is
+  human-performed setup (e.g. the human configures credentials) gets no e2e-test node, because
+  there is no automatable behavior to test. The guidelines say when a step applies, not that it
+  always does. Human involvement needs no special node type — a normal skill run (e.g.
+  dev-story) reads the story, halts with a question, and rides the standard
+  QUESTION → park → resume path.
 - **Chains share a branch.** A story chain works on one branch (`pipeline/<runId>/<story>`);
   each node's claim bases on its chain predecessor's pushed head. The chain's final node
   completing triggers the merge queue. Cross-story `depends-on` edges gate on the dependency
   story's *merge*, and the dependent bases on merged main.
 - **Actively managed graph:** never expand more than ~2 stories' worth of unmerged chain ahead.
-  The graph is expanded and replanned as work merges, not generated whole up front. A claimed
-  node's spec is frozen; replanning touches only unclaimed nodes.
+  The graph is expanded and replanned as work merges, not generated whole up front — by
+  planning runs on the devcontainer, which are not graph nodes (see Planning runs under
+  Dispatcher). A claimed node's spec is frozen; replanning touches only unclaimed nodes.
 - **Depth-first traversal:** the dispatcher descends into a node's dependents before starting
   unrelated siblings.
 - These rules — and the retry/timeout/capacity knobs (`maxAttemptsPerNode`, per-node timeout,
@@ -169,23 +196,31 @@ Each invocation:
    is fine. `flock` releases automatically when the process dies, so a crashed pass cannot
    leave a stale lock.
 2. **Reconcile** — cross-check the journal's in-flight and parked entries against reality:
-   sandboxes carrying the pipeline scope label (Daytona API) and pushed branches (git). Destroy
+   sandboxes carrying the pipeline scope label (Daytona API), pushed branches (git), and the
+   planning lock (see Planning runs). Destroy
    sandboxes no journal entry accounts for; collect work whose branch is pushed but whose
    outcome was never journaled (a pass died mid-fold — the poll step below picks it up
    naturally).
 3. **Fold the inbox** — consume files written by n8n's small workflows (question answers,
-   external events): append to the journal first (the append is the commit point), then
+   external events) and by planning runs (graph deltas, validated at fold time — see Planning
+   runs): append to the journal first (the append is the commit point), then
    regenerate `graph.json` (a derived view, rebuildable from the journal if a crash lands
    between the two writes).
 4. **Poll in-flight sessions (supervision)** — for each running claim, check its session
    command via the Daytona API. Still running and inside its deadline → nothing. Past its
    deadline → terminate the session command, journal a `runner_error` event, continue per
-   retry policy. Exited → pull exit code and logs, classify, act (see Supervision below).
+   retry policy. Exited → pull exit code and logs, classify, act (see Supervision below). An
+   in-flight planning run is polled the same way, via the planning lock instead of the
+   Daytona API (see Planning runs).
 5. **Re-evaluate** — which nodes are now ready? (Chain predecessor pushed or cross-story
    dependency merged, capacity available.)
 6. **Claim and launch** — claim ready nodes depth-first (journal the claim), acquire a sandbox
    from the warm pool, `git checkout` to the claim's base, start the node's command via the
-   Daytona session API with `runAsync` — the pass does not wait for it.
+   Daytona session API with `runAsync` — the pass does not wait for it. If ready nodes are
+   running low (the plan-2-ahead policy) and no planning run is in flight, journal the launch
+   and trigger the planning-host workflow (see
+   Planning runs). Both are skipped entirely while the pipeline is paused (see Pause/resume) —
+   supervision and folding still run, claiming does not.
 7. **Release the lock and exit** — agents still running unwatched, by design; the next pass
    picks them up.
 
@@ -222,16 +257,113 @@ supervisor death on n8n restart or devcontainer sleep — does not exist. A rest
 costs nothing but detection latency: the next pass polls the same sessions the last one would
 have. There is no attach mode, no execution-ID bookkeeping, no spool files.
 
+### Planning runs (graph expansion)
+
+Graph expansion is not a graph node (decided 2026-07-20). It runs on the devcontainer — the
+same machine as the dispatcher — as an async planning run: a local opencode process that a
+pass decides on, journals, and supervises like any other in-flight claim, and that a small
+n8n workflow hosts. Every node in the graph is authored by
+the planning agent per the chain-composition guidelines; the planning run itself is machinery,
+so "agents author all nodes" holds with no machinery-generated node type and no bootstrap
+exception. The devcontainer is the right home: planning reads the repo, the stories, and the
+graph state, writes no code, and needs no isolation — a sandbox would add provisioning cost
+and buy nothing.
+
+- **Async, never in-pass.** The pass journals the launch (with its deadline), triggers the
+  n8n planning-host workflow — a local, contentless call; the journal already records the
+  launch — and exits; passes stay seconds long. Running planning inside the pass would hold
+  the state lock for the whole run and freeze supervision, folding, and claiming: the exact
+  long-lived fragility this design removed.
+- **Hosted by n8n.** The planning-host workflow is small: Execute Command runs the launch
+  wrapper (blocking for the run's duration — the same pattern as the merge queue, which also
+  blocks on commands for minutes), then invokes the dispatcher, so the delta folds immediately
+  instead of at the next tick. The execution is a host and a latency optimization, not the
+  record: canonical state is the journal, the planning lock, and the delta file. The run also
+  becomes visible in n8n's execution list and inherits the error-notification hook. The trade
+  accepted here: an n8n restart kills the execution and its child process — a pass-spawned
+  detached process would have survived that — and the process-vanished path relaunches. A
+  restart costs a relaunch, never lost state.
+- **Serialized by its own lock.** The launch wrapper acquires a non-blocking `flock` on
+  `planning.lock` and holds it for the run's lifetime. One primitive gives both mutual
+  exclusion (at most one planning run in flight — no delta merging) and a liveness probe: a
+  pass that can acquire the lock knows the planner is finished or dead (`flock` releases on
+  process death), and a pass that cannot knows it is still running. Passes never launch a
+  second planner while the lock is held, and a duplicate trigger — a redundant relaunch, a
+  manual run — is harmless: a wrapper that cannot acquire the lock exits immediately.
+- **Deterministic trigger, agent-authored content.** A pass triggers a planning run when ready
+  nodes run low (the plan-2-ahead policy), gated by pause like node claiming. The trigger is
+  machinery; which nodes and edges come out is the planning agent's judgment. A human "replan
+  now" goes through the inbox like pause: folded by a pass, which journals and triggers the
+  host workflow.
+- **Output is a graph delta in the inbox.** The wrapper mirrors the in-sandbox command
+  template: isolated `OPENCODE_DB` (per the concurrency findings — the planner shares the
+  machine, possibly with a live interactive session), output captured to a per-run log file,
+  its PID recorded alongside the lock (for pass-side deadline termination), exit code
+  recorded, and the graph delta written to the inbox as the last act. The planning
+  run writes nothing else shared — not the journal, not `graph.json`.
+- **Delta validation at fold time.** Planning reads graph state at launch; by fold time nodes
+  have completed or merged. The fold validates the delta against current state under the state
+  lock: it touches only unclaimed nodes and tolerates nodes that finished meanwhile. Journal
+  ordering resolves any claim-vs-replan race — whichever hit the journal first wins. Claiming
+  is not gated while a planning run is in flight: claimed specs are frozen, so gating would
+  starve sandboxes for no added protection.
+- **Supervised like a sandbox session.** Same classification (COMPLETE / QUESTION /
+  INCOMPLETE), same deadline enforcement (terminate, journal `runner_error`, retry policy).
+  QUESTION parks and rides the standard form path — planning is the step most likely to need
+  a human answer; INCOMPLETE continues via a local `opencode run --session <id>`.
+- **Process-vanished path.** Unlike sandbox sessions, a local planning run dies when the
+  devcontainer sleeps or restarts — or when n8n restarts, since the run is a child of its host
+  workflow's Execute Command. Reconcile detects it: the journal says a planning run is in
+  flight, the planning lock is acquirable, and no delta is in the inbox → relaunch per retry
+  policy. This is the honest cost of running planning locally, handled by the same
+  level-triggered code path as every other recovery.
+
+### Pause/resume (human-initiated)
+
+A human can pause the pipeline: active nodes run to completion, no new nodes are claimed.
+
+- **Pause stops claiming, not execution.** While paused, a pass still reconciles, folds the
+  inbox, polls in-flight sessions, classifies exits, issues INCOMPLETE continues, parks
+  questions, and triggers the merge queue for chains that finish — everything about *finishing
+  claimed work* proceeds. What stops is the claim step: no new claims, including chain
+  successors that become ready. The pipeline quiets down as in-flight nodes complete. No new
+  sandboxes get created either — that falls out for free, since sandbox acquisition happens
+  only at claim time. No new planning runs launch while paused; an in-flight planning run is
+  supervised to completion and its delta folds — finishing claimed work, like everything else.
+- **Mechanism: the same inbox path as every other human/external input.** A small helper script
+  (an n8n form later, if wanted) writes a `pause` request to the inbox and invokes the
+  dispatcher. The next pass folds it: journal append first (a `pause` event with who/when/why —
+  the commit point), then `graph.json` regenerated with `paused: true`. The claim step gates on
+  the journaled state, so a pause survives restarts and rebuilds like everything else. `resume`
+  is the symmetric event. Repeated pauses or resumes are idempotent — level-triggered like
+  every other input.
+- **Takes effect within one pass.** The fold step runs before the claim step, so the pass that
+  folds a `pause` already claims nothing; the helper invokes the dispatcher directly, so the
+  gate is effectively immediate. What pause can never do is instant: in-flight runs measured in
+  hours keep running.
+- **Answering a parked question while paused resumes that session.** A resume finishes claimed
+  work, and submitting the form during a pause is a deliberate human act, so it proceeds. To
+  keep a parked node quiet, don't answer while paused — the park is durable.
+- **Pause is not preemption.** It never terminates a running session. Stopping a runaway agent
+  is the supervision deadline path (terminate + `runner_error`), not pause. A hard stop-everything
+  control, if ever needed, is a separate destructive command — out of scope here.
+- **Scope: global.** One control for the whole pipeline; per-story or per-epic pausing only if
+  a real need appears.
+- Use cases: quiesce before a devcontainer or snapshot rebuild, hold the graph steady while
+  replanning unclaimed nodes, stop the spread while investigating a defect that finished nodes
+  may be propagating into their dependents.
+
 ### Atomicity
 
-All canonical state and the lock live on one local filesystem (co-location is load-bearing —
-see below). Three primitives cover every mutation:
+All canonical state and the locks live on one local filesystem (co-location is load-bearing —
+see below). Three primitives cover every mutation, and a fourth serializes planning:
 
 | Primitive | Guarantee |
 |---|---|
 | Blocking `flock` held for the whole pass | Mutual exclusion between passes; released automatically on process death — no stale-lock handling |
 | Single-`write` `O_APPEND` appends to `journal.jsonl` | Atomic appends on a local filesystem |
 | tmp-file + `renameSync` for `graph.json` | Atomic replace |
+| Non-blocking `flock` on `planning.lock`, held by the planning run for its lifetime | At most one planning run in flight; doubles as the liveness probe — acquirable means finished or dead |
 
 Multi-file consistency comes from write ordering, not transactions: journal first (the commit
 point), `graph.json` second (derived, rebuildable). Claims are exclusive by construction — a
@@ -261,12 +393,14 @@ Two consequences of n8n being local, stated so nobody designs against the wrong 
 
 | Responsibility | Home | Why |
 |---|---|---|
-| Trigger the dispatcher (schedule tick, question answered, merge complete) | n8n | Persistent scheduler while the devcontainer is up; invokes a pass as a local process call. |
+| Trigger the dispatcher (schedule tick, question answered, merge complete, planning exit) | n8n | Persistent scheduler while the devcontainer is up; invokes a pass as a local process call. |
 | Merge queue | n8n | Sequential, API-driven, retry-on-conflict. Textbook n8n workflow. |
 | Question surfacing (form + ntfy) | n8n (small workflow) | Durable Wait-form suspension and forms are n8n's strength. Human-facing surface only — the journal holds the canonical parked state. |
 | Error notification | n8n | Existing small workflow, unchanged. |
+| Pause/resume control | Helper script → inbox (n8n form optional later) | Human-initiated; folded by the next pass; the claim step gates on the journaled pause state. |
 | Sprint status / reporting | n8n | Read gen-3 state, format, notify. |
 | Graph traversal + claim logic | Dispatcher pass (JS) | DAG algorithm with stateful mutations. Needs testing, iteration. |
+| Graph expansion (planning run) | Dispatcher pass decides + journals; n8n planning-host workflow runs the launch wrapper | Supervised like a sandbox session, but runs on the devcontainer — needs the repo, needs no isolation. Serialized by the planning lock; emits a graph delta; the host invokes the dispatcher on exit so the delta folds immediately. |
 | Supervision + outcome classification | Dispatcher pass (JS) | Level-triggered session polling; deterministic rules + one LLM call. No long-lived process to die. |
 | Workspace provisioning | Dispatcher pass (JS) | SDK calls + filesystem ops. |
 | State writing (journal, graph.json) | Dispatcher pass (JS) | At most one writer at a time — the pass holding the lock. |
@@ -275,7 +409,8 @@ Two consequences of n8n being local, stated so nobody designs against the wrong 
 
 Single-writer restated: not "one resident process is the writer" but "at most one pass holds
 the lock at a time." n8n's small workflows never touch canonical state — they write only inbox
-files (a question answer, an external event) that a pass folds in. Agents write nothing shared;
+files (a question answer, an external event) that a pass folds in. The planning run is held to
+the same rule: its only shared output is a graph delta in the inbox. Agents write nothing shared;
 their only output channels are their branch push and their session logs, both read by passes.
 Session-history analysis (2026-07-17) confirmed agents already don't write to pipeline state
 files in the sequential architecture; the parallel architecture keeps that by construction.
@@ -288,20 +423,24 @@ n8n (persistent service on the devcontainer, under pm2 — small workflows only)
   ├─ Schedule tick (every few minutes) → invokes dispatcher   ← primary heartbeat
   ├─ Question form + ntfy → answer to inbox file → invokes dispatcher
   ├─ Merge queue workflow → invokes dispatcher when a merge lands
+  ├─ Planning-host workflow → runs the launch wrapper → invokes dispatcher when planning exits
   ├─ Error notification (ntfy)
   └─ Sprint status / reporting (reads gen-3 state)
        │  contentless invocations — every payload is already durable on disk or in git
        ▼
 Dispatcher pass (same devcontainer, seconds long, one at a time under flock)
-  1. Reconcile (journal vs labeled sandboxes vs pushed branches)
+  1. Reconcile (journal vs labeled sandboxes vs pushed branches vs planning lock)
   2. Fold inbox → journal.jsonl (commit point) → graph.json (derived)
-  3. Poll in-flight sessions → classify exits → act (continue / park / collect)
+  3. Poll in-flight sessions + planning run → classify exits → act (continue / park / collect)
   4. Re-evaluate ready nodes
-  5. Claim depth-first → start session commands (runAsync)
+  5. Claim depth-first → start session commands (runAsync); trigger planning host if frontier low
   6. Release lock, exit
-       │  Daytona API: create/stop/destroy, session exec, log pull
-       ▼
-Daytona sandboxes (one opencode agent each; agent pushes its branch as its last act)
+       │  Daytona API: create/stop/destroy,     │  journal launch → trigger n8n planning host,
+       │  session exec, log pull                │  which runs the wrapper under planning.lock
+       ▼                                        ▼
+Daytona sandboxes (one opencode        Planning run (opencode on the devcontainer, hosted
+agent each; agent pushes its           by the n8n workflow; writes a graph delta to the
+branch as its last act)                inbox as its last act)
 ```
 
 When an agent finishes:
@@ -322,7 +461,7 @@ When an agent finishes:
 
 ### Implementation surface
 
-Rough estimate, ~880 lines of JS plus two small n8n workflows:
+Rough estimate, ~980 lines of JS plus three small n8n workflows:
 
 | Module | Lines | Reuses |
 |---|---|---|
@@ -330,9 +469,11 @@ Rough estimate, ~880 lines of JS plus two small n8n workflows:
 | Workspace provisioning (sandbox create, env, warm pool, cleanup) | ~200 | Patterns from product's SandboxService |
 | Supervision (session poll, deadline check, continue, park/resume actions) | ~150 | New — behaviors from gen-2's `BMAD Session (OpenCode)`, no workflow port |
 | Classification (deterministic rules + LLM fallback) | ~80 | Rules and prompt ported from `Parse OpenCode Response` / `BMAD Outcome`; no n8n dependency |
-| Pass frame (flock, inbox fold, reconcile) | ~150 | New; helper patterns copied from gen-2 scripts, no imports |
+| Pass frame (flock, inbox fold, reconcile, pause gate) | ~150 | New; helper patterns copied from gen-2 scripts, no imports |
+| Planning run (launch wrapper, planning lock, delta validation + fold) | ~100 | New |
 | In-sandbox command template (opencode run, exit capture, branch push) | ~50 | New |
 | Question-form workflow (form + ntfy + inbox write + invoke) | n8n, small | New — the Wait-form/ntfy pattern from gen-2, as a standalone workflow |
+| Planning-host workflow (run the launch wrapper, invoke dispatcher on exit) | n8n, small | New |
 | Merge queue workflow | n8n, small | New |
 
 Honest comparison with the superseded observer design (~700 lines + a 19-node workflow port):
@@ -347,8 +488,10 @@ parts are fewer.
   loop and its files remain untouched and runnable while gen-3 is built. Canonical state is
   two files plus an inbox: `journal.jsonl` (append-only commit point; gen-3 schema: claims with
   sandbox/session IDs and deadlines, outcomes, parks/resumes, merge events, `runner_error`
-  events, policy decisions), `graph.json` (derived view, rebuildable from the journal), and
-  `inbox/` (written by n8n's small workflows, consumed and deleted by passes). Per-run log
+  events, pause/resume control events, policy decisions), `graph.json` (derived view,
+  rebuildable from the journal), and
+  `inbox/` (written by n8n's small workflows and by planning runs — graph deltas — consumed
+  and deleted by passes). Per-run log
   excerpts go to a plain directory for debugging. At most one writer at a time for canonical
   state: the pass holding the lock.
 - **Not part of gen-3 state:** gen-2's `journal.jsonl`, `ledger.jsonl`, `playbook.json`,
@@ -564,6 +707,9 @@ failure already paid for once:
   the inbox and invokes the dispatcher, and the next pass starts the sandbox and issues
   `opencode run --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
   resume. Agents still never talk to n8n.
+- This path is also how human-involved stories run: a story whose instructions require human
+  action (e.g. setting up credentials) is still a normal chain — the skill run reads the story,
+  asks, parks, resumes with the answer. There is no separate human-task node type.
 - **Decision stands from the previous plan: park/resume is required from the first rollout step,
   no fail-and-retry stopgap.**
 - Precondition to watch: `_bmad-output/decision-policy.md` (human-authored, agent-facing — kept
@@ -586,9 +732,11 @@ failure already paid for once:
 ### Dependency knowledge for the graph
 
 - `review-code` *writes* fixes to the same code the other review steps *read*. With review
-  steps as individual nodes, this is an explicit edge planning must emit — which direction
+  steps as individual nodes, this is an explicit edge the planning agent emits — which direction
   (fix-writing review before or after the read-only reviews) is a per-story planning decision,
-  and the graph makes it visible instead of burying it in a step sequence.
+  and the graph makes it visible instead of burying it in a step sequence. With chain
+  composition a judgment call, the edge's presence rests on the chain-composition guidelines
+  carrying the ordering rule — a guideline the agent follows, not a structural guarantee.
 
 ## Honest costs
 
@@ -600,14 +748,15 @@ failure already paid for once:
   There are no concurrent writers to any shared file, and no event can be lost: every payload
   is durable on disk or in git before any dispatcher invocation fires.
 - Completions are detected by polling at tick cadence, not pushed — minutes of latency against
-  runs measured in hours. There is no live log streaming; logs are pulled on demand (a small
+  runs measured in hours. (The planning run is the exception: its n8n host invokes the
+  dispatcher the moment it exits.) There is no live log streaming; logs are pulled on demand (a small
   `logs <node>` helper makes this a one-liner). Acceptable; revisit only if it hurts in
   practice.
 - Outcome classification calls an LLM from inside a pass — a few seconds per exited session,
   within the seconds-long pass budget.
 - The practical caps on parallelism are the Daytona quota and the max-concurrent-sandboxes
-  policy knob — n8n execution concurrency no longer participates, since no execution lives
-  longer than a form suspension.
+  policy knob — n8n execution concurrency no longer participates: the executions that block
+  on commands (merge queue, planning host) are one at a time by construction.
 - 5 concurrent sandboxes consume Daytona account quota (30 GiB shared disk) and API rate limits.
   Shallow clones and scoped cleanup keep this bounded. The 30 GiB is shared across
   dev/test/prod — the pipeline must label and scope its sandboxes or reproduce the product's
@@ -630,7 +779,10 @@ failure already paid for once:
   finished work survives (agents push their own branches), and running agents are simply polled
   by the first pass after wake — the same reconciliation every pass performs, with more failure
   modes to handle (sandbox crashed, auto-stopped, auto-archived, quota exhausted while down).
-  It must be robust, not best-effort. Pipeline availability is coupled to this machine's
+  It must be robust, not best-effort. An in-flight planning run is the one exception to
+  "nothing is lost": unlike sandbox sessions it dies with the machine (or with an n8n restart —
+  it is a child of its host workflow), and the process-vanished path relaunches it per retry
+  policy. Pipeline availability is coupled to this machine's
   uptime; that is an accepted cost of the local-first design, and the standing argument for
   moving n8n and the pipeline to an always-on host if it starts to bite.
 - Human attention becomes the scarce resource; the question inbox and a near-zero question rate
@@ -663,12 +815,16 @@ failure already paid for once:
    conflict-as-evidence journaling. Kill n8n and sleep the devcontainer mid-run and verify the
    next pass reconciles correctly (collects finished work, keeps polling running work). Test
    against disposable sandboxes with synthetic steps before any real BMAD skill run.
-4. Introduce the graph: `depends-on` edges in sprint planning output, `graph.json` and the
-   reconcile pass with the plan-2-ahead / depth-first policy, node-granularity claims with
-   chain branches. First taste of parallelism: two independent nodes from different stories as
-   two concurrent sandboxes. This is the permanent design — sandboxed agents supervised by
-   level-triggered passes; no per-worker supervisor exists anywhere. Tune the tick cadence
-   here.
+4. Introduce the graph: `depends-on` edges in planning output (chains composed per story per
+   the guidelines), `graph.json` and the reconcile pass with the plan-2-ahead / depth-first
+   policy, node-granularity claims with chain branches, the planning-run machinery (launch
+   wrapper, planning lock, n8n host workflow, delta validation and fold, process-vanished
+   relaunch), and the
+   pause/resume gate on claiming (with its helper script). First taste
+   of parallelism: two independent nodes from different stories as two concurrent sandboxes.
+   This is the permanent design — sandboxed agents supervised by level-triggered passes; no
+   per-worker supervisor exists anywhere. Tune the tick cadence here, and exercise pause: pause
+   mid-run, watch in-flight nodes finish with nothing new claimed, resume.
 5. Move "done" from workflow-return to branch-merged: merge queue (n8n workflow) + Mermaid
    graph view. Agents push their own branches; the pass that folds a chain-final SUCCESS
    triggers n8n's merge queue; no event-ingest webhook — canonical state is written only under
@@ -694,12 +850,22 @@ same discipline the discarded plan prescribed.
    which made the observers themselves redundant. Level-triggered polling from passes replaces
    them; n8n keeps only small human-facing workflows.
 4. **`review-code` ordering hazard: resolved by node granularity.** Review steps are individual
-   nodes; the write/read ordering is an explicit edge that planning emits per story (see
-   Dependency knowledge).
+   nodes; the write/read ordering is an explicit edge the planning agent emits per story (see
+   Dependency knowledge). Since chain composition is a judgment call, this is resolved by
+   guideline adherence, not by construction — the chain-composition guidelines carry the
+   ordering rule.
 5. **Gen-2 self-improvement: not inherited (2026-07-20).** Out of scope for gen-3; a future
    reflector is a separate consumer of gen-3's own journal, designed for a parallel world (the
    gen-2 between-stories reflection cadence has no equivalent here). Gen-3 reads and writes
    none of gen-2's state files.
+6. **Graph expansion home (2026-07-20): a local planning run, not a graph node.** Planning
+   runs on the devcontainer as an async process: a pass decides and journals the launch, a
+   small n8n workflow hosts the run and invokes the dispatcher when it exits, and the planning
+   lock serializes; its graph delta is folded from the inbox — resolving the mechanical half
+   of the old planning-node contract question. This keeps "agents author all nodes" clean:
+   every node in the graph comes from the planning agent; only the trigger (ready nodes
+   running low) is machinery, so there is no machinery-generated node type and no bootstrap
+   exception.
 
 ## Open questions
 
@@ -712,7 +878,10 @@ same discipline the discarded plan prescribed.
    (new packages in `package.json`, new system packages). The Declarative Builder caches for 24h;
    a stale cache means new deps aren't installed. Who triggers a rebuild, and how is snapshot
    freshness tracked against the repo's lockfile?
-4. Planning-node output contract: graph expansion is itself a skill run (a planning node
-   claimed like any other when ready nodes run low). How do the nodes and edges it produces
-   enter `graph.json`? Leading idea: a graph-delta file in the planning node's merged branch,
-   folded by the next pass — keeps the single-writer rule intact. Decide before Path step 4.
+4. Planning-run content — to decide before Path step 4. The mechanical half — how the nodes
+   and edges a planning run produces enter `graph.json` — is resolved: a graph delta in the
+   inbox, folded and validated by the next pass (see Planning runs under Dispatcher and
+   resolved question 6). What remains is the judgment half: the chain-composition guidelines
+   the planning agent reads — name, location, and content, starting from the gen-2 step
+   sequence rewritten as advice with include/skip conditions per step — and the node-spec
+   vocabulary the agent can express (skill, agent, prompt, deadline, edges).
