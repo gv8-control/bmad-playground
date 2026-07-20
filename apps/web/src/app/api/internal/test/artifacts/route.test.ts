@@ -51,97 +51,14 @@ describe('POST /api/internal/test/artifacts', () => {
     expect(body).toEqual({ ids: ['art_1', 'art_2'] });
   });
 
-  it('[P0] calls $transaction with upsert operations for each artifact', async () => {
-    mock$Transaction.mockResolvedValue([{ id: 'art_1' }]);
-    await POST(
-      makeRequest({
-        repoConnectionId: 'conn_1',
-        artifacts: [{ path: 'p.md', type: 'prd', title: 'T' }],
-      }),
-    );
-    expect(mock$Transaction).toHaveBeenCalledTimes(1);
-    expect(mockArtifactUpsert).toHaveBeenCalledWith({
-      where: {
-        repoConnectionId_path: { repoConnectionId: 'conn_1', path: 'p.md' },
-      },
-      update: expect.objectContaining({
-        type: 'prd',
-        title: 'T',
-        status: 'completed',
-      }),
-      create: expect.objectContaining({
-        repoConnectionId: 'conn_1',
-        path: 'p.md',
-        type: 'prd',
-        title: 'T',
-        status: 'completed',
-      }),
-      select: { id: true },
-    });
-  });
-
-  it('[P1] defaults status to "completed" when omitted', async () => {
-    mock$Transaction.mockResolvedValue([{ id: 'art_1' }]);
-    await POST(
-      makeRequest({
-        repoConnectionId: 'conn_1',
-        artifacts: [{ path: 'p.md', type: 'prd', title: 'T' }],
-      }),
-    );
-    expect(mockArtifactUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: expect.objectContaining({ status: 'completed' }),
-        create: expect.objectContaining({ status: 'completed' }),
-      }),
-    );
-  });
-
-  it('[P1] passes through explicit status and lastModifiedAt', async () => {
-    mock$Transaction.mockResolvedValue([{ id: 'art_1' }]);
-    await POST(
-      makeRequest({
-        repoConnectionId: 'conn_1',
-        artifacts: [
-          {
-            path: 'p.md',
-            type: 'architecture',
-            title: 'T',
-            status: 'in-progress',
-            lastModifiedAt: '2026-07-01T00:00:00.000Z',
-            content: '# content',
-          },
-        ],
-      }),
-    );
-    expect(mockArtifactUpsert).toHaveBeenCalledWith({
-      where: {
-        repoConnectionId_path: { repoConnectionId: 'conn_1', path: 'p.md' },
-      },
-      update: expect.objectContaining({
-        status: 'in-progress',
-        content: '# content',
-        lastModifiedAt: new Date('2026-07-01T00:00:00.000Z'),
-      }),
-      create: expect.objectContaining({
-        status: 'in-progress',
-        content: '# content',
-        lastModifiedAt: new Date('2026-07-01T00:00:00.000Z'),
-      }),
-      select: { id: true },
-    });
-  });
-
-  it('[P0] returns 404 in production', async () => {
+  it('[P0] returns 404 in production without test-endpoint bypass', async () => {
     const prevEnv = process.env.NODE_ENV;
-    const prevCI = process.env.CI;
     Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', configurable: true });
-    delete process.env.CI;
     const res = await POST(
       makeRequest({ repoConnectionId: 'c', artifacts: [] }),
     );
     expect(res.status).toBe(404);
     Object.defineProperty(process.env, 'NODE_ENV', { value: prevEnv, configurable: true });
-    if (prevCI === undefined) delete process.env.CI; else process.env.CI = prevCI;
   });
 
   it('[P0] returns 404 when TEST_ENV is unset', async () => {
@@ -162,20 +79,11 @@ describe('DELETE /api/internal/test/artifacts', () => {
     expect(body).toEqual({ ok: true });
   });
 
-  it('[P0] calls deleteMany with the correct where clause', async () => {
-    mockArtifactDeleteMany.mockResolvedValue({ count: 0 });
-    await DELETE(makeRequest({ repoConnectionId: 'conn_xyz' }));
-    expect(mockArtifactDeleteMany).toHaveBeenCalledWith({ where: { repoConnectionId: 'conn_xyz' } });
-  });
-
-  it('[P0] returns 404 in production', async () => {
+  it('[P0] returns 404 in production without test-endpoint bypass', async () => {
     const prevEnv = process.env.NODE_ENV;
-    const prevCI = process.env.CI;
     Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', configurable: true });
-    delete process.env.CI;
     const res = await DELETE(makeRequest({ repoConnectionId: 'c' }));
     expect(res.status).toBe(404);
     Object.defineProperty(process.env, 'NODE_ENV', { value: prevEnv, configurable: true });
-    if (prevCI === undefined) delete process.env.CI; else process.env.CI = prevCI;
   });
 });

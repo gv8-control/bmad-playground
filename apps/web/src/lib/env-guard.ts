@@ -25,9 +25,12 @@ export function assertRequiredEnv(): void {
 
   // TEST_ENV enables test-only API endpoints (seed-user, repo-connections,
   // conversations). Block it in real production deployments to prevent
-  // accidental exposure. In CI (CI=true), the production build is used for
-  // E2E tests that depend on these endpoints — allow it there.
-  if (process.env.TEST_ENV && process.env.NODE_ENV === 'production' && process.env.CI !== 'true') {
+  // accidental exposure. ALLOW_TEST_ENDPOINTS_IN_PRODUCTION=true is the
+  // explicit opt-in for CI jobs that run E2E against a production build
+  // (next start sets NODE_ENV=production). Unlike CI, this signal is never
+  // ambient on any deployment platform, so it cannot accidentally bypass
+  // production blocking.
+  if (process.env.TEST_ENV && process.env.NODE_ENV === 'production' && process.env.ALLOW_TEST_ENDPOINTS_IN_PRODUCTION !== 'true') {
     throw new Error(
       'TEST_ENV must not be set in a production environment (NODE_ENV=production) — refusing to start',
     );

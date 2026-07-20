@@ -8,6 +8,22 @@ docker compose up -d --wait
 
 set -a; . .env; [ -f .env.local ] && . .env.local; set +a
 
+# Start Tailscale (Workstream G — external accessibility of the dev machine)
+if command -v tailscaled &>/dev/null; then
+  if ! pgrep -x tailscaled >/dev/null 2>&1; then
+    sudo mkdir -p /var/run/tailscale /var/lib/tailscale
+    sudo sh -c 'tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock --port=41641 > /tmp/tailscaled.log 2>&1 &'
+    sleep 2
+  fi
+  if [ -n "$TAILSCALE_AUTH_KEY" ]; then
+    sudo tailscale up --hostname=bmad-codespace --authkey="$TAILSCALE_AUTH_KEY" --accept-routes=false --accept-dns=true 2>/dev/null \
+      && echo "Tailscale: connected" \
+      || echo "Tailscale: auth failed — check TAILSCALE_AUTH_KEY in .env.local"
+  else
+    echo "Tailscale: TAILSCALE_AUTH_KEY not set — run 'sudo tailscale up' manually to join tailnet"
+  fi
+fi
+
 pm2 start "$(which n8n)" --name n8n 2>/dev/null || true
 N8N_RUNNERS_MODE=internal N8N_RUNNERS_ENABLED=true N8N_RUNNERS_BROKER_PORT=5680 pm2 start "$(which n8n)" --name n8n-worker -- worker 2>/dev/null || true
 

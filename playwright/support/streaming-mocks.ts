@@ -250,9 +250,6 @@ export async function readySession(
   await mocks.waitForFetchCount(expectedInitFetchCount)
 }
 
-/**
- * Fills the message input and clicks the Send button.
- */
 export async function sendMessage(page: Page, text: string): Promise<void> {
   const input = page.getByRole('textbox', { name: 'Message input' })
   await input.fill(text)

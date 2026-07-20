@@ -80,3 +80,7 @@ Avoid catchy terms and prefer better-known, simpler terms. Examples:
 ## Railway API
 
 The `RAILWAY_TOKEN` in `.env.local` is a **project token** (UUID format). Project tokens use the `Project-Access-Token` header, NOT `Authorization: Bearer`. Example: `curl -H "Project-Access-Token: $RAILWAY_TOKEN" https://backboard.railway.com/graphql/v2`.
+
+## n8n
+
+When doing changes to n8n workflow, apply them over MCP to the live n8n instance. Make sure to Activate (Publish) the updated workflows if applicable. Do not modify the workflows in n8n/workflows/ - those will be auto-exported.

@@ -63,6 +63,7 @@ Verify consumers, then move tooling credentials out of `.env`:
 | `MISTRAL_API_KEY` | `.env` only | `.env.tooling` | Not referenced by app code (verify) |
 | `ANTHROPIC_API_KEY` | `.env` only | Stay in `.env` + add to `.env.example` | Consumed by agent-be proxy |
 | `AUTH_GITHUB_DEV_ID/SECRET` | `.env` only | Verify consumer first | May be app or tooling |
+| `WEBHOOK_URL` | Not yet set | `.env` (n8n section) | Added by Workstream F (E3). Set to `http://localhost:5678`. Controls `$execution.resumeUrl` base. |
 
 Requires: `grep -r '<VAR>' apps/ --include='*.ts' --include='*.tsx'` for each variable before moving.
 

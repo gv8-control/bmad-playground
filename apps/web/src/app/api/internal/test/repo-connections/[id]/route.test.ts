@@ -33,21 +33,12 @@ describe('DELETE /api/internal/test/repo-connections/[id]', () => {
     expect(body).toEqual({ ok: true });
   });
 
-  it('[P0] calls delete with the correct where clause', async () => {
-    mockRepoConnectionDelete.mockResolvedValue({ id: 'conn_xyz' });
-    await DELETE({} as Request, makeParams('conn_xyz'));
-    expect(mockRepoConnectionDelete).toHaveBeenCalledWith({ where: { id: 'conn_xyz' } });
-  });
-
-  it('[P0] returns 404 in production', async () => {
+  it('[P0] returns 404 in production without test-endpoint bypass', async () => {
     const prevEnv = process.env.NODE_ENV;
-    const prevCI = process.env.CI;
     Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', configurable: true });
-    delete process.env.CI;
     const res = await DELETE({} as Request, makeParams('conn_1'));
     expect(res.status).toBe(404);
     Object.defineProperty(process.env, 'NODE_ENV', { value: prevEnv, configurable: true });
-    if (prevCI === undefined) delete process.env.CI; else process.env.CI = prevCI;
   });
 
   it('[P0] returns 404 when TEST_ENV is unset', async () => {

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-12T08:29:46.479Z",
+  "updatedAt": "2026-07-20T16:49:01.394Z",
   "createdAt": "2026-07-02T23:24:43.066Z",
   "id": "GGiJ7KGUez94SaOc",
   "name": "Develop Story (Playbook)",
@@ -34,7 +34,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $input.first().json;\nconst payload = { type: 'story_start', story: s.Story, runId: s.RunId, attempt: Number(s.Attempt ?? 1) };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { Story: s.Story, RunId: s.RunId, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
+        "jsCode": "const s = $input.first().json;\nconst payload = { type: 'story_start', story: s.Story, runId: s.RunId, attempt: Number(s.Attempt) };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { Story: s.Story, RunId: s.RunId, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -218,7 +218,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst step = $('Prep step').first().json;\nconst failed = item.error !== undefined;\nconst payload = {\n  type: 'step_end',\n  story: step.story,\n  runId: step.RunId,\n  step: step.id,\n  index: step.index,\n  status: failed ? 'failed' : 'success',\n  durationMs: Date.now() - step.startedAt,\n  halts: Number(item.questionCount) || 0,\n};\nlet outcomeHistory = [];\nif (typeof item.outcomeHistory === 'string' && item.outcomeHistory) {\n  try { outcomeHistory = JSON.parse(item.outcomeHistory); } catch {}\n} else if (Array.isArray(item.outcomeHistory)) {\n  outcomeHistory = item.outcomeHistory;\n}\npayload.outcomeHistory = outcomeHistory;\nlet error;\nif (failed) {\n  error = String(item.error?.message ?? item.error).slice(0, 500);\n  payload.error = error;\n} else {\n  payload.responseExcerpt = String(item.finalResponse ?? '').slice(0, 2000);\n}\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nconst sessionId = item.sessionId || '';\nconst traceCmd = sessionId\n  ? `node scripts/pipeline/record-trace.mjs \"${sessionId}\" \"${step.RunId}\" \"${step.id}\"`\n  : 'echo \"no sessionId — skipping trace\"';\nreturn [{ json: { failed, stepId: step.id, stepLabel: step.label, story: step.story, RunId: step.RunId, sessionId, error, halts: payload.halts, outcomeHistory, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}`, traceCmd } }];"
+        "jsCode": "const item = $input.first().json;\nconst step = $('Prep step').first().json;\nconst failed = item.error !== undefined;\nconst payload = {\n  type: 'step_end',\n  story: step.story,\n  runId: step.RunId,\n  step: step.id,\n  index: step.index,\n  status: failed ? 'failed' : 'success',\n  durationMs: Date.now() - step.startedAt,\n  halts: item.questionCount,\n  incompleteCount: item.incompleteCount,\n  classificationFallback: item.classificationFallback,\n};\npayload.outcomeHistory = item.outcomeHistory;\nlet error;\nif (failed) {\n  error = item.error.message;\n  payload.error = error;\n} else {\n  payload.responseExcerpt = item.finalResponse;\n}\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nconst sessionId = item.sessionId;\nconst traceCmd = sessionId\n  ? `node scripts/pipeline/record-trace.mjs \"${sessionId}\" \"${step.RunId}\" \"${step.id}\"`\n  : 'echo \"no sessionId — skipping trace\"';\nreturn [{ json: { failed, stepId: step.id, stepLabel: step.label, story: step.story, RunId: step.RunId, sessionId, error, halts: payload.halts, incompleteCount: payload.incompleteCount, outcomeHistory, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}`, traceCmd } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -421,7 +421,7 @@
       "parameters": {
         "command": "={{ $('Assess step result').first().json.traceCmd }}"
       },
-      "onError": "continueRegularOutput"
+      "onError": "stopWorkflow"
     }
   ],
   "connections": {
@@ -647,29 +647,29 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "9e693193-4969-473c-86b5-f3201ef4164b",
-  "activeVersionId": "f3785835-cd03-4fa7-ab96-d16c701ad733",
-  "versionCounter": 5,
+  "versionId": "a321904d-5986-4e12-98bd-a7fed0e2461a",
+  "activeVersionId": "f491d852-35a6-4c0a-9e32-ea7cbeb57158",
+  "versionCounter": 13,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-02T23:24:43.066Z",
-      "createdAt": "2026-07-02T23:24:43.066Z",
+      "updatedAt": "2026-07-14T10:19:51.920Z",
+      "createdAt": "2026-07-14T10:19:51.920Z",
       "role": "workflow:owner",
       "workflowId": "GGiJ7KGUez94SaOc",
-      "projectId": "AYEhcVrohjJ82DQg",
+      "projectId": "0UQEQBKdspnqMAPk",
       "project": {
-        "updatedAt": "2026-06-30T18:07:25.243Z",
-        "createdAt": "2026-06-30T17:25:02.325Z",
-        "id": "AYEhcVrohjJ82DQg",
+        "updatedAt": "2026-07-14T10:09:51.931Z",
+        "createdAt": "2026-07-14T10:09:30.918Z",
+        "id": "0UQEQBKdspnqMAPk",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+        "creatorId": "f5b33b4f-eee7-42dc-8e3b-111a70218818"
       }
     }
   ],

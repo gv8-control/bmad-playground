@@ -12,6 +12,8 @@ npx playwright install chrome
 sudo curl -fsSL https://github.com/daytonaio/daytona/releases/latest/download/daytona-linux-amd64 -o /usr/local/bin/daytona
 sudo chmod +x /usr/local/bin/daytona
 
+curl -fsSL https://tailscale.com/install.sh | sh
+
 scripts/download-sandbox-agent.sh || echo "sandbox-agent: download failed — sandbox provisioning will not work until scripts/download-sandbox-agent.sh succeeds"
 # Authenticate Daytona CLI (for MCP server) — key comes from .env
 set -a; . .env; [ -f .env.local ] && . .env.local; set +a

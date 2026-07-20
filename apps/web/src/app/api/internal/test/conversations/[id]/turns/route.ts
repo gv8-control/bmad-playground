@@ -19,7 +19,14 @@ export async function POST(
   }
 
   const { id: conversationId } = await params;
-  const { turns } = (await request.json()) as { turns: SeedTurn[] };
+  const body = (await request.json()) as { turns?: SeedTurn[] };
+  if (!body.turns) {
+    return NextResponse.json(
+      { error: 'turns is required' },
+      { status: 400 },
+    );
+  }
+  const { turns } = body;
 
   const created = await getPrisma().$transaction(
     turns.map((t) =>

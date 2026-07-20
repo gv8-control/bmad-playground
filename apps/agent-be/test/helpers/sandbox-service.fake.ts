@@ -37,38 +37,31 @@ export class SandboxServiceFake implements ISandboxService {
   private shouldFailNextAgentStream = false;
   private sessionCounter = 0;
 
-  /** Control hook: simulate a slow provision (milliseconds). */
   setProvisionDelay(ms: number): void {
     this.provisionDelay = ms;
   }
 
-  /** Control hook: cause the next provision() call to throw. */
   failNextProvision(): void {
     this.shouldFailNextProvision = true;
   }
 
-  /** Control hook: set the skills list returned by listSkills(). */
   setSkills(skills: SkillInfo[]): void {
     this.skills = skills;
   }
 
-  /** Control hook: cause the next commit() call to throw. */
   failNextCommit(): void {
     this.shouldFailNextCommit = true;
   }
 
-  /** Inspection: list of commit() calls made. */
   getCommitCalls(): Array<{ sandboxId: string; message: string; author?: GitUserConfig }> {
     return [...this.commitCalls];
   }
 
-  /** Inspection: the git config last injected for a sandbox. */
   getInjectedGitConfig(sandboxId: string): GitUserConfig | undefined {
     const config = this.injectedGitConfigs.get(sandboxId);
     return config ? { ...config } : undefined;
   }
 
-  /** Inspection: whether clone() has succeeded for a sandbox (repo is present). */
   isCloned(sandboxId: string): boolean {
     return this.clonedSandboxes.has(sandboxId);
   }
@@ -202,32 +195,26 @@ export class SandboxServiceFake implements ISandboxService {
   // calling the Daytona SDK. The fake reproduces observable side effects that
   // integration tests assert on (session creation, log streaming, termination).
 
-  /** Control hook: set the event chunks that streamAgentLogs delivers via onStdout. */
   setAgentEvents(events: string[]): void {
     this.agentEvents = events;
   }
 
-  /** Control hook: set the stderr chunks that streamAgentLogs delivers via onStderr. */
   setAgentStderrEvents(events: string[]): void {
     this.agentStderrEvents = events;
   }
 
-  /** Control hook: simulate a slow agent stream (delay between chunks in ms). */
   setAgentStreamDelay(ms: number): void {
     this.agentStreamDelay = ms;
   }
 
-  /** Control hook: cause the next streamAgentLogs call to reject mid-stream. */
   failNextAgentStream(): void {
     this.shouldFailNextAgentStream = true;
   }
 
-  /** Inspection: list of createAgentSession calls made. */
   getCreatedSessions(): Array<{ sandboxId: string; sessionId: string; command: string; cwd?: string }> {
     return [...this.createdSessions];
   }
 
-  /** Inspection: list of terminateAgentSession calls made. */
   getTerminatedSessions(): Array<{ sandboxId: string; sessionId: string }> {
     return [...this.terminatedSessions];
   }
@@ -270,7 +257,6 @@ export class SandboxServiceFake implements ISandboxService {
     this.terminatedSessions.push({ sandboxId, sessionId });
   }
 
-  /** Inspection: sandboxes currently provisioned. */
   activeSandboxCount(): number {
     return this.sandboxes.size;
   }

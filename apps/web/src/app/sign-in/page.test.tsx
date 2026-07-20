@@ -65,13 +65,6 @@ describe('SignInPage — pending state', () => {
   });
 });
 
-// ─── Story 5.1: Visual containers (AC-1) ────────────────────────────────────
-//
-// AC-1: Sign-in auth card with brand logo box, heading, and legal footer.
-// The sign-in page must render a bordered auth card wrapping the OAuth button,
-// a brand logo box (48x48, "be") above the heading, a "Continue with GitHub"
-// heading, and a legal footer with Terms and Privacy links.
-
 describe('SignInPage — visual containers (Story 5.1, AC-1)', () => {
   beforeEach(() => {
     mockUseFormStatus.mockReturnValue({

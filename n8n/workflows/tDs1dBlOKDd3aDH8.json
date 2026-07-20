@@ -1,10 +1,10 @@
 {
-  "updatedAt": "2026-07-15T11:11:46.988Z",
+  "updatedAt": "2026-07-20T17:20:58.207Z",
   "createdAt": "2026-06-21T12:02:24.127Z",
   "id": "tDs1dBlOKDd3aDH8",
   "name": "Parse OpenCode Response",
   "description": null,
-  "active": true,
+  "active": false,
   "isArchived": false,
   "nodes": [
     {
@@ -13,6 +13,9 @@
           "values": [
             {
               "name": "stdout"
+            },
+            {
+              "name": "rc"
             }
           ]
         }
@@ -27,6 +30,9 @@
       ]
     },
     {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst lines = input.stdout.split(\"\\n\").filter(l => l.trim()).map(l => JSON.parse(l));\nconst result = { lines: lines, rc: input.rc };\nreturn [{ json: result }];"
+      },
       "id": "68a3983c-497d-4b5e-80b3-f300718531ef",
       "name": "Extract JSON",
       "type": "n8n-nodes-base.code",
@@ -34,11 +40,7 @@
       "position": [
         224,
         0
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const stdout = $input.first().json.stdout;\n\nif (!stdout) {\n  return [{ json: { response: \"\" } }];\n}\n\nconst lines = stdout.split(\"\\n\").filter(l => l.trim()).map(l => {\n  try { return JSON.parse(l); } catch { return null; }\n}).filter(l => l !== null);\n\n// Prefer text-type messages (last one wins, as before)\nconst textItem = lines.filter(item => item.type === \"text\").pop();\nif (textItem && textItem.part && textItem.part.text) {\n  return [{ json: { response: textItem.part.text } }];\n}\n\n// Fall back to error-type messages so infra failures are surfaced\nconst errorItem = lines.filter(item => item.type === \"error\").pop();\nif (errorItem && errorItem.error) {\n  const msg = errorItem.error.data?.message || errorItem.error.name || JSON.stringify(errorItem.error);\n  return [{ json: { response: `[opencode error] ${msg}` } }];\n}\n\nreturn [{ json: { response: \"\" } }];"
-      }
+      ]
     }
   ],
   "connections": {
@@ -67,10 +69,19 @@
     "builderVariant": "mcp"
   },
   "nodeGroups": [],
-  "pinData": {},
-  "versionId": "97a541b3-fe22-4351-b359-aa9697120a1d",
-  "activeVersionId": "3f1817b3-bc8d-4385-b8bf-751a6cb5838f",
-  "versionCounter": 14,
+  "pinData": {
+    "Start": [
+      {
+        "json": {
+          "stdout": "{\"type\":\"text\",\"timestamp\":1784565192215,\"sessionID\":\"ses_07f9d95c5ffed7xiI6DBLuXvdm\",\"part\":{\"id\":\"prt_f805fd556001pIG4JkNjoU8ii0\",\"messageID\":\"msg_f805fb5ce001ZDcc4PnU1qqOZT\",\"sessionID\":\"ses_07f9d95c5ffed7xiI6DBLuXvdm\",\"type\":\"text\",\"text\":\"Hello! How can I help you today?\",\"time\":{\"start\":1784565192022,\"end\":1784565192206}}}\n{\"type\":\"error\",\"timestamp\":1784565362652,\"sessionID\":\"ses_07f9d95c5ffed7xiI6DBLuXvdm\",\"error\":{\"name\":\"UnknownError\",\"data\":{\"message\":\"Unexpected server error. Check server logs for details.\",\"ref\":\"err_a8407f1c\"}}}",
+          "rc": 1
+        }
+      }
+    ]
+  },
+  "versionId": "ff4143da-cfe4-44bf-998c-a616d37c56a6",
+  "activeVersionId": null,
+  "versionCounter": 28,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

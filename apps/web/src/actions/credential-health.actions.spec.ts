@@ -9,8 +9,6 @@
 
 import type { CredentialHealthStatus } from '@bmad-easy/shared-types';
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
-
 const mockAuth = jest.fn();
 const mockSignIn = jest.fn();
 jest.mock('@/lib/auth', () => ({
@@ -23,18 +21,12 @@ jest.mock('@/lib/credential-health', () => ({
   getCredentialHealth: (...args: unknown[]) => mockGetCredentialHealth(...args),
 }));
 
-// ─── Subject under test ───────────────────────────────────────────────────────
-
 import {
   getCredentialHealthStatus,
   reauthorizeGitHub,
 } from './credential-health.actions';
 
-// ─── Fixtures ─────────────────────────────────────────────────────────────────
-
 const SESSION = { userId: 'usr_abc123' };
-
-// ─── getCredentialHealthStatus ────────────────────────────────────────────────
 
 describe('getCredentialHealthStatus', () => {
   beforeEach(() => {
@@ -78,8 +70,6 @@ describe('getCredentialHealthStatus', () => {
     expect(mockGetCredentialHealth).toHaveBeenCalledWith(SESSION.userId);
   });
 });
-
-// ─── reauthorizeGitHub (AC-3) ─────────────────────────────────────────────────
 
 describe('reauthorizeGitHub (AC-3)', () => {
   beforeEach(() => {

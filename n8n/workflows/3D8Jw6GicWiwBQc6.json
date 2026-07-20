@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-14T20:37:13.672Z",
+  "updatedAt": "2026-07-20T17:33:33.269Z",
   "createdAt": "2026-06-21T12:41:40.926Z",
   "id": "3D8Jw6GicWiwBQc6",
   "name": "BMAD Outcome",
@@ -12,7 +12,10 @@
         "workflowInputs": {
           "values": [
             {
-              "name": "response"
+              "name": "lines"
+            },
+            {
+              "name": "rc"
             }
           ]
         }
@@ -29,43 +32,45 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=--- Start Input ---\n{{ $json.response }}\n--- End Input ---\n\nTask: evaluate the message. Respond only with the classifier that you chose.\nIF it:\n  - asks for input before proceeding\n  - reports an error\n  - indicates that work should not proceed before addressing important issues \nTHEN respond only with QUESTION;\nIF it:\n  - confirms a successful operation\n  - indicates only minor issues and does not indicate critical issues\n  - politely asks for next steps following successful completion\nTHEN respond only with COMPLETE;\n\nExamples:\n- 'what task do you want to do next?' -> COMPLETE\n- 'do you want to solve these issues move onto next task?' -> QUESTION\n\nOutput: Respond with only the word COMPLETE or QUESTION. No quotes, no punctuation, no other text.",
+        "text": "=--- Start Input ---\n{{ $json.response }}\n--- End Input ---\n\nTask: evaluate the message. Respond only with the classifier that you chose.\nIF it:\n  - asks for input before proceeding\n  - reports an error\n  - indicates that work should not proceed before addressing important issues \nTHEN respond only with QUESTION;\nIF it:\n  - confirms a successful operation\n  - indicates only minor issues and does not indicate critical issues\n  - politely asks for next steps following successful completion\nTHEN respond only with COMPLETE;\nIF it:\n  - is a partial or truncated response\n  - is mid-thought text where work was interrupted\n  - indicates work was interrupted but no question is asked\nTHEN respond only with INCOMPLETE;\n\nExamples:\n- 'what task do you want to do next?' -> COMPLETE\n- 'do you want to solve these issues move onto next task?' -> QUESTION\n- 'Now I will implement the' -> INCOMPLETE\n\nOutput: Respond with only the word COMPLETE, QUESTION, or INCOMPLETE. No quotes, no punctuation, no other text.",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
       "position": [
-        400,
-        0
+        560,
+        -80
       ],
       "id": "o4",
       "name": "Classify response"
     },
     {
       "parameters": {
-        "jsCode": "const outcomes = ['COMPLETE', 'QUESTION'];\nconst raw = $input.first().json.output;\nconst agentOutcome = (raw || '')\n  .trim()\n  .replace(/^[\\'\\\"\\u201c\\u201d]+|[\\'\\\"\\u201c\\u201d.!?;]+$/g, '')\n  .trim()\n  .toUpperCase();\n\nif (!outcomes.includes(agentOutcome)) {\n  return { outcome: 'QUESTION', rawOutcome: raw, classificationFallback: true };\n}\n\nreturn { outcome: agentOutcome };"
+        "jsCode": "const raw = $input.first().json.output ?? '';\nconst response = $('Determine outcome').first().json.response;\nconst outcome = raw\n  .trim()\n  .replace(/^[\\'\"\\u201c\\u201d]+|[\\'\"\\u201c\\u201d.!?;]+$/g, '')\n  .trim()\n  .toUpperCase();\nconst valid = ['COMPLETE', 'QUESTION', 'INCOMPLETE'];\nreturn [{\n  json: {\n    outcome: valid.includes(outcome) ? outcome : 'UNKNOWN',\n    rawOutcome: raw,\n    classificationFallback: !valid.includes(outcome),\n    response,\n  },\n}];"
       },
       "id": "45d22c63-30ba-45aa-afa5-a729229361e9",
       "name": "Validate Classification",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        704,
-        0
+        864,
+        -80
       ]
     },
     {
       "parameters": {
         "model": "mistral-small-latest",
-        "options": {}
+        "options": {
+          "temperature": 0
+        }
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
       "typeVersion": 1,
       "position": [
-        400,
-        192
+        560,
+        160
       ],
-      "id": "ee5118c9-bec3-46fd-a26c-32c81f3fed9d",
+      "id": "5cd1d87f-d283-44df-9bcf-b79a54591cc8",
       "name": "Mistral Cloud Chat Model",
       "credentials": {
         "mistralCloudApi": {
@@ -73,20 +78,66 @@
           "name": "Mistral Cloud account"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst lines = item.lines || [];\nconst rc = item.rc;\n\n// Extract last text item's content\nconst textItems = lines.filter(l => l.type === 'text');\nconst response = textItems.length > 0 ? textItems[textItems.length - 1].part.text : '';\n\n// Rule 1: error present → INCOMPLETE (same branch as rc !== 0)\nif (lines.some(l => l.type === 'error')) {\n  return [{ json: { outcome: 'INCOMPLETE', response, rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 2: rc !== 0 → INCOMPLETE (timeout/crash)\nif (rc !== 0) {\n  return [{ json: { outcome: 'INCOMPLETE', response, rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 3: empty response → UNKNOWN (failed)\nif (response.trim() === '') {\n  return [{ json: { outcome: 'UNKNOWN', response: '', rawOutcome: '', classificationFallback: true } }];\n}\n\n// Rule 4: fall through to LLM\nreturn [{ json: { outcome: null, response } }];"
+      },
+      "id": "ae3739b4-8928-48a3-aa91-37ef06a05116",
+      "name": "Determine outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "if-outcome-null",
+              "leftValue": "={{ $json.outcome === null }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "ce350b10-921f-4e62-a895-cb1718b7f246",
+      "name": "Outcome is null?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "989a3923-2169-4f9d-b3b6-61f197785274",
+      "name": "Output (deterministic)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        864,
+        144
+      ]
     }
   ],
   "connections": {
-    "Start": {
-      "main": [
-        [
-          {
-            "node": "Classify response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Classify response": {
       "main": [
         [
@@ -104,6 +155,46 @@
           {
             "node": "Classify response",
             "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Determine outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine outcome": {
+      "main": [
+        [
+          {
+            "node": "Outcome is null?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outcome is null?": {
+      "main": [
+        [
+          {
+            "node": "Classify response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Output (deterministic)",
+            "type": "main",
             "index": 0
           }
         ]
@@ -128,34 +219,111 @@
     "Start": [
       {
         "json": {
-          "response": "How shall we fix this issue?"
+          "lines": [
+            {
+              "type": "step_start",
+              "timestamp": 1784565192029,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "part": {
+                "id": "prt_f805fd54c001kWHdy8LrhF4KL0",
+                "messageID": "msg_f805fb5ce001ZDcc4PnU1qqOZT",
+                "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+                "snapshot": "5a73606a60295e200c9301dc721af853946cf448",
+                "type": "step-start"
+              }
+            },
+            {
+              "type": "text",
+              "timestamp": 1784565192215,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "part": {
+                "id": "prt_f805fd556001pIG4JkNjoU8ii0",
+                "messageID": "msg_f805fb5ce001ZDcc4PnU1qqOZT",
+                "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+                "type": "text",
+                "text": "Hello! How can I help you today?",
+                "time": {
+                  "start": 1784565192022,
+                  "end": 1784565192206
+                }
+              }
+            }
+          ],
+          "rc": 0
+        }
+      },
+      {
+        "json": {
+          "lines": [
+            {
+              "type": "step_start",
+              "timestamp": 1784565192029,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "part": {
+                "id": "prt_f805fd54c001kWHdy8LrhF4KL0",
+                "messageID": "msg_f805fb5ce001ZDcc4PnU1qqOZT",
+                "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+                "snapshot": "5a73606a60295e200c9301dc721af853946cf448",
+                "type": "step-start"
+              }
+            },
+            {
+              "type": "text",
+              "timestamp": 1784565192215,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "part": {
+                "id": "prt_f805fd556001pIG4JkNjoU8ii0",
+                "messageID": "msg_f805fb5ce001ZDcc4PnU1qqOZT",
+                "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+                "type": "text",
+                "text": "Hello! How can I help you today?",
+                "time": {
+                  "start": 1784565192022,
+                  "end": 1784565192206
+                }
+              }
+            },
+            {
+              "type": "error",
+              "timestamp": 1784565362652,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "error": {
+                "name": "UnknownError",
+                "data": {
+                  "message": "Unexpected server error. Check server logs for details.",
+                  "ref": "err_a8407f1c"
+                }
+              }
+            }
+          ],
+          "rc": 1
         }
       }
     ]
   },
-  "versionId": "fc1c7cdf-ad21-408a-b339-599ba6f90e4c",
-  "activeVersionId": "2d1c2049-e054-4976-a45e-b4afee1fa120",
-  "versionCounter": 58,
+  "versionId": "823951d6-c692-44bb-b6c6-79cc687703a3",
+  "activeVersionId": "9949732b-1bc8-44e7-ab89-eda5956e36a2",
+  "versionCounter": 98,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-01T03:43:25.204Z",
-      "createdAt": "2026-07-01T03:43:25.204Z",
+      "updatedAt": "2026-07-14T10:19:51.920Z",
+      "createdAt": "2026-07-14T10:19:51.920Z",
       "role": "workflow:owner",
       "workflowId": "3D8Jw6GicWiwBQc6",
-      "projectId": "AYEhcVrohjJ82DQg",
+      "projectId": "0UQEQBKdspnqMAPk",
       "project": {
-        "updatedAt": "2026-06-30T18:07:25.243Z",
-        "createdAt": "2026-06-30T17:25:02.325Z",
-        "id": "AYEhcVrohjJ82DQg",
+        "updatedAt": "2026-07-14T10:09:51.931Z",
+        "createdAt": "2026-07-14T10:09:30.918Z",
+        "id": "0UQEQBKdspnqMAPk",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+        "creatorId": "f5b33b4f-eee7-42dc-8e3b-111a70218818"
       }
     }
   ],

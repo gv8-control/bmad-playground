@@ -1,18 +1,5 @@
 /**
  * @jest-environment node
- *
- * Story 4.5: Wire Environment Variables and Secrets on Both Platforms
- * Unit tests for AnthropicProxyController (AC-5: NFR-S1 compliance).
- *
- * Covers AC-5:
- * - Forwards HTTP requests to api.anthropic.com with injected x-api-key header
- * - Never leaks the API key in response body/headers/logs
- * - Supports streaming (SSE) responses
- * - Registered as @Public() endpoint (no boundary JWT)
- *
- * Security regression guards:
- * - Credential-isolation: API key never appears in response body, response headers, or logs
- * - Header filtering: client-provided authorization, x-api-key, host, cookie headers are NOT forwarded
  */
 import { EventEmitter } from 'events';
 import type { Request as ExpressRequest, Response as ExpressResponse } from 'express';

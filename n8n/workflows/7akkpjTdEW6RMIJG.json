@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-05T22:06:22.085Z",
+  "updatedAt": "2026-07-20T16:44:11.312Z",
   "createdAt": "2026-07-02T23:24:43.130Z",
   "id": "7akkpjTdEW6RMIJG",
   "name": "Develop Epic",
@@ -60,14 +60,14 @@
             {
               "id": "dc3a046d-17d1-4179-9da2-2c0f8c6cc09a",
               "name": "Epic",
-              "value": "={{ $json.body?.epic ?? $json.Epic ?? '2' }}",
-              "type": "string"
+              "type": "string",
+              "value": "={{ /^\\d+$/.test($json.body.epic) ? $json.body.epic : '' }}"
             },
             {
               "id": "3c76937c-a3cb-4e53-97f0-47c41aa65995",
               "name": "Ntfy topic",
-              "value": "agent-outcome",
-              "type": "string"
+              "type": "string",
+              "value": "agent-outcome"
             }
           ]
         },
@@ -221,7 +221,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -345,7 +345,11 @@
         -240
       ],
       "id": "ae5f948e-fa1a-43f1-ba6f-631082ed7acf",
-      "name": "Reflect"
+      "name": "Reflect",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -362,7 +366,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const d = $('Parse decision').first().json;\nlet summary = {};\ntry { summary = JSON.parse($input.first().json.stdout); } catch (e) { summary = {}; }\nconst applied = summary.applied ?? [], rejected = summary.rejected ?? [], retired = summary.retired ?? [];\nconst parts = [`Run ${d.runId} finished.`];\nparts.push(`Learning: ${applied.length} amendment(s) applied, ${rejected.length} rejected, ${retired.length} step(s) retired, ${summary.observations ?? 0} observation(s) recorded.`);\nif (applied.length) parts.push(`Applied: ${applied.join('; ')}.`);\nif (retired.length) parts.push(`Retired: ${retired.join('; ')}.`);\nreturn [{ json: { title: `Story ${d.story} complete`, message: parts.join(' ') } }];"
+        "jsCode": "const d = $('Parse decision').first().json;\nconst summary = JSON.parse($input.first().json.stdout);\nconst applied = summary.applied, rejected = summary.rejected, retired = summary.retired;\nconst parts = [`Run ${d.runId} finished.`];\nparts.push(`Learning: ${applied.length} amendment(s) applied, ${rejected.length} rejected, ${retired.length} step(s) retired, ${summary.observations} observation(s) recorded.`);\nif (applied.length) parts.push(`Applied: ${applied.join('; ')}.`);\nif (retired.length) parts.push(`Retired: ${retired.join('; ')}.`);\nreturn [{ json: { title: `Story ${d.story} complete`, message: parts.join(' ') } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -394,7 +398,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -411,7 +415,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const d = $('Parse decision').first().json;\nconst r = $input.first().json;\nreturn [{ json: { title: `Story ${d.story} attempt ${d.attempt} FAILED`, message: `Run ${d.runId}: ${r.failMessage ?? 'story pipeline reported failure'} — the loop will retry until the attempt guard halts.` } }];"
+        "jsCode": "const d = $('Parse decision').first().json;\nconst r = $input.first().json;\nreturn [{ json: { title: `Story ${d.story} attempt ${d.attempt} FAILED`, message: `Run ${d.runId}: ${r.failMessage} — the loop will retry until the attempt guard halts.` } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -443,7 +447,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -479,7 +483,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -515,7 +519,7 @@
             },
             {
               "name": "click",
-              "value": "=http://localhost:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
+              "value": "=http://bmad-codespace.tail0d7953.ts.net:5678/workflow/{{ $workflow.id }}/executions/{{ $execution.id }}"
             }
           ]
         },
@@ -532,7 +536,7 @@
     },
     {
       "parameters": {
-        "errorMessage": "={{ $('Parse decision').first().json.reason ?? 'Pipeline halted' }}"
+        "errorMessage": "={{ $('Parse decision').first().json.reason }}"
       },
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
@@ -774,29 +778,29 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "92f86063-69e2-4474-87be-d10bbefca91b",
-  "activeVersionId": "9a15c13e-c36f-42c7-8eb4-48c16b97d933",
-  "versionCounter": 4,
+  "versionId": "ed372902-c029-4446-903a-49d44c2b816e",
+  "activeVersionId": "49fcf40b-b7af-4466-b31a-c29daf39ee76",
+  "versionCounter": 14,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-07-02T23:24:43.130Z",
-      "createdAt": "2026-07-02T23:24:43.130Z",
+      "updatedAt": "2026-07-14T10:19:51.920Z",
+      "createdAt": "2026-07-14T10:19:51.920Z",
       "role": "workflow:owner",
       "workflowId": "7akkpjTdEW6RMIJG",
-      "projectId": "AYEhcVrohjJ82DQg",
+      "projectId": "0UQEQBKdspnqMAPk",
       "project": {
-        "updatedAt": "2026-06-30T18:07:25.243Z",
-        "createdAt": "2026-06-30T17:25:02.325Z",
-        "id": "AYEhcVrohjJ82DQg",
+        "updatedAt": "2026-07-14T10:09:51.931Z",
+        "createdAt": "2026-07-14T10:09:30.918Z",
+        "id": "0UQEQBKdspnqMAPk",
         "name": "Instance Owner <dev@dev.dev>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "7e8a5fc5-a105-4029-81f3-089b17fc1a4b"
+        "creatorId": "f5b33b4f-eee7-42dc-8e3b-111a70218818"
       }
     }
   ],

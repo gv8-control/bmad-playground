@@ -13,8 +13,6 @@
  * - AC-6: Version outside v6.x → blocking message + detected version
  */
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
-
 const mockAuth = jest.fn();
 jest.mock('@/lib/auth', () => ({ auth: (...args: unknown[]) => mockAuth(...args) }));
 
@@ -36,8 +34,6 @@ jest.mock('@/lib/credential-health', () => ({
 
 let mockFetch: jest.Mock;
 
-// ─── Subject under test ───────────────────────────────────────────────────────
-
 import { validateRepository } from './repository-validation.actions';
 import { inspectBmadSetup, clearGithubCache } from '@/lib/repository-validation';
 import { BMAD_DOCUMENTATION_LINK } from '@bmad-easy/shared-types';
@@ -55,8 +51,6 @@ import { RateLimitError } from '@/lib/repository-validation';
 beforeEach(() => {
   clearGithubCache();
 });
-
-// ─── inspectBmadSetup — Success paths (AC-1, AC-2) ────────────────────────────
 
 describe('inspectBmadSetup — successful validation (AC-1)', () => {
   beforeEach(() => {
@@ -173,8 +167,6 @@ describe('inspectBmadSetup — GitHub contents pagination beyond a single page',
     expect(skillsCalls).toHaveLength(1);
   });
 });
-
-// ─── inspectBmadSetup — Version detection (AC-1, AC-6) ───────────────────────
 
 describe('inspectBmadSetup — version detection (AC-1, AC-6)', () => {
   beforeEach(() => {
@@ -311,8 +303,6 @@ describe('inspectBmadSetup — version detection (AC-1, AC-6)', () => {
   });
 });
 
-// ─── inspectBmadSetup — Missing directories (AC-3) ────────────────────────────
-
 describe('inspectBmadSetup — missing directories (AC-3)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -397,8 +387,6 @@ describe('inspectBmadSetup — missing directories (AC-3)', () => {
     expect(result.message).toMatch(/_bmad/);
   });
 });
-
-// ─── inspectBmadSetup — Skills directory validation (AC-4, AC-5) ──────────────
 
 describe('inspectBmadSetup — skills directory validation (AC-4, AC-5)', () => {
   beforeEach(() => {
@@ -489,8 +477,6 @@ describe('inspectBmadSetup — skills directory validation (AC-4, AC-5)', () => 
   });
 });
 
-// ─── inspectBmadSetup — GitHub API errors ────────────────────────────────────
-
 describe('inspectBmadSetup — GitHub API errors', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -549,8 +535,6 @@ describe('inspectBmadSetup — 403 rate-limit vs credential-failure conflation',
   });
 });
 
-// ─── inspectBmadSetup — Error priority ───────────────────────────────────────
-
 describe('inspectBmadSetup — error priority', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -583,8 +567,6 @@ describe('inspectBmadSetup — error priority', () => {
     expect(result.code).toBe('UNSUPPORTED_VERSION');
   });
 });
-
-// ─── inspectBmadSetup — GitHub API call patterns ─────────────────────────────
 
 describe('inspectBmadSetup — GitHub API call patterns', () => {
   beforeEach(() => {
@@ -648,8 +630,6 @@ describe('inspectBmadSetup — GitHub API call patterns', () => {
     );
   });
 });
-
-// ─── validateRepository — Server Action (AC-1 through AC-6) ───────────────────
 
 describe('validateRepository — Server Action', () => {
   beforeEach(async () => {
