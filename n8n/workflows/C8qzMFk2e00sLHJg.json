@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T06:12:52.841Z",
+  "updatedAt": "2026-07-20T07:24:14.606Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" \\\n  \"skill {{ $('Start').item.json.Skill }}\n{{ $('Start').item.json['Initial prompt (without story ID)'] }}\n\n{{ $json.storySpecificPrompt }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | jq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null) or .type==\"runner_meta\")' | tail -n 20\nprintf '{\"type\":\"runner_meta\",\"rc\":%d}\\n' \"$rc\"\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  stderrTail=\"$(printf '%s' \"$stderrTail\" | sed -E 's/(Bearer [A-Za-z0-9._-]+)/Bearer [REDACTED]/g; s/(sk-[A-Za-z0-9._-]+)/sk-[REDACTED]/g')\"\n  category=\"unknown\"\n  if printf '%s' \"$stderrTail\" | grep -qi 'authorization\\|api.key\\|auth'; then category=\"auth\"; elif printf '%s' \"$stderrTail\" | grep -qi 'rate.limit\\|429\\|quota'; then category=\"rate-limit\"; elif printf '%s' \"$stderrTail\" | grep -qi 'context.length\\|token\\|too long'; then category=\"context-length\"; fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $json.conversationTitle }} / initial run\" --argjson rc $rc --arg stderrTail \"$stderrTail\" --arg category \"$category\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,stderrTail:$stderrTail,category:$category}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
+        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.prompt }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null) or .type==\"runner_meta\")' \"$out_file\"\nprintf '{\"type\":\"runner_meta\",\"rc\":%d}\\n' \"$rc\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "command": "=set -a; . /workspaces/bmad-playground/.env.local 2>/dev/null; set +a\nerr=$(mktemp)\nout=$(timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" \\\n  \"{{ $json.Answer }}\" < /dev/null 2>\"$err\")\nrc=$?\nprintf '%s\\n' \"$out\" | jq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null) or .type==\"runner_meta\")' | tail -n 20\nprintf '{\"type\":\"runner_meta\",\"rc\":%d}\\n' \"$rc\"\nif [ $rc -ne 0 ] || printf '%s\\n' \"$out\" | grep -q '\"type\":\"error\"'; then\n  if [ -s \"$err\" ]; then\n    stderrTail=\"$(tail -c 600 \"$err\")\"\n  else\n    stderrTail=\"$(printf '%s\\n' \"$out\" | grep '\"type\":\"error\"' | tail -c 600)\"\n  fi\n  stderrTail=\"$(printf '%s' \"$stderrTail\" | sed -E 's/(Bearer [A-Za-z0-9._-]+)/Bearer [REDACTED]/g; s/(sk-[A-Za-z0-9._-]+)/sk-[REDACTED]/g')\"\n  category=\"unknown\"\n  if printf '%s' \"$stderrTail\" | grep -qi 'authorization\\|api.key\\|auth'; then category=\"auth\"; elif printf '%s' \"$stderrTail\" | grep -qi 'rate.limit\\|429\\|quota'; then category=\"rate-limit\"; elif printf '%s' \"$stderrTail\" | grep -qi 'context.length\\|token\\|too long'; then category=\"context-length\"; fi\n  jq -cn --arg ts \"$(date -u +%FT%TZ)\" --arg context \"{{ $('Variables').item.json.conversationTitle }} / follow-up run\" --argjson rc $rc --arg stderrTail \"$stderrTail\" --arg category \"$category\" '{ts:$ts,source:\"opencode-runner\",context:$context,rc:$rc,stderrTail:$stderrTail,category:$category}' >> _bmad-output/pipeline/runner-errors.jsonl\n  [ -s \"$err\" ] && tail -c 600 \"$err\" >&2\nfi\nrm -f \"$err\"\nif [ $rc -ne 0 ] && [ -z \"$out\" ]; then exit $rc; fi\nexit 0"
+        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.Answer.split(\"'\").join(\"'\\\\''\") }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null) or .type==\"runner_meta\")' \"$out_file\"\nprintf '{\"type\":\"runner_meta\",\"rc\":%d}\\n' \"$rc\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -91,6 +91,12 @@
               "name": "Recovery URL",
               "type": "string",
               "value": "={{ $execution.resumeUrl.replace('webhook', 'form') }}"
+            },
+            {
+              "id": "prompt-field-001",
+              "name": "prompt",
+              "type": "string",
+              "value": "={{ ('skill ' + $('Start').item.json.Skill + '\\n' + $('Start').item.json['Initial prompt (without story ID)'] + '\\n\\nStory: ' + $('Start').item.json.Story).split(\"'\").join(\"'\\\\''\") }}"
             }
           ]
         },
@@ -806,9 +812,9 @@
       }
     ]
   },
-  "versionId": "9c67dad3-b3fe-4369-a1d2-409d080b9308",
-  "activeVersionId": "c80dac89-a6d8-4b3f-8b24-5984c3a1061e",
-  "versionCounter": 215,
+  "versionId": "c39ec7ce-64cc-4251-8f93-ea564d46a5b8",
+  "activeVersionId": "76c331ba-0576-4e4c-994f-c433c9981308",
+  "versionCounter": 222,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
