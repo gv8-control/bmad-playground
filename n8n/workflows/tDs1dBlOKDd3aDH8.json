@@ -1,10 +1,10 @@
 {
-  "updatedAt": "2026-07-20T12:34:11.954Z",
+  "updatedAt": "2026-07-20T17:20:58.207Z",
   "createdAt": "2026-06-21T12:02:24.127Z",
   "id": "tDs1dBlOKDd3aDH8",
   "name": "Parse OpenCode Response",
   "description": null,
-  "active": true,
+  "active": false,
   "isArchived": false,
   "nodes": [
     {
@@ -30,6 +30,9 @@
       ]
     },
     {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst lines = input.stdout.split(\"\\n\").filter(l => l.trim()).map(l => JSON.parse(l));\nconst result = { lines: lines, rc: input.rc };\nreturn [{ json: result }];"
+      },
       "id": "68a3983c-497d-4b5e-80b3-f300718531ef",
       "name": "Extract JSON",
       "type": "n8n-nodes-base.code",
@@ -37,11 +40,7 @@
       "position": [
         224,
         0
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const stdout = $input.first().json.stdout;\nconst rc = $input.first().json.rc;\nconst lines = stdout.split(\"\\n\").filter(l => l.trim()).map(l => JSON.parse(l));\nconst textItem = lines.filter(item => item.type === \"text\").pop();\nreturn [{ json: { response: textItem.part.text, rc } }];"
-      }
+      ]
     }
   ],
   "connections": {
@@ -70,10 +69,19 @@
     "builderVariant": "mcp"
   },
   "nodeGroups": [],
-  "pinData": {},
-  "versionId": "d83fbcf5-24c7-4d74-98f4-a53f9c35960f",
-  "activeVersionId": "a716ccfc-a4db-40b6-9c6a-26dbc1067c9d",
-  "versionCounter": 19,
+  "pinData": {
+    "Start": [
+      {
+        "json": {
+          "stdout": "{\"type\":\"text\",\"timestamp\":1784565192215,\"sessionID\":\"ses_07f9d95c5ffed7xiI6DBLuXvdm\",\"part\":{\"id\":\"prt_f805fd556001pIG4JkNjoU8ii0\",\"messageID\":\"msg_f805fb5ce001ZDcc4PnU1qqOZT\",\"sessionID\":\"ses_07f9d95c5ffed7xiI6DBLuXvdm\",\"type\":\"text\",\"text\":\"Hello! How can I help you today?\",\"time\":{\"start\":1784565192022,\"end\":1784565192206}}}\n{\"type\":\"error\",\"timestamp\":1784565362652,\"sessionID\":\"ses_07f9d95c5ffed7xiI6DBLuXvdm\",\"error\":{\"name\":\"UnknownError\",\"data\":{\"message\":\"Unexpected server error. Check server logs for details.\",\"ref\":\"err_a8407f1c\"}}}",
+          "rc": 1
+        }
+      }
+    ]
+  },
+  "versionId": "ff4143da-cfe4-44bf-998c-a616d37c56a6",
+  "activeVersionId": null,
+  "versionCounter": 28,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

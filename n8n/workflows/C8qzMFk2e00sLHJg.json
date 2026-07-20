@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T12:02:21.208Z",
+  "updatedAt": "2026-07-20T17:31:26.341Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.prompt }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null))' \"$out_file\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
+        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.prompt }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\")' \"$out_file\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.Answer.split(\"'\").join(\"'\\\\''\") }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null))' \"$out_file\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
+        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.Answer.split(\"'\").join(\"'\\\\''\") }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\")' \"$out_file\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -114,7 +114,7 @@
     {
       "parameters": {
         "mode": "markdownToHtml",
-        "markdown": "={{ $('Parse OpenCode Response').item.json.response }}",
+        "markdown": "={{ $('BMAD Outcome').item.json.response }}",
         "options": {}
       },
       "type": "n8n-nodes-base.markdown",
@@ -164,7 +164,7 @@
               "id": "740f3353-2f56-451c-99a6-bfe3b657b647",
               "name": "finalResponse",
               "type": "string",
-              "value": "={{ $('Parse OpenCode Response').last().json.response }}"
+              "value": "={{ $('BMAD Outcome').last().json.response }}"
             },
             {
               "id": "f7a1c2d3-e4b5-6789-abcd-ef0123456789",
@@ -273,32 +273,34 @@
           "value": "3D8Jw6GicWiwBQc6"
         },
         "workflowInputs": {
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true,
           "mappingMode": "defineBelow",
+          "value": {
+            "rc": "={{ $json.rc }}",
+            "lines": "={{ $json.lines }}"
+          },
           "matchingColumns": [],
           "schema": [
             {
-              "canBeUsedToMatch": true,
-              "display": true,
-              "displayName": "response",
-              "id": "response",
+              "id": "lines",
+              "displayName": "lines",
               "required": false,
-              "type": "string"
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "array"
             },
             {
-              "canBeUsedToMatch": true,
-              "display": true,
-              "displayName": "rc",
               "id": "rc",
+              "displayName": "rc",
               "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
               "type": "number"
             }
           ],
-          "value": {
-            "rc": "={{ $json.rc }}",
-            "response": "={{ $json.response }}"
-          }
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {
           "waitForSubWorkflow": true
@@ -422,7 +424,7 @@
             },
             {
               "name": "message",
-              "value": "={{ $('Parse OpenCode Response').item.json.response }}"
+              "value": "={{ $('BMAD Outcome').item.json.response }}"
             },
             {
               "name": "click",
@@ -822,9 +824,9 @@
       }
     ]
   },
-  "versionId": "508c1155-3361-496f-80f2-3788f28638c1",
-  "activeVersionId": "89e2013c-837d-4f66-b317-854f77f34016",
-  "versionCounter": 232,
+  "versionId": "91a101d9-ef51-4f23-96f7-b954a8d6688f",
+  "activeVersionId": "bfc6e567-8f61-4cf1-ab5f-6acb4be78d71",
+  "versionCounter": 240,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

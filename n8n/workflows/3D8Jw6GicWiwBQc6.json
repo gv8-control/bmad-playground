@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T15:08:49.274Z",
+  "updatedAt": "2026-07-20T17:33:33.269Z",
   "createdAt": "2026-06-21T12:41:40.926Z",
   "id": "3D8Jw6GicWiwBQc6",
   "name": "BMAD Outcome",
@@ -12,7 +12,7 @@
         "workflowInputs": {
           "values": [
             {
-              "name": "response"
+              "name": "lines"
             },
             {
               "name": "rc"
@@ -46,7 +46,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json.output ?? '';\nconst outcome = raw\n  .trim()\n  .replace(/^['\"\\u201c\\u201d]+|['\"\\u201c\\u201d.!?;]+$/g, '')\n  .trim()\n  .toUpperCase();\nconst valid = ['COMPLETE', 'QUESTION', 'INCOMPLETE'];\nreturn [{\n  json: {\n    outcome: valid.includes(outcome) ? outcome : 'UNKNOWN',\n    rawOutcome: raw,\n    classificationFallback: !valid.includes(outcome),\n  },\n}];"
+        "jsCode": "const raw = $input.first().json.output ?? '';\nconst response = $('Determine outcome').first().json.response;\nconst outcome = raw\n  .trim()\n  .replace(/^[\\'\"\\u201c\\u201d]+|[\\'\"\\u201c\\u201d.!?;]+$/g, '')\n  .trim()\n  .toUpperCase();\nconst valid = ['COMPLETE', 'QUESTION', 'INCOMPLETE'];\nreturn [{\n  json: {\n    outcome: valid.includes(outcome) ? outcome : 'UNKNOWN',\n    rawOutcome: raw,\n    classificationFallback: !valid.includes(outcome),\n    response,\n  },\n}];"
       },
       "id": "45d22c63-30ba-45aa-afa5-a729229361e9",
       "name": "Validate Classification",
@@ -81,7 +81,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst response = item.response;\nconst rc = item.rc;\n\n// Rule 1: empty response → UNKNOWN (failed)\nif (response.trim() === '') {\n  return [{ json: { outcome: 'UNKNOWN', rawOutcome: '', classificationFallback: true } }];\n}\n\n// Rule 2: rc!=0 → INCOMPLETE (timeout/crash)\nif (rc !== 0) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 3-4: fall through to LLM\nreturn [{ json: { outcome: null, response } }];"
+        "jsCode": "const item = $input.first().json;\nconst lines = item.lines || [];\nconst rc = item.rc;\n\n// Extract last text item's content\nconst textItems = lines.filter(l => l.type === 'text');\nconst response = textItems.length > 0 ? textItems[textItems.length - 1].part.text : '';\n\n// Rule 1: error present → INCOMPLETE (same branch as rc !== 0)\nif (lines.some(l => l.type === 'error')) {\n  return [{ json: { outcome: 'INCOMPLETE', response, rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 2: rc !== 0 → INCOMPLETE (timeout/crash)\nif (rc !== 0) {\n  return [{ json: { outcome: 'INCOMPLETE', response, rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 3: empty response → UNKNOWN (failed)\nif (response.trim() === '') {\n  return [{ json: { outcome: 'UNKNOWN', response: '', rawOutcome: '', classificationFallback: true } }];\n}\n\n// Rule 4: fall through to LLM\nreturn [{ json: { outcome: null, response } }];"
       },
       "id": "ae3739b4-8928-48a3-aa91-37ef06a05116",
       "name": "Determine outcome",
@@ -219,14 +219,91 @@
     "Start": [
       {
         "json": {
-          "response": "How shall we fix this issue?"
+          "lines": [
+            {
+              "type": "step_start",
+              "timestamp": 1784565192029,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "part": {
+                "id": "prt_f805fd54c001kWHdy8LrhF4KL0",
+                "messageID": "msg_f805fb5ce001ZDcc4PnU1qqOZT",
+                "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+                "snapshot": "5a73606a60295e200c9301dc721af853946cf448",
+                "type": "step-start"
+              }
+            },
+            {
+              "type": "text",
+              "timestamp": 1784565192215,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "part": {
+                "id": "prt_f805fd556001pIG4JkNjoU8ii0",
+                "messageID": "msg_f805fb5ce001ZDcc4PnU1qqOZT",
+                "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+                "type": "text",
+                "text": "Hello! How can I help you today?",
+                "time": {
+                  "start": 1784565192022,
+                  "end": 1784565192206
+                }
+              }
+            }
+          ],
+          "rc": 0
+        }
+      },
+      {
+        "json": {
+          "lines": [
+            {
+              "type": "step_start",
+              "timestamp": 1784565192029,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "part": {
+                "id": "prt_f805fd54c001kWHdy8LrhF4KL0",
+                "messageID": "msg_f805fb5ce001ZDcc4PnU1qqOZT",
+                "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+                "snapshot": "5a73606a60295e200c9301dc721af853946cf448",
+                "type": "step-start"
+              }
+            },
+            {
+              "type": "text",
+              "timestamp": 1784565192215,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "part": {
+                "id": "prt_f805fd556001pIG4JkNjoU8ii0",
+                "messageID": "msg_f805fb5ce001ZDcc4PnU1qqOZT",
+                "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+                "type": "text",
+                "text": "Hello! How can I help you today?",
+                "time": {
+                  "start": 1784565192022,
+                  "end": 1784565192206
+                }
+              }
+            },
+            {
+              "type": "error",
+              "timestamp": 1784565362652,
+              "sessionID": "ses_07fa04d01ffe4Xm6PduVYGkuHo",
+              "error": {
+                "name": "UnknownError",
+                "data": {
+                  "message": "Unexpected server error. Check server logs for details.",
+                  "ref": "err_a8407f1c"
+                }
+              }
+            }
+          ],
+          "rc": 1
         }
       }
     ]
   },
-  "versionId": "cd99ce38-6fab-425a-9c83-3c529a54f9e1",
-  "activeVersionId": "e32e2313-e233-4efd-a227-864b2722b0e2",
-  "versionCounter": 79,
+  "versionId": "823951d6-c692-44bb-b6c6-79cc687703a3",
+  "activeVersionId": "9949732b-1bc8-44e7-ab89-eda5956e36a2",
+  "versionCounter": 98,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
