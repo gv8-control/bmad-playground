@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T07:39:37.386Z",
+  "updatedAt": "2026-07-20T15:34:56.707Z",
   "createdAt": "2026-07-02T23:24:43.130Z",
   "id": "7akkpjTdEW6RMIJG",
   "name": "Develop Epic",
@@ -60,14 +60,14 @@
             {
               "id": "dc3a046d-17d1-4179-9da2-2c0f8c6cc09a",
               "name": "Epic",
-              "value": "={{ $json.body?.epic ?? $json.Epic ?? '2' }}",
-              "type": "string"
+              "type": "string",
+              "value": "={{ /^\\d+$/.test($json.body?.epic ?? $json.Epic ?? '2') ? ($json.body?.epic ?? $json.Epic ?? '2') : '2' }}"
             },
             {
               "id": "3c76937c-a3cb-4e53-97f0-47c41aa65995",
               "name": "Ntfy topic",
-              "value": "agent-outcome",
-              "type": "string"
+              "type": "string",
+              "value": "agent-outcome"
             }
           ]
         },
@@ -415,7 +415,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const d = $('Parse decision').first().json;\nconst r = $input.first().json;\nreturn [{ json: { title: `Story ${d.story} attempt ${d.attempt} FAILED`, message: `Run ${d.runId}: ${r.failMessage ?? 'story pipeline reported failure'} — the loop will retry until the attempt guard halts.` } }];"
+        "jsCode": "const d = $('Parse decision').first().json;\nconst r = $input.first().json;\nreturn [{ json: { title: `Story ${d.story} attempt ${d.attempt} FAILED`, message: `Run ${d.runId}: ${r.failMessage} — the loop will retry until the attempt guard halts.` } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -536,7 +536,7 @@
     },
     {
       "parameters": {
-        "errorMessage": "={{ $('Parse decision').first().json.reason ?? 'Pipeline halted' }}"
+        "errorMessage": "={{ $('Parse decision').first().json.reason }}"
       },
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
@@ -778,9 +778,9 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "39945eef-85b7-4a04-ae43-54c64926a6f8",
-  "activeVersionId": "b4c9a74a-f6c1-42f6-9ad6-724cbfcc4902",
-  "versionCounter": 7,
+  "versionId": "c850f96d-047f-451c-b608-94de099cbe6d",
+  "activeVersionId": "8c90d0c9-c6e9-45b6-8c46-d4faf4f2a283",
+  "versionCounter": 11,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T06:02:04.752Z",
+  "updatedAt": "2026-07-20T15:08:49.274Z",
   "createdAt": "2026-06-21T12:41:40.926Z",
   "id": "3D8Jw6GicWiwBQc6",
   "name": "BMAD Outcome",
@@ -81,7 +81,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst response = String(item.response ?? '');\nconst rc = Number(item.rc);\n\n// Rule 1: empty response → UNKNOWN (failed)\nif (response.trim() === '') {\n  return [{ json: { outcome: 'UNKNOWN', rawOutcome: '', classificationFallback: true } }];\n}\n\n// Rule 2: response starts with \"[opencode error]\" → INCOMPLETE (provider error)\nif (response.startsWith('[opencode error]')) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 3: rc!=0 → INCOMPLETE (timeout/crash)\nif (Number.isFinite(rc) && rc !== 0) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 4-5: fall through to LLM\nreturn [{ json: { outcome: null, response } }];"
+        "jsCode": "const item = $input.first().json;\nconst response = item.response;\nconst rc = item.rc;\n\n// Rule 1: empty response → UNKNOWN (failed)\nif (response.trim() === '') {\n  return [{ json: { outcome: 'UNKNOWN', rawOutcome: '', classificationFallback: true } }];\n}\n\n// Rule 2: rc!=0 → INCOMPLETE (timeout/crash)\nif (rc !== 0) {\n  return [{ json: { outcome: 'INCOMPLETE', rawOutcome: response, classificationFallback: false } }];\n}\n\n// Rule 3-4: fall through to LLM\nreturn [{ json: { outcome: null, response } }];"
       },
       "id": "ae3739b4-8928-48a3-aa91-37ef06a05116",
       "name": "Determine outcome",
@@ -224,9 +224,9 @@
       }
     ]
   },
-  "versionId": "59854319-fa9f-4e11-bcfc-cab3b5b3fa52",
-  "activeVersionId": "33f17f1a-255a-488e-95d4-23a26675b08d",
-  "versionCounter": 77,
+  "versionId": "cd99ce38-6fab-425a-9c83-3c529a54f9e1",
+  "activeVersionId": "e32e2313-e233-4efd-a227-864b2722b0e2",
+  "versionCounter": 79,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

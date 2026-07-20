@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T07:39:39.624Z",
+  "updatedAt": "2026-07-20T14:41:36.256Z",
   "createdAt": "2026-07-02T23:24:43.066Z",
   "id": "GGiJ7KGUez94SaOc",
   "name": "Develop Story (Playbook)",
@@ -34,7 +34,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const s = $input.first().json;\nconst payload = { type: 'story_start', story: s.Story, runId: s.RunId, attempt: Number(s.Attempt ?? 1) };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { Story: s.Story, RunId: s.RunId, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
+        "jsCode": "const s = $input.first().json;\nconst payload = { type: 'story_start', story: s.Story, runId: s.RunId, attempt: Number(s.Attempt) };\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nreturn [{ json: { Story: s.Story, RunId: s.RunId, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}` } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -73,7 +73,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const run = $('Prep run').first().json;\nconst parsed = JSON.parse($input.first().json.stdout);\nconst steps = Array.isArray(parsed) ? parsed : parsed.steps;\nreturn steps.map(s => ({ json: { ...s, RunId: run.RunId } }));"
+        "jsCode": "const run = $('Prep run').first().json;\nconst steps = JSON.parse($input.first().json.stdout);\nreturn steps.map(s => ({ json: { ...s, RunId: run.RunId } }));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -647,9 +647,9 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "2903c6b2-4ee7-4105-9fc0-a2735c9a13ea",
-  "activeVersionId": "00c1e576-9edb-46a1-8fbd-7a011adb315b",
-  "versionCounter": 10,
+  "versionId": "53f0185b-5e3f-4415-9ff8-bb90467377ff",
+  "activeVersionId": "2903c6b2-4ee7-4105-9fc0-a2735c9a13ea",
+  "versionCounter": 11,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
