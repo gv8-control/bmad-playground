@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T06:02:02.688Z",
+  "updatedAt": "2026-07-20T12:34:11.954Z",
   "createdAt": "2026-06-21T12:02:24.127Z",
   "id": "tDs1dBlOKDd3aDH8",
   "name": "Parse OpenCode Response",
@@ -13,6 +13,9 @@
           "values": [
             {
               "name": "stdout"
+            },
+            {
+              "name": "rc"
             }
           ]
         }
@@ -37,7 +40,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const stdout = $input.first().json.stdout;\n\nif (!stdout) {\n  return [{ json: { response: \"\", rc: 0 } }];\n}\n\nconst lines = stdout.split(\"\\n\").filter(l => l.trim()).map(l => {\n  try { return JSON.parse(l); } catch { return null; }\n}).filter(l => l !== null);\n\n// Extract runner_meta (rc signal from the shell)\nconst metaItem = lines.filter(item => item.type === \"runner_meta\").pop();\nconst rc = metaItem ? Number(metaItem.rc) || 0 : 0;\n\n// Prefer text-type messages (last one wins, as before)\nconst textItem = lines.filter(item => item.type === \"text\").pop();\nif (textItem && textItem.part && textItem.part.text) {\n  return [{ json: { response: textItem.part.text, rc } }];\n}\n\n// Fall back to error-type messages so infra failures are surfaced\nconst errorItem = lines.filter(item => item.type === \"error\").pop();\nif (errorItem && errorItem.error) {\n  const msg = errorItem.error.data?.message || errorItem.error.name || JSON.stringify(errorItem.error);\n  return [{ json: { response: `[opencode error] ${msg}`, rc } }];\n}\n\nreturn [{ json: { response: \"\", rc } }];"
+        "jsCode": "const stdout = $input.first().json.stdout;\nconst rc = $input.first().json.rc;\nconst lines = stdout.split(\"\\n\").filter(l => l.trim()).map(l => JSON.parse(l));\nconst textItem = lines.filter(item => item.type === \"text\").pop();\nreturn [{ json: { response: textItem.part.text, rc } }];"
       }
     }
   ],
@@ -68,9 +71,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "21422e32-58f2-4d53-b6cf-0c1387d762ac",
-  "activeVersionId": "8fcad9a6-d59b-42e6-970b-3eb197fae379",
-  "versionCounter": 16,
+  "versionId": "d83fbcf5-24c7-4d74-98f4-a53f9c35960f",
+  "activeVersionId": "a716ccfc-a4db-40b6-9c6a-26dbc1067c9d",
+  "versionCounter": 19,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

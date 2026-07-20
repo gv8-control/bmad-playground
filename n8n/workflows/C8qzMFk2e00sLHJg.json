@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T07:24:14.606Z",
+  "updatedAt": "2026-07-20T12:02:21.208Z",
   "createdAt": "2026-06-21T10:21:55.123Z",
   "id": "C8qzMFk2e00sLHJg",
   "name": "BMAD Session (OpenCode)",
@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.prompt }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null) or .type==\"runner_meta\")' \"$out_file\"\nprintf '{\"type\":\"runner_meta\",\"rc\":%d}\\n' \"$rc\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
+        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.prompt }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --title \"{{ $json.conversationTitle }}\" \\\n  --format json \\\n  --agent \"{{ $json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null))' \"$out_file\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.Answer.split(\"'\").join(\"'\\\\''\") }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null) or .type==\"runner_meta\")' \"$out_file\"\nprintf '{\"type\":\"runner_meta\",\"rc\":%d}\\n' \"$rc\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
+        "command": "=out_file=$(mktemp)\nerr_file=$(mktemp)\necho '{{ $json.Answer.split(\"'\").join(\"'\\\\''\") }}' | timeout --kill-after=60 5400 opencode run \\\n  --dangerously-skip-permissions \\\n  --session \"{{ $('Extract SessionID').item.json.sessionId }}\" \\\n  --format json \\\n  --agent \"{{ $('Variables').item.json.opencodeAgent }}\" > \"$out_file\" 2>\"$err_file\"\nrc=$?\njq -c 'select(.type==\"text\" or .type==\"error\" or (.sessionID? != null))' \"$out_file\"\n[ $rc -ne 0 ] && cat \"$err_file\" >&2\nrm -f \"$out_file\" \"$err_file\"\nexit $rc"
       },
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
@@ -225,7 +225,8 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "stdout": "={{ $json.stdout }}"
+            "stdout": "={{ $json.stdout }}",
+            "rc": "={{ $json.exitCode }}"
           },
           "matchingColumns": [],
           "schema": [
@@ -237,6 +238,15 @@
               "display": true,
               "canBeUsedToMatch": true,
               "type": "string"
+            },
+            {
+              "id": "rc",
+              "displayName": "rc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
             }
           ],
           "attemptToConvertTypes": false,
@@ -505,7 +515,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nlet outcomeHistory = [];\ntry {\n  if ($('Accrete outcome (Q)').isExecuted) {\n    const last = $('Accrete outcome (Q)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\ntry {\n  if ($('Accrete outcome (I)').isExecuted) {\n    const last = $('Accrete outcome (I)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\noutcomeHistory.push(item.outcome);\nreturn [{ json: { ...item, outcomeHistory } }];"
+        "jsCode": "const item = $input.first().json;\nlet outcomeHistory = [];\nif ($('Accrete outcome (Q)').isExecuted) {\n  const last = $('Accrete outcome (Q)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\nif ($('Accrete outcome (I)').isExecuted) {\n  const last = $('Accrete outcome (I)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\noutcomeHistory.push(item.outcome);\nreturn [{ json: { ...item, outcomeHistory } }];"
       },
       "id": "c84f833e-f2ad-4fd4-805d-ad4139dd121b",
       "name": "Accrete outcome (Q)",
@@ -518,7 +528,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nlet outcomeHistory = [];\ntry {\n  if ($('Accrete outcome (Q)').isExecuted) {\n    const last = $('Accrete outcome (Q)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\ntry {\n  if ($('Accrete outcome (I)').isExecuted) {\n    const last = $('Accrete outcome (I)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\noutcomeHistory.push(item.outcome);\nreturn [{ json: { ...item, outcomeHistory } }];"
+        "jsCode": "const item = $input.first().json;\nlet outcomeHistory = [];\nif ($('Accrete outcome (Q)').isExecuted) {\n  const last = $('Accrete outcome (Q)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\nif ($('Accrete outcome (I)').isExecuted) {\n  const last = $('Accrete outcome (I)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\noutcomeHistory.push(item.outcome);\nreturn [{ json: { ...item, outcomeHistory } }];"
       },
       "id": "eee1d235-2399-4352-979c-e83da5e4f399",
       "name": "Accrete outcome (I)",
@@ -555,7 +565,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\n\nlet outcomeHistory = [];\ntry {\n  if ($('Accrete outcome (Q)').isExecuted) {\n    const last = $('Accrete outcome (Q)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\ntry {\n  if ($('Accrete outcome (I)').isExecuted) {\n    const last = $('Accrete outcome (I)').last().json;\n    if (last && Array.isArray(last.outcomeHistory) && last.outcomeHistory.length > outcomeHistory.length) {\n      outcomeHistory = [...last.outcomeHistory];\n    }\n  }\n} catch {}\n\n// Push the final outcome — fixes the gap where COMPLETE-path\n// (no accrete node runs) would leave the array missing the final entry.\noutcomeHistory.push(item.outcome);\n\nconst incompleteCount = outcomeHistory.filter(o => o === 'INCOMPLETE').length;\nconst questionCount = outcomeHistory.filter(o => o === 'QUESTION').length;\n\nreturn [{ json: {\n  ...item,\n  incompleteCount,\n  questionCount,\n  outcomeHistory,\n  error: item.error,\n}}];"
+        "jsCode": "const item = $input.first().json;\n\nlet outcomeHistory = [];\nif ($('Accrete outcome (Q)').isExecuted) {\n  const last = $('Accrete outcome (Q)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\nif ($('Accrete outcome (I)').isExecuted) {\n  const last = $('Accrete outcome (I)').last().json;\n  if (last.outcomeHistory.length > outcomeHistory.length) {\n    outcomeHistory = [...last.outcomeHistory];\n  }\n}\n\n// Push the final outcome — fixes the gap where COMPLETE-path\n// (no accrete node runs) would leave the array missing the final entry.\noutcomeHistory.push(item.outcome);\n\nconst incompleteCount = outcomeHistory.filter(o => o === 'INCOMPLETE').length;\nconst questionCount = outcomeHistory.filter(o => o === 'QUESTION').length;\n\nreturn [{ json: {\n  ...item,\n  incompleteCount,\n  questionCount,\n  outcomeHistory,\n  error: item.error,\n}}];"
       },
       "id": "9c4a7026-80ea-47d4-85ec-edb753d733d7",
       "name": "Compute counts",
@@ -568,7 +578,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const stdout = String($input.first().json.stdout ?? '');\nlet sessionId = null;\nlet sessionIdMissing = false;\n\n// Scan all stdout lines for first JSON with .sessionID\nconst lines = stdout.split('\\n').filter(l => l.trim());\nfor (const line of lines) {\n  try {\n    const parsed = JSON.parse(line);\n    if (parsed && parsed.sessionID) {\n      sessionId = parsed.sessionID;\n      break;\n    }\n  } catch {}\n}\n\nif (!sessionId) {\n  sessionIdMissing = true;\n}\n\nreturn [{ json: { ...$input.first().json, sessionId, sessionIdMissing } }];"
+        "jsCode": "const stdout = $input.first().json.stdout;\nconst sessionId = stdout.split('\\n').filter(l => l.trim()).map(l => JSON.parse(l)).find(p => p.sessionID).sessionID;\nreturn [{ json: { ...$input.first().json, sessionId } }];"
       },
       "id": "08d73969-57bd-4a8a-9395-381896dc3709",
       "name": "Extract SessionID",
@@ -812,9 +822,9 @@
       }
     ]
   },
-  "versionId": "c39ec7ce-64cc-4251-8f93-ea564d46a5b8",
-  "activeVersionId": "76c331ba-0576-4e4c-994f-c433c9981308",
-  "versionCounter": 222,
+  "versionId": "508c1155-3361-496f-80f2-3788f28638c1",
+  "activeVersionId": "89e2013c-837d-4f66-b317-854f77f34016",
+  "versionCounter": 232,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

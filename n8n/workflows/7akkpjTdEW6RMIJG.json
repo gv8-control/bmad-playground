@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-19T20:15:53.952Z",
+  "updatedAt": "2026-07-20T07:39:37.386Z",
   "createdAt": "2026-07-02T23:24:43.130Z",
   "id": "7akkpjTdEW6RMIJG",
   "name": "Develop Epic",
@@ -366,7 +366,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const d = $('Parse decision').first().json;\nlet summary = {};\ntry { summary = JSON.parse($input.first().json.stdout); } catch (e) { summary = {}; }\nconst applied = summary.applied ?? [], rejected = summary.rejected ?? [], retired = summary.retired ?? [];\nconst parts = [`Run ${d.runId} finished.`];\nparts.push(`Learning: ${applied.length} amendment(s) applied, ${rejected.length} rejected, ${retired.length} step(s) retired, ${summary.observations ?? 0} observation(s) recorded.`);\nif (applied.length) parts.push(`Applied: ${applied.join('; ')}.`);\nif (retired.length) parts.push(`Retired: ${retired.join('; ')}.`);\nreturn [{ json: { title: `Story ${d.story} complete`, message: parts.join(' ') } }];"
+        "jsCode": "const d = $('Parse decision').first().json;\nconst summary = JSON.parse($input.first().json.stdout);\nconst applied = summary.applied, rejected = summary.rejected, retired = summary.retired;\nconst parts = [`Run ${d.runId} finished.`];\nparts.push(`Learning: ${applied.length} amendment(s) applied, ${rejected.length} rejected, ${retired.length} step(s) retired, ${summary.observations} observation(s) recorded.`);\nif (applied.length) parts.push(`Applied: ${applied.join('; ')}.`);\nif (retired.length) parts.push(`Retired: ${retired.join('; ')}.`);\nreturn [{ json: { title: `Story ${d.story} complete`, message: parts.join(' ') } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -778,9 +778,9 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "b4c9a74a-f6c1-42f6-9ad6-724cbfcc4902",
-  "activeVersionId": "37e57138-999d-450d-912a-8cd328a1c935",
-  "versionCounter": 6,
+  "versionId": "39945eef-85b7-4a04-ae43-54c64926a6f8",
+  "activeVersionId": "b4c9a74a-f6c1-42f6-9ad6-724cbfcc4902",
+  "versionCounter": 7,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],

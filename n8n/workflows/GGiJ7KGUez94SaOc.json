@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-20T06:12:56.376Z",
+  "updatedAt": "2026-07-20T07:39:39.624Z",
   "createdAt": "2026-07-02T23:24:43.066Z",
   "id": "GGiJ7KGUez94SaOc",
   "name": "Develop Story (Playbook)",
@@ -218,7 +218,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst step = $('Prep step').first().json;\nconst failed = item.error !== undefined;\nconst payload = {\n  type: 'step_end',\n  story: step.story,\n  runId: step.RunId,\n  step: step.id,\n  index: step.index,\n  status: failed ? 'failed' : 'success',\n  durationMs: Date.now() - step.startedAt,\n  halts: Number(item.questionCount) || 0,\n  incompleteCount: Number(item.incompleteCount) || 0,\n  classificationFallback: item.classificationFallback || false,\n};\nlet outcomeHistory = [];\nif (typeof item.outcomeHistory === 'string' && item.outcomeHistory) {\n  try { outcomeHistory = JSON.parse(item.outcomeHistory); } catch {}\n} else if (Array.isArray(item.outcomeHistory)) {\n  outcomeHistory = item.outcomeHistory;\n}\npayload.outcomeHistory = outcomeHistory;\nlet error;\nif (failed) {\n  error = String(item.error?.message ?? item.error).slice(0, 500);\n  payload.error = error;\n} else {\n  payload.responseExcerpt = String(item.finalResponse ?? '').slice(0, 2000);\n}\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nconst sessionId = item.sessionId || '';\nconst traceCmd = sessionId\n  ? `node scripts/pipeline/record-trace.mjs \"${sessionId}\" \"${step.RunId}\" \"${step.id}\"`\n  : 'echo \"no sessionId — skipping trace\"';\nreturn [{ json: { failed, stepId: step.id, stepLabel: step.label, story: step.story, RunId: step.RunId, sessionId, error, halts: payload.halts, incompleteCount: payload.incompleteCount, outcomeHistory, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}`, traceCmd } }];"
+        "jsCode": "const item = $input.first().json;\nconst step = $('Prep step').first().json;\nconst failed = item.error !== undefined;\nconst payload = {\n  type: 'step_end',\n  story: step.story,\n  runId: step.RunId,\n  step: step.id,\n  index: step.index,\n  status: failed ? 'failed' : 'success',\n  durationMs: Date.now() - step.startedAt,\n  halts: item.questionCount,\n  incompleteCount: item.incompleteCount,\n  classificationFallback: item.classificationFallback,\n};\npayload.outcomeHistory = item.outcomeHistory;\nlet error;\nif (failed) {\n  error = item.error.message.slice(0, 500);\n  payload.error = error;\n} else {\n  payload.responseExcerpt = item.finalResponse.slice(0, 2000);\n}\nconst b64 = Buffer.from(JSON.stringify(payload)).toString('base64');\nconst sessionId = item.sessionId;\nconst traceCmd = sessionId\n  ? `node scripts/pipeline/record-trace.mjs \"${sessionId}\" \"${step.RunId}\" \"${step.id}\"`\n  : 'echo \"no sessionId — skipping trace\"';\nreturn [{ json: { failed, stepId: step.id, stepLabel: step.label, story: step.story, RunId: step.RunId, sessionId, error, halts: payload.halts, incompleteCount: payload.incompleteCount, outcomeHistory, journalCmd: `node scripts/pipeline/journal.mjs append --b64 ${b64}`, traceCmd } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -647,9 +647,9 @@
   },
   "nodeGroups": [],
   "pinData": null,
-  "versionId": "00c1e576-9edb-46a1-8fbd-7a011adb315b",
-  "activeVersionId": "09a2e591-14c6-4f31-88b6-20cf32295187",
-  "versionCounter": 9,
+  "versionId": "2903c6b2-4ee7-4105-9fc0-a2735c9a13ea",
+  "activeVersionId": "00c1e576-9edb-46a1-8fbd-7a011adb315b",
+  "versionCounter": 10,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
