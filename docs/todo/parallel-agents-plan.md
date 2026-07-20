@@ -145,8 +145,9 @@ reflection reads; not needed at tens of nodes.
 Each claim is supervised by one long-lived n8n execution of the observer workflow: the existing
 `BMAD Session (OpenCode)` loop with its two `Agent run` Execute Command nodes swapped from a
 local `opencode run` to a sandbox wrapper script. The wrapper spawns `opencode run` inside the
-sandbox via the Daytona session API, relays the log, and re-emits the same stdout contract the
-local runner produces (JSON lines plus a `runner_meta` line carrying exit code).
+sandbox via the Daytona session API, relays the log, and exits with the opencode process's exit
+code. n8n's Execute Command node reads `exitCode` natively, so the wrapper only needs to emit
+the same JSON-lines stdout contract the local runner produces.
 Everything downstream of that contract carries over unchanged and already battle-tested:
 
 - **Outcome classification** — `Parse OpenCode Response` + `BMAD Outcome`: deterministic rules
