@@ -146,15 +146,15 @@ Each claim is supervised by one long-lived n8n execution of the observer workflo
 `BMAD Session (OpenCode)` loop with its two `Agent run` Execute Command nodes swapped from a
 local `opencode run` to a sandbox wrapper script. The wrapper spawns `opencode run` inside the
 sandbox via the Daytona session API, relays the log, and re-emits the same stdout contract the
-local runner produces (JSON lines plus a `runner_meta` line carrying exit code and salvage
-flag). Everything downstream of that contract carries over unchanged and already battle-tested:
+local runner produces (JSON lines plus a `runner_meta` line carrying exit code).
+Everything downstream of that contract carries over unchanged and already battle-tested:
 
 - **Outcome classification** — `Parse OpenCode Response` + `BMAD Outcome`: deterministic rules
-  first (empty output → UNKNOWN, `[opencode error]` → INCOMPLETE, salvaged output or rc≠0 →
+  first (empty output → UNKNOWN, `[opencode error]` → INCOMPLETE, rc≠0 →
   INCOMPLETE), LLM fallback only for the COMPLETE/QUESTION/INCOMPLETE call.
 - **Provider-error recovery** — INCOMPLETE loops back into `opencode run --session <id>` up to
   `incompleteContinueCap` (10) times. This loop is what lets a 137-minute `review-nfrs` step
-  survive the 90-minute per-run timeout, as repeated timeout → salvage → continue cycles.
+  survive the 90-minute per-run timeout, as repeated timeout → INCOMPLETE → continue cycles.
 - **Question surfacing** — QUESTION suspends the execution on its Wait-form node (durable
   across n8n restarts), fires ntfy with the resume URL, and the human's form answer resumes
   into a `--session` follow-up. The suspended execution *is* the parked state.
