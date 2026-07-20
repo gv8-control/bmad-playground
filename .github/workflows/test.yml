@@ -253,11 +253,15 @@ jobs:
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
           # Enables /api/internal/test/* endpoints (seed-user, repo-connections)
           # used by auth.setup.ts syntheticSession() + withRepoConnection fixture.
-          # CI=true allows test endpoints despite NODE_ENV=production (production
-          # build sets NODE_ENV=production; the test-endpoint-guard allows this
-          # when CI=true to support E2E tests against production builds).
+          # ALLOW_TEST_ENDPOINTS_IN_PRODUCTION=true is the explicit opt-in that
+          # keeps test endpoints reachable despite NODE_ENV=production (set by
+          # `next start`). Unlike CI, this signal is never ambient on any
+          # deployment platform — it must be set deliberately, making the
+          # exposure surface visible. CI=true is retained for Playwright
+          # config ergonomics (forbidOnly, retries, workers).
           TEST_ENV: ci
           CI: true
+          ALLOW_TEST_ENDPOINTS_IN_PRODUCTION: 'true'
           # Auth.js v5 defaults trustHost to true only when NODE_ENV !== 'production'.
           # next start sets NODE_ENV=production, so trustHost would be false and
           # the middleware would reject every request as UntrustedHost — redirecting
@@ -412,6 +416,7 @@ jobs:
           AUTH_GITHUB_SECRET: e2e-placeholder-client-secret
           TEST_ENV: ci
           CI: true
+          ALLOW_TEST_ENDPOINTS_IN_PRODUCTION: 'true'
           AUTH_TRUST_HOST: "true"
 
       - name: Build agent-be (for E2E)
