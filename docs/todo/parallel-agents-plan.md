@@ -151,8 +151,8 @@ the same JSON-lines stdout contract the local runner produces.
 Everything downstream of that contract carries over unchanged and already battle-tested:
 
 - **Outcome classification** — `Parse OpenCode Response` + `BMAD Outcome`: deterministic rules
-  first (empty output → UNKNOWN, `[opencode error]` → INCOMPLETE, rc≠0 →
-  INCOMPLETE), LLM fallback only for the COMPLETE/QUESTION/INCOMPLETE call.
+  first (empty output → UNKNOWN, rc≠0 → INCOMPLETE), LLM fallback only for the
+  COMPLETE/QUESTION/INCOMPLETE call.
 - **Provider-error recovery** — INCOMPLETE loops back into `opencode run --session <id>` until
   the agent produces COMPLETE or QUESTION. This loop is what lets a 137-minute `review-nfrs` step
   survive the 90-minute per-run timeout, as repeated timeout → INCOMPLETE → continue cycles.
