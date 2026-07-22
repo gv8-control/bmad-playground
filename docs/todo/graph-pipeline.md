@@ -1432,14 +1432,14 @@ n8n mid-sleep. Verify whether the child process dies (or does not — either way
 truth) and whether the lock is released. If Execute Command times out before minutes, the
 hosting pattern needs a different mechanism.
 
-### 6. opencode.json provider registration for neuralwatt — PARTIALLY VERIFIED (spike, 2026-07-22)
+### 6. opencode.json provider registration for neuralwatt — VERIFIED (spike, 2026-07-22; relay spike 2026-07-22)
 
 The provider registration in `opencode.json` (and `NEURALWATT_API_KEY` in the sandbox env) is
 what makes `neuralwatt/glm-5.2` resolvable at agent launch — without it, `opencode run` fails
 at provider lookup before the LLM is called. This is a functional assumption about opencode's
 provider resolution path.
 
-**Partially verified by the opencode-sandbox spike (2026-07-22):** provider registration works
+**Verified by the opencode-sandbox spike (2026-07-22):** provider registration works
 — `opencode run --model opencode/big-pickle "Print exactly: SPIKE_OK"` exits with code 0 in
 ~10s, and output is captured on stdout as expected. The spike used opencode's free hosted
 model to verify mechanics, not neuralwatt directly. **Finding (F2, corrected by
@@ -1452,6 +1452,15 @@ and are unaffected. The resolution is a Railway relay (an allowlisted domain) �
 question 17 (revised) for the full decision. See `docs/todo/spike-neuralwatt-accessibility.md`
 for the corrected root cause and evidence chain, and `docs/todo/spike-opencode-sandbox.md` for
 the original spike report.
+
+**Relay spike (2026-07-22):** the Caddy relay on Railway
+(`neuralwatt-relay-production.up.railway.app`) closes the gap. From a Tier 1 sandbox:
+`/v1/models` through the relay returns HTTP 200 with the full model list; a chat completion
+(`glm-5.2`, "Print exactly: SPIKE_OK") returns `"SPIKE_OK"`; SSE streaming arrives
+incrementally (not buffered). Direct `api.neuralwatt.com` from the same sandbox fails (HTTP
+000, connection reset). The sandbox's `opencode.json` provider `baseURL` points at
+`https://neuralwatt-relay-production.up.railway.app/v1`. See resolved question 17 for the full
+deployment details and spike results.
 
 ### 7. Fold-time delta validation against a moving target
 
@@ -1805,12 +1814,37 @@ First real parallel run should be manual and supervised, including at least one 
     a permanent architecture decision, not a temporary split: one provider, one model, one API
     key everywhere; the only difference is the URL sandbox agents call. The relay is a single
     point of failure for sandbox agents — if it is down, every sandbox agent fails — so it
-    needs the same operational attention as any pipeline dependency. The relay itself is out of
-    scope for this plan (deploy and figure out what it is later); what is in scope is that the
-    sandbox provisioning recipe and `opencode.json` sandbox copy carry the relay URL, not the
-    direct neuralwatt URL. Alternatives considered and rejected: split-provider (neuralwatt on
-    devcontainer, Anthropic/OpenAI in sandboxes) — works but abandons neuralwatt's pricing for
-    sandbox agents, which is the whole point; Cloudflare Workers relay (`*.workers.dev` is
+    needs the same operational attention as any pipeline dependency.
+
+    **Relay deployed and spiked (2026-07-22):** the relay is a Caddy reverse proxy on Railway.
+    The Docker image is at `ghcr.io/marius321967/neuralwatt-relay:latest` (public — Railway's
+    free tier does not support private registry credentials, so the package is public; the
+    image holds no secrets, the Caddyfile is in the public repo). Railway service:
+    `neuralwatt-relay` in project `bmad-easy` (production environment). Relay domain:
+    `neuralwatt-relay-production.up.railway.app`. Caddy listens on `:80` (Railway terminates
+    TLS) and reverse-proxies to `https://api.neuralwatt.com` with `header_up Host
+    api.neuralwatt.com`; the `Authorization` header passes through from the client — the relay
+    holds no API key. The sandbox's `opencode.json` provider `baseURL` points at
+    `https://neuralwatt-relay-production.up.railway.app/v1`. The devcontainer's `opencode.json`
+    continues to point at `api.neuralwatt.com` directly — the relay is only for sandbox egress.
+
+    **Spike results (2026-07-22, from a Daytona Tier 1 sandbox with
+    `networkBlockAll: false`):**
+    1. `curl https://neuralwatt-relay-production.up.railway.app/v1/models` with the
+       Authorization header — **succeeded** (HTTP 200, full model list returned).
+    2. `curl https://api.neuralwatt.com/v1/models` directly — **failed** (HTTP 000, connection
+       reset), confirming the relay is actually needed and `*.railway.app` is on the
+       allowlist.
+    3. Chat completion through the relay (`glm-5.2`, "Print exactly: SPIKE_OK") —
+       **succeeded**, content returned as `"SPIKE_OK"`.
+    4. SSE streaming (`stream: true`) through the relay — **succeeded**, chunks arrived
+       incrementally over ~50ms with measurable inter-chunk gaps (not buffered). Caddy's
+       default streaming behavior passes through chunked responses transparently; no
+       `flush_interval` config change needed.
+
+    Alternatives considered and rejected: split-provider (neuralwatt on devcontainer,
+    Anthropic/OpenAI in sandboxes) — works but abandons neuralwatt's pricing for sandbox
+    agents, which is the whole point; Cloudflare Workers relay (`*.workers.dev` is
     allowlisted) — lighter weight but Railway is already in use and known; BYOC — overkill;
     asking neuralwatt to allowlist Daytona egress IPs — not needed, the block is on Daytona's
     side. See the provisioning recipe under Worker sandbox design and

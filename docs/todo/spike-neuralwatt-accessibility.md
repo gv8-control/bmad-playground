@@ -165,7 +165,18 @@ All scripts create and destroy their own sandboxes. Total sandbox time across al
 
 ## Recommendation for the graph pipeline plan
 
-Update resolved question 17 (revised) to reflect the correct root cause and resolution path. The practical recommendation remains the same — use a Tier 3+ account or a split-provider setup — but the reasoning changes from "Cloudflare bot protection" to "Daytona Tier 1 network allowlist." This matters because:
+**Resolved (2026-07-22): a Caddy reverse proxy on Railway is the chosen resolution.**
+`*.railway.app` is on the Essential Services allowlist, so sandbox agents can reach the
+relay. The relay forwards requests to `api.neuralwatt.com`, passing through the
+`Authorization` header. The relay domain is
+`neuralwatt-relay-production.up.railway.app`; the Docker image is
+`ghcr.io/marius321967/neuralwatt-relay:latest` (public). Spike-verified from a Tier 1
+sandbox: `/v1/models` returns 200, chat completions work, SSE streaming arrives
+incrementally (not buffered). See resolved question 17 in `graph-pipeline.md` for the full
+decision and spike results.
+
+The reasoning changes from "Cloudflare bot protection" to "Daytona Tier 1 network
+allowlist." This matters because:
 
 - It means the block is **fully under our control** (upgrade the account), not dependent on a third party (Cloudflare/neuralwatt).
 - It means **no allowlist request to neuralwatt is needed** — the block is not on their side.
