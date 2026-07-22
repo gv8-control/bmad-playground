@@ -303,7 +303,7 @@ async function main() {
       // CRITICAL: </dev/null prevents opencode from hanging on stdin (spike F1).
       // --session resumes the existing opencode session; the positional arg is
       // the new prompt appended to the conversation.
-      const cmd = `cd ${cwd} && opencode run --model ${sb.model} --session ${sessionId} "${RESUME_PROMPT}" </dev/null 2>&1`;
+      const cmd = `cd ${cwd} && opencode run --format json --model ${sb.model} --session ${sessionId} "${RESUME_PROMPT}" </dev/null 2>&1`;
       log(step, `Executing (runAsync): ${cmd}`);
 
       const t0 = Date.now();

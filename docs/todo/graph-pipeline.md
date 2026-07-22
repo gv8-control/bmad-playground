@@ -87,7 +87,7 @@ architecture.)
 |---|---|
 | `Develop Epic` (n8n) | Dissolved — the epic loop becomes the graph plus dispatcher claiming; its reflect/learn steps are out of scope (see below) |
 | `Develop Story (Playbook)` (n8n) + `playbook.json` | Dissolved — a story's chain is composed per story by the planning agent; each node spec carries its own skill/agent/prompt, so there is no playbook interpreter and no playbook file. The step sequence itself survives only as content for the advisory chain-composition guidelines (see Graph management rules) |
-| `BMAD Session (OpenCode)` (n8n) | Dissolved — its behaviors (bounded runs, stream-truncation auto-continue, outcome classification, question form + ntfy resume) are reimplemented as pass logic plus one small question-form workflow; the workflow itself is not ported. Note: gen-2's INCOMPLETE was a within-session recovery signal for the LLM provider dropping a response mid-stream — the session was still alive and `opencode run --session <id>` resumed it. Gen-3 keeps it as exactly that (see Supervision), not as a node outcome |
+| `BMAD Session (OpenCode)` (n8n) | Dissolved — its behaviors (bounded runs, stream-truncation auto-continue, outcome classification, question form + ntfy resume) are reimplemented as pass logic plus one small question-form workflow; the workflow itself is not ported. Note: gen-2's INCOMPLETE was a within-session recovery signal for the LLM provider dropping a response mid-stream — the session was still alive and `opencode run --session <id>` resumed it (gen-2 did not use `--format json`). Gen-3 keeps the same within-session recovery, with `opencode run --format json --session <id>` resuming the session (see Supervision), not as a node outcome |
 | `Parse OpenCode Response`, `BMAD Outcome` (n8n sub-workflows) | Logic ported — the deterministic rules and the LLM classification prompt move into the dispatcher's classification module; the sub-workflows stay with gen-2 |
 | Reflect step, `apply-amendments.mjs`, `ledger.jsonl`, trends | Not inherited — self-improvement is out of scope for gen-3 (rationale below) |
 | `runner-errors.jsonl` | Not inherited — machinery failures are `runner_error` events in the gen-3 journal |
@@ -293,7 +293,7 @@ Each invocation:
    Exited → pull
    exit code and logs, classify, act (see Supervision below). A stream-truncation signal
    (session still alive, response cut mid-stream) is handled here too: issue an async
-   `opencode run --session <id>` continue, extend the deadline, do not journal an outcome. An
+   `opencode run --format json --session <id>` continue, extend the deadline, do not journal an outcome. An
    in-flight planning run or merge cycle is polled the same way, via its lock instead of the
    Daytona API (see Planning runs and Merge cycle).
 5. **Re-evaluate** — which nodes are now ready? (Unmarked chain predecessor pushed, or the
@@ -329,37 +329,50 @@ claims everything claimable — there is just no resident process between passes
 What gen-2's `BMAD Session (OpenCode)` did as a long-lived workflow, gen-3 does as the poll
 step of every pass. The behaviors carry over; the workflow does not.
 
-- **Outcome classification** — deterministic rules first (empty output → UNKNOWN, exit
-  code ≠ 0 → `failed`), LLM fallback only for the COMPLETE/QUESTION/`failed` call. The
-  rules and prompt are ported from gen-2's `Parse OpenCode Response` + `BMAD Outcome` into a
-  small JS module; a classification call adds a few seconds to a pass, which stays within the
-  seconds-long budget. Every classification journals its evidence with the outcome event: the
-  deterministic rule that fired, or — for the LLM fallback — the verdict, a one-line rationale
-  from the model, and the judged stdout excerpt (tail-truncated to a few KB). The worst
-  classification failure — a QUESTION read as COMPLETE, silently merging half-done work — is
-  auditable only if the classifier's input and reasoning are on record; gen-2 got this for
-  free from n8n execution history, gen-3 journals it deliberately. An install-step failure (non-zero exit from the package-manager install
-  before the node's command ran) is a distinct signal: it parks the node with QUESTION carrying
-  the install output, not a generic `runner_error` to retry — the same install against the same
-  missing system dep would fail identically, so retry burns attempts and quota for nothing.
-  The human either updates the snapshot's build config (add the system package) or removes the
-  dep, then answers the park; the resumed session re-runs the install and proceeds. This keeps
-  the snapshot's build config a human-authored artifact and makes the repo outgrowing it a
-  surfaced decision rather than a silent retry loop. Note what is *not* in this list: INCOMPLETE
+- **Outcome classification** — deterministic rules first (no `step_finish` event and no
+  `text` events → UNKNOWN, exit code ≠ 0 with a completed last assistant message → `failed`,
+  stream-truncation signal → INCOMPLETE recovery — see Stream-truncation recovery), LLM fallback
+  only for the COMPLETE/QUESTION/`failed` call. The rules and prompt are ported from gen-2's
+  `Parse OpenCode Response` + `BMAD Outcome` into a small JS module; a classification call adds
+  a few seconds to a pass, which stays within the seconds-long budget. The classifier reads the
+  JSON event stream (`--format json` output) — `step_finish` with `reason: "stop"` is the clean
+  completion signal, `text` events carry the agent's output, `error` events carry provider
+  errors. Every classification journals its evidence with the outcome event: the deterministic
+  rule that fired, or — for the LLM fallback — the verdict, a one-line rationale from the model,
+  and the judged JSON event excerpt (tail-truncated to a few KB). The worst classification
+  failure — a QUESTION read as COMPLETE, silently merging half-done work — is auditable only if
+  the classifier's input and reasoning are on record; gen-2 got this for free from n8n execution
+  history, gen-3 journals it deliberately. An install-step failure (non-zero exit from the
+  package-manager install before the node's command ran) is a distinct signal: it parks the node
+  with QUESTION carrying the install output, not a generic `runner_error` to retry — the same
+  install against the same missing system dep would fail identically, so retry burns attempts and
+  quota for nothing. The human either updates the snapshot's build config (add the system package)
+  or removes the dep, then answers the park; the resumed session re-runs the install and
+  proceeds. This keeps the snapshot's build config a human-authored artifact and makes the repo
+  outgrowing it a surfaced decision rather than a silent retry loop. Note what is *not* in this
+  list: INCOMPLETE
   is not a node outcome (see Stream-truncation recovery below).
 - **Stream-truncation recovery** (not a node outcome). INCOMPLETE is a within-session recovery
   signal inherited from gen-2: the LLM provider drops the response mid-stream, the opencode
-  session is still alive, and `opencode run --session <id>` resumes it from where it left off.
+  session is still alive, and `opencode run --format json --session <id>` resumes it from where it left off.
   It is handled entirely inside the poll step — the pass issues the async continue, extends the
   deadline, and moves on. It does not touch the journal, does not appear in `graph.json`, and
   does not consume `maxAttemptsPerNode`: a provider stream-drop is not a node attempt. The
-  trigger is a specific signal — exit code 0 with a truncated last message, or a recognized
-  provider-mid-stream error — not a catch-all for anything odd. A non-zero exit is a real
-  failure (`failed`), not INCOMPLETE; a session past its deadline is handled by the timeout
-  policy, not relabeled INCOMPLETE. Gen-2's "long-running step survives the per-run timeout
+  trigger is a two-signal check (verified spike 2026-07-22, see
+  `docs/todo/spike-midstream-resume.md`): exit code is non-zero (signal kill: 143 for SIGTERM,
+  137 for SIGKILL) OR exit code 0 without a `step_finish` event in the JSON output, AND the
+  last assistant message in `opencode export <sessionID>` has `time.completed` unset — not a
+  catch-all for anything odd. Independently of the exit code, the dispatcher also scans the JSON
+  event stream for `type=error` events: these are provider errors (API failures, connection
+  drops, auth errors) that opencode emits as structured signals, and they may appear with either
+  exit code 0 or non-zero. An error event that left the session mid-stream warrants INCOMPLETE
+  recovery (resume the session) rather than treating the outcome as `failed` — consistent with
+  the outcome-classification note that `error` events carry provider errors. A non-zero exit with
+  a completed last assistant message is a real failure (`failed`), not INCOMPLETE; a session past
+  its deadline is handled by the timeout policy, not relabeled INCOMPLETE. Gen-2's "long-running step survives the per-run timeout
    through repeated timeout → INCOMPLETE → continue iterations" is *not* carried over as-is: that
-  pattern conflated a provider bug with a timeout policy. Gen-3 decides timeout behavior
-  explicitly (see Timeout policy below) rather than smuggling it through the truncation path.
+   pattern conflated a provider bug with a timeout policy. Gen-3 decides timeout behavior
+   explicitly (see Timeout policy below) rather than smuggling it through the truncation path.
 - **Timeout policy** (open, decided separately from truncation). A session past its deadline is
   terminated by the pass, journaled as a `runner_error`, and handled per retry policy. Whether a
   long-running step should *survive* its per-node timeout by auto-continuing — the gen-2
@@ -394,7 +407,7 @@ step of every pass. The behaviors carry over; the workflow does not.
   command logs from the sandbox into the per-run
   directory on the devcontainer, before the sandbox is destroyed (single-use — see Sandbox
   lifecycle): destruction removes the sandbox copy, and the structured transcript (messages,
-  tool calls) is evidence the stdout excerpt cannot replace — this plan's own session-history
+  tool calls) is evidence the JSON event stream cannot replace — this plan's own session-history
   analysis was built from transcripts that existed locally. A stream-truncation continue pulls
   nothing (the session is still going); a parked
   node's transcript survives the sandbox stop and is pulled after resume, when that session exits.
@@ -402,9 +415,10 @@ step of every pass. The behaviors carry over; the workflow does not.
   mechanism (spike, 2026-07-22):** opencode v1.1.35 stores data as JSON files in
   `~/.local/share/opencode/storage/`. The transcript pull uses
   `opencode export [sessionID]` (produces JSON) or downloads the storage directory via the file
-  API. The pipeline doesn't need a database file — stdout from `opencode run` is sufficient
-  for the dispatcher to classify results. If structured session data is needed, `opencode export`
-  is the correct path. See `docs/todo/spike-opencode-sandbox.md` (finding F3).
+  API. The agent run emits `--format json` events to stdout, which the dispatcher parses for
+  outcome classification and stream-truncation detection; `opencode export` is the correct path
+  for structured session data (messages, tool calls) beyond what the event stream carries. See
+  `docs/todo/spike-opencode-sandbox.md` (finding F3) and `docs/todo/spike-midstream-resume.md`.
 
 Because no supervisor process exists, the failure mode a long-lived supervisor would create —
 supervisor death on n8n restart — does not exist. A restart costs nothing but detection
@@ -475,7 +489,7 @@ isolation — a sandbox would add provisioning cost and buy nothing.
 - **Supervised like a sandbox session.** Same classification (COMPLETE / QUESTION / `failed`),
   same deadline enforcement (terminate, journal `runner_error`, retry policy), same
   stream-truncation recovery (the planning run is a local opencode session; a provider
-  mid-stream drop resumes via `opencode run --session <id>`, handled in-pass, not journaled
+  mid-stream drop resumes via `opencode run --format json --session <id>`, handled in-pass, not journaled
   as an outcome). QUESTION parks and rides the standard form path — planning is the step
   most likely to need a human answer.
 - **Process-vanished path.** Unlike sandbox sessions, a local planning run dies when n8n
@@ -643,7 +657,7 @@ Two consequences of n8n being local, stated so nobody designs against the wrong 
 | Workspace provisioning | Dispatcher pass (JS) | SDK calls + filesystem ops. |
 | State writing (journal, graph.json) | Dispatcher pass (JS) | At most one writer at a time — the pass holding the lock. |
 | Reconciliation | Dispatcher pass (JS) | Every pass: cross-check journal vs sandboxes vs git; collect, destroy, continue. |
-| In-sandbox command (opencode run + branch push) | Command template (JS) | Generated by the dispatcher, executed via the Daytona session API; ends with the branch push. |
+| In-sandbox command (opencode run with `--format json` + branch push) | Command template (JS) | Generated by the dispatcher, executed via the Daytona session API; ends with the branch push. |
 
 Single-writer restated: not "one resident process is the writer" but "at most one pass holds
 the lock at a time." n8n's small workflows never touch canonical state — they write only inbox
@@ -673,7 +687,7 @@ Dispatcher pass (same devcontainer, seconds long, one at a time under flock)
   2. Fold inbox → journal.jsonl (commit point) → graph.json (derived)
   3. Poll in-flight sessions + planning run → classify exits → act (continue / park / collect)
   4. Re-evaluate ready nodes
-     5. Claim depth-first (bounded by fairnessBudget) → start session commands (runAsync, with `</dev/null` appended); trigger planning host if ready-node frontier low
+     5. Claim depth-first (bounded by fairnessBudget) → start session commands (runAsync, with `--format json` and `</dev/null` appended); trigger planning host if ready-node frontier low
   6. Release lock, exit
        │  Daytona API: create/stop,         │  journal launch → trigger n8n planning host,
        │  session exec, log pull                │  which runs the wrapper under planning.lock
@@ -705,7 +719,7 @@ When an agent finishes:
    `opencode session list --format json` after the initial `opencode run` and records the ID
    for the journal). The human's answer is written to the inbox
    and the dispatcher invoked; the next pass starts the sandbox and issues
-   `opencode run --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
+   `opencode run --format json --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
    resume. Parking costs nothing while the question waits — disk and opencode storage survive a
    Daytona stop (verified, spike 2026-07-22: stop ~2.3s, start ~0.8s, storage directory
    preserved identically).
@@ -722,7 +736,7 @@ Rough estimate, ~1070 lines of JS plus three small n8n workflows:
 | Classification (deterministic rules + LLM fallback, evidence journaled with the outcome) | ~90 | Rules and prompt ported from `Parse OpenCode Response` / `BMAD Outcome`; no n8n dependency |
 | Pass frame (flock, inbox fold, reconcile, pause gate, per-pass log + `last-pass.json` heartbeat) | ~170 | New; helper patterns copied from gen-2 scripts, no imports |
 | Planning run (launch wrapper, planning lock, delta validation + fold) | ~100 | New |
-| In-sandbox command template (install check, opencode run with `</dev/null`, exit capture, branch push) | ~60 | New |
+| In-sandbox command template (install check, opencode run with `--format json` and `</dev/null`, exit capture, branch push) | ~60 | New |
 | Merge wrapper (merge lock, drives the in-sandbox merge cycle: fetch, rebase, install, test, merge, push; test-log pull, conflict report) | ~100 | New |
 | Question-form workflow (form + ntfy + inbox write + invoke) | n8n, small | New — the Wait-form/ntfy pattern from gen-2, as a standalone workflow |
 | Planning-host workflow (run the launch wrapper, invoke dispatcher on exit) | n8n, small | New |
@@ -915,8 +929,8 @@ single-use keeps it free across sequential claims too.
   install failure (a dep change needing a system package the snapshot lacks, an unresolvable
   lockfile) is a distinct classification — see Supervision — not a generic runner error.
 - The pass starts the node's command inside the sandbox via the Daytona session API
-  (`createSession` + `executeSessionCommand({ runAsync: true })`) with
-  `--dir <sandbox-repo-path>` and opencode storage at a persistent path on the sandbox
+  (`createSession` + `executeSessionCommand({ runAsync: true })`) with `--format json`,
+  `--dir <sandbox-repo-path>`, and opencode storage at a persistent path on the sandbox
   disk (not tmpfs — a parked sandbox's storage must survive stop/start; see Park/resume).
   opencode v1.1.35 stores data as JSON files in `~/.local/share/opencode/storage/`
   (spike finding F3, 2026-07-22; stop/start persistence verified spike 2026-07-22). The pass
@@ -929,11 +943,18 @@ single-use keeps it free across sequential claims too.
   task, so the process never exits and `getSessionCommand` never returns an `exitCode`.
   With stdin closed, opencode exits cleanly after completing its task. Without this, every
   poll-for-completion loop times out.
+  **The command uses `--format json`** (decided 2026-07-22): the agent run emits
+  newline-delimited JSON events (`step_start`, `text`, `step_finish`, `tool_use`,
+  `reasoning`, `error`) to stdout, which the dispatcher parses for outcome classification
+  and stream-truncation detection. The default formatted output is human-readable text with
+  no structured signal — `--format json` gives the dispatcher a machine-readable event stream
+  and the `step_finish` event as a clean completion signal (see Supervision, Stream-truncation
+  recovery, and spike-midstream-resume.md).
   **The template captures the session ID after the initial run** (verified spike 2026-07-22):
   opencode auto-generates session IDs (format `ses_<hex>`) and `--session` is resume-only, so
   the template runs `opencode session list --format json` (newest first) after the initial
-  `opencode run` and writes the ID to a known path for the dispatcher to journal with the
-  claim. Without this, the park/resume path has no ID to pass to `--session`.
+  `opencode run --format json` and writes the ID to a known path for the dispatcher to journal
+  with the claim. Without this, the park/resume path has no ID to pass to `--session`.
 - The in-sandbox command ends with a branch push (`git push origin HEAD:pipeline/<runId>/<story>`
   — the chain branch) so the result is durable in git regardless of what is watching.
 - Deadlines are enforced pass-side: a pass finding a claim past its deadline terminates the
@@ -1002,7 +1023,7 @@ labeling and reaper discipline described under Sandbox lifecycle.
   eliminated across sequential ones, and no reset-discipline code (process kill, selective
   clean that spares `node_modules`) ever needs writing.
 - **Parked sandboxes are the exception.** A parked node's sandbox is stopped, not destroyed —
-  disk and opencode storage must survive for `opencode run --session <id>` to resume (see
+  disk and opencode storage must survive for `opencode run --format json --session <id>` to resume (see
   Park/resume) — and is destroyed like any other when the resumed session exits. Because the
   human-response window is unbounded, the platform's lifecycle timers are set explicitly at
   creation: auto-stop can stay short (the pass stops parked sandboxes itself),
@@ -1097,8 +1118,8 @@ Documented in full because it encodes a failure already paid for once:
 - Other agents are unaffected; nothing finished is discarded or re-run.
 - An answer resumes exactly one session: the human submits the form, n8n writes the answer to
   the inbox and invokes the dispatcher, and the next pass starts the sandbox and issues
-  `opencode run --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
-  resume. The session ID is the one captured at launch (opencode auto-generates IDs —
+   `opencode run --format json --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
+   resume. The session ID is the one captured at launch (opencode auto-generates IDs —
   `--session` is resume-only, so the template captures it via `opencode session list --format
   json` after the initial run; see the per-claim recipe). Agents still never talk to n8n.
 - This path is also how human-involved stories run: a story whose instructions require human
@@ -1362,7 +1383,7 @@ sandbox design). See `docs/todo/spike-opencode-sandbox.md` for the full spike re
 
 ### 2. Sandbox stop/start disk persistence + opencode session resume — VERIFIED (spike, 2026-07-22)
 
-Park/resume depends on: stop sandbox → disk survives → start sandbox → `opencode run --session
+Park/resume depends on: stop sandbox → disk survives → start sandbox → `opencode run --format json --session
 <id>` resumes. The plan asserts disk and opencode storage survive a Daytona stop, but the
 restart-and-resume path is the critical chain and is not verified. This crosses four
 components (pass, n8n form, Daytona, opencode) and is mandatory from the first rollout (see
@@ -1388,20 +1409,28 @@ run` and persist it in the journal's claim record, then pass it via `--session` 
 resumes. This is a one-command addition to the in-sandbox command template, not a design
 change.
 
-### 3. opencode mid-stream resume (INCOMPLETE)
+### 3. opencode mid-stream resume (INCOMPLETE) — VERIFIED (spike, 2026-07-22)
 
 INCOMPLETE is a within-session recovery signal: the LLM provider drops the response
-mid-stream, the opencode session is still alive, and `opencode run --session <id>` resumes it
-from where it left off. This assumes the session is resumable after a mid-stream drop and that
-the resume continues rather than restarts. The detection signal — "exit code 0 with a
-truncated last message, or a recognized provider-mid-stream error" — is a heuristic on log
-content, not a structured signal; what a truncated last message looks like in opencode's
-stdout is not defined here. **Spike:** start an opencode session, simulate a mid-stream drop
-(kill the process mid-response, or find a way to truncate), run `opencode run --session <id>`
-and verify it resumes. Inspect what the logs look like when a stream is truncated — this
-defines the detection rule the pass needs. If mid-stream resume does not work, INCOMPLETE
-cannot be a within-session recovery path and the plan must decide whether truncation is just
-`failed`.
+mid-stream, the opencode session is still alive, and `opencode run --format json --session <id>`
+resumes it from where it left off. This assumes the session is resumable after a mid-stream drop
+and that the resume continues rather than restarts.
+
+**Verified by the midstream-resume spike (2026-07-22):** the INCOMPLETE recovery path is
+viable. `opencode run --format json --session <id>` after a mid-stream kill resumes the session
+with full conversation context — the resumed response correctly recalls information from
+pre-kill turns. The session storage records an incomplete assistant message
+(`time.completed = null`) marking the interruption point.
+
+**Detection rule (refined by the spike):** the plan's original heuristic ("exit code 0 with a
+truncated last message, or a recognized provider-mid-stream error") does not match observed
+behavior — a SIGTERM produces exit code 143, not 0. The refined rule is a two-signal check:
+exit code is non-zero (signal kill: 143 for SIGTERM, 137 for SIGKILL) OR exit code 0 without a
+`step_finish` event in the `--format json` output, AND the last assistant message in
+`opencode export <sessionID>` has `time.completed` unset. The `--format json` event stream
+gives the dispatcher a structured signal (`step_finish` present/absent, `error` events) rather
+than a heuristic on log content. See `docs/todo/spike-midstream-resume.md` for the full spike
+report and findings.
 
 ### 4. Snapshot with baked node_modules + fresh clone
 
@@ -1513,12 +1542,15 @@ the ones that matter; these are noted so the seams are visible during implementa
   assumptions above. Each is individually testable; the combination (stop a sandbox with a live
   opencode session, wait hours, restart, resume) is the real test and is what the spike covers.
   **Verified (spike, 2026-07-22):** the full chain works — stop preserves disk, start restores
-  it, and `opencode run --session <id>` resumes with prior context intact. See assumption #2
+  it, and `opencode run --format json --session <id>` resumes with prior context intact. See assumption #2
   and `docs/todo/spike-stop-resume.md`.
-- **Stream-truncation detection as a signal.** "Truncated last message" is a heuristic on log
-  content, not a structured signal. If too loose, every clean exit gets a spurious continue;
-  if too tight, real truncations get misclassified as `failed` and consume an attempt. The
-  spike above defines the detection rule by inspecting what a truncated stream looks like.
+- **Stream-truncation detection as a signal.** The `--format json` event stream gives the
+  dispatcher a structured signal: `step_finish` present means clean completion, absent means
+  truncation; `error` events signal provider failures. The two-signal check (exit code +
+  `time.completed` on the last assistant message — see Stream-truncation recovery) replaces the
+  earlier log-content heuristic. If too loose, every clean exit gets a spurious continue; if too
+  tight, real truncations get misclassified as `failed` and consume an attempt. The spike
+  (`docs/todo/spike-midstream-resume.md`) defines the detection rule from observed behavior.
 - **Outcome classification inside the lock.** The LLM fallback classification runs inside the
   pass, under the lock. If N sessions exited since the last pass, the pass makes N
   classification calls, each a few seconds, all under the lock — no other pass can run during
@@ -1553,7 +1585,7 @@ the ones that matter; these are noted so the seams are visible during implementa
      a `runId`.
    - Verify Yarn 4 Berry works with adequate disk (the initial failure was almost certainly the
      3 GB default disk, not a platform incompatibility).
-3. Build the per-agent machinery: the in-sandbox command template (opencode run, exit capture,
+3. Build the per-agent machinery: the in-sandbox command template (opencode run with `--format json`, exit capture,
    terminal branch push), session start/poll/continue via the Daytona session API, the
    classification module (deterministic rules + LLM fallback, prompt ported from gen-2),
    deadline enforcement (terminate + journal + handle per retry policy; see Timeout policy), park/resume with a synthetic question

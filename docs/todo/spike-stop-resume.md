@@ -10,7 +10,7 @@
 
 Assumption #2 passes. A Daytona container sandbox's filesystem survives a
 `stop()` → `start()` cycle, and an opencode session started before the stop is
-resumable with full context after the restart via `opencode run --session <id>`.
+resumable with full context after the restart via `opencode run --format json --session <id>`.
 
 The spike established a secret word ("BANANA_42") in an opencode session, stopped
 the sandbox, waited 60 seconds, restarted the sandbox, and resumed the session —
@@ -22,14 +22,14 @@ in the graph pipeline plan is viable.
 The assumption from the plan:
 
 > Park/resume depends on: stop sandbox → disk survives → start sandbox →
-> `opencode run --session <id>` resumes. The plan asserts disk and opencode
+> `opencode run --format json --session <id>` resumes. The plan asserts disk and opencode
 > storage survive a Daytona stop, but the restart-and-resume path is the
 > critical chain and is not verified.
 
 The spike script (`spike-stop-resume.js`) runs an 11-step sequence:
 
 1. Create a container sandbox (default snapshot), install opencode.
-2. Run `opencode run` with a prompt establishing a memorable secret word.
+2. Run `opencode run --format json` with a prompt establishing a memorable secret word.
 3. Capture the auto-generated session ID via `opencode session list --format json`.
 4. Verify the opencode storage directory exists on disk (before stop).
 5. Stop the sandbox (`sandbox.stop()`).
@@ -37,7 +37,7 @@ The spike script (`spike-stop-resume.js`) runs an 11-step sequence:
 7. Wait 60 seconds (simulates a parked question waiting for a human answer).
 8. Start the sandbox (`sandbox.start()`).
 9. Verify the opencode storage directory still exists (after start).
-10. Run `opencode run --session <id>` asking it to recall the secret word.
+10. Run `opencode run --format json --session <id>` asking it to recall the secret word.
 11. Verify the session still appears in `opencode session list`.
 
 **All 11 steps passed, zero errors.** Total runtime: ~110 seconds.
@@ -145,8 +145,8 @@ command after the first run.
 |---|---|
 | `sandbox.stop()` (waits for stopped state) | 2.3s |
 | `sandbox.start()` (waits for started state) | 0.8s |
-| Initial `opencode run` (establishing context) | 15.3s |
-| Resume `opencode run --session <id>` (recalling context) | 18.5s |
+| Initial `opencode run --format json` (establishing context) | 15.3s |
+| Resume `opencode run --format json --session <id>` (recalling context) | 18.5s |
 
 Stop and start together add ~3 seconds to the park/resume cycle — negligible
 against skill runs measured in hours. The resume run is comparable in latency to
@@ -161,7 +161,7 @@ The async session API runs commands in a PTY; opencode detects the TTY and
 hangs waiting for interactive input after completing its task (spike F1 from
 `spike-opencode-sandbox.md`). The fix is appending `</dev/null`. This spike
 confirms the fix composes with `--session`: the resume command
-`opencode run --model opencode/big-pickle --session <id> "prompt" </dev/null`
+`opencode run --format json --model opencode/big-pickle --session <id> "prompt" </dev/null`
 exited cleanly with code 0 in ~18s.
 
 ## SDK API surface confirmed
@@ -260,7 +260,7 @@ another provider for production agent runs.
 Assumption #2 is verified. The park/resume design as described in the plan is
 viable:
 
-- **Stop sandbox → disk survives → start sandbox → `opencode run --session <id>`
+- **Stop sandbox → disk survives → start sandbox → `opencode run --format json --session <id>`
   resumes** — all four links in the chain work.
 - The opencode storage directory (`~/.local/share/opencode/storage/` in v1.1.35)
   persists across stop/start with identical contents.
@@ -270,7 +270,7 @@ viable:
 ### Workflow constraint to fold into the dispatcher
 
 The dispatcher must capture the auto-generated session ID after the first
-`opencode run` (via `opencode session list --format json`) and persist it in
+`opencode run --format json` (via `opencode session list --format json`) and persist it in
 the journal's claim record, because session IDs are not user-specifiable. This
 is a one-command capture, not a design change. See finding F2.
 
@@ -302,7 +302,7 @@ seconds. No sandboxes were left running.
 1. **Park/resume is viable as designed.** No design changes needed — the
    stop/start/resume chain works end-to-end.
 2. **Fold the session-ID capture into the dispatcher's claim recipe.** After the
-   initial `opencode run`, the dispatcher runs `opencode session list --format
+   initial `opencode run --format json`, the dispatcher runs `opencode session list --format
    json` and stores the ID in the journal. This is a one-command addition to
    the in-sandbox command template, not a new mechanism.
 3. **Set `autoStopInterval` to 0 (or a large value) on parked sandboxes.** The

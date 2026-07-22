@@ -27,7 +27,8 @@ All three assumptions pass, with two findings that affect the pipeline design.
 
 - `opencode-ai@latest` (v1.1.35) installs via `npm install -g` in ~8s.
 - `opencode run --model opencode/big-pickle "Print exactly: SPIKE_OK"` exits
-  with code 0 in ~10s.
+  with code 0 in ~10s. (Historical spike test command; production agent runs
+  use `--format json`.)
 - Output is captured on stdout as expected.
 
 ### 2. Session command logs are retrievable — PASS
@@ -98,9 +99,10 @@ not a SQLite database. The `opencode db` subcommand exists in newer versions
 but not in v1.1.35 (the version installed by `npm install -g opencode-ai@latest`
 in the sandbox).
 
-The pipeline doesn't need the database file — stdout from `opencode run` is
-sufficient for the dispatcher to classify results. If structured session
-data is needed later, `opencode export [sessionID]` produces JSON.
+The pipeline doesn't need the database file — the agent run uses
+`--format json`, so the dispatcher parses JSON events from stdout for
+classification; `opencode export [sessionID]` provides structured session
+data (messages, tool calls) beyond what the event stream carries.
 
 ## SDK API surface confirmed
 

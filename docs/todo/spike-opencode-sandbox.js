@@ -182,7 +182,7 @@ class OpencodeSandbox {
     // CRITICAL: </dev/null prevents opencode from hanging on stdin in the PTY.
     // Without this, the process never exits and getSessionCommand never returns
     // an exitCode. See spike report F1.
-    const cmd = `cd ${cwd} && opencode run --model ${this.model} "${prompt}" </dev/null 2>&1`;
+    const cmd = `cd ${cwd} && opencode run --format json --model ${this.model} "${prompt}" </dev/null 2>&1`;
 
     log(step, `Executing (runAsync): ${cmd}`);
     const t0 = Date.now();
@@ -251,7 +251,7 @@ class OpencodeSandbox {
     log(step, `Creating session ${sessionId}...`);
     await this.sb.process.createSession(sessionId);
 
-    const cmd = `cd ${cwd} && opencode run --model ${this.model} "${prompt}" </dev/null 2>&1`;
+    const cmd = `cd ${cwd} && opencode run --format json --model ${this.model} "${prompt}" </dev/null 2>&1`;
     log(step, `Executing (runAsync): ${cmd}`);
     const t0 = Date.now();
     const execResp = await this.sb.process.executeSessionCommand(
