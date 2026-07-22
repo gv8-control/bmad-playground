@@ -43,6 +43,7 @@ playwright-report/
 test-results/
 .auth/
 .playwright-mcp/
+.playwright-cli/
 
 # Claude Code
 .claude/worktrees
