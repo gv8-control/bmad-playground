@@ -3,15 +3,15 @@ import type { Request, Response } from 'express';
 import { ProxyController } from './proxy.controller';
 import { RelayAuthGuard } from './relay-auth.guard';
 
-// Builds a mock Express Request with the params/headers/method/body the
-// controller reads. `url` must include the query string when present.
-function mockReq(overrides: Partial<Request> & { params?: Record<string, string> } = {}): Request {
-  const params = overrides.params ?? {};
-  const url = overrides.url ?? `/proxy/${params.host ?? 'example.com'}/${params.path ?? ''}`;
+// Builds a mock Express Request. The controller parses host and path from
+// `req.url` (not from route params), so `url` must be set correctly.
+// `url` should be like `/proxy/httpbin.org/get?foo=bar`.
+function mockReq(overrides: Partial<Request> & { url?: string } = {}): Request {
+  const url = overrides.url ?? '/proxy/example.com/';
   return {
     method: 'GET',
     url,
-    params,
+    params: {},
     headers: {},
     body: undefined,
     on: jest.fn(),
@@ -144,7 +144,7 @@ describe('ProxyController', () => {
   // ── Allowlist rejection ──
 
   it('rejects allowlisted host (github.com) with DOMAIN_DIRECTLY_REACHABLE', async () => {
-    const req = mockReq({ params: { host: 'github.com', path: 'foo/bar' } });
+    const req = mockReq({ url: '/proxy/github.com/foo/bar' });
     const res = mockRes();
     await controller.proxy(req, res);
     expect(res.statusCode).toBe(400);
@@ -152,7 +152,7 @@ describe('ProxyController', () => {
   });
 
   it('rejects allowlisted host (registry.npmjs.org) with DOMAIN_DIRECTLY_REACHABLE', async () => {
-    const req = mockReq({ params: { host: 'registry.npmjs.org', path: 'lodash' } });
+    const req = mockReq({ url: '/proxy/registry.npmjs.org/lodash' });
     const res = mockRes();
     await controller.proxy(req, res);
     expect(res.statusCode).toBe(400);
@@ -164,7 +164,7 @@ describe('ProxyController', () => {
   it.each(['localhost', '127.0.0.1', '10.0.0.1', '192.168.1.1', '169.254.1.1', 'foo.local', 'bar.internal'])(
     'rejects private/local host %s with 400',
     async (host) => {
-      const req = mockReq({ params: { host, path: 'x' } });
+      const req = mockReq({ url: `/proxy/${host}/x` });
       const res = mockRes();
       await controller.proxy(req, res);
       expect(res.statusCode).toBe(400);
@@ -180,7 +180,6 @@ describe('ProxyController', () => {
 
     const req = mockReq({
       method: 'POST',
-      params: { host: 'api.example.com', path: 'v1/data' },
       url: '/proxy/api.example.com/v1/data?foo=bar',
       headers: { 'content-type': 'application/json', 'x-relay-token': 'test-secret-token' },
       body: { hello: 'world' },
@@ -205,7 +204,7 @@ describe('ProxyController', () => {
   it('returns 502 when fetch fails', async () => {
     globalThis.fetch = jest.fn().mockRejectedValue(new Error('network down')) as never;
 
-    const req = mockReq({ params: { host: 'api.example.com', path: 'fail' } });
+    const req = mockReq({ url: '/proxy/api.example.com/fail' });
     const res = mockRes();
 
     await controller.proxy(req, res);

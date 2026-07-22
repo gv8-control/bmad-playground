@@ -43,15 +43,38 @@ function isPrivateHost(host: string): boolean {
 export class ProxyController {
   private readonly logger = new Logger(ProxyController.name);
 
-  // Two routes: `/proxy/:host` (no path) and `/proxy/:host/*path` (with path).
-  // Express route params: `*path` captures the rest of the URL as a single
-  // string. When no path is given, `path` is undefined — the controller
-  // defaults it to empty string.
-  @All(':host')
-  @All(':host/*path')
+  // Single wildcard route: `/proxy/<host>/<anything>`. We parse the host and
+  // path manually from req.url because Express `:host/*path` doesn't match
+  // `/proxy/<host>` (no trailing path). A single `*all` captures everything
+  // after `/proxy/`, and we split on the first `/` to separate host from path.
+  @All('*all')
   async proxy(@Req() req: Request, @Res() res: Response): Promise<void> {
-    const host = (req.params as Record<string, string>).host;
-    const path = (req.params as Record<string, string | undefined>).path ?? '';
+    // req.url is the full path after the global prefix (none here), e.g.
+    // `/proxy/httpbin.org/get?foo=bar`. Strip the `/proxy/` prefix.
+    const url = req.url;
+    const afterPrefix = url.startsWith('/proxy/') ? url.slice('/proxy/'.length) : url;
+
+    // Split on the first `/` to separate the host from the rest of the path.
+    const slashIndex = afterPrefix.indexOf('/');
+    let host: string;
+    let rest: string;
+    if (slashIndex >= 0) {
+      host = afterPrefix.slice(0, slashIndex);
+      rest = afterPrefix.slice(slashIndex + 1);
+    } else {
+      // No path — just the host, e.g. `/proxy/httpbin.org`
+      host = afterPrefix;
+      rest = '';
+    }
+
+    // Strip query string from host extraction (shouldn't happen since `?`
+    // comes after the path, but be safe).
+    const queryInHost = host.indexOf('?');
+    if (queryInHost >= 0) {
+      host = host.slice(0, queryInHost);
+    }
+
+    const path = rest;
 
     // 1. Essential Services allowlist — sandbox reaches these directly.
     if (isEssentialService(host)) {
@@ -71,9 +94,12 @@ export class ProxyController {
       return;
     }
 
-    const queryIndex = req.url.indexOf('?');
-    const queryString = queryIndex >= 0 ? req.url.slice(queryIndex) : '';
-    const targetUrl = `https://${host}/${path}${queryString}`;
+    // `rest` may contain a query string (e.g. `get?foo=bar`). Extract it so
+    // we don't double-append it. `path` is the path-only portion.
+    const queryInPath = path.indexOf('?');
+    const cleanPath = queryInPath >= 0 ? path.slice(0, queryInPath) : path;
+    const queryString = queryInPath >= 0 ? path.slice(queryInPath) : '';
+    const targetUrl = `https://${host}/${cleanPath}${queryString}`;
 
     // 3. Forward headers — strip hop-by-hop, set Host to the target.
     const forwardHeaders: Record<string, string> = {};
@@ -111,7 +137,7 @@ export class ProxyController {
       });
     } catch {
       if (!clientDisconnected.value) {
-        this.logger.error(`Proxy fetch failed: ${req.method} ${host}/${path}`);
+        this.logger.error(`Proxy fetch failed: ${req.method} ${host}/${cleanPath}`);
         res
           .status(502)
           .json({ code: 'PROXY_FETCH_FAILED', message: 'Failed to reach upstream' });
@@ -136,7 +162,7 @@ export class ProxyController {
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('X-Content-Type-Options', 'nosniff');
 
-    this.logger.debug(`${req.method} ${host}/${path} → ${upstream.status}`);
+    this.logger.debug(`${req.method} ${host}/${cleanPath} → ${upstream.status}`);
 
     const body = upstream.body;
     if (!body) {
@@ -182,7 +208,7 @@ export class ProxyController {
     } catch (err) {
       if (!clientDisconnected.value) {
         this.logger.warn(
-          `Proxy stream error: ${req.method} ${host}/${path} — ${err instanceof Error ? err.message : String(err)}`,
+          `Proxy stream error: ${req.method} ${host}/${cleanPath} — ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     } finally {
