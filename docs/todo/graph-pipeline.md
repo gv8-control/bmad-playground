@@ -1,166 +1,21 @@
 # Plan: dependency-graph pipeline with parallel opencode agents
 
-Status: draft vision, not started. Written 2026-07-17, updated same day to make Daytona sandboxes
-the primary worker tier (was: local worktrees as first tier, sandboxes as graduation), and again
-to pin down hosting: n8n runs on the devcontainer under pm2 (not Railway), and "woken by n8n"
-means locally invoked (see the n8n / dispatcher split). Updated 2026-07-19 to a supervision
-design based on long-lived n8n observer executions (the `BMAD Session (OpenCode)` loop with its
-agent command swapped for a sandbox wrapper). Updated 2026-07-20 after review, superseding the
-observer design with three linked decisions:
-
-1. **The claim unit is a node** — one skill run, not a story. This resolves the open claim-unit
-   question, dissolves the `Develop Epic` and `Develop Story (Playbook)` workflows entirely (a
-   story is now a chain of graph nodes), and makes review steps individual nodes with explicit
-   ordering edges.
-2. **Supervision lives in the reconcile pass**, not in n8n observer executions. The observer
-   design imported n8n's one structural weakness — an execution blocked in Execute Command dies
-   on any restart — into the core of the architecture, then spent attach modes, spool files, and
-   reconcile repair compensating. Since the repair path had to be fully robust anyway, the
-   primary was redundant: everything runs on the level-triggered pass.
-3. **Gen-3 state is defined fresh.** The gen-2 self-improvement substrate — `ledger.jsonl`,
-   `playbook.json`, `runner-errors.jsonl`, the trends machinery and its policy vocabulary — is
-   not carried over. Self-improvement is out of scope for this generation; a future reflector is
-   a separate consumer that reads gen-3's own artifacts.
-
-Same-day addition (2026-07-20): a human-initiated pause/resume control — active nodes run to
-completion, no new nodes are claimed. See Pause/resume under Dispatcher.
-
-Second same-day addition (2026-07-20): chain composition is a per-story judgment call by the
-planning agent, guided by advisory chain-composition guidelines — the gen-2 step sequence
-becomes a suggestion, not a template. See Graph management rules and open question 1.
-
-Third same-day addition (2026-07-20, hosting refined same day): graph expansion is not a
-graph node. It runs on the devcontainer as an async planning run — a pass decides when,
-journals the launch, and supervises; a small n8n workflow hosts the run and invokes the
-dispatcher when it exits; the planning lock serializes; the output is a graph delta folded by
-the next pass. Every node in the graph is authored by the planning agent; only the trigger is
-machinery. See Planning runs under Dispatcher.
-
-Updated 2026-07-21: chains merge at planner-designated merge points — a node spec may carry a
-`mergeTo` target — so a cross-story dependency can gate on an early artifact (a story doc with
-schemas and contracts) instead of the whole story's merge. See Graph management rules and
-resolved question 7.
-
-Same-day addition (2026-07-21), from the planning-context discussion: (1) the planning agent's
-context contract is pinned — a small per-run prompt (trigger, human instruction, snapshot
-pointers, output contract) plus a defined set of files the planner reads, with story docs and
-code read at `origin/main`, never the devcontainer working tree (see Planning-run context
-under Dispatcher and resolved question 8; open question 1 narrows to authoring the
-chain-composition guidelines document); (2) all nodes are assumed to modify code, so a chain
-is a total order — the only branching in the graph is cross-story, at merge points — and the
-within-story review-concurrency benefit is dropped; (3) node-spec field names are camelCase
-(`dependsOn`, `mergeTo`); (4) `graph.json` is regenerated with per-node metadata digests so
-routine readers never parse the journal, while the journal stays the commit point (see State).
-
-Second same-day addition (2026-07-21): merge-conflict resolution is one path — the merge queue
-only detects, reports to the inbox, and blocks the chain; a conflict-triggered planning run
-authors a resolution node (or a rework replan), run in a sandbox like any other node. No
-deterministic auto-fix tier in the merge queue, no resolution on the devcontainer. See
-Merge-conflict resolution under Worker sandbox design and resolved question 9.
-
-Third same-day addition (2026-07-21), from the no-op-node discussion: chains are composed from
-a snapshot of knowledge that reality can overtake, so a planned node can be revealed
-unnecessary while its chain is in flight. Four refinements: chains are composed lazily — never
-past an information-producing node whose artifact determines the rest (see Graph management
-rules); a folded question answer is a third deterministic planning-run trigger (see Planning
-runs); collection journals commits-added and a diffstat so empty-diff completions are
-queryable (see State); and the merge queue short-circuits an empty merge. A claimed no-op
-still executes — accepted, see Honest costs.
-
-Updated 2026-07-22, from the epic-scope discussion: the pipeline's scope is epic development,
-not only story development. The planner selects epics in sprint-plan order and composes a
-post-epic finalization chain — audit and cleanup skill runs gated on all the epic's story
-merges by ordinary cross-story edges. Both transitions (into finalization, into the next epic)
-are automatic and ntfy-notified; pause remains the brake. Next-epic work may overlap
-finalization — the guidelines advise the planner on audit staleness, machinery imposes no
-between-epics quiet point. See Epic lifecycle and open question 1.
-
-Same-day addition (2026-07-22): the devcontainer never sleeps — availability is not a concern
-this design accounts for. Sandbox lifecycle (revised later the same day, reversing this
-entry's original never-destroy decision): sandboxes are single-use — used for one claim
-attempt, destroyed after transcript pull when the session exits. Reuse hygiene (stray
-processes, untracked files, database state, disk growth across claims) is designed out
-rather than managed. Parked sandboxes are the exception: stopped and retained until resume.
-See Sandbox lifecycle and Honest costs.
-
-Updated 2026-07-22, from the merge-queue test-execution discussion: the merge queue's test
-step runs on a sandbox acquired per merge cycle — not on the devcontainer, which is a
-performance bottleneck under mid-chain merge points. The n8n workflow does git ops locally
-and drives the test step on the sandbox via the Daytona session API. Test scope is all unit
-tests per merge (no `nx affected` — superseded by the test-scope revision below). See Git is the
-convergence point, the merge queue row in the n8n / dispatcher split, and resolved questions 12,
-13, and 16. Fully superseded: the git-ops half by the fifth update below, the test-scope half by
-the sixth update (see resolved question 13, revised).
-
-Same-day addition (2026-07-22): the in-sandbox command runs the repo's package-manager install
-with a frozen lockfile after checkout — a no-op when deps haven't changed, real work when they
-have. This collapses open question 1 (snapshot freshness): the snapshot is a cold-start
-optimization, not a freshness guarantee, and the install step is the correctness floor every
-claim validates. See the per-claim recipe, Supervision, and resolved question 15.
-
-Third update (2026-07-22), from the transcript discussion: session transcripts are pulled to
-the devcontainer. When a session exits with an outcome (every attempt, not only the last), the
-collecting pass downloads the session transcript (the per-run `OPENCODE_DB` file) and the full
-command logs from the sandbox into the per-run directory before the sandbox is destroyed —
-destruction removes the sandbox copy, so the devcontainer copy is the durable record. See
-Supervision, State, and resolved question 14.
-
-Fourth update (2026-07-22), from the observability review: three additions. (1) The machinery
-observes itself — each pass writes a per-pass log file and, as its last act, a
-`last-pass.json` heartbeat; the schedule tick checks the pass's exit code and the heartbeat's
-age after invoking, so a failed or stalled dispatcher is notified instead of silent (a pass
-cannot journal its own death). (2) The merge queue's test output is pulled into the
-per-run directory and its path journaled with the merge event — n8n execution history prunes,
-so the queue's evidence must not live only there. (3) Every outcome classification journals
-its evidence: the deterministic rule that fired, or the LLM verdict, rationale, and judged
-excerpt. See Supervision, the n8n / dispatcher split, and State.
-
-Fifth update (2026-07-22), from the merge-queue hosting review: the merge queue's git ops move
-onto the sandbox too — the whole merge cycle (fetch, rebase, install, test, merge, push) runs
-on the sandbox acquired for that cycle, and the devcontainer, whose checkout is the human's
-working copy, never hosts pipeline git operations. What stays local is a merge wrapper that
-serializes cycles under `merge.lock` (mirroring the planning-host pattern) and writes conflict
-reports to the inbox. Merge triggering becomes level-triggered like everything else: a
-completed merge-point node whose merge neither landed nor reported re-triggers on any pass, so
-a cycle killed mid-run (n8n restart) is re-run, never lost — nothing durable changes before
-the cycle's final push. Supersedes the git-ops-local half of the merge-queue test-execution
-decision above. See Merge cycle under Worker sandbox design and resolved question 16.
-
-Seventh update (2026-07-22), from the blind-spot review: three additions. (1) Depth-first
-traversal is bounded — a fairness counter caps consecutive chain-following claims at
-`fairnessBudget` (default: `maxConcurrentSandboxes`), so an independent ready node is
-guaranteed to be claimed within that many completions. See Graph management rules and
-resolved question 18. (2) The opencode version is pinned in the dispatcher's policy config
-(`opencodeVersion`), read by both the snapshot's build config and the devcontainer's install
-— one source of truth, no Daytona harness-selection API needed. See the provisioning recipe
-under Worker sandbox design and resolved question 19. (3) The merge queue runs all unit tests
-on every merge, dropping `nx affected` and the periodic full-run cadence — `nx affected` is
-unreliable during structural changes, and all-unit-tests-per-merge is simpler and safer.
-Supersedes the test-scope half of resolved question 13. See resolved question 13 (revised).
-
-Sixth update (2026-07-22): no warm pool. Sandboxes are created on demand at claim time (and
-per merge cycle) and destroyed at collection; the only capacity control is the
-`maxConcurrentSandboxes` policy knob. Creation from a cached snapshot is near-instant, so
-pre-provisioning ahead of claims bought seconds against hour-long runs while costing pool
-top-up logic, idle-sandbox lifecycle handling, and pool accounting in every reconcile.
-Supersedes the pooled-provisioning half of the sandbox-lifecycle entry above (single-use
-stands). See Sandbox lifecycle, the per-claim recipe, and resolved question 11.
-
-Supersedes and replaces the discarded stage-group parallelization plan
-(`pipeline-parallelization-plan.md`, deleted 2026-07-17) — everything still relevant from that
-plan is folded in here. Read [docs/self-improving-pipeline.md](../self-improving-pipeline.md)
-for the current (gen-2) architecture; this plan describes gen-3, the next architecture
-generation, not a delta to the current loop.
+Status: draft vision, not started. This plan describes gen-3, the next architecture generation
+for the pipeline — not a delta to the current loop. Read
+[docs/self-improving-system-concept.md](../self-improving-system-concept.md) for the current
+(gen-2) architecture. It supersedes and replaces the discarded stage-group parallelization plan
+(`pipeline-parallelization-plan.md`, deleted 2026-07-17); everything still relevant from that
+plan is folded in here.
 
 ## Why this shape
 
 n8n executes the nodes of one workflow execution sequentially, even when branches are wired "in
 parallel" (verified in gen-1, recorded in the pipeline doc). But n8n runs *separate executions*
 concurrently without any special setup — useful for small independent workflows, and irrelevant
-for supervision once no long-lived supervisor exists. The discarded plan worked around the
-sequential-execution constraint by doing OS-level concurrency inside a single node; this plan
-removes the constraint instead: agents never converge on an n8n node at all, so there is
-nothing to join.
+for supervision once no long-lived supervisor exists. The discarded stage-group plan worked
+around the sequential-execution constraint by doing OS-level concurrency inside a single node;
+this plan removes the constraint instead: agents never converge on an n8n node at all, so there
+is nothing to join.
 
 The architecture inverts. Today n8n is the engine driving a sequential story loop and the
 pipeline files are the record. Here the state is the engine:
@@ -183,8 +38,8 @@ completions — the graph unfolds depth-first (descends into a node's dependents
 starting unrelated siblings), not in planned waves. Depth-first is bounded by a fairness
 counter so an independent ready node cannot starve (see Graph management rules). Passes are invoked by n8n on events
   (schedule tick, merge complete, question answered) — a local process call; n8n and the
-  dispatcher live on the same devcontainer, and overlapping invocations simply queue on the
-  lock and coalesce. Supervision is part of the pass itself: each pass polls every in-flight
+   dispatcher live on the same devcontainer, and overlapping invocations simply wait on the
+   lock and coalesce. Supervision is part of the pass itself: each pass polls every in-flight
   agent session, classifies any that exited, and acts — there is no per-worker supervisor
   process anywhere. Canonical pipeline state (journal, graph.json) has at most one writer at a
   time — the pass holding the lock; nothing else writes it. Each claim launches one opencode
@@ -200,32 +55,33 @@ counter so an independent ready node cannot starve (see Graph management rules).
 - **Git is the convergence point.** Every agent pushes a branch; a serial merge queue
   (rebase → test → merge) integrates one branch at a time. Integration is serialized, work is
   not — integration takes minutes, skill runs take hours. The whole merge cycle — fetch,
-  rebase, install, test, merge, push — runs on a sandbox created per cycle (resolved
-  questions 12 and 16), not on the devcontainer: the devcontainer already runs n8n, the
-  dispatcher, the human's dev servers, and the human's Postgres, and its checkout is the
-  human's working copy — pipeline git operations never touch it. The n8n workflow runs a merge
-  wrapper that drives the cycle on the sandbox via the Daytona session API — same
-  create-on-demand path as a node claim, held for minutes not hours — and the push to `origin/main` is the cycle's
-  commit point: everything before it is sandbox-local and disposable (see Merge cycle under
-  Worker sandbox design). A branch whose head is already an ancestor of main short-circuits at
-  the start of the cycle (added 2026-07-21): nothing to merge, no test run — the cycle just
-  deletes the branch — so an empty-diff completion or a conflict that evaporated while its
-  resolution was planned costs one git check instead of a full serialized test cycle.
+   rebase, install, test, merge, push — runs on a sandbox created per merge cycle (resolved
+   questions 12 and 16), not on the devcontainer: the devcontainer already runs n8n, the
+   dispatcher, the human's dev servers, and the human's Postgres, and its checkout is the
+   human's working copy — pipeline git operations never touch it. The n8n workflow runs a merge
+   wrapper that drives the merge cycle on the sandbox via the Daytona session API — same
+   create-on-demand path as a node claim, held for minutes not hours — and the push to `origin/main` is the merge cycle's
+   commit point: everything before it is sandbox-local and disposable (see Merge cycle under
+   Worker sandbox design). A branch whose head is already an ancestor of main short-circuits at
+   the start of the merge cycle: nothing to merge, no test run — the merge cycle just
+   deletes the branch — so an empty-diff completion or a conflict that evaporated while its
+   resolution was planned costs one git check instead of a full serialized merge cycle.
 - **n8n keeps only small workflows:** the schedule tick that invokes the dispatcher, the
   question form + ntfy flow, the merge queue, the planning-run host, error notification, and
-  sprint status reporting. Nothing per-worker, and nothing whose survival matters: the merge
-  queue and the planning host block on commands for minutes, but canonical state never depends
-  on an n8n execution surviving. n8n never writes canonical pipeline state — its
+  sprint status reporting. Nothing per-worker, and nothing whose survival matters: the
+  merge queue and the planning host block on commands for minutes, but canonical state never
+  depends on an n8n execution surviving. n8n never writes canonical pipeline state — its
   workflows write only inbox files (a question answer, a merge-conflict report, an external event) that a pass folds in.
-  The event-ingest webhook from the earlier design stays eliminated: every result is durable on
-  disk (or in git) before the dispatcher is invoked, and every invocation is a contentless
-  "wake up".
+  There is no event-ingest webhook: every result is durable on disk (or in git) before the
+  dispatcher is invoked, and every invocation is a contentless "wake up".
 
 ## What gen-3 keeps from gen-2, and what it discards
 
 The rule applied throughout: **behaviors and small workflows carry over; engines and state do
 not.** Gen-2's engines (the epic loop, the playbook interpreter, the session runner) dissolve
-into gen-3 structures, and gen-2's state files stay with gen-2.
+into gen-3 structures, and gen-2's state files stay with gen-2. (See
+[docs/self-improving-system-concept.md](../self-improving-system-concept.md) for the gen-2
+architecture.)
 
 | Gen-2 piece | Fate in gen-3 |
 |---|---|
@@ -270,8 +126,8 @@ journal.
   QUESTION → park → resume path.
 - **Chains share a branch and merge at merge points.** A story chain works on one branch
   (`pipeline/<runId>/<story>`). A node spec may carry `mergeTo: <branch>` — the only target for
-  now is `main` — marking a merge point: when that node completes, the pass triggers the merge
-  queue for the chain branch. Every chain's final node carries `mergeTo` (the guidelines
+  now is `main` — marking a merge point: when that node completes, the pass triggers the
+  merge queue for the chain branch. Every chain's final node carries `mergeTo` (the guidelines
   instruct the planner; the dispatcher's rule is just "merge when marked", no chain-end special
   case — a final node without `mergeTo` is a planning error rejected at fold time). A mid-chain
   merge point exists to unlock a dependent story early: e.g. a create-story node whose story
@@ -297,16 +153,16 @@ journal.
 - **Actively managed graph:** never expand more than ~2 stories' worth of unmerged chain ahead.
   The graph is expanded and replanned as work merges, not generated whole up front — by
   planning runs on the devcontainer, which are not graph nodes (see Planning runs under
-  Dispatcher). The same rule applies within a chain (added 2026-07-21): the planner never
+  Dispatcher). The same rule applies within a chain: the planner never
   composes past an information-producing node — one whose artifact determines what the rest
   of the chain should be; create-story is the type case — and extends the chain in a later
   run once the artifact is readable at `origin/main`. Composing a whole chain up front from
   the epic entry alone plans speculation, and depth-first claiming makes the mistake
-  irreversible: the pass that folds the artifact-producing node's completion claims the
-  pre-planned successor in the same pass, leaving no window for a replan to remove a node the
-  artifact just revealed as unnecessary. Lazy composition closes that gap with existing
-  machinery — no successor exists yet, so the frontier runs low and the standard expansion
-  trigger fires with the artifact now on main. A claimed node's spec is frozen; replanning
+   irreversible: the pass that folds the artifact-producing node's completion claims the
+   pre-planned successor in the same pass, leaving no window for a replan to remove a node the
+   artifact just revealed as unnecessary. Lazy composition closes that gap with existing
+   machinery — no successor exists yet, so the ready-node frontier runs low and the standard expansion
+   trigger fires with the artifact now on main. A claimed node's spec is frozen; replanning
   touches only unclaimed nodes.
 - **Depth-first traversal, bounded (decided 2026-07-22):** the dispatcher descends into a
   node's dependents before starting unrelated siblings — depth-first is the default because it
@@ -341,7 +197,7 @@ chain.
 
 - **Epic selection is the planner's, in sprint-plan order.** Machinery never tracks epics. The
   backlog (epics files and sprint plan) is already in the planner's context, and when an
-  epic's stories run out the frontier runs low — the existing expansion trigger fires and the
+   epic's stories run out the ready-node frontier runs low — the existing expansion trigger fires and the
   planner continues down the sprint plan. No new trigger, no new authority; a human override
   ("skip to epic 7") is a replan instruction through the inbox like any other.
 - **Finalization is an epic-scoped chain.** The chain vocabulary generalizes: a chain belongs
@@ -387,7 +243,7 @@ the design; watching running agents is the poll step of every pass. "Woken by n8
 *invoked*: n8n runs on the same devcontainer (under pm2, started by `.devcontainer/start.sh`)
 and launches a pass as a local process call (Execute Command, or HTTP to localhost). No network
 hop, no tunnel, no listener waiting on a socket. Multiple events in short succession launch
-multiple passes; they queue on the lock and coalesce.
+multiple passes; they wait on the lock and coalesce.
 
 Two rules make overlapping invocations safe:
 
@@ -448,12 +304,13 @@ Each invocation:
    provision a single-use sandbox (capacity permitting — the `maxConcurrentSandboxes` cap; see
    the per-claim recipe under Worker sandbox design), `git checkout` to the claim's base, start
    the node's command via the
-   Daytona session API with `runAsync` — the pass does not wait for it. If ready nodes are
+   Daytona session API with `runAsync` (appending `</dev/null` — see the per-claim recipe;
+   without stdin redirection opencode hangs on the PTY) — the pass does not wait for it. If ready nodes are
    running low (the plan-2-ahead policy) and no planning run is in flight, journal the launch
    and trigger the planning-host workflow (see
    Planning runs). Merge triggering is level-triggered here too: a completed merge-point node
    whose branch has neither merged nor a pending conflict report, with the merge lock
-   acquirable, (re)triggers the merge-queue workflow — a cycle killed mid-run is re-run by the
+   acquirable, (re)triggers the merge-queue workflow — a merge cycle killed mid-run is re-run by the
    next pass, not lost (see Merge cycle). Claiming and planning launches are skipped entirely
    while the pipeline is paused (see Pause/resume) — supervision, folding, and merge
    triggering (finishing claimed work) still run.
@@ -463,9 +320,9 @@ Each invocation:
    goes stale (see The machinery observes itself under Supervision). Agents still running
    unwatched, by design; the next pass picks them up.
 
-The recursion of the old design survives across passes: a completion is detected by a pass, the
-fold unblocks dependents, and the same pass claims and launches them. Workers stay busy because
-every pass claims everything claimable — there is just no resident process between passes.
+The recursion survives across passes: a completion is detected by a pass, the fold unblocks
+dependents, and the same pass claims and launches them. Workers stay busy because every pass
+claims everything claimable — there is just no resident process between passes.
 
 ### Supervision (in-pass)
 
@@ -500,7 +357,7 @@ step of every pass. The behaviors carry over; the workflow does not.
   provider-mid-stream error — not a catch-all for anything odd. A non-zero exit is a real
   failure (`failed`), not INCOMPLETE; a session past its deadline is handled by the timeout
   policy, not relabeled INCOMPLETE. Gen-2's "long-running step survives the per-run timeout
-  through repeated timeout → INCOMPLETE → continue cycles" is *not* carried over as-is: that
+   through repeated timeout → INCOMPLETE → continue iterations" is *not* carried over as-is: that
   pattern conflated a provider bug with a timeout policy. Gen-3 decides timeout behavior
   explicitly (see Timeout policy below) rather than smuggling it through the truncation path.
 - **Timeout policy** (open, decided separately from truncation). A session past its deadline is
@@ -533,17 +390,23 @@ step of every pass. The behaviors carry over; the workflow does not.
   completed result is durable in git no matter what was or wasn't watching when it finished.
 - **Transcript collection** — when a session exits with an outcome (COMPLETE or `failed` —
   every attempt, not only the last; a failed attempt's transcript is exactly the evidence a
-  retry investigation needs), the collecting pass downloads the session transcript — the
-  per-run `OPENCODE_DB` file — and the full command logs from the sandbox into the per-run
+  retry investigation needs), the collecting pass downloads the session transcript and the full
+  command logs from the sandbox into the per-run
   directory on the devcontainer, before the sandbox is destroyed (single-use — see Sandbox
   lifecycle): destruction removes the sandbox copy, and the structured transcript (messages,
   tool calls) is evidence the stdout excerpt cannot replace — this plan's own session-history
   analysis was built from transcripts that existed locally. A stream-truncation continue pulls
   nothing (the session is still going); a parked
   node's transcript survives the sandbox stop and is pulled after resume, when that session exits.
-  Planning runs need no pull — their per-run `OPENCODE_DB` and log file are already local.
+  Planning runs need no pull — their transcript and log file are already local. **Transcript
+  mechanism (spike, 2026-07-22):** opencode v1.1.35 stores data as JSON files in
+  `~/.local/share/opencode/storage/`. The transcript pull uses
+  `opencode export [sessionID]` (produces JSON) or downloads the storage directory via the file
+  API. The pipeline doesn't need a database file — stdout from `opencode run` is sufficient
+  for the dispatcher to classify results. If structured session data is needed, `opencode export`
+  is the correct path. See `docs/todo/spike-opencode-sandbox.md` (finding F3).
 
-Because no supervisor process exists, the failure mode the observer design revolved around —
+Because no supervisor process exists, the failure mode a long-lived supervisor would create —
 supervisor death on n8n restart — does not exist. A restart costs nothing but detection
 latency: the next pass polls the same sessions the last one would have. There is no attach
 mode, no execution-ID bookkeeping, no spool files.
@@ -584,20 +447,22 @@ isolation — a sandbox would add provisioning cost and buy nothing.
 - **Deterministic trigger, agent-authored content.** A pass triggers a planning run when ready
   nodes run low (the plan-2-ahead policy), when a chain blocks on a merge conflict with no
   response yet in the graph (conflict mode — see Merge-conflict resolution), or when it folds
-  a question answer (added 2026-07-21) — the event most likely to change scope ("skip that",
+  a question answer — the event most likely to change scope ("skip that",
   "we already have this"), invalidating unclaimed dependents the graph still carries. Answers
   are rare by policy, so firing on every one is cheap; the trigger needs no machinery
   judgment about whether the answer changed anything, and the worst case is an empty delta.
   Epic transitions add no fourth trigger: composing a finalization chain, or the next epic's
-  first chains, rides the frontier-low trigger (see Epic lifecycle).
+   first chains, rides the ready-node-frontier-low trigger (see Epic lifecycle).
   All gated by pause like node claiming. The trigger is machinery; which nodes and edges come
   out is the planning agent's judgment. A human "replan now" goes through the inbox like
   pause: folded by a pass, which journals and triggers the host workflow.
 - **Context is a pinned contract** — a small per-run prompt plus a defined set of files the
   planner reads; see Planning-run context below.
 - **Output is a graph delta in the inbox.** The wrapper mirrors the in-sandbox command
-  template: isolated `OPENCODE_DB` (per the concurrency findings — the planner shares the
-  machine, possibly with a live interactive session), output captured to a per-run log file,
+  template: isolated opencode storage (per the concurrency findings — the planner shares the
+  machine, possibly with a live interactive session; opencode v1.1.35 stores data as JSON
+  files in `~/.local/share/opencode/storage/`, not a SQLite DB — see spike finding F3),
+  output captured to a per-run log file,
   its PID recorded alongside the lock (for pass-side deadline termination), exit code
   recorded, and the graph delta written to the inbox as the last act. The planning
   run writes nothing else shared — not the journal, not `graph.json`.
@@ -733,7 +598,7 @@ see below). Three primitives cover every mutation, and two more serialize planni
 | Single-`write` `O_APPEND` appends to `journal.jsonl` | Atomic appends on a local filesystem |
 | tmp-file + `renameSync` for `graph.json` | Atomic replace |
 | Non-blocking `flock` on `planning.lock`, held by the planning run for its lifetime | At most one planning run in flight; doubles as the liveness probe — acquirable means finished or dead |
-| Non-blocking `flock` on `merge.lock`, held by the merge wrapper for the cycle's lifetime | At most one merge cycle in flight — main has one pipeline writer at a time; same liveness probe |
+| Non-blocking `flock` on `merge.lock`, held by the merge wrapper for the merge cycle's lifetime | At most one merge cycle in flight — main has one pipeline writer at a time; same liveness probe |
 
 Multi-file consistency comes from write ordering, not transactions: journal first (the commit
 point), `graph.json` second (derived, rebuildable). Claims are exclusive by construction — a
@@ -754,20 +619,20 @@ handles graph algorithms, supervision, and state writing.
 Two consequences of n8n being local, stated so nobody designs against the wrong model:
 
 - **No inbound path from the internet.** External webhooks (e.g. GitHub) cannot reach this n8n.
-  Every trigger originates locally: n8n schedules, n8n-internal workflow completions (the merge
-  queue is an n8n workflow, so "merge complete" is an internal event, not a webhook), and forms
-  opened from this machine's browser via forwarded ports.
+  Every trigger originates locally: n8n schedules, n8n-internal workflow completions (the
+  merge queue is an n8n workflow, so "merge complete" is an internal event, not a webhook),
+  and forms opened from this machine's browser via forwarded ports.
 - **Co-location is load-bearing.** Dispatcher invocation and the planning and merge wrappers
   (with the locks and inbox they serialize through) assume n8n can execute commands on the
   machine that holds the pipeline state. The merge queue's git work no longer needs the local
-  repo — the whole cycle runs on a sandbox (see Merge cycle) — but moving n8n off the
+   repo — the whole merge cycle runs on a sandbox (see Merge cycle) — but moving n8n off the
   devcontainer (e.g. to Railway) would still be its own architecture change, not a deployment
   detail.
 
 | Responsibility | Home | Why |
 |---|---|---|
 | Trigger the dispatcher (schedule tick, question answered, merge complete, planning exit) | n8n | Persistent scheduler while the devcontainer is up; invokes a pass as a local process call. The tick also checks dispatcher health after invoking: non-zero pass exit → error notification; `last-pass.json` older than a few tick intervals → "dispatcher stalled" ntfy (see The machinery observes itself under Supervision). |
-| Merge queue (git + test orchestration) | n8n hosts the merge wrapper; the whole cycle runs on a sandbox | Serialized by `merge.lock`, level-triggered by passes. The wrapper drives fetch, rebase, install, test, merge, and push on a sandbox created per merge cycle via the Daytona session API (resolved questions 12 and 16); pipeline git operations never touch the devcontainer checkout. Test output is pulled from the sandbox into the per-run directory and its path recorded in the journaled merge event — n8n execution history prunes, so the queue's evidence must not live only there. On conflict it writes an inbox report and stops — resolution is a graph node (see Merge-conflict resolution). Test scope is all unit tests per merge (superseding the earlier `nx affected` decision — resolved question 13, revised). |
+| Merge queue (git + test orchestration) | n8n hosts the merge wrapper; the whole merge cycle runs on a sandbox | Serialized by `merge.lock`, level-triggered by passes. The wrapper drives fetch, rebase, install, test, merge, and push on a sandbox created per merge cycle via the Daytona session API (resolved questions 12 and 16); pipeline git operations never touch the devcontainer checkout. Test output is pulled from the sandbox into the per-run directory and its path recorded in the journaled merge event — n8n execution history prunes, so the merge queue's evidence must not live only there. On conflict it writes an inbox report and stops — resolution is a graph node (see Merge-conflict resolution). Test scope is all unit tests per merge (superseding the earlier `nx affected` decision — resolved question 13, revised). |
 | Question surfacing (form + ntfy) | n8n (small workflow) | Durable Wait-form suspension and forms are n8n's strength. Human-facing surface only — the journal holds the canonical parked state. |
 | Error notification | n8n | Existing small workflow, unchanged. |
 | Pause/resume control | Helper script → inbox (n8n form optional later) | Human-initiated; folded by the next pass; the claim step gates on the journaled pause state. |
@@ -796,7 +661,7 @@ n8n (persistent service on the devcontainer, under pm2 — small workflows only)
   ├─ Schedule tick (every few minutes) → invokes dispatcher,   ← primary heartbeat
   │    then checks pass exit code + last-pass.json age (stall alert)
   ├─ Question form + ntfy → answer to inbox file → invokes dispatcher
-  ├─ Merge queue workflow → merge wrapper drives a sandbox cycle → merge lands (git) or
+  ├─ Merge queue workflow → merge wrapper drives a sandbox merge cycle → merge lands (git) or
   │    conflict report to inbox → invokes dispatcher
   ├─ Planning-host workflow → runs the launch wrapper → invokes dispatcher when planning exits
   ├─ Error notification (ntfy)
@@ -808,7 +673,7 @@ Dispatcher pass (same devcontainer, seconds long, one at a time under flock)
   2. Fold inbox → journal.jsonl (commit point) → graph.json (derived)
   3. Poll in-flight sessions + planning run → classify exits → act (continue / park / collect)
   4. Re-evaluate ready nodes
-   5. Claim depth-first (bounded by fairnessBudget) → start session commands (runAsync); trigger planning host if frontier low
+     5. Claim depth-first (bounded by fairnessBudget) → start session commands (runAsync, with `</dev/null` appended); trigger planning host if ready-node frontier low
   6. Release lock, exit
        │  Daytona API: create/stop,         │  journal launch → trigger n8n planning host,
        │  session exec, log pull                │  which runs the wrapper under planning.lock
@@ -838,7 +703,7 @@ When an agent finishes:
    with the form URL and suspends on its Wait node. The human's answer is written to the inbox
    and the dispatcher invoked; the next pass starts the sandbox and issues
    `opencode run --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
-   resume. Parking costs nothing while the question waits — disk and `OPENCODE_DB` survive a
+   resume. Parking costs nothing while the question waits — disk and opencode storage survive a
    Daytona stop.
 
 ### Implementation surface
@@ -853,17 +718,17 @@ Rough estimate, ~1070 lines of JS plus three small n8n workflows:
 | Classification (deterministic rules + LLM fallback, evidence journaled with the outcome) | ~90 | Rules and prompt ported from `Parse OpenCode Response` / `BMAD Outcome`; no n8n dependency |
 | Pass frame (flock, inbox fold, reconcile, pause gate, per-pass log + `last-pass.json` heartbeat) | ~170 | New; helper patterns copied from gen-2 scripts, no imports |
 | Planning run (launch wrapper, planning lock, delta validation + fold) | ~100 | New |
-| In-sandbox command template (install check, opencode run, exit capture, branch push) | ~60 | New |
-| Merge wrapper (merge lock, drives the in-sandbox cycle: fetch, rebase, install, test, merge, push; test-log pull, conflict report) | ~100 | New |
+| In-sandbox command template (install check, opencode run with `</dev/null`, exit capture, branch push) | ~60 | New |
+| Merge wrapper (merge lock, drives the in-sandbox merge cycle: fetch, rebase, install, test, merge, push; test-log pull, conflict report) | ~100 | New |
 | Question-form workflow (form + ntfy + inbox write + invoke) | n8n, small | New — the Wait-form/ntfy pattern from gen-2, as a standalone workflow |
 | Planning-host workflow (run the launch wrapper, invoke dispatcher on exit) | n8n, small | New |
 | Merge queue workflow (runs the merge wrapper, invokes dispatcher on exit) | n8n, small | New — mirrors the planning-host pattern |
 
-Honest comparison with the superseded observer design (~700 lines + a 19-node workflow port):
-the agent-lifecycle code the observer design deleted from its estimate returns here, but
-smaller — level-triggered polling is simpler than spawn/relay/monitor, and attach mode,
-observer-death handling, and spool files disappear entirely. Total effort is comparable; moving
-parts are fewer.
+Honest comparison with an earlier iteration of this plan that used long-lived n8n observer
+executions for supervision (~700 lines + a 19-node workflow port): the agent-lifecycle code
+that iteration deleted from its estimate returns here, but smaller — level-triggered polling
+is simpler than spawn/relay/monitor, and attach mode, observer-death handling, and spool
+files disappear entirely. Total effort is comparable; moving parts are fewer.
 
 ## State
 
@@ -881,13 +746,14 @@ parts are fewer.
   journal), and
   `inbox/` (written by n8n's small workflows and by planning runs — graph deltas — consumed
   and deleted by passes). Per-run log
-  excerpts, pulled session transcripts (the per-run `OPENCODE_DB` files — see Supervision),
+  excerpts, pulled session transcripts (via `opencode export` or the storage directory — see
+  Supervision),
   and merge-cycle test logs (see the merge queue row in the n8n / dispatcher split)
   go to a plain directory for debugging and later analysis; per-pass log files and the
   `last-pass.json` heartbeat live beside them — machinery observability, not canonical state.
   At most one writer at a time for
   canonical state: the pass holding the lock.
-- **Collection records the diff (added 2026-07-21).** When a pass collects an exited session
+- **Collection records the diff.** When a pass collects an exited session
   it computes commits-added and a diffstat from the claim's journaled base commit to the
   pushed head and journals them with the outcome; the per-node digest in `graph.json` carries
   the summary. Without this, a COMPLETE with an empty diff is indistinguishable from
@@ -954,21 +820,28 @@ a separate machine — isolation is free, no collision-mitigation discipline nee
 single-use keeps it free across sequential claims too.
 
 **Provisioning (per claim, at claim time):**
-- Build a custom snapshot via the Declarative Builder (`Image.debian_slim()` or `Image.base()`
-  with `run_commands()` for Node.js, Yarn, Postgres, Playwright browsers, opencode, and any
-  system packages). Pre-bake the repo's dependencies into the snapshot so the per-claim install
-  check is a no-op in the common case (see Per-claim below — the install runs every claim; the
-  snapshot makes it fast, not absent). With single-use sandboxes the baked dependencies must
-  end up inside each sandbox's checkout: bake the shallow clone itself into the snapshot
-  (per-sandbox provisioning then fetches instead of cloning) or move the baked `node_modules`
-  into the fresh clone — otherwise every claim's install rebuilds from scratch and the
-  cold-start optimization is lost. Daytona caches declarative images for 24h; subsequent
-  runs on the same runner are "almost instantaneous." This is what makes create-on-demand
-  viable — every worker starts from this snapshot in seconds, not minutes, so no pool needs to
-  exist ahead of claims. The snapshot is a cold-start optimization,
-  not a freshness guarantee: when the repo's deps change, the per-claim install does the real
-  work until the snapshot is rebuilt (a human authors the snapshot's build config; the install
-  step surfaces when the repo has outgrown it — see resolved question 14).
+- **Sandboxes use the same image the devcontainer uses (decided 2026-07-22).** The snapshot's
+  base is the devcontainer's image — not a separately maintained base — so a worker sandbox
+  and the devcontainer share one source of truth for the OS, system packages, and toolchain.
+  This assumes the host runs as a devcontainer (the devcontainer image is the reference
+  environment); a host running on a direct PC machine without a devcontainer would need a
+  separate decision, since there is no devcontainer image to mirror. Build the snapshot via
+  the Declarative Builder with `run_commands()` that replay whatever the devcontainer's
+  lifecycle scripts install on top of the base image (Node.js, Yarn, Postgres, Playwright
+  browsers, opencode, and any system packages). Pre-bake the repo's dependencies into the
+  snapshot so the per-claim install check is a no-op in the common case (see Per-claim below
+  — the install runs every claim; the snapshot makes it fast, not absent). With single-use
+  sandboxes the baked dependencies must end up inside each sandbox's checkout: bake the
+  shallow clone itself into the snapshot (per-sandbox provisioning then fetches instead of
+  cloning) or move the baked `node_modules` into the fresh clone — otherwise every claim's
+  install rebuilds from scratch and the cold-start optimization is lost. Daytona caches
+  declarative images for 24h; subsequent runs on the same runner are "almost instantaneous."
+  This is what makes create-on-demand viable — every worker starts from this snapshot in
+  seconds, not minutes, so no pool needs to exist ahead of claims. The snapshot is a
+  cold-start optimization, not a freshness guarantee: when the repo's deps change, the
+  per-claim install does the real work until the snapshot is rebuilt (a human authors the
+  snapshot's build config; the install step surfaces when the repo has outgrown it — see
+  resolved question 14).
 - **opencode version pinning (decided 2026-07-22):** the snapshot's build config installs
   opencode at the version specified by `opencodeVersion` in the dispatcher's policy config —
   the same config file as `maxConcurrentSandboxes` and the other knobs. The devcontainer's
@@ -1000,13 +873,21 @@ single-use keeps it free across sequential claims too.
   outcome-classification LLM fallback — with `glm-5.2` as the initial model.** The model and
   provider are config in `opencode.json`, so swapping either is a repo change, not a pipeline
   change; the snapshot's `opencode.json` is rebuilt on the next snapshot rebuild like any
-  other committed file. See resolved question 17.
+  other committed file. See resolved question 17. **Caveat (spike, 2026-07-22): neuralwatt's
+  API (`api.neuralwatt.com`, Cloudflare-fronted) is unreachable from Daytona sandboxes — the
+  TLS handshake is reset by the peer, likely Cloudflare bot protection blocking the sandbox
+  egress IP range.** This blocks every sandbox-based opencode run. The planning run and the
+  outcome-classification call run on the devcontainer and are unaffected. See resolved
+  question 17 (revised) for the resolution path.
 - Apply `domainAllowList` for egress control. The essential services allowlist already covers
   GitHub, npm, Anthropic, opencode, Playwright, Railway, and Docker registries — start with
   `networkBlockAll: false` (default) and tighten to an explicit allowlist when the pipeline is
   stable. Updatable at runtime without restart. neuralwatt's API host must be in the allowlist
   (or covered by a wildcard) before tightening — the default `networkBlockAll: false` covers it
-  during bring-up.
+  during bring-up. **Note: the allowlist is not the blocker for neuralwatt from sandboxes** —
+  the spike (2026-07-22) found the TLS handshake is reset by the peer (likely Cloudflare bot
+  protection), not blocked by Daytona's network layer. The sandbox has open egress; the
+  connection fails at the TLS layer. See resolved question 17 (revised) for the resolution path.
 
 **Per-claim (after provisioning):**
 - A pass journals the claim (with its deadline), provisions the sandbox (above), and issues
@@ -1024,11 +905,20 @@ single-use keeps it free across sequential claims too.
   lockfile) is a distinct classification — see Supervision — not a generic runner error.
 - The pass starts the node's command inside the sandbox via the Daytona session API
   (`createSession` + `executeSessionCommand({ runAsync: true })`) with
-  `--dir <sandbox-repo-path>` and a per-run `OPENCODE_DB` at a persistent path on the sandbox
-  disk (not tmpfs — a parked sandbox's DB must survive stop/start; see Park/resume), then
+  `--dir <sandbox-repo-path>` and opencode storage at a persistent path on the sandbox
+  disk (not tmpfs — a parked sandbox's storage must survive stop/start; see Park/resume).
+  opencode v1.1.35 stores data as JSON files in `~/.local/share/opencode/storage/`, not a
+  SQLite DB — there is no `OPENCODE_DB` env var (spike finding F3, 2026-07-22). The pass
+  then
   exits — the
   pull-based transport model the product already uses. Later passes poll the command's state
   and pull logs via `getSessionCommandLogs`. The sandbox never calls back to the devcontainer.
+  **The command must append `</dev/null`** (verified in the opencode-sandbox spike,
+  2026-07-22): `executeSessionCommand` with `runAsync: true` runs the command in a PTY;
+  opencode detects the TTY and stays alive waiting for interactive input after completing its
+  task, so the process never exits and `getSessionCommand` never returns an `exitCode`.
+  With stdin closed, opencode exits cleanly after completing its task. Without this, every
+  poll-for-completion loop times out.
 - The in-sandbox command ends with a branch push (`git push origin HEAD:pipeline/<runId>/<story>`
   — the chain branch) so the result is durable in git regardless of what is watching.
 - Deadlines are enforced pass-side: a pass finding a claim past its deadline terminates the
@@ -1081,14 +971,13 @@ labeling and reaper discipline described under Sandbox lifecycle.
 
 ### Sandbox lifecycle
 
-- **Sandboxes are single-use, created on demand** (decided 2026-07-22, reversing a same-day
-  never-destroy decision; the pooled-provisioning half revised again the same day — no warm
-  pool): created at claim time (or per merge cycle), used for exactly one claim attempt,
-  and destroyed when the session exits — after the collecting pass pulls
-  the transcript and full logs to the devcontainer (see Supervision). The number of live
-  sandboxes is capped by `maxConcurrentSandboxes` in the policy config — a claim that would
-  exceed the cap simply isn't made that pass; capacity control is claim-time policy, not pool
-  size. The agent's in-sandbox
+- **Sandboxes are single-use, created on demand** (decided 2026-07-22): created at claim time
+  (or per merge cycle), used for exactly one claim attempt, and destroyed when the session
+  exits — after the collecting pass pulls the transcript and full logs to the devcontainer
+  (see Supervision). There is no warm pool (see the per-agent workspace recipe for the
+  rationale). The number of live sandboxes is capped by `maxConcurrentSandboxes` in the policy
+  config — a claim that would exceed the cap simply isn't made that pass; capacity control is
+  claim-time policy, not pool size. The agent's in-sandbox
   command pushes the branch as its last act, so completion is durable in git before
   destruction. A retry never reuses the failed attempt's sandbox; a deadline-terminated
   attempt's sandbox is destroyed the same way. Single-use buys reuse hygiene by construction:
@@ -1098,7 +987,7 @@ labeling and reaper discipline described under Sandbox lifecycle.
   eliminated across sequential ones, and no reset-discipline code (process kill, selective
   clean that spares `node_modules`) ever needs writing.
 - **Parked sandboxes are the exception.** A parked node's sandbox is stopped, not destroyed —
-  disk and `OPENCODE_DB` must survive for `opencode run --session <id>` to resume (see
+  disk and opencode storage must survive for `opencode run --session <id>` to resume (see
   Park/resume) — and is destroyed like any other when the resumed session exits. Because the
   human-response window is unbounded, the platform's lifecycle timers are set explicitly at
   creation: auto-stop can stay short (the pass stops parked sandboxes itself),
@@ -1129,12 +1018,22 @@ labeling and reaper discipline described under Sandbox lifecycle.
 
 ### opencode concurrency: resolved (both phases complete)
 
+**Note (spike, 2026-07-22):** the experiment below was run against an opencode version that
+supported `OPENCODE_DB=<path>`. opencode v1.1.35 (installed by `npm install -g opencode-ai@latest`
+in the sandbox) has no `OPENCODE_DB` env var — it stores data as JSON files in
+`~/.local/share/opencode/storage/`, not a SQLite database (spike finding F3). The
+experiment's conclusion — isolated storage per agent prevents the identity collision — still
+holds (separate machines have separate storage by definition), but the mechanism
+(`OPENCODE_DB=<path>`) is version-specific. If a newer opencode version restores `OPENCODE_DB`
+or equivalent, the experiment's results apply directly; otherwise, isolation is achieved by
+the sandbox's separate filesystem, not by an env var. See `docs/todo/spike-opencode-sandbox.md`.
+
 The concurrency experiment tested whether isolated `OPENCODE_DB` per agent prevents the identity
 collision observed when multiple opencode instances share git identity. Both phases are complete;
 the result is moot for the sandbox tier — separate machines have separate storage by definition.
-The experiment's value is confirming that the isolated-DB pattern works, which the sandbox recipe
-inherits (each sandbox gets its own `OPENCODE_DB`). Documented in full because it encodes a
-failure already paid for once:
+The experiment's value is confirming that the isolated-storage pattern works, which the sandbox recipe
+inherits (each sandbox gets its own storage by machine isolation). Documented in full because it
+encodes a failure already paid for once:
 
 - **Known failure** (see the `n8n-workflow-authoring-gotchas` memory): `opencode run` from a
   second worktree *or* a standalone `git clone --local` at a different path, while a real
@@ -1184,7 +1083,7 @@ failure already paid for once:
   n8n question-form workflow, which fires ntfy with the form URL and suspends on its Wait node
   (durable across n8n restarts). If the suspension is ever lost, a pass can re-fire it from the
   journal — n8n is the surface, not the record.
-- The sandbox is stopped while parked: disk and `OPENCODE_DB` survive a Daytona stop, so
+- The sandbox is stopped while parked: disk and opencode storage survive a Daytona stop, so
   parking costs nothing while the question waits (the human-response window is unbounded — the
   existing no-timeout limitation on questions carries over; lifecycle timers are set so a long
   park cannot be auto-deleted — see Sandbox lifecycle).
@@ -1196,8 +1095,7 @@ failure already paid for once:
 - This path is also how human-involved stories run: a story whose instructions require human
   action (e.g. setting up credentials) is still a normal chain — the skill run reads the story,
   asks, parks, resumes with the answer. There is no separate human-task node type.
-- **Decision stands from the previous plan: park/resume is required from the first rollout step,
-  no fail-and-retry stopgap.**
+- **Park/resume is required from the first rollout step, no fail-and-retry stopgap.**
 - Precondition to watch: `_bmad-output/decision-policy.md` (human-authored, agent-facing — kept
   in gen-3) currently drives questions to near zero in the gen-2 loop. Every residual question
   multiplies by N agents; keeping the question rate near zero is what keeps N agents from
@@ -1217,21 +1115,21 @@ failure already paid for once:
 
 ### Merge cycle (decided 2026-07-22)
 
-The merge queue's unit of work. The entire cycle — fetch, rebase, install, test, merge, push —
-runs on a sandbox created for the cycle's duration (minutes); the
+The merge queue's unit of work. The entire merge cycle — fetch, rebase, install, test, merge, push —
+runs on a sandbox created for the merge cycle's duration (minutes); the
 devcontainer checkout is the human's working copy and never hosts pipeline git operations —
 the same fact that put conflict resolution in sandboxes. A dedicated local clone was rejected:
 a second repo to maintain, plus a crash-recovery surface (a reboot mid-rebase leaves rebase
-state to detect and abort) that a disposable sandbox cycle simply doesn't have.
+state to detect and abort) that a disposable merge cycle simply doesn't have.
 
 - **Hosted like planning.** The n8n merge-queue workflow mirrors the planning-host pattern:
   Execute Command runs a merge wrapper that holds a non-blocking `flock` on `merge.lock` for
-  the cycle's lifetime — mutual exclusion (at most one cycle in flight, so main has one
-  pipeline writer at a time) plus the liveness probe — records its PID and the cycle's sandbox
+  the merge cycle's lifetime — mutual exclusion (at most one merge cycle in flight, so main has one
+  pipeline writer at a time) plus the liveness probe — records its PID and sandbox
   ID alongside the lock, drives the sandbox via the Daytona session API, pulls the full test
   output into the per-run directory, writes any report to the inbox, and invokes the
   dispatcher on exit.
-- **The cycle, in order.** Create a sandbox (same per-claim provisioning as a node claim);
+- **The merge cycle, in order.** Create a sandbox (same per-claim provisioning as a node claim);
   `git fetch`; short-circuit if the chain branch's
   head is already an ancestor of main (delete the branch, done — no test run); checkout the
   chain branch; rebase onto `origin/main` — a conflict aborts the rebase and the wrapper
@@ -1243,19 +1141,19 @@ state to detect and abort) that a disposable sandbox cycle simply doesn't have.
   `origin/main`; delete the chain branch on origin; destroy the sandbox (single-use — see
   Sandbox lifecycle).
 - **The push is the commit point.** Everything before it is sandbox-local and disposable: a
-  cycle that dies mid-run has changed nothing durable, and a cycle that dies after the push
-  has merged — the next cycle's short-circuit cleans up the leftover branch. A rejected push
-  (main moved under the cycle — e.g. a human pushing to main) is not an error: the cycle exits
-  and the next trigger runs a fresh cycle against the new main.
+  merge cycle that dies mid-run has changed nothing durable, and one that dies after the push
+  has merged — the next merge cycle's short-circuit cleans up the leftover branch. A rejected push
+  (main moved under the merge cycle — e.g. a human pushing to main) is not an error: the merge cycle exits
+  and the next trigger runs a fresh one against the new main.
 - **Level-triggered, supervised like everything else.** No pass "hands off" to the merge queue
   and forgets: any pass that finds a completed merge-point node whose branch has neither
   merged nor a pending conflict report, with `merge.lock` acquirable, (re)triggers the
-  workflow. A cycle killed by an n8n restart (the wrapper dies with its host's Execute
+  workflow. A merge cycle killed by an n8n restart (the wrapper dies with its host's Execute
   Command, like a planning run) is therefore re-run, not lost. Deadline enforcement is
-  pass-side via the recorded PID, like planning. A dead cycle's sandbox is accounted for by
+  pass-side via the recorded PID, like planning. A dead merge cycle's sandbox is accounted for by
   the recorded sandbox ID — the pass destroys it (single-use, see Sandbox lifecycle; a
   half-finished rebase is exactly the state single-use exists to never clean up) and the
-  re-triggered cycle creates a fresh one.
+  re-triggered merge cycle creates a fresh one.
 - **Credentials.** The sandbox pushes main with the same repo credentials agents already use
   for their branch pushes (see Credentials under Sandbox lifecycle).
 
@@ -1266,7 +1164,7 @@ and code-modifying work runs in sandboxes as graph nodes — never on the devcon
 checkout is the human's working copy. The merge queue never resolves anything, not even a
 lockfile.
 
-- **The merge queue detects, reports, and stops.** On a conflict the cycle aborts the rebase
+- **The merge queue detects, reports, and stops.** On a conflict the merge cycle aborts the rebase
   in its sandbox, and the wrapper writes a conflict report to the inbox — chain, merge-point
   node, conflicted files, diffstat, the
   stable fingerprint (see Conflicts are evidence) — and invokes the dispatcher; the report is
@@ -1341,9 +1239,9 @@ lockfile.
 - A mid-chain merge point inserts merge-queue latency (rebase → test → merge, serialized across
   all stories) between two chain segments, and each one adds a merge-queue run. The
   chain-composition guidelines should mark one only where it buys something — a dependent story
-  to unlock — not by default. The whole merge cycle runs on a sandbox created per cycle
-  (resolved questions 12 and 16), so merge-queue compute never competes with the human's dev
-  servers or Postgres on the devcontainer — the cycle's sandbox counts against
+   to unlock — not by default. The whole merge cycle runs on a sandbox created per merge cycle
+   (resolved questions 12 and 16), so merge-queue compute never competes with the human's dev
+   servers or Postgres on the devcontainer — the merge cycle's sandbox counts against
   `maxConcurrentSandboxes` for its duration (minutes), reducing node-claim capacity by one
   during that window. The merge cycle runs all unit tests every time — not `nx affected`'s
   touched-only subset — so a merge-queue run's test step is minutes, not seconds; accepted as
@@ -1413,16 +1311,197 @@ lockfile.
   the exceptions to "nothing is lost"
   on an n8n restart: unlike sandbox sessions they die with their host workflow's Execute
   Command. The process-vanished path relaunches the planner, and level-triggered merge
-  triggering re-runs the cycle — a restart costs a relaunch, never lost state (a merge cycle
+   triggering re-runs the merge cycle — a restart costs a relaunch, never lost state (a merge cycle
   changes nothing durable before its final push).
 - Human attention becomes the scarce resource; the question inbox and a near-zero question rate
   are what keep N agents from turning into N interruptions.
 
+## Admitted assumptions (functional, to verify before refining)
+
+The plan depends on a set of functional assumptions — behaviors it asserts but has not
+demonstrated. These are not performance assumptions (latency, throughput, resource cost —
+those live in Honest costs); they are correctness assumptions: if wrong, the design changes.
+Each is paired with the limited-scope spike that verifies it. The capability table under
+Worker sandbox design verifies the sandbox tier broadly (what is installable, what runs) but
+does not verify the command-execution and session lifecycle the dispatcher depends on — that
+gap is where most of these live.
+
+### Daytona session API: runAsync, poll, exit code, log pull — VERIFIED (spike, 2026-07-22)
+
+The supervision model is "a pass starts a command via `executeSessionCommand({ runAsync:
+true })`, exits in seconds, and later passes poll the command's state." This assumes: the
+async call returns immediately and the command keeps running on the sandbox after the API
+session disconnects; the command's state (running vs. exited) is queryable; the exit code is
+retrievable after exit; and `getSessionCommandLogs` returns the full stdout/stderr after exit,
+not a tail or a live stream. The classifier depends on the stdout excerpt; the transcript pull
+depends on the file API. If `runAsync` blocks, or if the command is killed when the API
+session disconnects, the "pass starts work and exits in seconds" model breaks — the entire
+supervision design changes.
+
+**Verified by the opencode-sandbox spike (2026-07-22):** all four assumptions pass. The async
+call returns immediately with a `cmdId`; the command survives the API session disconnecting;
+`getSessionCommand` polls and returns `exitCode` once the process exits; and
+`getSessionCommandLogs` returns `output` (combined), `stdout`, and `stderr` as a snapshot, or
+streams via callbacks. The streaming overload is the pattern the existing `sandbox.service.ts`
+uses (`streamAgentLogs`). **One caveat found (F1):** `executeSessionCommand` with `runAsync:
+true` runs the command in a PTY; opencode detects the TTY and stays alive waiting for
+interactive input after completing its task. The process never exits, and
+`getSessionCommand` never returns an `exitCode`. **Fix: append `</dev/null` to the command.**
+With stdin closed, opencode exits cleanly after completing its task (verified: ~9s, exit 0).
+This is folded into the in-sandbox command template (see the per-claim recipe under Worker
+sandbox design). See `docs/todo/spike-opencode-sandbox.md` for the full spike report.
+
+### Sandbox stop/start disk persistence + opencode session resume
+
+Park/resume depends on: stop sandbox → disk survives → start sandbox → `opencode run --session
+<id>` resumes. The plan asserts disk and opencode storage survive a Daytona stop, but the
+restart-and-resume path is the critical chain and is not verified. This crosses four
+components (pass, n8n form, Daytona, opencode) and is mandatory from the first rollout (see
+Park/resume). **Spike:** create a sandbox, start an opencode session with storage on disk
+(opencode v1.1.35 stores data as JSON files in `~/.local/share/opencode/storage/` — there is
+no `OPENCODE_DB` env var; see spike finding F3), run a trivial prompt. Stop the sandbox. Start
+it again. Verify the storage directory still exists and `opencode run --session <id>` resumes
+the session. Then test the full chain: start a session, stop the sandbox, wait an hour,
+restart, resume with an answer argument. If disk does not survive stop/start, or sessions are
+not resumable after a gap, park/resume needs a different design (e.g. never stop the sandbox,
+or serialize session state to git).
+
+### opencode mid-stream resume (INCOMPLETE)
+
+INCOMPLETE is a within-session recovery signal: the LLM provider drops the response
+mid-stream, the opencode session is still alive, and `opencode run --session <id>` resumes it
+from where it left off. This assumes the session is resumable after a mid-stream drop and that
+the resume continues rather than restarts. The detection signal — "exit code 0 with a
+truncated last message, or a recognized provider-mid-stream error" — is a heuristic on log
+content, not a structured signal; what a truncated last message looks like in opencode's
+stdout is not defined here. **Spike:** start an opencode session, simulate a mid-stream drop
+(kill the process mid-response, or find a way to truncate), run `opencode run --session <id>`
+and verify it resumes. Inspect what the logs look like when a stream is truncated — this
+defines the detection rule the pass needs. If mid-stream resume does not work, INCOMPLETE
+cannot be a within-session recovery path and the plan must decide whether truncation is just
+`failed`.
+
+### Snapshot with baked node_modules + fresh clone
+
+The per-claim provisioning recipe names two strategies for getting baked `node_modules` into a
+fresh clone — bake the shallow clone itself into the snapshot (per-sandbox provisioning then
+fetches instead of cloning), or move the baked `node_modules` into the fresh clone — and
+verifies neither. The interaction between a baked snapshot image and a per-claim `git clone
+--depth 1` is non-obvious: `node_modules` is gitignored, so a fresh clone does not have it,
+and moving it from a baked location into the clone assumes the paths line up. The wrong
+choice makes every claim pay a full install from scratch. **Spike:** build a snapshot via the
+Declarative Builder with the repo's `node_modules` baked in, create a sandbox from it, run
+`git clone --depth 1` (or `git fetch`), and check whether `node_modules` is present and
+usable. Try both strategies. This resolves an open design question — the plan names two
+without picking one.
+
+### n8n Execute Command: blocking for minutes + child death on restart
+
+Both the planning-host and merge-queue workflows use Execute Command to run a wrapper that
+blocks for the run's duration (minutes). This assumes n8n does not kill long-running Execute
+Command nodes. The process-vanished recovery path assumes "a local planning run dies when n8n
+restarts, since the run is a child of its host workflow's Execute Command" — this is the
+basis for the recovery design. If the child does not die (orphaned and holding the lock), the
+pass thinks the planner is still running and never relaunches — the pipeline stalls silently.
+Conversely, if Execute Command's child survives n8n restart, the planning lock stays held.
+**Spike:** in the devcontainer's n8n, create a workflow with an Execute Command node that
+runs `sleep 300`. Verify it blocks for 5 minutes and completes. Then run it again and restart
+n8n mid-sleep. Verify whether the child process dies (or does not — either way, learn the
+truth) and whether the lock is released. If Execute Command times out before minutes, the
+hosting pattern needs a different mechanism.
+
+### opencode.json provider registration for neuralwatt — PARTIALLY VERIFIED (spike, 2026-07-22)
+
+The provider registration in `opencode.json` (and `NEURALWATT_API_KEY` in the sandbox env) is
+what makes `neuralwatt/glm-5.2` resolvable at agent launch — without it, `opencode run` fails
+at provider lookup before the LLM is called. This is a functional assumption about opencode's
+provider resolution path.
+
+**Partially verified by the opencode-sandbox spike (2026-07-22):** provider registration works
+— `opencode run --model opencode/big-pickle "Print exactly: SPIKE_OK"` exits with code 0 in
+~10s, and output is captured on stdout as expected. The spike used opencode's free hosted
+model to verify mechanics, not neuralwatt directly. **Blocking finding (F2):** neuralwatt's
+API (`api.neuralwatt.com`, Cloudflare-fronted) is unreachable from Daytona sandboxes — the
+TLS handshake is reset by the peer (`write:errno=104`), likely Cloudflare bot protection
+blocking the sandbox egress IP range. Non-Cloudflare HTTPS sites (`api.anthropic.com`,
+`api.openai.com`, `registry.npmjs.org`) work fine from sandboxes. The planning run and the
+outcome-classification call run on the devcontainer and are unaffected. See resolved question
+17 (revised) for the resolution path, and `docs/todo/spike-opencode-sandbox.md` for the full
+spike report.
+
+### Fold-time delta validation against a moving target
+
+The planner reads `graph.json` at launch (T0); by fold time (T1) a pass may have claimed
+nodes (freezing their specs) or folded completions (changing merge state). The validation
+must apply the delta to T1 state, not T0 state, and the rules (acyclic, cross-story edges
+target merge-points, final node carries `mergeTo`, touch unclaimed nodes only) must hold on
+the merged graph. A node the planner marked for removal might have been claimed between T0 and
+T1 — the validation must reject that removal (spec is frozen). A node the planner added a
+`dependsOn` edge to might have merged — the edge target must still exist. This is the most
+algorithmically intricate interaction in the design, and it is pure code — testable without
+infrastructure. **Spike:** write the validation function and test against synthetic scenarios:
+(a) planner removes a node that was claimed meanwhile, (b) planner adds a cross-story edge to
+a node that merged and is no longer a merge-point target, (c) planner's delta creates a cycle
+when merged with T1 state, (d) planner marks a final node without `mergeTo`.
+
+### Branch push failure (design gap, not a spike)
+
+The plan says "the agent's in-sandbox command pushes its branch as its last act, so a
+completed result is durable in git no matter what was or wasn't watching when it finished."
+This does not address push failure — a network blip, auth expiry, or force-push rejection. If
+the push fails, the agent's work is on the sandbox disk only, and the sandbox is destroyed at
+collection: the work is lost and the node is re-claimed from scratch. This is a functional
+gap, not an assumption to spike. The plan should either retry the push in the in-sandbox
+command before exiting, have the collecting pass attempt the push if the agent did not, or
+not destroy the sandbox until the push is confirmed. Raised here as a design question to
+resolve before implementation, not a spike to run.
+
+### Interaction seams (where components agree non-obviously)
+
+These are not separate assumptions but the places where the plan's correctness depends on two
+or more components agreeing, and where the agreement is non-obvious. The spikes above cover
+the ones that matter; these are noted so the seams are visible during implementation.
+
+- **Pass ↔ planning run ↔ n8n host (three-party supervision).** The pass supervises the
+  planning run via its lock instead of the Daytona API. "Lock acquirable" is a binary liveness
+  signal, not a state signal: it distinguishes "running" from "not running" but not "finished
+  cleanly" from "crashed mid-run" from "crashed after writing a partial delta." The delta is
+  written as the run's last act, so partial should mean no delta — but this assumes the
+  wrapper either writes the complete delta or nothing (an atomic write). If opencode writes a
+  partial file and the wrapper crashes before the atomic rename, the inbox has a corrupt delta
+  the fold must tolerate (parse failure → ignore).
+- **Pass ↔ merge wrapper ↔ per-cycle sandbox.** Same pattern as planning but with a sandbox
+  the wrapper creates. If the wrapper creates the sandbox but dies before recording its ID, the
+  pass cannot find the sandbox to destroy it — unless reconcile catches it via the
+  `scope: pipeline` label, which must be set at creation, not after. The ordering of
+  create-sandbox-labeled → record ID → hold lock → do work matters for recovery.
+- **Park/resume spanning pass / n8n / Daytona / opencode.** The full park/resume chain crosses
+  four components and is the intersection of the sandbox-stop/start and opencode-session-resume
+  assumptions above. Each is individually testable; the combination (stop a sandbox with a live
+  opencode session, wait hours, restart, resume) is the real test and is what the spike covers.
+- **Stream-truncation detection as a signal.** "Truncated last message" is a heuristic on log
+  content, not a structured signal. If too loose, every clean exit gets a spurious continue;
+  if too tight, real truncations get misclassified as `failed` and consume an attempt. The
+  spike above defines the detection rule by inspecting what a truncated stream looks like.
+- **Outcome classification inside the lock.** The LLM fallback classification runs inside the
+  pass, under the lock. If N sessions exited since the last pass, the pass makes N
+  classification calls, each a few seconds, all under the lock — no other pass can run during
+  that window. The seconds-long budget assumes roughly one exit per pass; a batch of exits
+  stretches it. Not a performance concern but a correctness concern if lock hold time blocks
+  merge triggering or question-resume long enough to matter functionally.
+- **Reconcile orphan matching.** "Destroy sandboxes no journal entry accounts for" matches by
+  label, not by ID. A sandbox created by a pass that died before journaling the claim is
+  orphaned and destroyed — fine, if the label is set at creation. If a sandbox is created
+  without the label (a bug in the create path), reconcile cannot see it, and it leaks —
+  consuming quota silently. The label is load-bearing for cleanup.
+
 ## Path (incremental, each step independently useful)
 
-1. ~~Run the opencode concurrency experiment~~ — done (both phases). Isolated `OPENCODE_DB` per
+1. ~~Run the opencode concurrency experiment~~ — done (both phases). Isolated storage per
    agent is safe at N=6. Moot for the sandbox tier (separate machines), but confirms the
-   isolated-DB pattern the sandbox recipe inherits.
+   isolated-storage pattern the sandbox recipe inherits. Note: the experiment used
+   `OPENCODE_DB=<path>`, which does not exist in opencode v1.1.35 — see the opencode
+   concurrency section and spike finding F3.
 2. **Build the custom snapshot and per-claim provisioning** (gates the sandbox tier):
    - Build a custom Daytona snapshot via the Declarative Builder: Node.js, Yarn, Postgres,
      Playwright browsers, opencode, and the repo's dependencies pre-installed. This eliminates
@@ -1462,19 +1541,18 @@ lockfile.
 5. Move "done" from workflow-return to branch-merged: merge queue (n8n workflow + merge
    wrapper) + Mermaid graph view. Agents push their own branches; a pass that finds a
    completed merge-point node not yet merged triggers n8n's merge queue (level-triggered); no
-   event-ingest webhook — canonical state is written only under the pass lock. The queue runs
-   the whole cycle — rebase, install, test, merge, push — on a sandbox created per merge
+   event-ingest webhook — canonical state is written only under the pass lock. The merge queue runs
+   the whole merge cycle — rebase, install, test, merge, push — on a sandbox created per merge
     cycle, serialized by `merge.lock` (resolved questions 12 and 16) — test scope: all unit
-    tests, configurable in the policy config (resolved question 13, revised). Restart n8n mid-cycle and verify the
-   next pass re-triggers a fresh cycle. Exercise a mid-chain merge point: an early
+    tests, configurable in the policy config (resolved question 13, revised). Restart n8n mid-merge-cycle and verify the
+   next pass re-triggers a fresh merge cycle. Exercise a mid-chain merge point: an early
    node merges its story doc and a dependent story's chain starts against it while the first
    story is still running. Exercise the conflict path with a synthetic conflict: inbox report
    → conflict-mode planning run → resolution node → merge retry (see Merge-conflict
    resolution).
 6. Upgrade the viewer to `viewer.html` when interactivity earns it.
 
-First real parallel run should be manual and supervised, including at least one supervised park —
-same discipline the discarded plan prescribed.
+First real parallel run should be manual and supervised, including at least one supervised park.
 
 ## Resolved questions
 
@@ -1517,8 +1595,8 @@ same discipline the discarded plan prescribed.
    bases on merged main under the normal rules. Two alternatives rejected: basing a dependent
    chain on another chain's unmerged head (couples merge ordering across chains and builds
    against still-changing work), and merging after every node (loses story-atomic integration,
-   lands unreviewed or deliberately red intermediate states on trunk, and turns the merge
-   queue into a per-node serial bottleneck).
+   lands unreviewed or deliberately red intermediate states on trunk, and turns the
+   merge queue into a per-node serial bottleneck).
 8. **Planning-run context (2026-07-21): pinned.** The prompt carries only trigger/mode (with
    any human replan instruction verbatim), snapshot pointers with the staleness rule, and the
    output contract; everything else is files the planner reads — the chain-composition
@@ -1540,7 +1618,7 @@ same discipline the discarded plan prescribed.
    the human's, and code-modifying work runs in sandboxes. See Merge-conflict resolution
    under Worker sandbox design.
 10. **Epic lifecycle (2026-07-22): the pipeline develops epics, not only stories.** Epic
-    selection is the planner continuing down the sprint plan on the existing frontier-low
+     selection is the planner continuing down the sprint plan on the existing ready-node-frontier-low
     trigger; post-epic finalization is an epic-scoped chain of ordinary skill-run nodes,
     gated on all the epic's story merges by cross-story edges to their final merge points
     and composed lazily (its audits are information-producing nodes). Both transitions are
@@ -1558,30 +1636,30 @@ same discipline the discarded plan prescribed.
      `maxAttemptsPerNode` and per-node timeout, read at the start of every pass, so tuning is
      an operational change, not a code change or restart. 5 is the initial value; a claim that
      would exceed the cap waits for a later pass.
-12. **Merge-queue test execution (2026-07-22): on a sandbox acquired per merge cycle.**
-    (Git-ops half superseded the same day by resolved question 16 — the whole cycle, git ops
-    included, runs on the sandbox; the rejected alternatives below stand.) The
-    merge queue's git ops (rebase, merge) run locally on the devcontainer — repo access is
-    load-bearing (see n8n / dispatcher split). The test step runs on a sandbox created for
-    the cycle via the Daytona session API — the same create-on-demand path as a node claim,
-     held for the duration of one merge cycle (rebase + test — minutes, not hours), then
-     destroyed like any finished claim (single-use — see Sandbox lifecycle). The n8n workflow
-     drives the sandbox: create, execute the test
-    command via the session API, poll for completion, pull results, destroy. This avoids
-    running the test suite on the devcontainer, which already carries n8n, the dispatcher,
-    the human's dev servers, and the human's Postgres — a performance bottleneck especially
-    under mid-chain merge points that multiply merge frequency. The sandbox's isolation (own
-    ports, own Postgres, own filesystem) eliminates the collision surfaces that a local
-    worktree would reintroduce. The cost is one git round-trip per merge (shipping the
-    rebased branch to the sandbox) and one `maxConcurrentSandboxes` slot during each merge
-    cycle — both
-    small against minutes-long merge cycles and hours-long node claims. Rejected alternatives:
-    reusing the finishing sandbox (holds sandboxes alive waiting for their queue slot, burning
-    scarce quota — see Honest costs); optimistic concurrency with no serial queue (replaces a
-    core design decision for little gain — integration is minutes, skill runs are hours, so
-    serialization is not the bottleneck); a dedicated long-lived merge-test sandbox (wastes
-    10 GB of the 30 GB quota while idle, needs its own supervision path). See Git is the
-    convergence point and the merge queue row in the n8n / dispatcher split.
+12. **Merge-queue test execution (2026-07-22, superseded same day by resolved question 16):
+     the test step runs on a sandbox acquired per merge cycle.** The original decision split the
+     merge cycle: git ops (rebase, merge) ran locally on the devcontainer — repo access was considered
+     load-bearing (see n8n / dispatcher split) — and the test step ran on a sandbox created for
+     the merge cycle via the Daytona session API, held for the duration of one merge cycle (rebase +
+     test — minutes, not hours), then destroyed like any finished claim (single-use — see
+     Sandbox lifecycle). The n8n workflow drove the sandbox: create, execute the test command
+     via the session API, poll for completion, pull results, destroy. This avoided running the
+     test suite on the devcontainer, which already carries n8n, the dispatcher, the human's dev
+     servers, and the human's Postgres — a performance bottleneck especially under mid-chain
+     merge points that multiply merge frequency. The sandbox's isolation (own ports, own
+     Postgres, own filesystem) eliminates the collision surfaces that a local worktree would
+     reintroduce. The cost was one git round-trip per merge (shipping the rebased branch to the
+     sandbox) and one `maxConcurrentSandboxes` slot during each merge cycle — both small
+     against minutes-long merge cycles and hours-long node claims. Rejected alternatives:
+     reusing the finishing sandbox (holds sandboxes alive waiting for their merge-queue slot, burning
+     scarce quota — see Honest costs); optimistic concurrency with no serial merge queue (replaces a
+     core design decision for little gain — integration is minutes, skill runs are hours, so
+     serialization is not the bottleneck); a dedicated long-lived merge-test sandbox (wastes
+     10 GB of the 30 GB quota while idle, needs its own supervision path). **Superseded by
+     resolved question 16**: the whole merge cycle — git ops included — runs on the sandbox, so the
+    local git-ops half no longer stands; the rejected alternatives above remain rejected. See
+    Git is the convergence point, the merge queue row in the n8n / dispatcher split, and
+    resolved question 16.
 13. **Merge-queue test scope — original decision (2026-07-22, superseded same day): `nx affected`
     with a periodic full run, both tunable in the policy config.** Affected-only runs the tests for
     projects touched by the diff — minutes, not tens of minutes — keeping the serial merge queue's
@@ -1613,8 +1691,7 @@ same discipline the discarded plan prescribed.
 14. **Session transcripts are pulled at collection (2026-07-22).** When a session exits with
     an outcome (every attempt, not only the last — revised with the single-use lifecycle,
     which also preserves failed attempts' evidence), the collecting pass downloads the
-    session transcript — the per-run
-    `OPENCODE_DB` file — and the full command logs from the sandbox into the per-run
+    session transcript and the full command logs from the sandbox into the per-run
     directory on the devcontainer, before the sandbox is destroyed. Rationale: the
     stdout excerpt used for classification is not the structured record; destruction removes
     the on-sandbox copy, so without the pull the tool-call-level evidence —
@@ -1622,7 +1699,11 @@ same discipline the discarded plan prescribed.
     own session-history analysis was built from — would be lost with the sandbox. A
     stream-truncation continue pulls nothing; a parked node is pulled after resume, when its
     session exits;
-    planning-run transcripts are already local. See Transcript collection under Supervision.
+    planning-run transcripts are already local. **Transcript mechanism (spike, 2026-07-22):**
+    opencode v1.1.35 has no `OPENCODE_DB` env var — it stores data as JSON files in
+    `~/.local/share/opencode/storage/`. The transcript pull uses `opencode export [sessionID]`
+    (produces JSON) or downloads the storage directory via the file API. See Transcript
+    collection under Supervision and spike finding F3.
 15. **Snapshot freshness (2026-07-22): the per-claim install step is the correctness floor; the
     snapshot is a cold-start optimization, not a freshness guarantee.** The in-sandbox command
     runs the repo's package-manager install with a frozen lockfile after checkout, before the
@@ -1645,41 +1726,54 @@ same discipline the discarded plan prescribed.
     step makes unnecessary); a git hook or CI signal (the no-inbound-webhook constraint on the
     devcontainer rules out the clean version). See the per-claim recipe under Worker sandbox
     design and Outcome classification under Supervision.
-16. **Merge-cycle hosting (2026-07-22): the whole cycle runs on the sandbox; the devcontainer
+16. **Merge-cycle hosting (2026-07-22): the whole merge cycle runs on the sandbox; the devcontainer
     keeps only the wrapper, the lock, and the inbox write.** Supersedes the git-ops-local half
     of resolved question 12. The devcontainer checkout is the human's working copy — the fact
     that put conflict resolution in sandboxes (resolved question 9) applies equally to the
     merge queue's own rebase, which needs a working tree; a dedicated local clone would be a
     second repo to maintain plus a crash-recovery surface (rebase state to detect and abort
-    after a reboot), where a sandbox cycle is disposable. The push to `origin/main` is the
-    cycle's only durable effect: a cycle that dies mid-run changed nothing, one that dies
-    after the push has merged, and the next cycle's short-circuit deletes the leftover branch;
-    a push rejected because main moved (e.g. a human push) just ends the cycle — the next
+    after a reboot), where a merge cycle is disposable. The push to `origin/main` is the
+    merge cycle's only durable effect: a merge cycle that dies mid-run changed nothing, one that dies
+    after the push has merged, and the next merge cycle's short-circuit deletes the leftover branch;
+    a push rejected because main moved (e.g. a human push) just ends the merge cycle — the next
     trigger runs a fresh one. The n8n merge-queue workflow mirrors the planning-host pattern:
     Execute Command runs a merge wrapper holding a non-blocking `flock` on `merge.lock` for
-    the cycle's lifetime (serialization — main has at most one pipeline writer — and the
+    the merge cycle's lifetime (serialization — main has at most one pipeline writer — and the
     liveness probe: acquirable means finished or dead), with PID and sandbox ID recorded for
     pass-side deadline enforcement and recovery. Merge triggering is level-triggered: any pass
     that finds a completed merge-point node whose branch has neither merged nor a pending
     conflict report, with the lock acquirable, (re)triggers the workflow — an n8n restart
-    costs a re-run cycle, never lost state. The cycle runs the frozen-lockfile install before
+    costs a re-run merge cycle, never lost state. The merge cycle runs the frozen-lockfile install before
     tests (the rebase can bring dep changes from main). Sandbox credentials already cover the
     main push (see Credentials under Sandbox lifecycle). See Merge cycle under Worker sandbox
     design.
-17. **LLM provider (2026-07-22): neuralwatt, with `glm-5.2` as the initial model.** opencode
-    does not ship neuralwatt as a built-in provider, so the provider registration in the repo's
-    `opencode.json` (and `NEURALWATT_API_KEY` in the sandbox env) is what makes the model
-    resolvable at agent launch — without it, `opencode run` fails at provider lookup before the
-    LLM is called. The dispatcher copies `opencode.json` into each sandbox at provisioning (same
-    path as `.env`: the snapshot's bake is a cold-start optimization, not a freshness guarantee,
-    and a stale baked `opencode.json` would silently pin an old model or old context limits). The
-    planning run runs on the devcontainer and inherits the working tree's `opencode.json` — no
-    copy needed. The provider and model are config in `opencode.json`, so swapping either is a
-    repo change picked up by the next snapshot rebuild or the next planning run, not a pipeline
-    code change. All opencode runs in the pipeline — sandbox agents, the planning run, and the
-    outcome-classification LLM fallback — use this provider; the outcome-classification call is a
-    plain LLM call, not an opencode run, but it uses the same provider and model for consistency.
-    See the provisioning recipe under Worker sandbox design.
+17. **LLM provider (2026-07-22, revised 2026-07-22): neuralwatt for devcontainer runs;
+    alternative provider required for sandbox runs.** opencode does not ship neuralwatt as a
+    built-in provider, so the provider registration in the repo's `opencode.json` (and
+    `NEURALWATT_API_KEY` in the sandbox env) is what makes the model resolvable at agent launch
+    — without it, `opencode run` fails at provider lookup before the LLM is called. The
+    dispatcher copies `opencode.json` into each sandbox at provisioning (same path as `.env`:
+    the snapshot's bake is a cold-start optimization, not a freshness guarantee, and a stale
+    baked `opencode.json` would silently pin an old model or old context limits). The planning
+    run runs on the devcontainer and inherits the working tree's `opencode.json` — no copy
+    needed. The provider and model are config in `opencode.json`, so swapping either is a repo
+    change picked up by the next snapshot rebuild or the next planning run, not a pipeline code
+    change. All opencode runs in the pipeline — sandbox agents, the planning run, and the
+    outcome-classification LLM fallback — were originally pinned to neuralwatt with `glm-5.2`
+    as the initial model. **Revised after the opencode-sandbox spike (2026-07-22): neuralwatt's
+    API (`api.neuralwatt.com`, Cloudflare-fronted) is unreachable from Daytona sandboxes — the
+    TLS handshake is reset by the peer, likely Cloudflare bot protection blocking the sandbox
+    egress IP range.** Non-Cloudflare providers (Anthropic, OpenAI) work fine from sandboxes.
+    The planning run and the outcome-classification call run on the devcontainer and are
+    unaffected — neuralwatt remains the provider for those. **For sandbox agents, a
+    non-Cloudflare provider (Anthropic or OpenAI) must be used until the neuralwatt connectivity
+    issue is resolved.** Untested workarounds for restoring neuralwatt from sandboxes: proxy
+    neuralwatt API through a non-Cloudflare relay; ask neuralwatt to allowlist Daytona egress
+    IPs. The split-provider setup (neuralwatt on the devcontainer, Anthropic/OpenAI in sandboxes)
+    is config in `opencode.json` — the sandbox copy can carry a different provider than the
+    devcontainer's working tree. This is a temporary split; resolving the connectivity issue
+    collapses it back to one provider. See the provisioning recipe under Worker sandbox design
+    and `docs/todo/spike-opencode-sandbox.md` (finding F2).
 18. **Depth-first fairness bound (2026-07-22): bounded depth-first with a fairness budget
     (BDFB).** Unbounded depth-first traversal starves: a chain that keeps producing ready
     successors fills the pool indefinitely while an independent ready node waits. The
