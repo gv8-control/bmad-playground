@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gen-3 pipeline graph</title>
+<script src="vendor/cytoscape.min.js"></script>
+<script src="vendor/dagre.min.js"></script>
+<script src="vendor/cytoscape-dagre.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb;
+    --page: #f9f9f7;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --hairline: #e1e0d9;
+    --border: rgba(11, 11, 11, 0.1);
+    --running: #2a78d6;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --serious: #ec835a;
+    --critical: #d03b3b;
+    --tint-opacity: 0.13;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      color-scheme: dark;
+      --surface: #1a1a19;
+      --page: #0d0d0d;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --hairline: #2c2c2a;
+      --border: rgba(255, 255, 255, 0.1);
+      --running: #3987e5;
+      --tint-opacity: 0.2;
+    }
+  }
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --surface: #1a1a19;
+    --page: #0d0d0d;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --hairline: #2c2c2a;
+    --border: rgba(255, 255, 255, 0.1);
+    --running: #3987e5;
+    --tint-opacity: 0.2;
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--page);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--hairline);
+  }
+  header h1 { font-size: 14px; font-weight: 600; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .chip .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 1.5px solid transparent;
+    flex: none;
+  }
+  .chip .count { color: var(--ink); font-weight: 600; }
+  #paused-chip { color: var(--critical); border-color: var(--critical); font-weight: 600; display: none; }
+  .spacer { flex: 1; }
+  .meta { color: var(--muted); font-size: 12px; }
+  button {
+    font: inherit;
+    color: var(--ink-2);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  #cy { flex: 1; background: var(--surface); min-width: 0; }
+
+  aside {
+    width: 340px;
+    flex: none;
+    border-left: 1px solid var(--hairline);
+    background: var(--surface);
+    overflow-y: auto;
+    padding: 16px;
+  }
+  aside .empty { color: var(--muted); }
+  aside h2 { font-size: 13px; font-weight: 600; word-break: break-all; margin-bottom: 2px; }
+  aside .story-line { color: var(--ink-2); font-size: 12px; margin-bottom: 12px; }
+  dl { display: grid; grid-template-columns: 92px 1fr; gap: 5px 10px; }
+  dt { color: var(--muted); }
+  dd { color: var(--ink); word-break: break-all; font-variant-numeric: tabular-nums; }
+  dd .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+  .block {
+    margin-top: 12px;
+    padding: 8px 10px;
+    border-left: 3px solid var(--hairline);
+    color: var(--ink-2);
+    font-size: 12px;
+  }
+  .block.q { border-left-color: var(--warning); }
+  .block.fail { border-left-color: var(--critical); }
+  .block.conflict { border-left-color: var(--serious); }
+  .block.note { border-left-color: var(--hairline); font-style: italic; }
+  .block b { color: var(--ink); font-style: normal; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Gen-3 pipeline graph</h1>
+    <span class="chip" id="run-chip">run —</span>
+    <span class="chip" id="paused-chip">⏸ PAUSED</span>
+    <span id="legend" style="display: contents"></span>
+    <span class="spacer"></span>
+    <span class="meta" id="generated-at"></span>
+    <span class="meta" id="refresh-in"></span>
+    <button id="theme-toggle" title="Toggle light/dark">◐</button>
+  </header>
+  <main>
+    <div id="cy"></div>
+    <aside id="sidebar"><p class="empty">Click a node to inspect it.</p></aside>
+  </main>
+
+<script>
+  'use strict';
+
+  // Status vocabulary: fixed display order, glyph + label everywhere so color
+  // never carries meaning alone. colorVar → CSS custom property per theme.
+  const STATUS = {
+    merged:  { glyph: '✓', label: 'merged',  colorVar: '--good',     border: 'double' },
+    done:    { glyph: '✓', label: 'done',    colorVar: '--good',     border: 'solid' },
+    running: { glyph: '▶', label: 'running', colorVar: '--running',  border: 'solid' },
+    parked:  { glyph: '?', label: 'parked',  colorVar: '--warning',  border: 'solid' },
+    conflict:{ glyph: '⚠', label: 'conflict',colorVar: '--serious',  border: 'solid' },
+    failed:  { glyph: '✕', label: 'failed',  colorVar: '--critical', border: 'solid' },
+    ready:   { glyph: '◌', label: 'ready',   colorVar: '--muted',    border: 'dashed' },
+    planned: { glyph: '○', label: 'planned', colorVar: '--muted',    border: 'solid' },
+  };
+  const STATUS_ORDER = Object.keys(STATUS);
+
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const statusColor = (s) => cssVar((STATUS[s] || STATUS.planned).colorVar);
+
+  let cy = null;
+  let graph = null; // last-good state; kept on fetch/parse failure
+  let structureKey = '';
+
+  const shortSkill = (s) => s.replace(/^bmad-/, '');
+  const storyNum = (s) => (s.match(/^\d+-\d+/) || [s])[0];
+
+  function nodeLabel(n) {
+    const st = STATUS[n.status] || STATUS.planned;
+    const merge = n.mergeTo ? `  ⇥ ${n.mergeTo}` : '';
+    return `${st.glyph} ${shortSkill(n.skill)}\n${storyNum(n.story)}${merge}`;
+  }
+
+  function buildElements(g) {
+    const els = [];
+    for (const n of g.nodes) {
+      els.push({ group: 'nodes', data: { id: n.id, node: n, label: nodeLabel(n), status: n.status, mergePoint: n.mergeTo ? 'yes' : 'no' } });
+    }
+    const byId = Object.fromEntries(g.nodes.map((n) => [n.id, n]));
+    for (const n of g.nodes) {
+      for (const dep of n.dependsOn || []) {
+        if (!byId[dep]) continue;
+        const cross = byId[dep].story !== n.story;
+        els.push({ group: 'edges', data: { id: `${dep}->${n.id}`, source: dep, target: n.id, cross: cross ? 'yes' : 'no' } });
+      }
+    }
+    return els;
+  }
+
+  function cyStyle() {
+    const ink = cssVar('--ink');
+    const muted = cssVar('--muted');
+    const hairline = cssVar('--hairline');
+    const tint = parseFloat(cssVar('--tint-opacity'));
+    const style = [
+      {
+        selector: 'node',
+        style: {
+          shape: 'round-rectangle',
+          width: 'label',
+          height: 'label',
+          padding: '9px',
+          label: 'data(label)',
+          'text-wrap': 'wrap',
+          'text-valign': 'center',
+          'text-halign': 'center',
+          'font-family': 'system-ui, sans-serif',
+          'font-size': 11,
+          'line-height': 1.3,
+          color: ink,
+          'border-width': 1.5,
+          'text-events': 'yes',
+        },
+      },
+      { selector: 'node[mergePoint = "yes"]', style: { shape: 'cut-rectangle' } },
+      {
+        selector: 'edge',
+        style: {
+          width: 1.5,
+          'curve-style': 'bezier',
+          'line-color': muted,
+          'target-arrow-color': muted,
+          'target-arrow-shape': 'triangle',
+          'arrow-scale': 0.9,
+        },
+      },
+      { selector: 'edge[cross = "yes"]', style: { 'line-style': 'dashed', 'line-dash-pattern': [5, 4] } },
+      {
+        selector: 'node:selected',
+        style: { 'overlay-color': cssVar('--running'), 'overlay-opacity': 0.12, 'overlay-padding': 5 },
+      },
+    ];
+    for (const [s, def] of Object.entries(STATUS)) {
+      const c = statusColor(s);
+      style.push({
+        selector: `node[status = "${s}"]`,
+        style: {
+          'background-color': c,
+          'background-opacity': s === 'planned' ? 0.04 : tint,
+          'border-color': s === 'planned' ? hairline : c,
+          'border-style': def.border,
+          'border-width': def.border === 'double' ? 4 : 1.5,
+        },
+      });
+    }
+    return style;
+  }
+
+  function renderLegend(g) {
+    const counts = {};
+    for (const n of g.nodes) counts[n.status] = (counts[n.status] || 0) + 1;
+    const el = document.getElementById('legend');
+    el.innerHTML = '';
+    for (const s of STATUS_ORDER) {
+      if (!counts[s]) continue;
+      const def = STATUS[s];
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      const c = statusColor(s);
+      if (s === 'ready' || s === 'planned') {
+        dot.style.borderColor = c;
+        dot.style.background = 'transparent';
+        if (s === 'ready') dot.style.borderStyle = 'dashed';
+      } else {
+        dot.style.background = c;
+      }
+      chip.append(dot, `${def.glyph} ${def.label} `);
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = counts[s];
+      chip.append(count);
+      el.append(chip);
+    }
+  }
+
+  const fmtDuration = (sec) => {
+    if (sec == null) return null;
+    const h = Math.floor(sec / 3600);
+    const m = Math.round((sec % 3600) / 60);
+    return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+  };
+  const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString() : null);
+
+  function renderSidebar(n) {
+    const el = document.getElementById('sidebar');
+    if (!n) {
+      el.innerHTML = '<p class="empty">Click a node to inspect it.</p>';
+      return;
+    }
+    const st = STATUS[n.status] || STATUS.planned;
+    const maxAttempts = graph?.policy?.maxAttemptsPerNode;
+    const rows = [
+      ['status', `${st.glyph} ${st.label}`],
+      ['skill', n.skill],
+      ['attempts', n.attempts != null ? (maxAttempts ? `${n.attempts} / ${maxAttempts}` : n.attempts) : null],
+      ['last outcome', n.lastOutcome],
+      ['duration', fmtDuration(n.durationSec)],
+      ['deadline', n.deadlineMin ? `${n.deadlineMin} min` : null],
+      ['started', fmtTime(n.startedAt)],
+      ['parked', fmtTime(n.parkedAt)],
+      ['merged', fmtTime(n.mergedAt)],
+      ['merge to', n.mergeTo],
+      ['depends on', (n.dependsOn || []).join(', ') || '— (chain root)'],
+      ['base commit', n.baseCommit && { mono: n.baseCommit }],
+      ['branch', n.branch && { mono: n.branch }],
+      ['sandbox', n.sandboxId && { mono: n.sandboxId }],
+      ['session', n.sessionId && { mono: n.sessionId }],
+    ];
+    let html = `<h2>${n.id}</h2><p class="story-line">${n.story}</p><dl>`;
+    for (const [k, v] of rows) {
+      if (v == null || v === '') continue;
+      const val = typeof v === 'object' ? `<span class="mono">${v.mono}</span>` : v;
+      html += `<dt>${k}</dt><dd>${val}</dd>`;
+    }
+    html += '</dl>';
+    if (n.parkedQuestion) html += `<div class="block q"><b>Question</b><br>${n.parkedQuestion}</div>`;
+    if (n.failure) html += `<div class="block fail"><b>Failure</b><br>${n.failure}</div>`;
+    if (n.conflict)
+      html += `<div class="block conflict"><b>Merge conflict</b> · ${fmtTime(n.conflict.reportedAt)}<br>${(n.conflict.files || []).join('<br>')}<br>${n.conflict.diffstat || ''}</div>`;
+    if (n.note) html += `<div class="block note">${n.note}</div>`;
+    el.innerHTML = html;
+  }
+
+  function renderHeader(g) {
+    document.getElementById('run-chip').textContent = g.runId || 'run —';
+    document.getElementById('paused-chip').style.display = g.paused ? '' : 'none';
+    document.getElementById('generated-at').textContent = g.generatedAt
+      ? `generated ${fmtTime(g.generatedAt)}`
+      : '';
+  }
+
+  function render(g) {
+    renderHeader(g);
+    renderLegend(g);
+    const els = buildElements(g);
+    const key = els.map((e) => e.data.id).sort().join('|');
+    if (!cy) {
+      cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements: els,
+        style: cyStyle(),
+        layout: { name: 'dagre', rankDir: 'LR', nodeSep: 18, rankSep: 55, padding: 24 },
+        wheelSensitivity: 0.3,
+      });
+      cy.on('tap', 'node', (ev) => renderSidebar(ev.target.data('node')));
+      cy.on('tap', (ev) => { if (ev.target === cy) renderSidebar(null); });
+    } else if (key !== structureKey) {
+      const selected = cy.$('node:selected').map((x) => x.id());
+      cy.elements().remove();
+      cy.add(els);
+      cy.layout({ name: 'dagre', rankDir: 'LR', nodeSep: 18, rankSep: 55, padding: 24 }).run();
+      selected.forEach((id) => cy.getElementById(id).select());
+    } else {
+      // Same structure: refresh node data/labels in place, keep the viewport.
+      for (const e of els) {
+        if (e.group !== 'nodes') continue;
+        const ele = cy.getElementById(e.data.id);
+        ele.data(e.data);
+      }
+    }
+    structureKey = key;
+    const sel = cy.$('node:selected');
+    if (sel.length) renderSidebar(sel[0].data('node'));
+  }
+
+  const REFRESH_SEC = 30;
+  let nextRefresh = Date.now() + REFRESH_SEC * 1000;
+
+  async function load() {
+    try {
+      const res = await fetch('graph.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status);
+      graph = await res.json(); // throws on bad JSON → last-good kept
+      render(graph);
+    } catch (err) {
+      console.warn('graph.json fetch/parse failed; keeping last-good state', err);
+    }
+    nextRefresh = Date.now() + REFRESH_SEC * 1000;
+  }
+
+  setInterval(load, REFRESH_SEC * 1000);
+  setInterval(() => {
+    const s = Math.max(0, Math.round((nextRefresh - Date.now()) / 1000));
+    document.getElementById('refresh-in').textContent = `refresh in ${s}s`;
+  }, 1000);
+
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const root = document.documentElement;
+    const dark =
+      root.dataset.theme === 'dark' ||
+      (!root.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+    root.dataset.theme = dark ? 'light' : 'dark';
+    if (cy) cy.style(cyStyle());
+    if (graph) renderLegend(graph);
+  });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (!document.documentElement.dataset.theme) {
+      if (cy) cy.style(cyStyle());
+      if (graph) renderLegend(graph);
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
