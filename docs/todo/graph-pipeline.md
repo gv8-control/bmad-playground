@@ -700,11 +700,15 @@ When an agent finishes:
    sandbox is destroyed (see Supervision).
 4. If the outcome is QUESTION: the pass journals `parked` (with sandbox ID, session ID, and
    question text), stops the sandbox, and triggers the question-form workflow, which fires ntfy
-   with the form URL and suspends on its Wait node. The human's answer is written to the inbox
+   with the form URL and suspends on its Wait node. The session ID was captured at launch (see
+   the in-sandbox command template — opencode auto-generates IDs, so the template runs
+   `opencode session list --format json` after the initial `opencode run` and records the ID
+   for the journal). The human's answer is written to the inbox
    and the dispatcher invoked; the next pass starts the sandbox and issues
    `opencode run --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
    resume. Parking costs nothing while the question waits — disk and opencode storage survive a
-   Daytona stop.
+   Daytona stop (verified, spike 2026-07-22: stop ~2.3s, start ~0.8s, storage directory
+   preserved identically).
 
 ### Implementation surface
 
@@ -915,7 +919,8 @@ single-use keeps it free across sequential claims too.
   `--dir <sandbox-repo-path>` and opencode storage at a persistent path on the sandbox
   disk (not tmpfs — a parked sandbox's storage must survive stop/start; see Park/resume).
   opencode v1.1.35 stores data as JSON files in `~/.local/share/opencode/storage/`
-  (spike finding F3, 2026-07-22). The pass then exits — the
+  (spike finding F3, 2026-07-22; stop/start persistence verified spike 2026-07-22). The pass
+  then exits — the
   pull-based transport model the product already uses. Later passes poll the command's state
   and pull logs via `getSessionCommandLogs`. The sandbox never calls back to the devcontainer.
   **The command must append `</dev/null`** (verified in the opencode-sandbox spike,
@@ -924,6 +929,11 @@ single-use keeps it free across sequential claims too.
   task, so the process never exits and `getSessionCommand` never returns an `exitCode`.
   With stdin closed, opencode exits cleanly after completing its task. Without this, every
   poll-for-completion loop times out.
+  **The template captures the session ID after the initial run** (verified spike 2026-07-22):
+  opencode auto-generates session IDs (format `ses_<hex>`) and `--session` is resume-only, so
+  the template runs `opencode session list --format json` (newest first) after the initial
+  `opencode run` and writes the ID to a known path for the dispatcher to journal with the
+  claim. Without this, the park/resume path has no ID to pass to `--session`.
 - The in-sandbox command ends with a branch push (`git push origin HEAD:pipeline/<runId>/<story>`
   — the chain branch) so the result is durable in git regardless of what is watching.
 - Deadlines are enforced pass-side: a pass finding a claim past its deadline terminates the
@@ -1082,12 +1092,15 @@ Documented in full because it encodes a failure already paid for once:
 - The sandbox is stopped while parked: disk and opencode storage survive a Daytona stop, so
   parking costs nothing while the question waits (the human-response window is unbounded — the
   existing no-timeout limitation on questions carries over; lifecycle timers are set so a long
-  park cannot be auto-deleted — see Sandbox lifecycle).
+  park cannot be auto-deleted — see Sandbox lifecycle). Verified 2026-07-22: stop ~2.3s,
+  start ~0.8s, opencode storage directory preserved identically across the cycle.
 - Other agents are unaffected; nothing finished is discarded or re-run.
 - An answer resumes exactly one session: the human submits the form, n8n writes the answer to
   the inbox and invokes the dispatcher, and the next pass starts the sandbox and issues
   `opencode run --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
-  resume. Agents still never talk to n8n.
+  resume. The session ID is the one captured at launch (opencode auto-generates IDs —
+  `--session` is resume-only, so the template captures it via `opencode session list --format
+  json` after the initial run; see the per-claim recipe). Agents still never talk to n8n.
 - This path is also how human-involved stories run: a story whose instructions require human
   action (e.g. setting up credentials) is still a normal chain — the skill run reads the story,
   asks, parks, resumes with the answer. There is no separate human-task node type.
@@ -1347,20 +1360,33 @@ With stdin closed, opencode exits cleanly after completing its task (verified: ~
 This is folded into the in-sandbox command template (see the per-claim recipe under Worker
 sandbox design). See `docs/todo/spike-opencode-sandbox.md` for the full spike report.
 
-### 2. Sandbox stop/start disk persistence + opencode session resume
+### 2. Sandbox stop/start disk persistence + opencode session resume — VERIFIED (spike, 2026-07-22)
 
 Park/resume depends on: stop sandbox → disk survives → start sandbox → `opencode run --session
 <id>` resumes. The plan asserts disk and opencode storage survive a Daytona stop, but the
 restart-and-resume path is the critical chain and is not verified. This crosses four
 components (pass, n8n form, Daytona, opencode) and is mandatory from the first rollout (see
-Park/resume). **Spike:** create a sandbox, start an opencode session with storage on disk
-(opencode v1.1.35 stores data as JSON files in `~/.local/share/opencode/storage/`;
-see spike finding F3), run a trivial prompt. Stop the sandbox. Start
-it again. Verify the storage directory still exists and `opencode run --session <id>` resumes
-the session. Then test the full chain: start a session, stop the sandbox, wait an hour,
-restart, resume with an answer argument. If disk does not survive stop/start, or sessions are
-not resumable after a gap, park/resume needs a different design (e.g. never stop the sandbox,
-or serialize session state to git).
+Park/resume).
+
+**Verified by the stop-resume spike (2026-07-22):** all four links in the chain pass. The
+spike created a sandbox, ran an opencode session that established a secret word, captured
+the session ID, stopped the sandbox, waited 60 seconds, restarted the sandbox, and resumed
+the session — the resumed session correctly recalled the secret word. The opencode storage
+directory (`~/.local/share/opencode/storage/` in v1.1.35) survived the stop/start cycle with
+identical contents (same directory structure, unchanged timestamps). Stop took ~2.3s, start
+~0.8s, resume run ~18.5s — negligible against skill runs measured in hours. The Daytona
+docs confirm this is by design: container sandbox stop preserves the filesystem ("it stays on
+the runner and counts against disk quota while stopped"), and auto-archive (7-day default)
+moves the filesystem to object storage with restore on start — so even a multi-day park
+recovers. See `docs/todo/spike-stop-resume.md` for the full spike report.
+
+**Finding (F2): opencode session IDs are auto-generated, not user-specifiable.** The
+`--session <id>` flag is resume-only: it loads an existing session and fails with `Session
+not found` if the ID does not exist. The dispatcher must capture the auto-generated ID (via
+`opencode session list --format json`, newest first) immediately after the first `opencode
+run` and persist it in the journal's claim record, then pass it via `--session` on all
+resumes. This is a one-command addition to the in-sandbox command template, not a design
+change.
 
 ### 3. opencode mid-stream resume (INCOMPLETE)
 
@@ -1477,6 +1503,9 @@ the ones that matter; these are noted so the seams are visible during implementa
   four components and is the intersection of the sandbox-stop/start and opencode-session-resume
   assumptions above. Each is individually testable; the combination (stop a sandbox with a live
   opencode session, wait hours, restart, resume) is the real test and is what the spike covers.
+  **Verified (spike, 2026-07-22):** the full chain works — stop preserves disk, start restores
+  it, and `opencode run --session <id>` resumes with prior context intact. See assumption #2
+  and `docs/todo/spike-stop-resume.md`.
 - **Stream-truncation detection as a signal.** "Truncated last message" is a heuristic on log
   content, not a structured signal. If too loose, every clean exit gets a spurious continue;
   if too tight, real truncations get misclassified as `failed` and consume an attempt. The
