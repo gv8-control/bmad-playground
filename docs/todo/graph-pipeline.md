@@ -7,6 +7,16 @@ for the pipeline — not a delta to the current loop. Read
 (`pipeline-parallelization-plan.md`, deleted 2026-07-17); everything still relevant from that
 plan is folded in here.
 
+**Revised 2026-07-22:** the pipeline is generalized from a BMAD story engine to a general graph
+executor. Three changes: (1) `chainId` replaces story/epic as the structural field the machinery
+reads — story, epic, sprint, and all project-specific vocabulary move to node metadata the
+machinery never reads; (2) tests are decoupled from the merge cycle — the merge cycle does fetch +
+rebase + merge + fire a post-merge hook, and a hook failure is a standard `failed` outcome riding
+the existing remediation path; (3) the planner's prompt carries immutable graph rules alongside
+project-specific semantics. The pipeline knows nothing about stories, epics, BMAD phases, or
+sprints — those live in project-authored guidance the planner reads. See Pipeline vs.
+project-specific customization.
+
 ## Why this shape
 
 n8n executes the nodes of one workflow execution sequentially, even when branches are wired "in
@@ -22,14 +32,14 @@ pipeline files are the record. Here the state is the engine:
 
 - **A work graph, not a list.** A planning agent emits nodes — one skill run each — with
   explicit `dependsOn` edges (a directed acyclic graph) instead of an ordered sequence. A
-  story is a chain of nodes composed for that story, not stamped from a fixed sequence (see
-  Graph management rules); review steps are nodes of their own with explicit ordering edges. Any node
-  whose dependencies are satisfied is claimable. Step and story ordering — not n8n — was the
-  real obstacle to parallelism; making dependencies explicit is planning work, not plumbing
-  work. A chain itself is a total order — all nodes are assumed to modify code and a chain
-  shares one branch (see Graph management rules) — so parallelism is across stories, not
+  chain is a sequence of nodes composed for a unit of work, not stamped from a fixed sequence
+  (see Graph management rules); review steps are nodes of their own with explicit ordering edges.
+  Any node whose dependencies are satisfied is claimable. Step and chain ordering — not n8n —
+  was the real obstacle to parallelism; making dependencies explicit is planning work, not
+  plumbing work. A chain itself is a total order — all nodes are assumed to modify files and a
+  chain shares one branch (see Graph management rules) — so parallelism is across chains, not
   within one; node granularity buys per-node supervision, retry, and composition flexibility,
-  not within-story latency.
+  not within-chain latency.
 - **A dispatcher, not a loop.** The dispatcher is not a resident process. Each invocation is a
   short reconcile pass, serialized by a lock: read all durable state, drive it to fixpoint
   (poll running work, fold results, update graph state, claim ready nodes, start workers), exit
@@ -48,24 +58,30 @@ counter so an independent ready node cannot starve (see Graph management rules).
   surfaces that same-machine concurrency creates (discovered in session-history analysis,
   2026-07-17): cross-process homicide (`pkill -f` can't cross machine boundaries), fixed port
   binding (each sandbox has its own port space), shared test databases (each sandbox runs its
-  own Postgres), and shared-file corruption (`sprint-status.yaml`, `deferred-work.md` are
-  per-sandbox). The opencode identity-collision risk is also removed — separate machine,
-  separate storage. Epic 6 built sandbox provisioning for the product; the pipeline copies the
-  discipline patterns, not the code.
+  own Postgres), and shared-file corruption (pipeline state files are per-sandbox). The
+  opencode identity-collision risk is also removed — separate machine, separate storage. Epic 6
+  built sandbox provisioning for the product; the pipeline copies the discipline patterns, not
+  the code.
 - **Git is the convergence point.** Every agent pushes a branch; a serial merge queue
-  (rebase → test → merge) integrates one branch at a time. Integration is serialized, work is
-  not — integration takes minutes, skill runs take hours. The whole merge cycle — fetch,
-   rebase, install, test, merge, push — runs on a sandbox created per merge cycle (resolved
-   questions 12 and 16), not on the devcontainer: the devcontainer already runs n8n, the
-   dispatcher, the human's dev servers, and the human's Postgres, and its checkout is the
-   human's working copy — pipeline git operations never touch it. The n8n workflow runs a merge
-   wrapper that drives the merge cycle on the sandbox via the Daytona session API — same
-   create-on-demand path as a node claim, held for minutes not hours — and the push to `origin/main` is the merge cycle's
-   commit point: everything before it is sandbox-local and disposable (see Merge cycle under
-   Worker sandbox design). A branch whose head is already an ancestor of main short-circuits at
-   the start of the merge cycle: nothing to merge, no test run — the merge cycle just
-   deletes the branch — so an empty-diff completion or a conflict that evaporated while its
-   resolution was planned costs one git check instead of a full serialized merge cycle.
+  (rebase → merge) integrates one branch at a time. Integration is serialized, work is
+  not — integration takes seconds, skill runs take hours. The whole merge cycle — fetch,
+  rebase, merge, push — runs on a sandbox created per merge cycle (resolved questions 12 and
+  16), not on the devcontainer: the devcontainer already runs n8n, the dispatcher, the human's
+  dev servers, and the human's Postgres, and its checkout is the human's working copy —
+  pipeline git operations never touch it. The n8n workflow runs a merge wrapper that drives the
+  merge cycle on the sandbox via the Daytona session API — same create-on-demand path as a
+  node claim, held for seconds not hours — and the push to `origin/main` is the merge cycle's
+  commit point: everything before it is sandbox-local and disposable (see Merge cycle under
+  Worker sandbox design). A branch whose head is already an ancestor of main short-circuits at
+  the start of the merge cycle: nothing to merge — the merge cycle just deletes the branch —
+  so an empty-diff completion or a conflict that evaporated while its resolution was planned
+  costs one git check instead of a full serialized merge cycle. **Testing is not part of the
+  merge cycle** (revised 2026-07-22): the pipeline merges branches without running tests. A
+  post-merge hook — project-authored, configured in the policy block — fires after the merge
+  lands; if the hook fails, the failure is a standard `failed` outcome that rides the existing
+  remediation path (conflict-mode planning run → resolution node or rework — see
+  Merge-conflict resolution). The pipeline does not assume tests exist; early-phase projects with
+  no test suite simply merge. See Pipeline vs. project-specific customization.
 - **n8n keeps only small workflows:** the schedule tick that invokes the dispatcher, the
   question form + ntfy flow, the merge queue, the planning-run host, error notification, and
   sprint status reporting. Nothing per-worker, and nothing whose survival matters: the
@@ -86,7 +102,7 @@ architecture.)
 | Gen-2 piece | Fate in gen-3 |
 |---|---|
 | `Develop Epic` (n8n) | Dissolved — the epic loop becomes the graph plus dispatcher claiming; its reflect/learn steps are out of scope (see below) |
-| `Develop Story (Playbook)` (n8n) + `playbook.json` | Dissolved — a story's chain is composed per story by the planning agent; each node spec carries its own skill/agent/prompt, so there is no playbook interpreter and no playbook file. The step sequence itself survives only as content for the advisory chain-composition guidelines (see Graph management rules) |
+| `Develop Story (Playbook)` (n8n) + `playbook.json` | Dissolved — a chain is composed per unit of work by the planning agent; each node spec carries its own skill/agent/prompt, so there is no playbook interpreter and no playbook file. The step sequence itself survives only as content for the advisory chain-composition guidelines (see Graph management rules) |
 | `BMAD Session (OpenCode)` (n8n) | Dissolved — its behaviors (bounded runs, stream-truncation auto-continue, outcome classification, question form + ntfy resume) are reimplemented as pass logic plus one small question-form workflow; the workflow itself is not ported. Note: gen-2's INCOMPLETE was a within-session recovery signal for the LLM provider dropping a response mid-stream — the session was still alive and `opencode run --session <id>` resumed it (gen-2 did not use `--format json`). Gen-3 keeps the same within-session recovery, with `opencode run --format json --session <id>` resuming the session (see Supervision), not as a node outcome |
 | `Parse OpenCode Response`, `BMAD Outcome` (n8n sub-workflows) | Logic ported — the deterministic rules and the LLM classification prompt move into the dispatcher's classification module; the sub-workflows stay with gen-2 |
 | Reflect step, `apply-amendments.mjs`, `ledger.jsonl`, trends | Not inherited — self-improvement is out of scope for gen-3 (rationale below) |
@@ -98,9 +114,9 @@ architecture.)
 
 **Why self-improvement is out of scope.** Two reasons, both structural. First, gen-2 reflects
 *between stories* — a quiet point that exists only because the epic loop is sequential. With N
-concurrent agents there is no between-stories; the only serialization point is the merge queue.
-A reflector for gen-3 must be designed for that world (hook the merge queue, or run on a
-schedule against the journal) — porting the gen-2 one buys nothing. Second, carrying the
+concurrent agents there is no between-chains quiet point; the only serialization point is the
+merge queue. A reflector for gen-3 must be designed for that world (hook the merge queue, or run
+on a schedule against the journal) — porting the gen-2 one buys nothing. Second, carrying the
 substrate without the consumer is pure cost: it constrained storage format choices, imported
 policy vocabulary (`maxAttemptsPerStory`, `addStepRecurrenceThreshold`), and motivated features
 like playbook version pinning that only make sense with a live amendment loop. Gen-3 therefore
@@ -111,53 +127,63 @@ journal.
 
 ## Graph management rules (decided)
 
-- **Node = one skill run** (BMAD-agnostic — any skill, or another atomic action like a CLI
-  command). A story is a *chain* of nodes connected by `dependsOn` edges.
-- **Chains are composed per story, not stamped from a template.** The planning run reads the
-  story's content plus a human-authored, agent-facing guidelines document — the successor of
+- **Node = one skill run** (project-agnostic — any skill, or another atomic action like a CLI
+  command). A chain is a sequence of nodes connected by `dependsOn` edges. What a chain is
+  *for* — a story, a finalization, a PRD draft, a research task — is project-specific metadata
+  the machinery never reads (see Pipeline vs. project-specific customization).
+- **Chains are composed per unit of work, not stamped from a template.** The planning run reads
+  the work's content plus a human-authored, agent-facing guidelines document — the successor of
   the gen-2 playbook sequence, demoted to a suggestion and authored fresh (its content is
   seeded from the gen-2 step sequence; the planner never reads `playbook.json` or any other
   gen-2 file); same category as `decision-policy.md` —
-  and decides which nodes the story's chain gets. Stories differ: a story whose substance is
+  and decides which nodes the chain gets. Units of work differ: a unit whose substance is
   human-performed setup (e.g. the human configures credentials) gets no e2e-test node, because
   there is no automatable behavior to test. The guidelines say when a step applies, not that it
   always does. Human involvement needs no special node type — a normal skill run (e.g.
-  dev-story) reads the story, halts with a question, and rides the standard
+  dev-story) reads the work, halts with a question, and rides the standard
   QUESTION → park → resume path.
-- **Chains share a branch and merge at merge points.** A story chain works on one branch
-  (`pipeline/<runId>/<story>`). A node spec may carry `mergeTo: <branch>` — the only target for
-  now is `main` — marking a merge point: when that node completes, the pass triggers the
+- **Chains share a branch and merge at merge points.** A chain works on one branch
+  (`pipeline/<runId>/<chainId>`). A node spec may carry `mergeTo: <branch>` — the only target
+  for now is `main` — marking a merge point: when that node completes, the pass triggers the
   merge queue for the chain branch. Every chain's final node carries `mergeTo` (the guidelines
   instruct the planner; the dispatcher's rule is just "merge when marked", no chain-end special
   case — a final node without `mergeTo` is a planning error rejected at fold time). A mid-chain
-  merge point exists to unlock a dependent story early: e.g. a create-story node whose story
-  doc specifies schemas and contracts merges right away, so another story can start
-  implementing against the doc while this story's own implementation is still running. Like the
-  rest of the spec, `mergeTo` freezes at claim; replanning toggles it only on unclaimed nodes.
-- **All nodes are assumed to modify code, so a chain is a total order** (decided 2026-07-21).
-  Two code-modifying nodes can never run concurrently on a shared branch — both would push to
+  merge point exists to unlock a dependent chain early: e.g. a create-story node whose
+  artifact specifies schemas and contracts merges right away, so another chain can start
+  implementing against the artifact while this chain's own implementation is still running. Like
+  the rest of the spec, `mergeTo` freezes at claim; replanning toggles it only on unclaimed
+  nodes.
+- **All nodes are assumed to modify files, so a chain is a total order** (decided 2026-07-21).
+  Two file-modifying nodes can never run concurrently on a shared branch — both would push to
   the same head — and gen-3 keeps no read-only node class to except from that rule. Within a
   chain, `dependsOn` is simply the previous node; the only branching in the graph is
-  cross-story, at merge points. Node-spec field names are camelCase (`dependsOn`, `mergeTo`,
-  `maxAttemptsPerNode`) — the state is JSON written and read by JS code.
+  cross-chain, at merge points. Node-spec field names are camelCase (`dependsOn`, `mergeTo`,
+  `maxAttemptsPerNode`, `chainId`) — the state is JSON written and read by JS code.
+- **`chainId` is the structural identifier the machinery reads; story, epic, and all
+  project-specific vocabulary are metadata** (decided 2026-07-22). The machinery derives branch
+  names from `chainId`, validates cross-chain edges against `chainId`, and scopes
+  `abandonSegment` to `chainId`. Story, epic, sprint, phase, and any other project-specific
+  grouping live in a `metadata` dict on the node spec — the planner writes them, the machinery
+  never reads them, and they appear in `graph.json` digests for reporting and display only. A
+  node with no story in its metadata is a node whose chain isn't story-shaped; everything works.
 - **Basing and readiness follow the merge points.** The successor of an unmarked node is ready
   when the predecessor's head is pushed and bases on it — same branch, same segment. The
   successor of a merge-point node is ready when the merge *lands* and bases on merged main,
   starting a fresh segment: the merge queue deletes the merged branch and the successor's claim
-  recreates `pipeline/<runId>/<story>` from main — same name, new segment; the journal records
-  each claim's base commit. Cross-story `dependsOn` edges may only target merge-point nodes,
-  keeping "cross-story dependencies gate on a merge" an invariant rather than a convention — an
+  recreates `pipeline/<runId>/<chainId>` from main — same name, new segment; the journal records
+  each claim's base commit. Cross-chain `dependsOn` edges may only target merge-point nodes,
+  keeping "cross-chain dependencies gate on a merge" an invariant rather than a convention — an
   edge to an unmarked node is rejected at fold time. A failed mid-chain merge blocks the chain
   like any merge failure: journaled as a conflict event; successors simply never become ready
   until it is resolved (resolution is itself a graph node — see Merge-conflict resolution).
-- **Actively managed graph:** never expand more than ~2 stories' worth of unmerged chain ahead.
+- **Actively managed graph:** never expand more than ~2 chains' worth of unmerged chain ahead.
   The graph is expanded and replanned as work merges, not generated whole up front — by
   planning runs on the devcontainer, which are not graph nodes (see Planning runs under
   Dispatcher). The same rule applies within a chain: the planner never
   composes past an information-producing node — one whose artifact determines what the rest
   of the chain should be; create-story is the type case — and extends the chain in a later
   run once the artifact is readable at `origin/main`. Composing a whole chain up front from
-  the epic entry alone plans speculation, and depth-first claiming makes the mistake
+  the backlog entry alone plans speculation, and depth-first claiming makes the mistake
    irreversible: the pass that folds the artifact-producing node's completion claims the
    pre-planned successor in the same pass, leaving no window for a replan to remove a node the
    artifact just revealed as unnecessary. Lazy composition closes that gap with existing
@@ -187,52 +213,95 @@ journal.
   truth, read by both install paths (see resolved question 19). Do not pick technology
   expecting it to enforce them.
 
-## Epic lifecycle (decided 2026-07-22)
+## Pipeline vs. project-specific customization (decided 2026-07-22)
 
-Gen-3's scope is epic development, not only story development: the pipeline selects epics for
-development and runs post-epic finalization — the audit-and-cleanup flow the human has been
-running by hand after an epic's sprints (sprint-flow-draft.md). No new machinery: epic
+The pipeline is a general graph executor. It knows nothing about BMAD, stories, epics, sprints,
+phases, or any project-specific workflow. The separation is explicit:
+
+**Pipeline machinery (immutable, pipeline-shipped):**
+- Graph, chains, `chainId`, `dependsOn`, merge points, claim/dispatch, supervision, journal
+- Graph-shape rules: chains are total orders, cross-chain edges target merge points, every
+  chain's final node carries `mergeTo`, the graph stays acyclic
+- The merge cycle: fetch + rebase + merge + push + fire post-merge hook
+- Retry, timeout, capacity knobs (`maxAttemptsPerNode`, `maxConcurrentSandboxes`,
+  `fairnessBudget`, `opencodeVersion`)
+- The planner's immutable base rules: "compose chains, don't plan past information-producing
+  nodes, mark merge points only where a dependent exists, every chain's final node carries
+  `mergeTo`"
+
+**Project-specific guidance (project-authored, the planner reads):**
+- What a chain is *for* — a story, a finalization, a PRD draft, a research task — and the
+  vocabulary (story, epic, sprint, phase) that describes it
+- Which nodes a chain gets — the skill catalog, include/skip conditions, within-chain ordering
+  advice for review nodes, merge-point placement advice
+- The post-merge hook (if any) — what to run after a merge lands, configured in the policy
+  block; a project with no tests configures no hook
+- The backlog shape — epics files and sprint plan, or a phase list, or a research agenda;
+  whatever the planner reads to know what work exists
+- `decision-policy.md` — human-authored, agent-facing; what keeps questions rare
+
+The machinery reads `chainId` and node ids. It never reads `metadata.story`, `metadata.epic`,
+or any project-specific field. The planner reads the project-specific guidance and reasons in
+its vocabulary; the machinery enforces graph-shape rules. A project that has no stories
+(BMAD phases 1-2: brainstorming, PRD, architecture) composes chains for its doc-writing work
+the same way a story project composes chains for code — the machinery doesn't care what the
+files contain.
+
+## Scope lifecycle (decided 2026-07-22)
+
+Gen-3's scope is not limited to story development: the pipeline runs any unit of work the
+planner composes chains for — epic development, post-epic finalization, early-phase doc work
+(BMAD phases 1-2: brainstorming, PRD, architecture), research tasks. No new machinery: scope
 transitions are planner judgment riding the existing triggers, and finalization is an ordinary
 chain.
 
-- **Epic selection is the planner's, in sprint-plan order.** Machinery never tracks epics. The
-  backlog (epics files and sprint plan) is already in the planner's context, and when an
-   epic's stories run out the ready-node frontier runs low — the existing expansion trigger fires and the
-  planner continues down the sprint plan. No new trigger, no new authority; a human override
-  ("skip to epic 7") is a replan instruction through the inbox like any other.
-- **Finalization is an epic-scoped chain.** The chain vocabulary generalizes: a chain belongs
-  to a story or to an epic's finalization (node specs carry epic membership alongside story
-  membership; the machinery-derived branch is per chain, e.g.
-  `pipeline/<runId>/epic-<n>-finalization`). Its nodes are ordinary skill runs —
+- **Scope selection is the planner's, in backlog order.** Machinery never tracks scopes. The
+  backlog (whatever the project uses — epics files and sprint plan, a phase list, a research
+  agenda) is already in the planner's context, and when a scope's chains run out the
+   ready-node frontier runs low — the existing expansion trigger fires and the
+   planner continues down the backlog. No new trigger, no new authority; a human override
+   ("skip to epic 7", "start the architecture phase") is a replan instruction through the inbox
+   like any other.
+- **Finalization is a scope-scoped chain.** The chain vocabulary generalizes: a chain belongs
+  to a unit of work or to a scope's finalization (node specs carry scope membership in
+  `metadata`; the machinery-derived branch is per chain, e.g.
+  `pipeline/<runId>/scope-<n>-finalization`). Its nodes are ordinary skill runs —
   `bmad-bug-hunt`, `bmad-testarch-trace`, `bmad-testarch-nfr`, deferred-work pruning
   (`bmad-quick-dev`), `bmad-retrospective`, test-plan revision (`bmad-testarch-test-design`),
   project-context cleanup (`bmad-agent-architect`) — composed per the guidelines, which seed
   from the manual flow the way story chains seed from the gen-2 step sequence. The first
-  node's `dependsOn` fans in to every story chain's final merge-point node — legal under the
-  existing cross-story-edges-target-merge-points invariant — so finalization starts only after
-  the epic's last story merges, and the chain is composed late, once those final nodes exist.
+  node's `dependsOn` fans in to every work chain's final merge-point node — legal under the
+  existing cross-chain-edges-target-merge-points invariant — so finalization starts only after
+  the scope's last chain merges, and the chain is composed late, once those final nodes exist.
 - **Finalization is full of information-producing nodes, so lazy composition applies with
   force.** A trace FAIL gets a fix node appended in the next planning round; bug-hunt findings
   get remediation nodes; deferred-work pruning asks when a finding is not a stale deferral and
   rides the standard QUESTION park. The sequence unfolds across several planning rounds by
   design.
-- **Transitions are automatic and notified.** Entering finalization and entering the next epic
+- **Transitions are automatic and notified.** Entering finalization and entering the next scope
   need no human gate. The pass that folds a delta opening a finalization chain, or that first
-  claims a node in a new epic, journals the transition and fires an ntfy notification (a small
+  claims a node in a new scope, journals the transition and fires an ntfy notification (a small
   n8n workflow, same tier as error notification) — informational, never blocking. Pause
   remains the intervention tool.
-- **Overlap with the next epic is planner judgment, not a machinery rule** (decided
-  2026-07-22: full overlap permitted). Finalization audits the epic's merged whole, and
-  next-epic merges landing mid-audit move the target — but gen-3 does not reintroduce a
-  between-epics quiet point in machinery. The guidelines advise when to hold next-epic
-  composition back (an in-flight trace or NFR audit whose evidence next-epic merges would
-  invalidate) and when overlap is safe (next-epic create-story work rarely disturbs an epic
-  audit); the planner decides per epic. Guideline adherence, not construction — the same
+- **Overlap with the next scope is planner judgment, not a machinery rule** (decided
+  2026-07-22: full overlap permitted). Finalization audits the scope's merged whole, and
+  next-scope merges landing mid-audit move the target — but gen-3 does not reintroduce a
+  between-scopes quiet point in machinery. The guidelines advise when to hold next-scope
+  composition back (an in-flight trace or NFR audit whose evidence next-scope merges would
+  invalidate) and when overlap is safe (next-scope early work rarely disturbs a scope
+  audit); the planner decides per scope. Guideline adherence, not construction — the same
   stance as review ordering.
 - **The retrospective node does not conflict with the self-improvement exclusion.** That
   decision excluded gen-2's reflect machinery (ledger, amendments, trends);
   `bmad-retrospective` is an ordinary skill run producing a repo artifact, claimable like any
   other node.
+- **Early-phase doc work (BMAD phases 1-2) is ordinary chains.** A brainstorming session, a
+  PRD draft, an architecture document — each is a chain of doc-writing nodes, composed per the
+  guidelines, running on the same machinery. Every node modifies files (markdown), so the
+  total-order chain assumption holds. The merge cycle integrates the branch without tests (the
+  post-merge hook is absent or a no-op for doc-only work). Sequential composition is fine: PRD
+  then architecture then epics, one chain or a sequence of chains, as the guidelines advise.
+  The pipeline does not special-case doc work.
 
 ## Dispatcher
 
@@ -297,26 +366,26 @@ Each invocation:
    in-flight planning run or merge cycle is polled the same way, via its lock instead of the
    Daytona API (see Planning runs and Merge cycle).
 5. **Re-evaluate** — which nodes are now ready? (Unmarked chain predecessor pushed, or the
-   predecessor's merge landed — a merge-point predecessor in-chain or cross-story; capacity
-   available.)
+    predecessor's merge landed — a merge-point predecessor in-chain or cross-chain; capacity
+    available.)
 6. **Claim and launch** — claim ready nodes depth-first with the fairness bound (journal the
-   claim), create and
-   provision a single-use sandbox (capacity permitting — the `maxConcurrentSandboxes` cap; see
-   the per-claim recipe under Worker sandbox design), `git checkout` to the claim's base, start
-   the node's command via the
-   Daytona session API with `runAsync` (appending `</dev/null` — see the per-claim recipe;
-   without stdin redirection opencode hangs on the PTY) — the pass does not wait for it. If ready nodes are
-   running low (the plan-2-ahead policy) and no planning run is in flight, journal the launch
-   and trigger the planning-host workflow (see
-   Planning runs). Merge triggering is level-triggered here too: a completed merge-point node
-   whose branch has neither merged nor a pending conflict report, with the merge lock
-   acquirable **and capacity available** (the merge cycle's sandbox counts against
-   `maxConcurrentSandboxes` for its duration — see Honest costs — so a merge trigger is gated
-   by the same cap as a node claim; if the cap is full, the trigger is deferred to the next
-   pass, like a deferred claim), (re)triggers the merge-queue workflow — a merge cycle killed
-   mid-run is re-run by the next pass, not lost (see Merge cycle). Claiming and planning
-   launches are skipped entirely while the pipeline is paused (see Pause/resume) —
-   supervision, folding, and merge triggering (finishing claimed work) still run.
+    claim), create and
+    provision a single-use sandbox (capacity permitting — the `maxConcurrentSandboxes` cap; see
+    the per-claim recipe under Worker sandbox design), `git checkout` to the claim's base, start
+    the node's command via the
+    Daytona session API with `runAsync` (appending `</dev/null` — see the per-claim recipe;
+    without stdin redirection opencode hangs on the PTY) — the pass does not wait for it. If ready nodes are
+    running low (the plan-2-ahead policy) and no planning run is in flight, journal the launch
+    and trigger the planning-host workflow (see
+    Planning runs). Merge triggering is level-triggered here too: a completed merge-point node
+    whose branch has neither merged nor a pending conflict report, with the merge lock
+    acquirable **and capacity available** (the merge cycle's sandbox counts against
+    `maxConcurrentSandboxes` for its duration — see Honest costs — so a merge trigger is gated
+    by the same cap as a node claim; if the cap is full, the trigger is deferred to the next
+    pass, like a deferred claim), (re)triggers the merge-queue workflow — a merge cycle killed
+    mid-run is re-run by the next pass, not lost (see Merge cycle). Claiming and planning
+    launches are skipped entirely while the pipeline is paused (see Pause/resume) —
+    supervision, folding, and merge triggering (finishing claimed work) still run.
 7. **Write the heartbeat, release the lock, and exit** — the pass's last act under the lock
    is an atomic write (tmp + rename, like `graph.json`) of `last-pass.json`: timestamp,
    duration, and counts of claims, folds, and polls. The schedule tick alerts when this file
@@ -480,8 +549,8 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   "we already have this"), invalidating unclaimed dependents the graph still carries. Answers
   are rare by policy, so firing on every one is cheap; the trigger needs no machinery
   judgment about whether the answer changed anything, and the worst case is an empty delta.
-  Epic transitions add no fourth trigger: composing a finalization chain, or the next epic's
-   first chains, rides the ready-node-frontier-low trigger (see Epic lifecycle).
+  Epic transitions add no fourth trigger: composing a finalization chain, or the next scope's
+   first chains, rides the ready-node-frontier-low trigger (see Scope lifecycle).
   All gated by pause like node claiming. The trigger is machinery; which nodes and edges come
   out is the planning agent's judgment. A human "replan now" goes through the inbox like
   pause: folded by a pass, which journals and triggers the host workflow.
@@ -525,7 +594,7 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   rejects the delta as a whole. Per-op rules: an `updateNode`/`removeNode` whose target is
   claimed, parked, or completed is stale — the claim hit the journal first and the spec is
   frozen; an `addNode` id must be fresh; an edge target must exist. Whole-graph rules on the
-  result: acyclic; cross-story edges target merge-point nodes; every chain-final node
+  result: acyclic; cross-chain edges target merge-point nodes; every chain-final node
   carries `mergeTo`; every chain remains a total order (a path). Any violation rejects the
   whole delta, because partial application can produce a graph no planner intended: a delta
   that removes chain node X and rewires X's successor around it, racing a pass that claimed
@@ -604,13 +673,14 @@ One JSON file per planning run:
   and the journal position the planner's `graph.json` snapshot reflected at launch — for
   diagnostics in rejection events; validation itself always runs against current state.
 - **`ops`, applied in order.** Four operations:
-  - `addNode` — the full node spec (the node-spec vocabulary: id, skill/agent/prompt,
-    deadline, `dependsOn`, `mergeTo`, story/epic membership). Ids are planner-authored and
-    must be fresh.
+  - `addNode` — the full node spec (the node-spec vocabulary: id, `chainId`, skill/agent/prompt,
+    deadline, `dependsOn`, `mergeTo`, `metadata`). Ids are planner-authored and
+    must be fresh. `metadata` carries project-specific fields (story, epic, phase, sprint —
+    whatever the project uses) the machinery never reads.
   - `updateNode` — id plus the spec fields to replace (`dependsOn` rewiring, `mergeTo`
     toggle, prompt or deadline change). Target must exist and be unclaimed.
   - `removeNode` — id. Target must exist and be unclaimed; its edges go with it.
-  - `abandonSegment` — the chain's story or finalization identity; the rework path from
+  - `abandonSegment` — the chain's `chainId`; the rework path from
     Merge-conflict resolution: the fold journals the abandonment and the pass deletes the
     chain branch.
 - Edges live inside node specs as `dependsOn` — there are no separate edge ops; `updateNode`
@@ -623,9 +693,9 @@ the fold reads either a complete file or nothing.
 
 ### Planning-run context (decided 2026-07-21)
 
-What the planning agent knows when it runs. Derived from scenario analysis: a story whose
-substance is human-performed setup (needs the full story text to skip the e2e node), early
-unlock across stories (needs lookahead and claim status), replanning after failures (needs
+What the planning agent knows when it runs. Derived from scenario analysis: a unit of work whose
+substance is human-performed setup (needs the full work text to skip the e2e node), early
+unlock across chains (needs lookahead and claim status), replanning after failures (needs
 journal evidence and the frozen boundary), the stale snapshot (needs the staleness rule),
 composing the chain's total order (needs a skill catalog), setting deadlines (needs duration
 history or defaults), and the dirty working tree (needs a pinned ref). Delivery model: the
@@ -651,30 +721,34 @@ is directed to read; it is a local opencode run with repo access.
 
 - **Chain-composition guidelines** — the advisory document (authoring is open question 1),
   including the skill catalog: each skill's purpose, expected inputs, and a default deadline.
-  No "modifies code" flag — all nodes are assumed to modify code (see Graph management
-  rules), so review ordering is chain position, not a property the catalog must carry.
-- **Node-spec vocabulary** — the schema it may emit (id, skill/agent/prompt, deadline,
-  `dependsOn`, `mergeTo`, story and epic membership) and what it must not emit because machinery
-  derives it: branch names, runId, anything sandbox-related. The fold-time validation rules
+  No "modifies files" flag — all nodes are assumed to modify files (see Graph management
+  rules), so review ordering is chain position, not a property the catalog must carry. The
+  guidelines carry project-specific semantics (story, epic, phase, sprint vocabulary) alongside
+  the immutable graph rules — see Pipeline vs. project-specific customization.
+- **Node-spec vocabulary** — the schema it may emit (id, `chainId`, skill/agent/prompt, deadline,
+  `dependsOn`, `mergeTo`, `metadata`) and what it must not emit because machinery
+  derives it: branch names, runId, anything sandbox-related. `metadata` is a free-form dict for
+  project-specific fields the machinery never reads. The fold-time validation rules
   are stated to the agent as rules it will be held to: a chain's final node carries `mergeTo`,
-  cross-story edges target merge-point nodes only, the graph stays acyclic.
+  cross-chain edges target merge-point nodes only, the graph stays acyclic.
 - **Graph state** — `graph.json`: every node's status, edges, merge points, which chains
   merged, plus the per-node metadata digests (attempt count, last outcome, durations, diff
-  summary, parked question text, base commit — see State). The claimed/unclaimed boundary is
+  summary, parked question text, base commit, `metadata` — see State). The claimed/unclaimed boundary is
   the most load-bearing fact in the context — it is exactly what the planner may touch — and
   a parked node's pending answer can invalidate dependents the planner would otherwise extend
   a chain with.
 - **The journal, read-only and optional** — history beyond the graph digests: full event
-  sequences and conflict fingerprints (stories that keep conflicting should be serialized,
+  sequences and conflict fingerprints (chains that keep conflicting should be serialized,
   not run concurrently). Routine questions are answered by the digests in `graph.json`; for
   the rest, this is the planner reading gen-3's own artifacts ad hoc, inside the "a human (or
   a later tool) queries the journal" scope — no trends machinery, no digest pipeline.
-- **The backlog** — epics files and sprint plan, giving the upcoming-stories window, their
-  declared cross-story dependencies, and the epic order that drives epic selection (see Epic
+- **The backlog** — whatever the project uses: epics files and sprint plan, a phase list, a
+  research agenda. Gives the upcoming-work window, their
+  declared cross-chain dependencies, and the scope order that drives scope selection (see Scope
   lifecycle). Merge-point placement needs lookahead: a merge point is
-  added only where a dependent story actually exists to unlock, so the planner must see
-  beyond the story it is currently composing.
-- **Story docs and code at `origin/main`** — pinned ref, decided here: the devcontainer
+  added only where a dependent chain actually exists to unlock, so the planner must see
+  beyond the chain it is currently composing.
+- **Work docs and code at `origin/main`** — pinned ref, decided here: the devcontainer
   checkout is the human's working copy, possibly dirty, possibly on a feature branch, so
   reading the working tree would plan against half-finished human state. The planner reads
   the merged truth the chains base on. (The launch wrapper can provide a clean read-only
@@ -687,8 +761,8 @@ is directed to read; it is a local opencode run with repo access.
 - Gen-2 state files (already decided globally).
 - Capacity, pause state, tick cadence — the trigger is machinery; the planner never reasons
   about whether to plan, only what.
-- Story authorship — it composes chains for stories; creating or editing story docs is a
-  create-story node's job.
+- Work authorship — it composes chains for units of work; creating or editing work docs is a
+  create-story node's job (or equivalent, per the project's vocabulary).
 - Journal and `graph.json` writes — its only shared output is the delta.
 
 ### Pause/resume (human-initiated)
@@ -720,7 +794,7 @@ A human can pause the pipeline: active nodes run to completion, no new nodes are
 - **Pause is not preemption.** It never terminates a running session. Stopping a runaway agent
   is the supervision deadline path (terminate + `runner_error`), not pause. A hard stop-everything
   control, if ever needed, is a separate destructive command — out of scope here.
-- **Scope: global.** One control for the whole pipeline; per-story or per-epic pausing only if
+- **Scope: global.** One control for the whole pipeline; per-chain or per-scope pausing only if
   a real need appears.
 - Use cases: quiesce before a devcontainer or snapshot rebuild, hold the graph steady while
   replanning unclaimed nodes, stop the spread while investigating a defect that finished nodes
@@ -772,7 +846,7 @@ Two consequences of n8n being local, stated so nobody designs against the wrong 
 | Responsibility | Home | Why |
 |---|---|---|
 | Trigger the dispatcher (schedule tick, question answered, merge complete, planning exit) | n8n | Persistent scheduler while the devcontainer is up; invokes a pass as a local process call. The tick also checks dispatcher health after invoking: non-zero pass exit → error notification; `last-pass.json` older than a few tick intervals → "dispatcher stalled" ntfy (see The machinery observes itself under Supervision). |
-| Merge queue (git + test orchestration) | n8n hosts the merge wrapper; the whole merge cycle runs on a sandbox | Serialized by `merge.lock`, level-triggered by passes, capacity-gated by `maxConcurrentSandboxes` (the merge sandbox counts against the cap; a trigger that would exceed it defers to the next pass). The wrapper drives fetch, rebase, install, test, merge, and push on a sandbox created per merge cycle via the Daytona session API (resolved questions 12 and 16); pipeline git operations never touch the devcontainer checkout. Test output is pulled from the sandbox into the per-run directory and its path recorded in the journaled merge event — n8n execution history prunes, so the merge queue's evidence must not live only there. On conflict it writes an inbox report and stops — resolution is a graph node (see Merge-conflict resolution). Test scope is all unit tests per merge (superseding the earlier `nx affected` decision — resolved question 13, revised). |
+| Merge queue (git integration) | n8n hosts the merge wrapper; the whole merge cycle runs on a sandbox | Serialized by `merge.lock`, level-triggered by passes, capacity-gated by `maxConcurrentSandboxes` (the merge sandbox counts against the cap; a trigger that would exceed it defers to the next pass). The wrapper drives fetch, rebase, merge, and push on a sandbox created per merge cycle via the Daytona session API (resolved questions 12 and 16); pipeline git operations never touch the devcontainer checkout. **No tests in the merge cycle** (revised 2026-07-22): the pipeline merges branches without running tests. A post-merge hook — project-authored, configured in the policy block — fires after the merge lands; if the hook fails, the failure is a standard `failed` outcome that rides the existing remediation path (see Merge-conflict resolution). On conflict it writes an inbox report and stops — resolution is a graph node (see Merge-conflict resolution). |
 | Question surfacing (form + ntfy) | n8n (small workflow) | Durable Wait-form suspension and forms are n8n's strength. Human-facing surface only — the journal holds the canonical parked state. |
 | Error notification | n8n | Existing small workflow, unchanged. |
 | Pause/resume control | Helper script → inbox (n8n form optional later) | Human-initiated; folded by the next pass; the claim step gates on the journaled pause state. |
@@ -864,7 +938,7 @@ Rough estimate, ~1090 lines of JS plus three small n8n workflows:
 | Pass frame (flock, inbox fold, reconcile, pause gate, per-pass log + `last-pass.json` heartbeat) | ~170 | New; helper patterns copied from gen-2 scripts, no imports |
 | Planning run (launch wrapper with per-leg exit record + atomic delta promotion, resume-mode legs, planning lock, delta validation + fold) | ~120 | New |
 | In-sandbox command template (install check, opencode run with `--format json` and `</dev/null`, exit capture, branch push) | ~60 | New |
-| Merge wrapper (merge lock, drives the in-sandbox merge cycle: fetch, rebase, install, test, merge, push; test-log pull, conflict report) | ~100 | New |
+| Merge wrapper (merge lock, drives the in-sandbox merge cycle: fetch, rebase, merge, push; fire post-merge hook; conflict report) | ~90 | New |
 | Question-form workflow (form + ntfy + inbox write + invoke) | n8n, small | New — the Wait-form/ntfy pattern from gen-2, as a standalone workflow |
 | Planning-host workflow (run the launch wrapper, invoke dispatcher on exit) | n8n, small | New |
 | Merge queue workflow (runs the merge wrapper, invokes dispatcher on exit) | n8n, small | New — mirrors the planning-host pattern |
@@ -883,17 +957,18 @@ files disappear entirely. Total effort is comparable; moving parts are fewer.
   sandbox/session IDs and deadlines, outcomes with commits-added, a diffstat (see below), and
   classification evidence (the rule that fired, or the LLM verdict, rationale, and judged
   excerpt — see Supervision),
-  parks/resumes, merge events (each carrying the path of its captured test log), `runner_error`
+  parks/resumes, merge events, `runner_error`
   events, pause/resume control events, policy decisions), `graph.json` (derived view,
   rebuildable from the journal, regenerated with per-node metadata digests — attempt count,
-  last outcome, durations, diff summary, parked question text, base commit — so routine
+  last outcome, durations, diff summary, parked question text, base commit, and the node's
+  `metadata` dict — so routine
   readers (the planner, the viewer, sprint status) read one file and never parse the
   journal), and
   `inbox/` (written by n8n's small workflows and by the planning wrapper — graph deltas,
   promoted atomically — consumed and deleted by passes). Per-run log
   excerpts, pulled session transcripts (via `opencode export` or the storage directory — see
   Supervision),
-  and merge-cycle test logs (see the merge queue row in the n8n / dispatcher split)
+  and merge-cycle logs (see the merge queue row in the n8n / dispatcher split)
   go to a plain directory for debugging and later analysis; per-pass log files and the
   `last-pass.json` heartbeat live beside them — machinery observability, not canonical state.
   At most one writer at a time for
@@ -903,8 +978,8 @@ files disappear entirely. Total effort is comparable; moving parts are fewer.
   pushed head and journals them with the outcome; the per-node digest in `graph.json` carries
   the summary. Without this, a COMPLETE with an empty diff is indistinguishable from
   substantive work — hiding exactly the evidence a guideline include/skip condition needs
-  ("this node type chronically does nothing for stories like this") and the convergence
-  signal that a node found its work already merged by a parallel story. Free to compute — the
+  ("this node type chronically does nothing for chains like this") and the convergence
+  signal that a node found its work already merged by a parallel chain. Free to compute — the
   base commit is already journaled — and squarely inside "journal everything a future
   reflector would want to read."
 - **The journal stays separate from the graph.** Folding history into `graph.json` as node
@@ -1099,7 +1174,7 @@ single-use keeps it free across sequential claims too.
   the template runs `opencode session list --format json` (newest first) after the initial
   `opencode run --format json` and writes the ID to a known path for the dispatcher to journal
   with the claim. Without this, the park/resume path has no ID to pass to `--session`.
-- The in-sandbox command ends with a branch push (`git push origin HEAD:pipeline/<runId>/<story>`
+- The in-sandbox command ends with a branch push (`git push origin HEAD:pipeline/<runId>/<chainId>`
   — the chain branch) so the result is durable in git regardless of what is watching.
 - Deadlines are enforced pass-side: a pass finding a claim past its deadline terminates the
   session command in the sandbox, journals a `runner_error` event, and handles the node per
@@ -1278,8 +1353,8 @@ Documented in full because it encodes a failure already paid for once:
    resume. The session ID is the one captured at launch (opencode auto-generates IDs —
   `--session` is resume-only, so the template captures it via `opencode session list --format
   json` after the initial run; see the per-claim recipe). Agents still never talk to n8n.
-- This path is also how human-involved stories run: a story whose instructions require human
-  action (e.g. setting up credentials) is still a normal chain — the skill run reads the story,
+- This path is also how human-involved chains run: a chain whose instructions require human
+  action (e.g. setting up credentials) is still a normal chain — the skill run reads the work,
   asks, parks, resumes with the answer. There is no separate human-task node type.
 - **Park/resume is required from the first rollout step, no fail-and-retry stopgap.**
 - Precondition to watch: `_bmad-output/decision-policy.md` (human-authored, agent-facing — kept
@@ -1291,41 +1366,50 @@ Documented in full because it encodes a failure already paid for once:
 
 - No silent last-write-wins anywhere. Lockfile diffs count as conflicts.
 - A merge-queue failure is journaled as an event with a stable fingerprint (e.g.
-  `merge-conflict-<story>`) in the gen-3 journal, so recurrence is a query away and coupled
-  stories are identified from data, not guesses. This is written for a future reflector to
+  `merge-conflict-<chainId>`) in the gen-3 journal, so recurrence is a query away and coupled
+  chains are identified from data, not guesses. This is written for a future reflector to
   read, but no reflection machinery exists in gen-3 — a human (or a later tool) queries the
   journal.
 - A merge-queue fallback (rework, re-run) does not consume a node attempt
   (`maxAttemptsPerNode`, gen-3 dispatcher policy); genuine node failures count exactly as
-  story attempts do today.
+  chain attempts do today.
 
-### Merge cycle (decided 2026-07-22)
+### Merge cycle (decided 2026-07-22; revised 2026-07-22 — tests decoupled)
 
-The merge queue's unit of work. The entire merge cycle — fetch, rebase, install, test, merge, push —
-runs on a sandbox created for the merge cycle's duration (minutes); the
+The merge queue's unit of work. The entire merge cycle — fetch, rebase, merge, push —
+runs on a sandbox created for the merge cycle's duration (seconds); the
 devcontainer checkout is the human's working copy and never hosts pipeline git operations —
 the same fact that put conflict resolution in sandboxes. A dedicated local clone was rejected:
 a second repo to maintain, plus a crash-recovery surface (a reboot mid-rebase leaves rebase
 state to detect and abort) that a disposable merge cycle simply doesn't have.
 
+**Tests are not part of the merge cycle** (revised 2026-07-22). The pipeline merges branches
+without running tests — a merge is git integration (fetch, rebase, merge, push), not a quality
+gate. A post-merge hook — project-authored, configured in the policy block — fires after the
+merge lands. If the hook fails, the failure is a standard `failed` outcome that rides the
+existing remediation path (conflict-mode planning run → resolution node or rework — see
+Merge-conflict resolution). A project with no tests configures no hook; early-phase doc work
+(BMAD phases 1-2) simply merges. This is what makes the pipeline general: it integrates branches
+the same way whether the content is code, docs, or anything else. The merge queue does not
+assume tests exist, does not assume a test framework, does not assume a package manager install
+is meaningful. See Pipeline vs. project-specific customization.
+
 - **Hosted like planning.** The n8n merge-queue workflow mirrors the planning-host pattern:
   Execute Command runs a merge wrapper that holds a non-blocking `flock` on `merge.lock` for
   the merge cycle's lifetime — mutual exclusion (at most one merge cycle in flight, so main has one
   pipeline writer at a time) plus the liveness probe — records its PID and sandbox
-  ID alongside the lock, drives the sandbox via the Daytona session API, pulls the full test
-  output into the per-run directory, writes any report to the inbox, and invokes the
+  ID alongside the lock, drives the sandbox via the Daytona session API, writes any report to
+  the inbox, and invokes the
   dispatcher on exit.
 - **The merge cycle, in order.** Create a sandbox (same per-claim provisioning as a node claim);
   `git fetch`; short-circuit if the chain branch's
-  head is already an ancestor of main (delete the branch, done — no test run); checkout the
+  head is already an ancestor of main (delete the branch, done); checkout the
   chain branch; rebase onto `origin/main` — a conflict aborts the rebase and the wrapper
-  writes the conflict report (see Merge-conflict resolution); run the package-manager install
-  with a frozen lockfile — the rebase can bring dep changes from main, so the same correctness
-  floor as node claims applies; run tests per the policy scope (default: all unit tests,
-  excluding e2e and other expensive tests — resolved question 13, revised) — a red run gets
-  the same report path with its fingerprint; merge and push
+  writes the conflict report (see Merge-conflict resolution); merge and push
   `origin/main`; delete the chain branch on origin; destroy the sandbox (single-use — see
-  Sandbox lifecycle).
+  Sandbox lifecycle). If a post-merge hook is configured, fire it after the push; a hook
+  failure is journaled as a `failed` outcome with the hook's output, and the chain enters
+  the standard remediation path (see Merge-conflict resolution).
 - **The push is the commit point.** Everything before it is sandbox-local and disposable: a
   merge cycle that dies mid-run has changed nothing durable, and one that dies after the push
   has merged — the next merge cycle's short-circuit cleans up the leftover branch. A rejected push
@@ -1352,8 +1436,8 @@ state to detect and abort) that a disposable merge cycle simply doesn't have.
 
 ### Merge-conflict resolution (decided 2026-07-21)
 
-One path for every conflict: an agent in a resolution node. Conflict resolution modifies code,
-and code-modifying work runs in sandboxes as graph nodes — never on the devcontainer, whose
+One path for every failure: an agent in a resolution node. Conflict resolution modifies files,
+and file-modifying work runs in sandboxes as graph nodes — never on the devcontainer, whose
 checkout is the human's working copy. The merge queue never resolves anything, not even a
 lockfile.
 
@@ -1371,12 +1455,12 @@ lockfile.
   any other launch. The prompt carries the journaled conflict details. The planner chooses per
   the chain-composition guidelines: append a **resolution node** (the common case), or
   **replan for rework** when the conflict reveals semantic divergence — the merged upstream
-  invalidated this chain's approach, so resolving hunks would merge wrong code. Routing
+  invalidated this chain's approach, so resolving hunks would merge wrong content. Routing
   through the planner keeps "every node is authored by the planning agent" intact, and the
   response needs planning judgment anyway: the same delta rewires the unclaimed successors'
   `dependsOn` to the resolution node, appends a review node after a heavy resolution (a
   resolution commit otherwise lands on main having bypassed the chain's review nodes), and can
-  serialize a chronically conflicting story pair (the fingerprint history is in its context).
+  serialize a chronically conflicting chain pair (the fingerprint history is in its context).
 - **The resolution node is a normal node.** Claimed by a pass, run in a sandbox on the chain
   branch, supervised, parked on QUESTION like any other; it carries `mergeTo`, so its
   completion re-triggers the merge queue under the merge-when-marked rule. Its job: rebase the
@@ -1386,7 +1470,8 @@ lockfile.
   stale head, and the journal records the new head at collection), and the merge queue accepts
   the pre-rebased branch (its own rebase step finds nothing to redo unless main moved again).
 - **Rework abandons the segment.** When the planner chooses rework, the delta marks the
-  conflicted segment abandoned — the pass journals the abandonment and deletes the chain
+  conflicted segment abandoned (`abandonSegment` with the chain's `chainId`) — the pass
+  journals the abandonment and deletes the chain
   branch — and the replacement nodes base on merged main under the normal rules (same branch
   name, new segment, like the first node after a merge point).
 - **Rounds are bounded.** If main moved while resolution ran, the retried merge can conflict
@@ -1400,13 +1485,14 @@ lockfile.
   park saying so; the resumed session verifies and completes, and its completion re-triggers
   the merge. Manual resolution never bypasses the parked node — two owners of one blocked
   branch is how state diverges.
-- **Same path for a red-test merge failure.** A clean rebase whose tests fail is the same
-  evidence class (a merge-queue failure with a fingerprint) and gets the same remedy: report,
-  conflict-mode planning run, resolution node or rework. The report carries the path of the
-  captured test log (see the merge queue row in the n8n / dispatcher split), so the planner
-  and the human read the actual failures, not a summary that outlived its n8n execution.
+- **Same path for a post-merge hook failure.** A clean merge whose post-merge hook fails is
+  the same evidence class (a `failed` outcome with a fingerprint) and gets the same remedy:
+  report, conflict-mode planning run, resolution node or rework. The report carries the hook's
+  output, so the planner and the human read the actual failure, not a summary that outlived its
+  n8n execution. A project with no hook configured has no failure path here — the merge lands
+  and the chain proceeds.
 - **Rejected: a deterministic auto-fix tier in the merge queue** (journal the conflict, then
-  mechanically regenerate lockfiles and generated files, re-test, merge; escalate the rest).
+  mechanically regenerate lockfiles and generated files, re-merge; escalate the rest).
   One path for every conflict beats a second resolution surface plus a regenerable-file
   classification to maintain, at the accepted cost that trivial conflicts pay the full path
   (see Honest costs). It also keeps the merge queue simple, which is what makes it safe to
@@ -1414,55 +1500,61 @@ lockfile.
 
 ### Dependency knowledge for the graph
 
-- Multiple review nodes modify the same code — `bmad-code-review` applies patches,
+- Multiple review nodes modify the same files — `bmad-code-review` applies patches,
   `bmad-testarch-test-review` fixes markers and removes stubs, `bmad-testarch-nfr` applies
-  remediations. Gen-3 does not classify skills into read-only and code-modifying: all nodes
-  are assumed to modify code (decided 2026-07-21), so a chain is a total order and review
-  ordering is each node's position in the chain — a per-story planning decision the graph
-  makes visible instead of burying in a step sequence. Which order suits a given story rests
+  remediations. Gen-3 does not classify skills into read-only and file-modifying: all nodes
+  are assumed to modify files (decided 2026-07-21), so a chain is a total order and review
+  ordering is each node's position in the chain — a per-chain planning decision the graph
+  makes visible instead of burying in a step sequence. Which order suits a given chain rests
   on the chain-composition guidelines carrying the ordering advice — a guideline the agent
   follows, not a structural guarantee.
 
 ## Honest costs
 
 - The graph encodes *declared* dependencies only. Unknown coupling surfaces later as merge-queue
-  conflicts and rework. The main win is throughput (stories per day); a chain is a total order
-  (all nodes are assumed to modify code), so node granularity buys per-node supervision and
-  composition flexibility, not within-story latency.
-- A mid-chain merge point inserts merge-queue latency (rebase → test → merge, serialized across
-  all stories) between two chain segments, and each one adds a merge-queue run. The
-  chain-composition guidelines should mark one only where it buys something — a dependent story
+  conflicts and rework. The main win is throughput (chains per day); a chain is a total order
+  (all nodes are assumed to modify files), so node granularity buys per-node supervision and
+  composition flexibility, not within-chain latency.
+- A mid-chain merge point inserts merge-queue latency (rebase → merge, serialized across
+  all chains) between two chain segments, and each one adds a merge-queue run. The
+  chain-composition guidelines should mark one only where it buys something — a dependent chain
    to unlock — not by default. The whole merge cycle runs on a sandbox created per merge cycle
    (resolved questions 12 and 16), so merge-queue compute never competes with the human's dev
    servers or Postgres on the devcontainer — the merge cycle's sandbox counts against
-  `maxConcurrentSandboxes` for its duration (minutes), reducing node-claim capacity by one
-  during that window. The merge cycle runs all unit tests every time — not `nx affected`'s
-  touched-only subset — so a merge-queue run's test step is minutes, not seconds; accepted as
-  the price of not relying on the nx project graph's accuracy during structural changes
-  (resolved question 13, revised). Mid-chain merge points multiply this cost, which is why the
+  `maxConcurrentSandboxes` for its duration (seconds), reducing node-claim capacity by one
+  during that window. The merge cycle does not run tests (revised 2026-07-22); a post-merge
+  hook, if configured, runs project-specific validation after the merge lands. Mid-chain merge
+  points multiply the merge-cycle cost, which is why the
   guidelines mark one only where it earns it.
-- An early-merged artifact is a promise. A story implementing against a merged story doc's
-  schemas and contracts reworks if the upstream implementation later diverges from the doc —
+- An early-merged artifact is a promise. A chain implementing against a merged artifact's
+  schemas and contracts reworks if the upstream implementation later diverges from the artifact —
   divergence is not a file conflict, so the merge queue cannot catch it; it surfaces as rework,
   journaled like any other conflict evidence.
 - Every merge conflict — a trivial lockfile collision included — pays the full resolution
   path: conflict report, planning run, sandbox claim, agent run, merge-queue retry. That is
   hours on the blocked chain, accepted (2026-07-21) to keep one resolution path; other chains
-  proceed meanwhile, and a chronically conflicting story pair is a planning signal (serialize
+  proceed meanwhile, and a chronically conflicting chain pair is a planning signal (serialize
   them), not a latency problem to optimize.
 - Chains are composed from a snapshot of knowledge that reality can overtake: an upstream
-  artifact, a question answer, or a parallel story's merge can reveal a planned node
+  artifact, a question answer, or a parallel chain's merge can reveal a planned node
   unnecessary while its chain is in flight. Unclaimed nodes are pruned by planning runs —
   lazy composition and the answer-fold trigger close the common windows — but a claimed spec
   is frozen, so a claimed no-op executes: a sandbox claim plus a short run concluding
   "nothing to do", journaled with an empty diff and short-circuited at the merge queue. One
   no-op is deliberate and stays: the verify-run after a manual conflict resolution (see
   Merge-conflict resolution).
-- Post-epic finalization audits (trace, NFR, bug-hunt) may run while next-epic work merges —
+- Post-scope finalization audits (trace, NFR, bug-hunt) may run while next-scope work merges —
   full overlap is permitted — so their evidence is a snapshot that later merges can
   invalidate. Accepted (2026-07-22): the guidelines advise the planner on when to hold
-  next-epic composition back; machinery enforces no between-epics quiet point (see Epic
+  next-scope composition back; machinery enforces no between-scopes quiet point (see Scope
   lifecycle).
+- **No test safety net in the pipeline** (revised 2026-07-22). The merge cycle does not run
+  tests; a broken merge lands on main and propagates to downstream chains until a post-merge
+  hook (if configured) catches it or a human notices. This is the trade-off for generality:
+  the pipeline works for doc-only projects, early-phase projects with no tests, and code
+  projects alike. A project that wants gates configures a post-merge hook; a project that
+  doesn't, accepts unguarded merges. The hook failure rides the standard remediation path —
+  no new failure mode.
 - Outcome classification calls an LLM from inside a pass — a few seconds per exited session,
   within the seconds-long pass budget.
 - The practical caps on parallelism are the Daytona quota and the max-concurrent-sandboxes
@@ -1553,14 +1645,14 @@ The planner reads `graph.json` at launch (T0); by fold time (T1) a pass may have
 nodes (freezing their specs) or folded completions (changing merge state). The delta format
 and rejection semantics are now decided (ops list, all-or-nothing — see Graph delta format
 and Delta validation at fold time), which pins what the validation checks: per-op legality
-against T1 state, then the whole-graph rules (acyclic, cross-story edges target
+against T1 state, then the whole-graph rules (acyclic, cross-chain edges target
 merge-points, final node carries `mergeTo`, every chain remains a total order) on the
 result. A node the planner marked for removal might have been claimed between T0 and T1 —
 that op is stale and rejects the delta (spec is frozen). A node the planner added a
 `dependsOn` edge to might have merged — the edge target must still exist. This is the most
 algorithmically intricate interaction in the design, and it is pure code — testable without
 infrastructure. **Spike:** write the validation function and test against synthetic scenarios:
-(a) planner removes a node that was claimed meanwhile, (b) planner adds a cross-story edge to
+(a) planner removes a node that was claimed meanwhile, (b) planner adds a cross-chain edge to
 a node that merged and is no longer a merge-point target, (c) planner's delta creates a cycle
 when merged with T1 state, (d) planner marks a final node without `mergeTo`, (e) a delta that
 removes a chain node and rewires its successor around it, racing a claim of the removed node
@@ -1618,13 +1710,13 @@ resolve before implementation, not a spike to run.
    make a pass fail (bad input) and verify the tick fires the error notification; hold
    `last-pass.json` stale and verify the stall alert fires. Test against disposable
    sandboxes with synthetic steps before any real BMAD skill run.
-4. Introduce the graph: `dependsOn` edges in planning output (chains composed per story per
-   the guidelines), `graph.json` and the reconcile pass with the plan-2-ahead / bounded
+4. Introduce the graph: `dependsOn` edges in planning output (chains composed per the
+   guidelines), `graph.json` and the reconcile pass with the plan-2-ahead / bounded
    depth-first policy, node-granularity claims with chain branches, the planning-run machinery (launch
    wrapper, planning lock, n8n host workflow, delta validation and fold, process-vanished
    relaunch), and the
    pause/resume gate on claiming (with its helper script). First taste
-   of parallelism: two independent nodes from different stories as two concurrent sandboxes.
+   of parallelism: two independent nodes from different chains as two concurrent sandboxes.
    This is the permanent design — sandboxed agents supervised by level-triggered passes; no
    per-worker supervisor exists anywhere. Tune the tick cadence here, and exercise pause: pause
    mid-run, watch in-flight nodes finish with nothing new claimed, resume.
@@ -1632,12 +1724,13 @@ resolve before implementation, not a spike to run.
    wrapper) + Mermaid graph view. Agents push their own branches; a pass that finds a
    completed merge-point node not yet merged triggers n8n's merge queue (level-triggered); no
    event-ingest webhook — canonical state is written only under the pass lock. The merge queue runs
-   the whole merge cycle — rebase, install, test, merge, push — on a sandbox created per merge
-    cycle, serialized by `merge.lock` (resolved questions 12 and 16) — test scope: all unit
-    tests, configurable in the policy config (resolved question 13, revised). Restart n8n mid-merge-cycle and verify the
+   the whole merge cycle — rebase, merge, push — on a sandbox created per merge
+    cycle, serialized by `merge.lock` (resolved questions 12 and 16). **No tests in the merge
+    cycle** (revised 2026-07-22); a post-merge hook, if configured, fires after the merge lands.
+    Restart n8n mid-merge-cycle and verify the
    next pass re-triggers a fresh merge cycle. Exercise a mid-chain merge point: an early
-   node merges its story doc and a dependent story's chain starts against it while the first
-   story is still running. Exercise the conflict path with a synthetic conflict: inbox report
+   node merges its artifact and a dependent chain starts against it while the first
+   chain is still running. Exercise the conflict path with a synthetic conflict: inbox report
    → conflict-mode planning run → resolution node → merge retry (see Merge-conflict
    resolution).
 6. Upgrade the viewer to `viewer.html` when interactivity earns it.
@@ -1706,6 +1799,35 @@ decisions kept as history (superseded revisions) or with rationale not captured 
     comprehensive for unit tests, so there is nothing to cadence. Supersedes the original decision
     above. See the merge queue row in the n8n / dispatcher split and the Merge cycle section.
 
+    **Merge-queue test scope — second revision (2026-07-22): tests removed from the merge cycle
+    entirely.** The merge cycle does not run tests; testing is decoupled to a project-authored
+    post-merge hook configured in the policy block. A hook failure is a standard `failed` outcome
+    that rides the existing remediation path (see Merge-conflict resolution). This generalizes the
+    pipeline beyond code projects: early-phase doc work (BMAD phases 1-2) and projects with no test
+    suite simply merge. The pipeline does not assume tests, a test framework, or a package-manager
+    install in the merge cycle. Resolved questions 12 and 13's test-scope decisions are moot. See
+    Merge cycle, Pipeline vs. project-specific customization, and Honest costs.
+20. **Tests decoupled from the merge cycle (2026-07-22).** The merge cycle is git integration
+    (fetch, rebase, merge, push) — not a quality gate. A post-merge hook, project-authored and
+    configured in the policy block, fires after the merge lands. If the hook fails, the failure
+    rides the standard remediation path (conflict-mode planning run → resolution node or rework).
+    Rationale: the pipeline was a BMAD story engine that assumed code, tests, and a package
+    manager; decoupling tests makes it a general graph executor that works for doc-only projects,
+    early-phase projects with no tests, and code projects alike. The trade-off: a broken merge
+    lands on main and propagates until the hook catches it or a human notices — accepted, because
+    the project owns the consequence (configure a hook for gates, accept unguarded merges without).
+    See Merge cycle, Honest costs, Pipeline vs. project-specific customization.
+21. **`chainId` replaces story as the structural field (2026-07-22).** The machinery reads
+    `chainId` for branch naming (`pipeline/<runId>/<chainId>`), cross-chain edge validation, and
+    `abandonSegment` identity. Story, epic, sprint, phase, and all project-specific vocabulary move
+    to a `metadata` dict on the node spec that the machinery never reads. The planner carries
+    project-specific semantics in its prompt alongside immutable graph rules. Rationale: the
+    pipeline was story-shaped by construction — every node had to belong to a story, the machinery
+    derived branch names from story identity, and the cross-edge invariant was stated against
+    story. `chainId` makes the chain the structural concept, not the story; a node with no story
+    in its metadata is a node whose chain isn't story-shaped, and everything works. See Graph
+    management rules, Pipeline vs. project-specific customization, Graph delta format.
+
 ## Open questions
 
 1. Chain-composition guidelines document — to author before Path step 4. The mechanical half
@@ -1719,19 +1841,22 @@ decisions kept as history (superseded revisions) or with rationale not captured 
    and stays, a generation node that finds nothing was waste and its include condition
    tightens), the lazy-composition advice (never compose past an information-producing
    node — see Graph management rules), the within-chain ordering advice for review
-   nodes (all nodes are assumed code-modifying, so ordering is chain position), merge-point
-   placement advice (only where a dependent story exists to unlock — and cleared on the
+   nodes (all nodes are assumed file-modifying, so ordering is chain position), merge-point
+   placement advice (only where a dependent chain exists to unlock — and cleared on the
    unclaimed node when a replan drops that dependent), the conflict-resolution
    advice (in-place resolution vs rework, and when a resolution node deserves a trailing
-   review node — resolved question 9), the epic-finalization playbook seeded from the
-   human's manual post-epic flow (sprint-flow-draft.md: `bmad-bug-hunt`,
+   review node — resolved question 9), the scope-finalization playbook seeded from the
+   human's manual post-scope flow (sprint-flow-draft.md: `bmad-bug-hunt`,
    `bmad-testarch-trace` with a FAIL → fix follow-up, `bmad-testarch-nfr`, deferred-work
    pruning with its rule to ask when a finding is not a stale deferral,
    `bmad-retrospective`, test-plan revision, project-context cleanup; the fidelity audit
-   stays folded into bug-hunt), the overlap advice (when next-epic composition should wait
-   for an in-flight epic audit — see Epic lifecycle), the skill catalog with per-skill
+   stays folded into bug-hunt), the overlap advice (when next-scope composition should wait
+   for an in-flight scope audit — see Scope lifecycle), the skill catalog with per-skill
    default deadlines, and the concrete node-spec schema (field names and format for the
-   vocabulary pinned in resolved question 8).
+   vocabulary pinned in resolved question 8 — `id`, `chainId`, skill/agent/prompt, deadline,
+   `dependsOn`, `mergeTo`, `metadata`). The guidelines carry project-specific semantics
+   (story, epic, phase, sprint vocabulary) alongside the immutable graph rules — see
+   Pipeline vs. project-specific customization.
 2. **Authenticated sandbox-proxy relay — to design and build before Path step 2.** Daytona
    Tier 1 restricts sandbox egress to an Essential Services allowlist (GitHub, npm, Anthropic,
    OpenAI, Docker registries, Railway, and others — see the [Daytona network limits
