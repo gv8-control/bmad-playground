@@ -53,9 +53,6 @@ test-results/
 .cache/
 .n8n/
 
-# Pipeline traces (session transcripts, not committed)
-_bmad-output/pipeline/traces/
-
 # Yarn Berry — ignore cache/install state but track patches/plugins/releases
 .pnp.cjs
 .pnp.loader.mjs
