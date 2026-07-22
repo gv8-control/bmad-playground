@@ -849,10 +849,18 @@ single-use keeps it free across sequential claims too.
   browsers, opencode, and any system packages). Pre-bake the repo's dependencies into the
   snapshot so the per-claim install check is a no-op in the common case (see Per-claim below
   — the install runs every claim; the snapshot makes it fast, not absent). With single-use
-  sandboxes the baked dependencies must end up inside each sandbox's checkout: bake the
-  shallow clone itself into the snapshot (per-sandbox provisioning then fetches instead of
-  cloning) or move the baked `node_modules` into the fresh clone — otherwise every claim's
-  install rebuilds from scratch and the cold-start optimization is lost. Daytona caches
+  sandboxes the baked dependencies must end up inside each sandbox's checkout: **bake the
+  shallow clone itself into the snapshot (Strategy A, decided 2026-07-22 — per-sandbox
+  provisioning then fetches instead of cloning)** — otherwise every claim's install rebuilds
+  from scratch and the cold-start optimization is lost. The alternative (move the baked
+  `node_modules` into a fresh clone) was verified viable but adds a per-claim copy step and a
+  staging path; see `docs/todo/spike-baked-node-modules.md`. "Bake the clone" means bake a
+  shallow clone plus `runCommands('npm install')` during the snapshot build — a `git clone`
+  alone has no `node_modules` (gitignored), and build-time network is available (spike findings
+  F3, F4). Baked files are root-owned but the sandbox runs as `daytona` (uid 1001), so the
+  build config must chown via `dockerfileCommands(['USER root', 'RUN chown -R 1001:1001
+  /workspace/repo', 'USER 1001'])` after the `COPY` + install — the `user: 'root'` create
+  param is ignored (spike finding F1). Daytona caches
   declarative images for 24h; subsequent runs on the same runner are "almost instantaneous."
   This is what makes create-on-demand viable — every worker starts from this snapshot in
   seconds, not minutes, so no pool needs to exist ahead of claims. The snapshot is a
@@ -872,7 +880,7 @@ single-use keeps it free across sequential claims too.
   `resources: { cpu: 4, memory: 8, disk: 10 }` (the platform max). Create from image, not
   snapshot, to control resources — snapshots ignore resource params.
 - `git clone --depth 1` the repo into the sandbox (shallow, fast) — or, when the clone is
-  baked into the snapshot, `git fetch` to current. The Daytona SDK's `git.clone`
+  baked into the snapshot (Strategy A, decided 2026-07-22), `git fetch` to current. The Daytona SDK's `git.clone`
   has no depth parameter — use `executeCommand('git clone --depth 1 ...')` instead.
 - Copy all `.env*` files from the dispatcher into the sandbox (`.env`, `.env.local`,
   `.env.test`, and any others present). These are gitignored, small, and contain secrets —
@@ -1431,20 +1439,36 @@ exit code is non-zero (signal kill: 143 for SIGTERM, 137 for SIGKILL) OR exit co
 gives the dispatcher a structured signal (`step_finish` present/absent, `error` events) rather
 than a heuristic on log content. See `docs/todo/spike-midstream-resume.md` for the full spike
 report and findings.
+### 4. Snapshot with baked node_modules + fresh clone — VERIFIED (spike, 2026-07-22); Strategy A chosen
 
-### 4. Snapshot with baked node_modules + fresh clone
+The per-claim provisioning recipe named two strategies for getting baked
+`node_modules` into a fresh clone — bake the shallow clone itself into the
+snapshot (per-sandbox provisioning then fetches instead of cloning), or move
+the baked `node_modules` into the fresh clone — and verified neither. The
+interaction between a baked snapshot image and a per-claim `git clone --depth
+1` is non-obvious: `node_modules` is gitignored, so a fresh clone does not have
+it, and moving it from a baked location into the clone assumes the paths line
+up. The wrong choice makes every claim pay a full install from scratch.
 
-The per-claim provisioning recipe names two strategies for getting baked `node_modules` into a
-fresh clone — bake the shallow clone itself into the snapshot (per-sandbox provisioning then
-fetches instead of cloning), or move the baked `node_modules` into the fresh clone — and
-verifies neither. The interaction between a baked snapshot image and a per-claim `git clone
---depth 1` is non-obvious: `node_modules` is gitignored, so a fresh clone does not have it,
-and moving it from a baked location into the clone assumes the paths line up. The wrong
-choice makes every claim pay a full install from scratch. **Spike:** build a snapshot via the
-Declarative Builder with the repo's `node_modules` baked in, create a sandbox from it, run
-`git clone --depth 1` (or `git fetch`), and check whether `node_modules` is present and
-usable. Try both strategies. This resolves an open design question — the plan names two
-without picking one.
+**Verified by the baked-node-modules spike (2026-07-22):** both strategies
+pass end-to-end. Strategy A — a clone with `node_modules` baked in survives
+`git fetch` + `git checkout` with `node_modules` intact and usable
+(`node_modules` is gitignored, so git operations do not touch it); the baked
+esbuild native binary and lodash pure-JS dep are requireable after
+provisioning. Strategy B — copying a baked `node_modules` into a fresh
+`git clone --depth 1` — also leaves both deps requireable, including the
+native esbuild binary. **Strategy A has been chosen** (decided 2026-07-22): it
+avoids the per-claim `node_modules` move and matches the plan's cold-start-
+optimization framing. Three caveats surfaced, all per-claim-recipe details
+folded into the snapshot build config (see the provisioning recipe under Worker
+sandbox design): (1) baked files are root-owned but the sandbox runs as
+`daytona` (uid 1001) — the snapshot build must `chown -R 1001:1001` via
+`dockerfileCommands` (the `user: 'root'` create param is ignored); (2) "bake
+the clone" means bake a clone + `runCommands('npm install')` during the
+snapshot build — a `git clone` alone has no `node_modules` (gitignored), and
+build-time network is available; (3) bare repos in snapshots need loose refs
+(only relevant to the spike's fixture, not the primary strategy's shallow
+clone). See `docs/todo/spike-baked-node-modules.md` for the full spike report.
 
 ### 5. n8n Execute Command: blocking for minutes + child death on restart
 
@@ -1585,9 +1609,16 @@ the ones that matter; these are noted so the seams are visible during implementa
 2. **Build the custom snapshot and per-claim provisioning** (gates the sandbox tier):
    - Build a custom Daytona snapshot via the Declarative Builder: Node.js, Yarn, Postgres,
      Playwright browsers, opencode, and the repo's dependencies pre-installed. This eliminates
-     the per-sandbox install step and makes claim-to-start fast.
+     the per-sandbox install step and makes claim-to-start fast. **Bake the shallow clone
+     itself into the snapshot (Strategy A, decided 2026-07-22 — verified by
+     `docs/todo/spike-baked-node-modules.md`):** bake a shallow clone plus
+     `runCommands('npm install')` during the build (a `git clone` alone has no `node_modules`
+     — gitignored), and chown the baked checkout to uid 1001 via `dockerfileCommands(['USER
+     root', 'RUN chown -R 1001:1001 /workspace/repo', 'USER 1001'])` after the `COPY` +
+     install — the `user: 'root'` create param is ignored (spike findings F1, F3, F4).
    - Per-claim provisioning: the dispatcher creates a sandbox at claim time (capped by
-     `maxConcurrentSandboxes`), provisions it (clone or fetch, secrets and config copy),
+     `maxConcurrentSandboxes`), provisions it (fetch to current — the clone is baked in, so
+     provisioning fetches instead of cloning — plus secrets and config copy),
      checks out the claim's base, and destroys the sandbox when the session exits (single-use —
      see Sandbox lifecycle). No pool to build. Measure create-from-cached-snapshot latency
      here — claim-time creation depends on it being the seconds the docs promise; if it is
