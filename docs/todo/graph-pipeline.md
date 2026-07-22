@@ -471,6 +471,8 @@ step of every pass. The behaviors carry over; the workflow does not.
   nothing notifies.
 - **Durability floor** — the agent's in-sandbox command pushes its branch as its last act, so a
   completed result is durable in git no matter what was or wasn't watching when it finished.
+  Push failure is not assumed away: the in-sandbox command retries with bounded backoff, and a
+  permanent failure parks the node with the work preserved (see Branch push failure).
 - **Transcript collection** — when a session exits with an outcome (COMPLETE or `failed` —
   every attempt, not only the last; a failed attempt's transcript is exactly the evidence a
   retry investigation needs), the collecting pass downloads the session transcript and the full
@@ -930,7 +932,7 @@ Rough estimate, ~1090 lines of JS plus three small n8n workflows:
 | Classification (deterministic rules + LLM fallback, evidence journaled with the outcome) | ~90 | Rules and prompt ported from `Parse OpenCode Response` / `BMAD Outcome`; no n8n dependency |
 | Pass frame (flock, inbox fold, reconcile, pause gate, per-pass log + `last-pass.json` heartbeat) | ~170 | New; helper patterns copied from gen-2 scripts, no imports |
 | Planning run (launch wrapper with per-leg exit record + atomic delta promotion, resume-mode legs, planning lock, delta validation + fold) | ~120 | New |
-| In-sandbox command template (install check, opencode run with `--format json` and `</dev/null`, exit capture, branch push) | ~60 | New |
+| In-sandbox command template (install check, opencode run with `--format json` and `</dev/null`, exit capture, branch push with bounded retry + `push-failed` marker) | ~90 | New |
 | Merge wrapper (merge lock, drives the in-sandbox merge cycle: fetch, rebase, merge, push; fire post-merge hook; conflict report) | ~90 | New |
 | Question-form workflow (form + ntfy + inbox write + invoke) | n8n, small | New — the Wait-form/ntfy pattern from gen-2, as a standalone workflow |
 | Planning-host workflow (run the launch wrapper, invoke dispatcher on exit) | n8n, small | New |
@@ -1101,7 +1103,8 @@ single-use keeps it free across sequential claims too.
   other committed file. **neuralwatt API access from sandboxes (spike, 2026-07-22):
   `api.neuralwatt.com` is not on Daytona's Tier 1 Essential Services allowlist, so sandbox
   agents cannot reach it directly.** The planning run and the outcome-classification call run
-  on the devcontainer and are unaffected. See open question 2 for the resolution path.
+   on the devcontainer and are unaffected. See open question 2 for the resolution (resolved:
+   relay built and deployed).
 - **Egress on Tier 1 is restricted to Daytona's Essential Services allowlist (spike,
   2026-07-22 — see `docs/todo/spike-neuralwatt-accessibility.md`).** The sandbox does not have
   open egress: an Envoy proxy inspects the TLS SNI and resets connections to any hostname not on
@@ -1112,7 +1115,8 @@ single-use keeps it free across sequential claims too.
   GitHub, npm, Anthropic, OpenAI, Docker registries, Railway (`*.railway.app`,
   `*.railway.com`), and others — see the [Daytona network limits docs](https://www.daytona.io/docs/network-limits).
   `api.neuralwatt.com` is not on the allowlist, so sandbox agents cannot reach it directly.
-  The resolution path is a general authenticated sandbox-proxy relay — see open question 2.
+   The resolution is the authenticated sandbox-proxy relay — see open question 2 (resolved:
+   `sandbox-relay-production.up.railway.app`).
 
 **Per-claim (after provisioning):**
 - A pass journals the claim (with its deadline), provisions the sandbox (above), and issues
@@ -1158,7 +1162,10 @@ single-use keeps it free across sequential claims too.
   `opencode run --format json` and writes the ID to a known path for the dispatcher to journal
   with the claim. Without this, the park/resume path has no ID to pass to `--session`.
 - The in-sandbox command ends with a branch push (`git push origin HEAD:pipeline/<runId>/<chainId>`
-  — the chain branch) so the result is durable in git regardless of what is watching.
+  — the chain branch) so the result is durable in git regardless of what is watching. The push
+  step retries with bounded backoff and writes a `push-failed` marker on permanent failure; the
+  collecting pass checks the marker before destroying the sandbox and attempts one recovery push
+  or parks the node (see Branch push failure).
 - Deadlines are enforced pass-side: a pass finding a claim past its deadline terminates the
   session command in the sandbox, journals a `runner_error` event, and handles the node per
   retry policy (a timeout is a failure — see Timeout policy under Supervision; the node is
@@ -1215,7 +1222,8 @@ labeling and reaper discipline described under Sandbox lifecycle.
   config — a claim that would exceed the cap simply isn't made that pass; capacity control is
   claim-time policy, not pool size. The agent's in-sandbox
   command pushes the branch as its last act, so completion is durable in git before
-  destruction. A retry never reuses the failed attempt's sandbox; a deadline-terminated
+  destruction — and a push that fails is retried in-sandbox, then recovered or parked by the
+  collecting pass, never silently lost (see Branch push failure). A retry never reuses the failed attempt's sandbox; a deadline-terminated
   attempt's sandbox is destroyed the same way. Single-use buys reuse hygiene by construction:
   no stray processes from a previous claim (a leftover dev server holding its port), no
   untracked files or Postgres state crossing claims, no disk growth toward the 10 GB cap —
@@ -1553,8 +1561,8 @@ prose above; the spike reports hold the full evidence:
   The chown and bake-clone details are in the provisioning recipe.
 - **opencode.json provider registration for neuralwatt** (including the egress constraint) — see
   `docs/todo/spike-neuralwatt-accessibility.md` and `docs/todo/spike-opencode-relay.md`. The
-  egress constraints are in the provisioning recipe; the authenticated sandbox-proxy relay
-  itself is an open need — see open question 2.
+   egress constraints are in the provisioning recipe; the authenticated sandbox-proxy relay
+   is built and deployed — see open question 2 (resolved).
 - **Snapshot path rejects `resources`; image path honors all three** — see
   `docs/todo/spike-snapshot-resources.md`. The snapshot path returns a hard API error
   ("Cannot specify Sandbox resources when using a snapshot"), not silent ignore; the image
@@ -1605,17 +1613,119 @@ removes a chain node and rewires its successor around it, racing a claim of the 
 — partial application would leave two concurrently runnable nodes on one chain branch; the
 chain-total-order rule plus all-or-nothing rejection must catch it.
 
-### 7. Branch push failure (design gap, not a spike)
+### 7. Branch push failure (decided 2026-07-22)
 
-The plan says "the agent's in-sandbox command pushes its branch as its last act, so a
-completed result is durable in git no matter what was or wasn't watching when it finished."
-This does not address push failure — a network blip, auth expiry, or force-push rejection. If
-the push fails, the agent's work is on the sandbox disk only, and the sandbox is destroyed at
-collection: the work is lost and the node is re-claimed from scratch. This is a functional
-gap, not an assumption to spike. The plan should either retry the push in the in-sandbox
-command before exiting, have the collecting pass attempt the push if the agent did not, or
-not destroy the sandbox until the push is confirmed. Raised here as a design question to
-resolve before implementation, not a spike to run.
+The agent's in-sandbox command pushes its branch as its last act, so a completed result is
+durable in git no matter what was or wasn't watching when it finished. Push failure — a
+network blip, auth expiry, force-push rejection — is not assumed away: a completed run whose
+push failed has its work on the sandbox disk only, and the sandbox is destroyed at collection,
+losing hours of agent runtime to a seconds-long infra blip. The asymmetry is load-bearing:
+**agent runs cost hours, push retries cost seconds**, so a design that does not exploit it is
+wrong by construction.
+
+Push failures are not monolithic — they split cleanly into two classes with different correct
+responses:
+
+| Failure class | Examples | Correct response |
+|---|---|---|
+| **Transient** | network blip, HTTP 5xx, rate limit, brief DNS failure | Retry with backoff. The work is valid; the push will land. |
+| **Permanent** | auth expired, branch deleted, non-fast-forward rejection, repo restructured | Stop retrying. The work cannot land as-is. Surface it. |
+
+The design is two layers, in order:
+
+**Layer 1 — In-sandbox bounded retry (catches transient).** The in-sandbox command
+template's push step is a bounded exponential backoff: 3 attempts, ~5s/15s/45s (worst case
+~65s — noise against an hours-long run). Each attempt captures exit code and stderr. After
+the retry budget is exhausted, the command classifies the failure by inspecting the last
+stderr: transient signals (`Connection reset`, `RPC failed`, HTTP 5xx, timeout, rate-limit
+messages) vs. permanent signals (`403`/`401`/`Permission denied`/`could not read Username`
+for auth; `! [rejected]`/`non-fast-forward` for rejection; `refs/heads/... does not exist`
+for branch deleted). On permanent failure — or transient-exhausted — the command writes a
+`push-failed` marker file to a known path on the sandbox disk (failure class, stderr, branch
+name, head commit SHA) and exits with a distinct exit code (`42` — chosen to be unmistakable,
+not `1` which is the agent's own failure code). The marker is the detail; the exit code is the
+reliable signal (the agent could exit before writing the marker, but the exit code is set by
+the template's own push step, which always runs last).
+
+**Layer 2 — Collecting pass handles the marker (catches permanent).** The collecting pass,
+when it sees an exited session, checks for the `push-failed` marker *before* destroying the
+sandbox — the sandbox is not destroyed until the push lands or the node is parked:
+
+- **No marker** → normal path. Push succeeded. Pull transcript, destroy sandbox, classify
+  outcome from the JSON event stream.
+- **Marker: `transient-exhausted`** → the pass re-issues a single push command on the
+  still-alive sandbox via the Daytona session API (the sandbox isn't destroyed yet — that's
+  the key ordering), with the devcontainer's fresher credentials copied in if auth was the
+  issue. If that push succeeds, proceed to normal collection. If it fails again, treat as
+  permanent.
+- **Marker: permanent (auth)** → the pass copies refreshed `.env*` / credentials into the
+  sandbox and re-issues the push. If it succeeds, collect normally. If auth is still bad,
+  this is a QUESTION — the human needs to fix credentials, and the parked sandbox preserves
+  the work (parked sandboxes are stopped, not destroyed — see Park/resume).
+- **Marker: permanent (non-fast-forward / branch deleted)** — structurally interesting. A
+  rejected push to `pipeline/<runId>/<chainId>` means someone else pushed to that branch,
+  which the design says can't happen (single-use, one owner per chain branch). So this case
+  is either a bug or a human pushing manually. Either way: QUESTION — surface it, don't
+  silently destroy.
+
+**The sandbox is not destroyed until the push lands or the node is parked.** This resolves
+the "don't destroy until confirmed" option's capacity-leak problem: instead of waiting
+forever, the pass gets one shot at recovery, and if that fails the node parks (preserving
+the sandbox like any park) for human attention. Capacity leak is bounded because parking is
+the terminal state, not an indefinite wait.
+
+**Why this shape:**
+
+- **It exploits the hours-vs-seconds asymmetry.** A 65-second retry budget is noise against a
+  2-hour agent run. The cost of not retrying is losing 2 hours.
+- **It splits the failure space correctly.** Transient failures get automatic recovery
+  (Layer 1, in-sandbox, no pass involvement). Permanent failures get intelligent recovery
+  (Layer 2, the pass has context and credentials the sandbox doesn't). Treating push failure
+  as monolithic — the failure of the three rejected alternatives — handles one class and
+  fumbles the other.
+- **It preserves the design's invariants.** The sandbox is still single-use. The pass is
+  still the only state writer. Git is still the convergence point. The devcontainer checkout
+  is still never touched by pipeline git ops (the pass drives a push on the sandbox via the
+  Daytona session API, not on the devcontainer). The only additions are a marker file and a
+  distinct exit code — both cheap, both inspectable.
+- **It uses the park path that already exists.** Permanent push failure parks the node — the
+  same QUESTION → park → resume machinery the design already builds for agent questions. No
+  new node state, no new recovery surface. The human fixes credentials (or investigates the
+  rejected push) and answers the park; the resumed session re-attempts the push.
+- **The work is never lost.** The sandbox is destroyed only after the push is confirmed or
+  the node is parked. This is the guarantee the "don't destroy until confirmed" option
+  wanted, achieved without its capacity-leak problem.
+
+**Rejected alternatives:**
+
+- **Retry in-sandbox only (no marker, no pass involvement).** Catches transient, but a
+  permanent failure (auth expired) burns the retry budget for nothing and then loses the
+  work when the sandbox is destroyed — the in-sandbox layer has no path to refresh
+  credentials or surface the failure to a human.
+- **Collecting pass attempts the push if the agent didn't.** The pass has more context, but
+  the work is on the sandbox disk — the pass would need to either drive a push on the
+  sandbox (which this design does, but only after Layer 1 has already caught the transient
+  cases) or pull the diff to the devcontainer and push from there (reintroducing the
+  local-checkout-as-convergence-surface the design explicitly rejects). Doing this
+  unconditionally makes the pass heavier on every collection, not just failures.
+- **Don't destroy the sandbox until the push is confirmed, unconditionally.** A sandbox that
+  can't push because auth expired waits forever, burning a `maxConcurrentSandboxes` slot with
+  no recovery path. This design adopts the principle (don't destroy until confirmed) but
+  bounds it: one pass-side recovery attempt, then park.
+
+**Honest costs:**
+
+- The in-sandbox command template grows by ~30 lines (retry loop + classification + marker
+  write). It was ~60 lines; it becomes ~90. Still the smallest module.
+- A transient-exhausted or permanent-auth failure keeps the sandbox alive past the agent's
+  exit, until the collecting pass attempts recovery. This holds one `maxConcurrentSandboxes`
+  slot for the duration of one pass interval (minutes). Accepted — it's a rare case, and the
+  alternative is losing the work.
+- The collecting pass gets one new branch in its collection logic: check for the marker
+  before destroying. ~15 lines added to the heaviest module; a small addition.
+- A distinct exit code (`42`) is a minor convention to maintain. The alternative — parsing
+  the marker file to detect push failure — would work but is more fragile (what if the agent
+  exits before writing it?). The exit code is the reliable signal; the marker is the detail.
 
 ## Path (incremental, each step independently useful)
 
@@ -1647,7 +1757,7 @@ resolve before implementation, not a spike to run.
    - Verify Yarn 4 Berry works with adequate disk (the initial failure was almost certainly the
      3 GB default disk, not a platform incompatibility).
 3. Build the per-agent machinery: the in-sandbox command template (opencode run with `--format json`, exit capture,
-   terminal branch push), session start/poll/continue via the Daytona session API, the
+   terminal branch push with bounded retry + `push-failed` marker — see Branch push failure), session start/poll/continue via the Daytona session API, the
    classification module (deterministic rules + LLM fallback, prompt ported from gen-2),
    deadline enforcement (terminate + journal + handle per retry policy; see Timeout policy), park/resume with a synthetic question
    (including sandbox stop/start around the park), transcript pull and sandbox destroy at
@@ -1656,16 +1766,17 @@ resolve before implementation, not a spike to run.
    make a pass fail (bad input) and verify the tick fires the error notification; hold
    `last-pass.json` stale and verify the stall alert fires. Test against disposable
    sandboxes with synthetic steps before any real BMAD skill run.
-4. Introduce the graph: `dependsOn` edges in planning output (chains composed per the
-   guidelines), `graph.json` and the reconcile pass with the plan-2-ahead / bounded
-   depth-first policy, node-granularity claims with chain branches, the planning-run machinery (launch
-   wrapper, planning lock, n8n host workflow, delta validation and fold, process-vanished
-   relaunch), and the
-   pause/resume gate on claiming (with its helper script). First taste
-   of parallelism: two independent nodes from different chains as two concurrent sandboxes.
-   This is the permanent design — sandboxed agents supervised by level-triggered passes; no
-   per-worker supervisor exists anywhere. Tune the tick cadence here, and exercise pause: pause
-   mid-run, watch in-flight nodes finish with nothing new claimed, resume.
+ 4. Introduce the graph: `dependsOn` edges in planning output (chains composed per the
+    guidelines — author `chain-composition-guidelines.md` first, per open question 1's
+    requirements), `graph.json` and the reconcile pass with the plan-2-ahead / bounded
+    depth-first policy, node-granularity claims with chain branches, the planning-run machinery (launch
+    wrapper, planning lock, n8n host workflow, delta validation and fold, process-vanished
+    relaunch), and the
+    pause/resume gate on claiming (with its helper script). First taste
+    of parallelism: two independent nodes from different chains as two concurrent sandboxes.
+    This is the permanent design — sandboxed agents supervised by level-triggered passes; no
+    per-worker supervisor exists anywhere. Tune the tick cadence here, and exercise pause: pause
+    mid-run, watch in-flight nodes finish with nothing new claimed, resume.
 5. Move "done" from workflow-return to branch-merged: merge queue (n8n workflow + merge
    wrapper) + Mermaid graph view. Agents push their own branches; a pass that finds a
    completed merge-point node not yet merged triggers n8n's merge queue (level-triggered); no
@@ -1685,52 +1796,313 @@ First real parallel run should be manual and supervised, including at least one 
 
 ## Open questions
 
-1. Chain-composition guidelines document — to author before Path step 4. The mechanical half
-   (graph delta in the inbox — op vocabulary,
-   envelope, wrapper promotion, all-or-nothing fold — see Graph delta format) and the
-   context contract (what the planner knows and may touch — see Planning-run context) are
-   decided. What remains is writing
-   the document itself: name, location, and content — the gen-2 step sequence rewritten as
-   advice with include/skip conditions per step (empty-diff evidence in the journal is what
-   shows a condition is wrong: a verification node that finds nothing produced information
-   and stays, a generation node that finds nothing was waste and its include condition
-   tightens), the lazy-composition advice (never compose past an information-producing
-   node — see Graph management rules), the within-chain ordering advice for review
-   nodes (all nodes are assumed file-modifying, so ordering is chain position), merge-point
-   placement advice (only where a dependent chain exists to unlock — and cleared on the
-   unclaimed node when a replan drops that dependent), the conflict-resolution
-   advice (in-place resolution vs rework, and when a resolution node deserves a trailing
-   review node — see Merge-conflict resolution), the scope-finalization playbook seeded from the
-   human's manual post-scope flow (sprint-flow-draft.md: `bmad-bug-hunt`,
-   `bmad-testarch-trace` with a FAIL → fix follow-up, `bmad-testarch-nfr`, deferred-work
-   pruning with its rule to ask when a finding is not a stale deferral,
-   `bmad-retrospective`, test-plan revision, project-context cleanup; the fidelity audit
-   stays folded into bug-hunt), the overlap advice (when next-scope composition should wait
-   for an in-flight scope audit — see Scope lifecycle), the skill catalog with per-skill
-   default deadlines, and the concrete node-spec schema (field names and format for the
-   vocabulary — `id`, `chainId`, skill/agent/prompt, deadline,
-   `dependsOn`, `mergeTo`, `metadata`). The guidelines carry project-specific semantics
-   (story, epic, phase, sprint vocabulary) alongside the immutable graph rules — see
-   Pipeline vs. project-specific customization.
-2. **Authenticated sandbox-proxy relay — to design and build before Path step 2.** Daytona
+1. Chain-composition guidelines document — requirements specified below; the document itself
+   is authored during implementation (Path step 4). The mechanical half (graph delta format,
+   op vocabulary, envelope, wrapper promotion, all-or-nothing fold — see Graph delta format)
+   and the context contract (what the planner knows and may touch — see Planning-run context)
+   are decided. What remains is the document the planner reads as standing context — its
+   identity, required sections, and success criteria.
+
+   ### Identity
+
+   - **Name:** `chain-composition-guidelines.md`
+   - **Location:** `_bmad-output/pipeline3/chain-composition-guidelines.md` — same tier as
+     `decision-policy.md` (human-authored, agent-facing), co-located with the policy block
+     and gen-3 state so the planner reads it from the same directory it reads `graph.json`
+     from. The planner's prompt points to it; it is not auto-discovered.
+   - **Audience:** the planning agent (an LLM running opencode on the devcontainer). Written
+     for an LLM reader: patterns and decision rules it can internalize and apply, not a
+     reference manual a human browses. The planner reads it every planning run alongside the
+     per-run prompt, the graph state, and the backlog.
+   - **Role:** the planner's "how to think about composing chains for this project" reference.
+     It carries project-specific semantics (story, epic, phase, sprint vocabulary) alongside
+     the immutable graph rules restated in planner-facing language. The immutable rules are
+     also in the planner's prompt; the guidelines give them context and vocabulary. The
+     machinery enforces graph-shape rules; the guidelines tell the planner what nodes to
+     compose for a given unit of work.
+   - **Relationship to gen-2:** seeded from the gen-2 playbook step sequence (create-story →
+     validate → prepare-tests → validate-2 → implement → unit-tests → e2e-tests →
+     code-review → test-review → NFR-review → update-project-context → commit) and the
+     human's manual post-scope flow (`sprint-flow-draft.md`). The planner never reads
+     `playbook.json` or any gen-2 file; the guidelines are authored fresh from that seed.
+
+   ### Required sections
+
+   The document must contain these sections. Each section's content requirements are below.
+
+   #### 1. Chain composition principles
+
+   The immutable graph rules, restated in the planner's own vocabulary. These are the rules
+   the fold enforces mechanically; the guidelines restate them so the planner reasons in
+   terms of them rather than discovering them as rejection errors:
+
+   - A chain is a total order — all nodes modify files, so they cannot run concurrently on
+     one branch. Within a chain, `dependsOn` is simply the previous node.
+   - Every chain's final node carries `mergeTo: main`. A final node without `mergeTo` is a
+     planning error rejected at fold time.
+   - Cross-chain `dependsOn` edges may only target merge-point nodes (nodes carrying
+     `mergeTo`). An edge to an unmarked node is rejected at fold time.
+   - The graph stays acyclic.
+   - A claimed node's spec is frozen; replanning touches only unclaimed nodes. The planner
+     should prefer additive changes near nodes likely to be claimed while planning runs, and
+     touch unclaimed nodes only.
+   - The planner never composes past an information-producing node (see lazy composition
+     below). This is the single most important planning decision; the guidelines must make
+     the concept unambiguous.
+
+   #### 2. Chain patterns
+
+   Templates for common chain shapes. Each pattern states: when it applies, what nodes it
+   gets, where the merge points are, where lazy composition cuts the chain, and what
+   metadata the nodes carry. The patterns are advice, not templates stamped blindly — the
+   planner adapts them per the unit of work's content.
+
+   **2a. Story chain** (seeded from the gen-2 playbook). The gen-2 step sequence rewritten
+   as advisory content:
+
+   - **First segment:** `create-story` node only. This is the type case of an
+     information-producing node — its artifact (the story spec) determines what the rest of
+     the chain should be. The planner composes this one node and stops. If another chain
+     depends on the story artifact (e.g. a chain implementing against the story's schemas and
+     contracts), `create-story` carries `mergeTo: main` as a mid-chain merge point; otherwise
+     it does not, and the chain continues on the same branch after the artifact is produced.
+     Either way, the planner does not compose past it — the next segment is composed in a
+     later planning run once the artifact is readable at `origin/main`.
+   - **Second segment** (composed after `create-story`'s artifact lands on main): validate
+     (1st pass) → prepare-tests → validate (2nd pass) → implement → unit-tests → e2e-tests →
+     code-review → test-review → NFR-review → update-project-context → commit (final node,
+     carries `mergeTo: main`).
+   - **Include/skip conditions per step** — each step carries a condition stating when it
+     applies. These are empirical hypotheses, not immutable rules: empty-diff evidence in
+     the journal is what shows a condition is wrong. A verification node that finds nothing
+     produced information and stays; a generation node that finds nothing was waste and its
+     include condition tightens. The conditions the document must specify:
+     - `prepare-tests`: skip if the story has no testable behavior (e.g. a story whose
+       substance is human-performed setup — there is no automatable behavior to scaffold
+       tests for).
+     - `e2e-tests`: skip if the ATDD checklist deferred E2E coverage because no
+       browser-level mock can simulate the acceptance criteria. The planner reads the
+       checklist from the prepare-tests artifact (on main) to decide.
+     - `validate (2nd pass)`: skip if prepare-tests made no changes to the story spec (the
+       story didn't need updating after tests exist).
+     - `review-nfrs`: include always — even a story with no code changes may have NFR
+       concerns; the NFR review determines whether there are findings, not whether the step
+       runs.
+     - `update-project-context`: skip if no new repeatable patterns emerged (the step itself
+       decides; the include condition is "always include, the step may be a no-op").
+   - **Within-chain review ordering:** code-review → test-review → NFR-review. All nodes are
+     assumed file-modifying, so ordering is chain position. The guidelines advise on when
+     this order might change: if test-review finds fundamental issues that invalidate the
+     code-review's patches, the planner appends a re-implementation node and a re-review — a
+     replan, not a different initial order. The default order is advice; the planner may
+     deviate with a reason journaled in the node's prompt.
+
+   **2b. Scope-finalization chain** (seeded from `sprint-flow-draft.md`). Composed late,
+   once the scope's work chains have all merged. The first node's `dependsOn` fans in to
+   every work chain's final merge-point node — legal under the cross-chain-edges-target-
+   merge-points invariant. The chain is full of information-producing nodes, so lazy
+   composition applies with force — the sequence unfolds across several planning rounds:
+
+   - `bmad-bug-hunt` (target: the scope). The fidelity audit stays folded into bug-hunt, not
+     a separate node. **Information-producing:** findings determine whether remediation nodes
+     are appended in the next planning round.
+   - `bmad-testarch-trace` (Create mode). **Information-producing:** a FAIL decision gets a
+     fix node (`bmad-quick-dev` or `bmad-dev-story`) appended in the next planning round; a
+     PASS continues to the next node.
+   - `bmad-testarch-nfr` (Create mode for the scope). Not information-producing in the lazy
+     sense — it audits and applies fixes, but its findings don't determine the next node's
+     existence.
+   - `bmad-quick-dev` — prune `deferred-work.md` by checking each item against the current
+     codebase and removing resolved ones. **Information-producing:** if a finding is not a
+     stale deferral (the code has changed but the deferral is still relevant, or the
+     deferral describes a problem that has worsened), the node parks with QUESTION — the
+     standard path, not a separate node type. The rule: ask when a finding is not a stale
+     deferral; otherwise, report that work is completed.
+   - `bmad-retrospective` (target: the scope). Produces a repo artifact; not
+     information-producing.
+   - `bmad-testarch-test-design` (Edit mode — revise the project's test plan to fit current
+     reality). Not information-producing.
+   - `bmad-agent-architect` — cleanup `project-context.md`: throw out redundant items,
+     consolidate multiple items. Not information-producing. This is the final node; it
+     carries `mergeTo: main`.
+
+   The finalization chain's lazy composition is more aggressive than the story chain's:
+   bug-hunt and trace are both information-producing, so the planner composes bug-hunt first,
+   then (after its findings land) composes trace, then (after trace's FAIL/PASS lands)
+   composes the rest. The guidelines must state this explicitly — a planner that composes
+   the whole finalization chain up front will pre-plan a fix node for a trace that hasn't
+   failed yet.
+
+   **2c. Early-phase doc chain** (BMAD phases 1-2). Each phase is a chain of doc-writing
+   nodes: brainstorming → PRD → architecture → epics. Every node modifies files (markdown),
+   so the total-order assumption holds. The merge cycle integrates without tests (the
+   post-merge hook is absent or a no-op). Sequential composition is fine: one chain or a
+   sequence of chains, as the guidelines advise. The skill for each node is the relevant
+   BMAD skill (`bmad-brainstorming`, `bmad-prd`, `bmad-create-architecture`,
+   `bmad-create-epics-and-stories`). Information-producing nodes: PRD and architecture both
+   produce artifacts that determine downstream work, so lazy composition applies — compose
+   the PRD node, stop, compose architecture after the PRD lands, stop, compose epics after
+   architecture lands.
+
+   #### 3. Skill catalog
+
+   The atomic reference for every skill the planner may emit as a node. Each entry must
+   specify:
+
+   - **Skill name** (the `skill` field value, e.g. `bmad-create-story`)
+   - **Agent type** (the `agent` field value: `planner` | `coder` | `reviewer` — which
+     opencode agent runs the skill)
+   - **Purpose** — one sentence: what the skill does
+   - **Reads** — what it consumes (files, artifacts, state)
+   - **Produces** — what it writes or modifies (files, artifacts)
+   - **Default deadline** — an ISO duration (e.g. `PT2H`), tuned empirically from gen-2
+     durations; the planner may override per node with a reason
+   - **Information-producing** — `yes` | `no` | `conditional`. `yes` means the skill's
+     artifact determines what the rest of the chain should be, and the planner must not
+     compose past it. `conditional` means it depends on the outcome (e.g.
+     `bmad-testarch-trace` is information-producing on FAIL — a fix node is appended — but
+     not on PASS). This field is the single most load-bearing catalog entry: it drives the
+     lazy-composition decision.
+
+   The catalog must cover at minimum:
+
+   | Skill | Info-producing | Notes |
+   |---|---|---|
+   | `bmad-create-story` | yes | The type case. Story artifact determines the chain. |
+   | `bmad-testarch-atdd` | yes | Test scaffolding determines implementation tasks. |
+   | `bmad-dev-story` | yes | Implementation determines test/review scope. |
+   | `bmad-testarch-automate` | no | Validates/expands existing tests. |
+   | `bmad-qa-generate-e2e-tests` | conditional | May defer (no info produced) or generate (info produced). |
+   | `bmad-code-review` | no | Reviews and applies patches. |
+   | `bmad-testarch-test-review` | no | Validates and fixes test quality. |
+   | `bmad-testarch-nfr` | no | Audits NFRs, applies fixes. |
+   | `bmad-agent-tech-writer` | no | Updates project context. |
+   | `commit` | no | Commits changes. |
+   | `bmad-bug-hunt` | yes | Findings determine remediation nodes. |
+   | `bmad-testarch-trace` | conditional | FAIL → fix node appended; PASS → continue. |
+   | `bmad-quick-dev` | conditional | Deferred-work pruning may surface a QUESTION. |
+   | `bmad-retrospective` | no | Produces a repo artifact. |
+   | `bmad-testarch-test-design` | no | Revises test plan. |
+   | `bmad-agent-architect` | no | Cleans up project context. |
+   | `bmad-brainstorming` | yes | Output determines PRD scope. |
+   | `bmad-prd` | yes | PRD determines architecture scope. |
+   | `bmad-create-architecture` | yes | Architecture determines epics scope. |
+   | `bmad-create-epics-and-stories` | yes | Epic breakdown determines story chains. |
+
+   The catalog is not exhaustive — the planner may emit a node for any skill or atomic CLI
+   command. Entries for skills not in the catalog default to `information-producing: no`
+   unless the planner has a reason to flag otherwise (journaled in the node's prompt).
+
+   #### 4. Decision rules
+
+   The tricky calls the planner must make, each stated as a rule with its rationale:
+
+   - **Lazy composition:** never compose past an information-producing node. The planner
+     composes up to the next information-producing node, then stops. The next planning run
+     (triggered by the ready-node frontier running low after the artifact lands on main)
+     composes the next segment. Rationale: composing a whole chain up front from the backlog
+     entry alone plans speculation, and depth-first claiming makes the mistake irreversible
+     — the pass that folds the artifact-producing node's completion claims the pre-planned
+     successor in the same pass, leaving no window for a replan to remove a node the
+     artifact just revealed as unnecessary.
+   - **Merge-point placement:** mark `mergeTo: main` on a node only where a dependent chain
+     exists to unlock. The classic case: `create-story` merges right away so another chain
+     can start implementing against the artifact while this chain's own implementation is
+     still running. If a replan drops the dependent, clear `mergeTo` on the unclaimed node.
+     Rationale: a mid-chain merge point inserts merge-queue latency between two chain
+     segments; mark one only where it buys something.
+   - **Review ordering:** code-review → test-review → NFR-review (default). All nodes are
+     assumed file-modifying, so ordering is chain position. The planner may deviate with a
+     reason in the node's prompt. If a review finds fundamental issues, the planner appends
+     a re-implementation node and a re-review — a replan, not a different initial order.
+   - **Conflict resolution — in-place vs rework:** the common case is in-place resolution
+     (rebase, resolve preserving both sides' intent, push). Rework is when the conflict
+     reveals semantic divergence — the merged upstream invalidated this chain's approach, so
+     resolving hunks would merge wrong code. The planner chooses per the conflict details
+     (conflicted files, diffstat, fingerprint history from the journal). When a resolution
+     is heavy (a resolution commit that bypassed the chain's review nodes), the planner
+     appends a trailing review node after the resolution node.
+   - **Scope overlap:** when to hold next-scope composition back. An in-flight trace or NFR
+     audit whose evidence next-scope merges would invalidate → hold. Next-scope early work
+     rarely disturbs a scope audit → overlap is safe. The planner decides per scope; this
+     is guideline adherence, not construction.
+   - **Scope selection:** the planner continues down the backlog in backlog order. When a
+     scope's chains run out, the ready-node frontier runs low and the standard expansion
+     trigger fires. A human override ("skip to epic 7", "start the architecture phase") is
+     a replan instruction through the inbox. The guidelines state the backlog shape (epics
+     files and sprint plan, or a phase list, or a research agenda) so the planner knows what
+     to read.
+
+   #### 5. Node-spec schema
+
+   The concrete format the planner emits in `addNode` ops. The guidelines must state the
+   schema with field names, types, and which fields are required:
+
+   ```
+   {
+     "id":          <string, planner-authored, must be fresh — not colliding with any existing node id>
+     "chainId":     <string, structural identifier the machinery reads — derived into branch name pipeline/<runId>/<chainId>>
+     "skill":       <string, skill name from the catalog — or a CLI command>
+     "agent":       <string, "planner" | "coder" | "reviewer" — which opencode agent runs the skill>
+     "prompt":      <string, the prompt text passed to the skill — may carry step-specific instructions>
+     "deadline":    <string, ISO duration — e.g. "PT2H" — from the catalog default or overridden with a reason>
+     "dependsOn":   <string[], node ids — within a chain: the previous node; cross-chain: a merge-point node>
+     "mergeTo":     <string, optional — "main" — present only on merge-point nodes; absence means no merge at this node>
+     "metadata":    <object, free-form — project-specific fields the machinery never reads: story, epic, sprint, phase, scope>
+   }
+   ```
+
+   Fields the planner must NOT emit (machinery derives them): branch names, `runId`,
+   `sandboxId`, `sessionId`, `status`, `attempts`, `baseCommit`. The planner's only shared
+   output is the graph delta; it writes nothing else.
+
+   The fold-time validation rules, stated as rules the planner will be held to: a chain's
+   final node carries `mergeTo`; cross-chain edges target merge-point nodes only; the graph
+   stays acyclic; every chain remains a total order (a path). A delta that violates any of
+   these is rejected as a whole.
+
+   ### Success criteria
+
+   The document is complete enough when:
+
+   1. A human can read it and compose a chain by hand for a story, a finalization, and a
+      doc-writing task — following the patterns and decision rules to the same node set the
+      planner would produce.
+   2. The skill catalog covers every skill referenced in the chain patterns, with the
+      information-producing flag set for each.
+   3. The include/skip conditions are specific enough to be wrong — a condition like "include
+      e2e-tests always" is testable against empty-diff evidence and falsifiable; a condition
+      like "include e2e-tests when appropriate" is not.
+   4. The lazy-composition rule is unambiguous: given a chain pattern, the planner knows
+      exactly where to cut (at each information-producing node) and what triggers the next
+      segment (the artifact landing on main → ready-node frontier low → expansion trigger).
+   5. The node-spec schema is concrete enough that a planner emitting a delta produces
+      valid JSON on the first try — no field names guessed, no derived fields emitted.
+2. **Authenticated sandbox-proxy relay — RESOLVED (2026-07-22).** Daytona
    Tier 1 restricts sandbox egress to an Essential Services allowlist (GitHub, npm, Anthropic,
    OpenAI, Docker registries, Railway, and others — see the [Daytona network limits
    docs](https://www.daytona.io/docs/network-limits)). `api.neuralwatt.com` is not on the
    allowlist, so sandbox agents cannot reach the LLM provider directly. The planning run and
    the outcome-classification call run on the devcontainer and are unaffected, but every
-   sandbox agent needs LLM access. The resolution is a general authenticated proxy relay,
-   hosted on an allowlisted domain (e.g. Railway), that forwards requests from sandboxes to
-   non-allowlisted endpoints. Three requirements: **(a) the proxy must require
-   authentication** — an open proxy on an allowlisted domain would let any sandbox reach any
-   non-allowlisted service, defeating the purpose of the Tier 1 restriction; the auth token
-   rides with the `.env*` files already copied per-sandbox at provision time. **(b) the proxy
-   must exclude domains already permitted by Daytona's Tier 1 Essential Services allowlist** —
-   proxying a request to `github.com` or `registry.npmjs.org` adds latency and a failure mode
-   for nothing; the sandbox reaches those directly. The proxy handles only domains the
-   allowlist blocks. **(c) the proxy must be built and deployed** — the spike
-   (`docs/todo/spike-opencode-relay.md`) verified that opencode can reach neuralwatt through a
-   relay at an allowlisted domain, but the relay itself is not built; its implementation,
-   deployment, availability characteristics, and operational ownership are unresolved. This is
-   a hard dependency for every sandbox agent — if the proxy is down, all sandbox agents lose
-   LLM access. A single relay is a single point of failure; redundancy or a fallback path is
-   out of scope for the initial version but should be considered.
+   sandbox agent needs LLM access.
+
+   **Resolution:** A custom NestJS relay (`apps/sandbox-relay`) is built, deployed to Railway
+   at `sandbox-relay-production.up.railway.app`, and verified. `*.railway.app` is on the
+   Tier 1 allowlist, so sandboxes reach the relay directly. The relay is a path-based reverse
+   proxy (not a forward proxy): opencode's `baseURL` is set to
+   `https://sandbox-relay-production.up.railway.app/proxy/<target-host>`, and the relay
+   forwards to `https://<target-host>/<path>?<query>`. All three requirements are met:
+   **(a) authentication** — a bearer token in the `X-Relay-Token` header, checked against
+   `RELAY_AUTH_TOKEN` env var on Railway; requests without a valid token get 401. The token
+   rides with the `.env*` files already copied per-sandbox at provision time, and opencode
+   supports per-model custom `headers` in its config. **(b) allowlist exclusion** — the
+   relay rejects requests to domains on Daytona's Essential Services allowlist with HTTP 400
+   `DOMAIN_DIRECTLY_REACHABLE`, so sandboxes reach those directly without proxy overhead.
+   **(c) deployed and verified** — all six scenarios pass against the live relay: health
+   check (200, no auth), unauthenticated proxy request (401), allowlisted domain rejection
+   (400), non-allowlisted domain forwarding (200 + correct response), query string
+   passthrough, and SSE streaming passthrough. The relay strips hop-by-hop headers, sets
+   `Host` to the target, disables proxy buffering (`X-Accel-Buffering: no`) for SSE, and
+   aborts upstream fetch on client disconnect. Source: `apps/sandbox-relay/` (15 unit tests).
+   A single relay is a single point of failure; redundancy or a fallback path is out of
+   scope for the initial version but should be considered.
