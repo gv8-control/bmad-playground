@@ -29,7 +29,7 @@ const { SpikeRunner, log, elapsed } = require('./spike-opencode-sandbox.js');
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const RELAY_BASE = 'https://neuralwatt-relay-production.up.railway.app';
+const RELAY_BASE = 'https://sandbox-relay-production.up.railway.app';
 const RELAY_WS_URL = `${RELAY_BASE.replace('https://', 'wss://')}/tunnel`;
 const DIRECT_BASE = 'https://api.neuralwatt.com';
 const SPIKE_MODEL = 'neuralwatt/glm-5.2';
@@ -118,9 +118,13 @@ async function main() {
     step = '4-start-proxy';
     try {
       const t0 = Date.now();
+      // Install ws library (the tunnel proxy depends on it).
+      const installWs = await sb.runCommand('npm install -g ws 2>&1 | tail -3', { timeoutS: 30 });
+      log(step, `ws install: ${installWs.output.trim()}`);
       // Start the proxy in the background with env vars.
+      // NODE_PATH points to the global npm modules so the proxy can require('ws').
       const envVars = `TUNNEL_RELAY_URL="${RELAY_WS_URL}" TUNNEL_RELAY_TOKEN="${relayToken}" TUNNEL_LISTEN_PORT=${TUNNEL_PORT} TUNNEL_DEBUG=1`;
-      const startCmd = `nohup env ${envVars} node ${TUNNEL_PROXY_REMOTE} > /tmp/tunnel-proxy.log 2>&1 &`;
+      const startCmd = `NODE_PATH=$(npm root -g) nohup env ${envVars} node ${TUNNEL_PROXY_REMOTE} > /tmp/tunnel-proxy.log 2>&1 &`;
       await sb.runCommand(startCmd, { timeoutS: SHORT_TIMEOUT_S });
       // Give it a moment to start.
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -141,8 +145,11 @@ async function main() {
     step = '5-curl-via-tunnel';
     try {
       const t0 = Date.now();
+      // NO_PROXY excludes Essential Services — the sandbox reaches them
+      // directly, and the relay rejects tunnel requests for them.
+      const noProxy = 'models.dev,registry.npmjs.org,registry.npmjs.com,github.com,*.githubusercontent.com,opencode.ai,*.railway.app,railway.app,railway.com';
       const result = await sb.runCommand(
-        `HTTPS_PROXY=http://127.0.0.1:${TUNNEL_PORT} curl -s --max-time 20 -H "Authorization: Bearer ${apiKey}" ${DIRECT_BASE}/v1/models 2>&1 | head -c 500`,
+        `HTTPS_PROXY=http://127.0.0.1:${TUNNEL_PORT} NO_PROXY="${noProxy}" curl -s --max-time 20 -H "Authorization: Bearer ${apiKey}" ${DIRECT_BASE}/v1/models 2>&1 | head -c 500`,
         { timeoutS: SHORT_TIMEOUT_S },
       );
       const hasModels =
@@ -199,7 +206,9 @@ async function main() {
       // Run opencode with HTTPS_PROXY set — no baseURL override.
       // NEURALWATT_API_KEY is needed for auth.
       // HTTPS_PROXY routes the request through the local tunnel proxy.
-      const cmd = `cd /tmp && HTTPS_PROXY=http://127.0.0.1:${TUNNEL_PORT} NEURALWATT_API_KEY=${apiKey} opencode run --model ${SPIKE_MODEL} "Print exactly: SPIKE_OK" </dev/null 2>&1`;
+      // NO_PROXY excludes Essential Services that the sandbox reaches directly.
+      const noProxy = 'models.dev,registry.npmjs.org,registry.npmjs.com,github.com,*.githubusercontent.com,opencode.ai,*.railway.app,railway.app,railway.com';
+      const cmd = `cd /tmp && HTTPS_PROXY=http://127.0.0.1:${TUNNEL_PORT} NO_PROXY="${noProxy}" NEURALWATT_API_KEY=${apiKey} opencode run --model ${SPIKE_MODEL} "Print exactly: SPIKE_OK" </dev/null 2>&1`;
       log(step, `Running opencode with HTTPS_PROXY (no baseURL override)`);
       const result = await sb.runCommand(cmd, {
         timeoutS: OPENCODE_TIMEOUT_MS / 1000,
@@ -221,7 +230,8 @@ async function main() {
     try {
       const t0 = Date.now();
       const prompt = 'Write a 3-sentence summary of how HTTP/2 multiplexing works.';
-      const cmd = `cd /tmp && HTTPS_PROXY=http://127.0.0.1:${TUNNEL_PORT} NEURALWATT_API_KEY=${apiKey} opencode run --format json --model ${SPIKE_MODEL} "${prompt}" </dev/null 2>&1`;
+      const noProxy = 'models.dev,registry.npmjs.org,registry.npmjs.com,github.com,*.githubusercontent.com,opencode.ai,*.railway.app,railway.app,railway.com';
+      const cmd = `cd /tmp && HTTPS_PROXY=http://127.0.0.1:${TUNNEL_PORT} NO_PROXY="${noProxy}" NEURALWATT_API_KEY=${apiKey} opencode run --format json --model ${SPIKE_MODEL} "${prompt}" </dev/null 2>&1`;
       log(step, `Running streamed opencode with HTTPS_PROXY`);
       const result = await sb.runCommand(cmd, {
         timeoutS: OPENCODE_TIMEOUT_MS / 1000,
