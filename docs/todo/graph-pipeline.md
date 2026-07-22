@@ -356,7 +356,9 @@ step of every pass. The behaviors carry over; the workflow does not.
   signal inherited from gen-2: the LLM provider drops the response mid-stream, the opencode
   session is still alive, and `opencode run --format json --session <id>` resumes it from where it left off.
   It is handled entirely inside the poll step — the pass issues the async continue, extends the
-  deadline, and moves on. It does not touch the journal, does not appear in `graph.json`, and
+  deadline, and moves on. (For a sandbox session the continue goes through the Daytona
+  session API; for a planning run it re-triggers the planning-host workflow in resume mode,
+  so the leg runs under the launch wrapper — see Planning runs.) It does not touch the journal, does not appear in `graph.json`, and
   does not consume `maxAttemptsPerNode`: a provider stream-drop is not a node attempt. The
   trigger is a two-signal check (verified spike 2026-07-22, see
   `docs/todo/spike-midstream-resume.md`): exit code is non-zero (signal kill: 143 for SIGTERM,
@@ -472,31 +474,121 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   pause: folded by a pass, which journals and triggers the host workflow.
 - **Context is a pinned contract** — a small per-run prompt plus a defined set of files the
   planner reads; see Planning-run context below.
-- **Output is a graph delta in the inbox.** The wrapper mirrors the in-sandbox command
-  template: isolated opencode storage (per the concurrency findings — the planner shares the
-  machine, possibly with a live interactive session; opencode v1.1.35 stores data as JSON
-  files in `~/.local/share/opencode/storage/`, not a SQLite DB — see spike finding F3),
-  output captured to a per-run log file,
-  its PID recorded alongside the lock (for pass-side deadline termination), exit code
-  recorded, and the graph delta written to the inbox as the last act. The planning
+- **Output is a graph delta in the inbox — written by the wrapper, never by the agent
+  (decided 2026-07-22).** The planning agent writes the delta as an ordinary file to a
+  scratch path inside the planning run's per-run directory (the path is given in the
+  prompt's output contract), as its last act before finishing. The launch wrapper — code we
+  control — is the only writer to the inbox: after the opencode child exits, the wrapper
+  records the exit code, and only on exit 0 parse-checks the scratch file and promotes it
+  into the inbox via tmp + rename on the same filesystem (atomic, like `graph.json`), then
+  exits, releasing the planning lock. Ordering: record exit code → promote → release lock —
+  no window exists where the lock is released with a promotion still pending. A non-zero
+  exit, a missing file, or an unparseable file promotes nothing; the scratch file stays for
+  debugging. A partial write therefore cannot reach the inbox: how opencode's write tool
+  writes files never matters, because promotion happens only after the process has exited
+  and only for a file that parses. An empty delta (`ops: []`) is still written and still
+  promoted — it distinguishes "planner considered and found nothing to change" from
+  "planner never finished". Rejected transports: extracting the delta from the agent's
+  stdout (`text` events) or from the session transcript — both mean parsing prose for an
+  embedded JSON blob, with code-fence and formatting failure modes; a file at a contract
+  path is a plain tool-write the agent already does reliably. Otherwise the wrapper mirrors
+  the in-sandbox command template: isolated opencode storage (per the concurrency findings —
+  the planner shares the machine, possibly with a live interactive session; opencode v1.1.35
+  stores data as JSON files in `~/.local/share/opencode/storage/`, not a SQLite DB — see
+  spike finding F3), output captured to a per-run log file, the opencode child's PID and
+  session ID recorded alongside the lock (a small status file the wrapper rewrites tmp +
+  rename: PID for pass-side deadline termination — the pass signals the child, and the
+  wrapper observes the exit, records it, promotes nothing, and releases the lock; session ID
+  captured after the initial run via `opencode session list --format json`, as in the
+  in-sandbox template, for resume legs), and the exit code recorded per leg. The planning
   run writes nothing else shared — not the journal, not `graph.json`.
-- **Delta validation at fold time.** Planning reads graph state at launch; by fold time nodes
-  have completed or merged. The fold validates the delta against current state under the state
-  lock: it touches only unclaimed nodes and tolerates nodes that finished meanwhile. Journal
-  ordering resolves any claim-vs-replan race — whichever hit the journal first wins. Claiming
-  is not gated while a planning run is in flight: claimed specs are frozen, so gating would
-  starve sandboxes for no added protection.
-- **Supervised like a sandbox session.** Same classification (COMPLETE / QUESTION / `failed`),
-  same deadline enforcement (terminate, journal `runner_error`, retry policy), same
-  stream-truncation recovery (the planning run is a local opencode session; a provider
-  mid-stream drop resumes via `opencode run --format json --session <id>`, handled in-pass, not journaled
-  as an outcome). QUESTION parks and rides the standard form path — planning is the step
-  most likely to need a human answer.
+- **Delta validation at fold time — all-or-nothing (decided 2026-07-22).** Planning reads
+  graph state at launch; by fold time nodes have completed or merged. The fold applies the
+  delta's ops in order to a copy of current state under the state lock, then accepts or
+  rejects the delta as a whole. Per-op rules: an `updateNode`/`removeNode` whose target is
+  claimed, parked, or completed is stale — the claim hit the journal first and the spec is
+  frozen; an `addNode` id must be fresh; an edge target must exist. Whole-graph rules on the
+  result: acyclic; cross-story edges target merge-point nodes; every chain-final node
+  carries `mergeTo`; every chain remains a total order (a path). Any violation rejects the
+  whole delta, because partial application can produce a graph no planner intended: a delta
+  that removes chain node X and rewires X's successor around it, racing a pass that claimed
+  X, would on partial application leave two nodes concurrently runnable on one chain branch
+  — breaking the total order. Completions, by contrast, are tolerated naturally: an edge to
+  a node that completed meanwhile is valid and simply starts satisfied. A rejection journals
+  the delta, the failing op, and the rule that fired (evidence, like classification),
+  deletes the inbox file, and needs no dedicated retry: the condition that triggered
+  planning still holds (frontier still low, chain still conflict-blocked), so the standard
+  level-triggered trigger re-fires a fresh run against current state. Stale-target
+  rejections should be rare — the prompt already steers the planner toward additive changes
+  near nodes likely to be claimed while planning runs. A delta that fails to parse is
+  rejected the same way (defense in depth — the wrapper's parse check should make this
+  unreachable). Journal ordering resolves any claim-vs-replan race — whichever hit the
+  journal first wins. Claiming is not gated while a planning run is in flight: claimed specs
+  are frozen, so gating would starve sandboxes for no added protection.
+- **Supervised like a sandbox session — and every leg runs under the wrapper (decided
+  2026-07-22).** Same classification (COMPLETE / QUESTION / `failed`), same deadline
+  enforcement (terminate, journal `runner_error`, retry policy), same stream-truncation
+  recovery, with one difference from sandbox sessions: the pass never spawns the resume
+  itself. A stream-truncation continue or a question-answer resume re-triggers the
+  planning-host workflow in resume mode (passing the session ID recorded at launch, plus
+  the answer text for a question resume); the wrapper re-acquires the planning lock, runs
+  `opencode run --format json --session <id>`, and performs the same
+  record-exit-code-then-promote sequence when the leg ends. A pass-spawned resume would be
+  a detached child of a dead pass — nothing holding the planning lock, nothing recording
+  the exit, and nothing to promote the delta; routing every leg through the host workflow
+  keeps the wrapper the only inbox writer and keeps lock-based liveness supervision intact.
+  Classification is deterministic in the common case: a promoted delta is the run's
+  completion signal, and the fold's accept/reject is journaled with evidence either way —
+  no LLM call needed. A recorded exit with no promoted delta classifies from the wrapper's
+  log and exit code like a sandbox session: a question in the output → QUESTION park; a
+  truncation signal → resume leg; otherwise a `failed` planning attempt (the output
+  contract was violated), handled per retry policy. QUESTION parks and rides the standard
+  form path — planning is the step most likely to need a human answer.
 - **Process-vanished path.** Unlike sandbox sessions, a local planning run dies when n8n
   restarts, since the run is a child of its host workflow's Execute Command. Reconcile detects
   it: the journal says a planning run is in flight, the planning lock is acquirable, and no
-  delta is in the inbox → relaunch per retry policy. This is the honest cost of running planning
-  locally, handled by the same level-triggered code path as every other recovery.
+  exit code is recorded for the current leg → the wrapper died mid-leg; relaunch per retry
+  policy. (Lock acquirable *with* a recorded exit code is a normal exit awaiting
+  classification — a promoted delta, QUESTION, truncation, or `failed` — not a vanished
+  process; without the exit-record discriminator, a QUESTION exit would be indistinguishable
+  from a dead wrapper and get relaunched instead of parked.) This is the honest cost of
+  running planning locally, handled by the same level-triggered code path as every other
+  recovery.
+
+### Graph delta format (decided 2026-07-22)
+
+The delta is a list of operations — not a graph snapshot and not a JSON patch. A snapshot
+makes the planner re-assert the whole graph, so anything that changed between launch and fold
+(a claim, a completion) reads as planner intent to revert it — the fold cannot tell "the
+planner wants this different" from "the planner's copy is stale" — and it would force the
+planner to author machinery-derived state (status, attempts, base commits) it is barred from
+touching. A generic JSON patch is path-based against a document that has moved — array
+indices shift under concurrent mutation. Operations name their target by node id and carry
+intent, which is exactly what fold-time validation needs to check per-op legality against
+current state.
+
+One JSON file per planning run:
+
+- **Envelope:** `planningRunId`, `mode` (`expansion` | `conflict` | `replan`), `authoredAt`,
+  and the journal position the planner's `graph.json` snapshot reflected at launch — for
+  diagnostics in rejection events; validation itself always runs against current state.
+- **`ops`, applied in order.** Four operations:
+  - `addNode` — the full node spec (the node-spec vocabulary: id, skill/agent/prompt,
+    deadline, `dependsOn`, `mergeTo`, story/epic membership). Ids are planner-authored and
+    must be fresh.
+  - `updateNode` — id plus the spec fields to replace (`dependsOn` rewiring, `mergeTo`
+    toggle, prompt or deadline change). Target must exist and be unclaimed.
+  - `removeNode` — id. Target must exist and be unclaimed; its edges go with it.
+  - `abandonSegment` — the chain's story or finalization identity; the rework path from
+    Merge-conflict resolution: the fold journals the abandonment and the pass deletes the
+    chain branch.
+- Edges live inside node specs as `dependsOn` — there are no separate edge ops; `updateNode`
+  covers rewiring. An empty `ops` array is a legal, meaningful delta: the planner considered
+  and found nothing to change — the expected common case for the answer-fold trigger.
+
+Acceptance is all-or-nothing at fold time (see Delta validation at fold time above); the
+file reaches the inbox only through the wrapper's atomic promotion (see Output above), so
+the fold reads either a complete file or nothing.
 
 ### Planning-run context (decided 2026-07-21)
 
@@ -519,8 +611,10 @@ is directed to read; it is a local opencode run with repo access.
   launch timestamp, and the warning that the delta is validated at fold time against newer
   state: touch unclaimed nodes only, prefer additive changes near nodes likely to be claimed
   while planning runs.
-- **Output contract** — the delta file path in the inbox, written as the run's last act,
-  nothing else shared.
+- **Output contract** — the delta's scratch path in the per-run directory (the wrapper
+  promotes it to the inbox — the agent never writes the inbox; see Output under Planning
+  runs), the op vocabulary (see Graph delta format), the instruction to write the file as
+  the run's last act even when empty, and nothing else shared.
 
 **Files it reads (standing context):**
 
@@ -609,10 +703,11 @@ see below). Three primitives cover every mutation, and two more serialize planni
 | Primitive | Guarantee |
 |---|---|
 | Blocking `flock` held for the whole pass | Mutual exclusion between passes; released automatically on process death — no stale-lock handling |
-| Single-`write` `O_APPEND` appends to `journal.jsonl` | Atomic appends on a local filesystem |
-| tmp-file + `renameSync` for `graph.json` | Atomic replace |
+| Single-`write` `O_APPEND` appends to `journal.jsonl` | Atomic appends on a local filesystem (verified — spike 2026-07-22: 500 concurrent appends, zero interleaved lines) |
+| tmp-file + `renameSync` for `graph.json` | Atomic replace (verified — spike 2026-07-22: 200 rename cycles under concurrent reads, zero failures) |
 | Non-blocking `flock` on `planning.lock`, held by the planning run for its lifetime | At most one planning run in flight; doubles as the liveness probe — acquirable means finished or dead |
 | Non-blocking `flock` on `merge.lock`, held by the merge wrapper for the merge cycle's lifetime | At most one merge cycle in flight — main has one pipeline writer at a time; same liveness probe |
+| tmp-file + rename for every inbox write (n8n's small workflows, the merge wrapper, the pause helper, the planning wrapper's delta promotion) | A pass never folds a partial inbox file; the fold's parse check is defense in depth, not the primary guarantee (crash-safety verified — spike 2026-07-22: see `docs/todo/spike-delta-promotion.md`) |
 
 Multi-file consistency comes from write ordering, not transactions: journal first (the commit
 point), `graph.json` second (derived, rebuildable). Claims are exclusive by construction — a
@@ -662,7 +757,8 @@ Two consequences of n8n being local, stated so nobody designs against the wrong 
 Single-writer restated: not "one resident process is the writer" but "at most one pass holds
 the lock at a time." n8n's small workflows never touch canonical state — they write only inbox
 files (a question answer, a merge-conflict report, an external event) that a pass folds in. The planning run is held to
-the same rule: its only shared output is a graph delta in the inbox. Agents write nothing shared;
+the same rule: its only shared output is a graph delta in the inbox, and even that is
+written by its launch wrapper, not by the agent (see Output under Planning runs). Agents write nothing shared;
 their only output channels are their branch push and their session logs, both read by passes.
 Session-history analysis (2026-07-17) confirmed agents already don't write to pipeline state
 files in the sequential architecture; the parallel architecture keeps that by construction.
@@ -693,8 +789,8 @@ Dispatcher pass (same devcontainer, seconds long, one at a time under flock)
        │  session exec, log pull                │  which runs the wrapper under planning.lock
        ▼                                        ▼
 Daytona sandboxes (one opencode        Planning run (opencode on the devcontainer, hosted
-agent each; agent pushes its           by the n8n workflow; writes a graph delta to the
-branch as its last act)                inbox as its last act)
+agent each; agent pushes its           by the n8n workflow; its wrapper promotes the graph
+branch as its last act)                delta to the inbox as its last act)
 ```
 
 When an agent finishes:
@@ -726,7 +822,7 @@ When an agent finishes:
 
 ### Implementation surface
 
-Rough estimate, ~1070 lines of JS plus three small n8n workflows:
+Rough estimate, ~1090 lines of JS plus three small n8n workflows:
 
 | Module | Lines | Reuses |
 |---|---|---|
@@ -735,7 +831,7 @@ Rough estimate, ~1070 lines of JS plus three small n8n workflows:
 | Supervision (session poll, deadline check, continue, park/resume actions, transcript pull) | ~150 | New — behaviors from gen-2's `BMAD Session (OpenCode)`, no workflow port |
 | Classification (deterministic rules + LLM fallback, evidence journaled with the outcome) | ~90 | Rules and prompt ported from `Parse OpenCode Response` / `BMAD Outcome`; no n8n dependency |
 | Pass frame (flock, inbox fold, reconcile, pause gate, per-pass log + `last-pass.json` heartbeat) | ~170 | New; helper patterns copied from gen-2 scripts, no imports |
-| Planning run (launch wrapper, planning lock, delta validation + fold) | ~100 | New |
+| Planning run (launch wrapper with per-leg exit record + atomic delta promotion, resume-mode legs, planning lock, delta validation + fold) | ~120 | New |
 | In-sandbox command template (install check, opencode run with `--format json` and `</dev/null`, exit capture, branch push) | ~60 | New |
 | Merge wrapper (merge lock, drives the in-sandbox merge cycle: fetch, rebase, install, test, merge, push; test-log pull, conflict report) | ~100 | New |
 | Question-form workflow (form + ntfy + inbox write + invoke) | n8n, small | New — the Wait-form/ntfy pattern from gen-2, as a standalone workflow |
@@ -762,8 +858,8 @@ files disappear entirely. Total effort is comparable; moving parts are fewer.
   last outcome, durations, diff summary, parked question text, base commit — so routine
   readers (the planner, the viewer, sprint status) read one file and never parse the
   journal), and
-  `inbox/` (written by n8n's small workflows and by planning runs — graph deltas — consumed
-  and deleted by passes). Per-run log
+  `inbox/` (written by n8n's small workflows and by the planning wrapper — graph deltas,
+  promoted atomically — consumed and deleted by passes). Per-run log
   excerpts, pulled session transcripts (via `opencode export` or the storage directory — see
   Supervision),
   and merge-cycle test logs (see the merge queue row in the n8n / dispatcher split)
@@ -795,7 +891,10 @@ files disappear entirely. Total effort is comparable; moving parts are fewer.
 - **Atomic writes required:** passes write `graph.json` via tmp-file + `renameSync` (see
   Atomicity under Dispatcher); any viewer keeps last-good state on parse failure. (Gen-2's
   `scripts/pipeline/lib.mjs:24` uses plain `fs.writeFileSync` — a known gap there; gen-3
-  starts atomic.)
+  starts atomic.) The `atomicWrite` helper should `fsync(fd)` before `rename` for power-loss
+  durability on ext4 — not a crash-safety issue (process kill is covered by rename atomicity),
+  only relevant if the state directory is on ext4 rather than tmpfs (spike finding F2,
+  2026-07-22 — see `docs/todo/spike-delta-promotion.md`).
 - **No in-memory truth.** Journal + graph on disk must be sufficient to resume from cold —
   every pass reconciles, so recovery from a restart is the same code path as a normal tick. The
   pipeline needs a resurrection path (devcontainer postStart hook invoking a pass, plus the n8n
@@ -1320,15 +1419,6 @@ lockfile.
   invalidate. Accepted (2026-07-22): the guidelines advise the planner on when to hold
   next-epic composition back; machinery enforces no between-epics quiet point (see Epic
   lifecycle).
-- Canonical pipeline state (journal, graph.json) has at most one writer at a time — the pass
-  holding the lock. n8n's small workflows write only inbox files; agents write nothing shared.
-  There are no concurrent writers to any shared file, and no event can be lost: every payload
-  is durable on disk or in git before any dispatcher invocation fires.
-- Completions are detected by polling at tick cadence, not pushed — minutes of latency against
-  runs measured in hours. (Planning runs and merge cycles are the exception: their n8n hosts
-  invoke the dispatcher the moment they exit.) There is no live log streaming; logs are pulled on demand (a small
-  `logs <node>` helper makes this a one-liner). Acceptable; revisit only if it hurts in
-  practice.
 - Outcome classification calls an LLM from inside a pass — a few seconds per exited session,
   within the seconds-long pass budget.
 - The practical caps on parallelism are the Daytona quota and the max-concurrent-sandboxes
@@ -1339,30 +1429,6 @@ lockfile.
   Shallow clones and scoped cleanup keep this bounded. The 30 GiB is shared across
   dev/test/prod — the pipeline must label and scope its sandboxes or reproduce the product's
   quota-exhaustion problem.
-- Docker is available in sandboxes (own kernel, sudo, installable via `get.docker.com` or
-  pre-baked into a custom snapshot), but the pipeline doesn't need it — session history (88
-  sessions) shows agents use `gh` CLI and `curl` for GitHub operations, not Docker-based MCP.
-  MCP tool calls were not recorded in any session; the pipeline does not depend on Docker-based
-  MCP.
-- Sandboxes can't reach the devcontainer's localhost services (n8n on :5678). Not a problem —
-  nothing in the sandbox calls back. Passes pull logs via the Daytona session API and
-  transcripts via the file API, and the agent's only outbound act is its final git push.
-- The platform provides no pool abstraction — and gen-3 needs none: sandboxes are created on
-  demand per claim (near-instant from a cached snapshot) and destroyed at collection. The
-  dispatcher's only capacity logic is the `maxConcurrentSandboxes` cap and the scoped reaper.
-- The devcontainer never sleeps, so n8n and the dispatcher are always available — ticks fire
-  on schedule, questions can be answered at any time, and sandboxes are always supervised.
-  Sandboxes are single-use, created on demand (destroyed when the session exits — see Sandbox
-  lifecycle), so every claim pays per-sandbox provisioning inside the claim step (create from
-  snapshot, clone or fetch, secrets copy — seconds with a cached snapshot) and the account pays
-  create/destroy API churn — both small against hours-long runs; if provisioning latency ever
-  stretches passes past their seconds-long budget, the provisioning commands move into the
-  front of the async in-sandbox command. In-flight planning runs and merge cycles are
-  the exceptions to "nothing is lost"
-  on an n8n restart: unlike sandbox sessions they die with their host workflow's Execute
-  Command. The process-vanished path relaunches the planner, and level-triggered merge
-   triggering re-runs the merge cycle — a restart costs a relaunch, never lost state (a merge cycle
-  changes nothing durable before its final push).
 - Human attention becomes the scarce resource; the question inbox and a near-zero question rate
   are what keep N agents from turning into N interruptions.
 
@@ -1568,17 +1634,22 @@ required and the opencode provider override is what makes it work. See
 ### 7. Fold-time delta validation against a moving target
 
 The planner reads `graph.json` at launch (T0); by fold time (T1) a pass may have claimed
-nodes (freezing their specs) or folded completions (changing merge state). The validation
-must apply the delta to T1 state, not T0 state, and the rules (acyclic, cross-story edges
-target merge-points, final node carries `mergeTo`, touch unclaimed nodes only) must hold on
-the merged graph. A node the planner marked for removal might have been claimed between T0 and
-T1 — the validation must reject that removal (spec is frozen). A node the planner added a
+nodes (freezing their specs) or folded completions (changing merge state). The delta format
+and rejection semantics are now decided (ops list, all-or-nothing — see Graph delta format
+and Delta validation at fold time), which pins what the validation checks: per-op legality
+against T1 state, then the whole-graph rules (acyclic, cross-story edges target
+merge-points, final node carries `mergeTo`, every chain remains a total order) on the
+result. A node the planner marked for removal might have been claimed between T0 and T1 —
+that op is stale and rejects the delta (spec is frozen). A node the planner added a
 `dependsOn` edge to might have merged — the edge target must still exist. This is the most
 algorithmically intricate interaction in the design, and it is pure code — testable without
 infrastructure. **Spike:** write the validation function and test against synthetic scenarios:
 (a) planner removes a node that was claimed meanwhile, (b) planner adds a cross-story edge to
 a node that merged and is no longer a merge-point target, (c) planner's delta creates a cycle
-when merged with T1 state, (d) planner marks a final node without `mergeTo`.
+when merged with T1 state, (d) planner marks a final node without `mergeTo`, (e) a delta that
+removes a chain node and rewires its successor around it, racing a claim of the removed node
+— partial application would leave two concurrently runnable nodes on one chain branch; the
+chain-total-order rule plus all-or-nothing rejection must catch it.
 
 ### 8. Branch push failure (design gap, not a spike)
 
@@ -1598,14 +1669,25 @@ These are not separate assumptions but the places where the plan's correctness d
 or more components agreeing, and where the agreement is non-obvious. The spikes above cover
 the ones that matter; these are noted so the seams are visible during implementation.
 
-- **Pass ↔ planning run ↔ n8n host (three-party supervision).** The pass supervises the
-  planning run via its lock instead of the Daytona API. "Lock acquirable" is a binary liveness
-  signal, not a state signal: it distinguishes "running" from "not running" but not "finished
-  cleanly" from "crashed mid-run" from "crashed after writing a partial delta." The delta is
-  written as the run's last act, so partial should mean no delta — but this assumes the
-  wrapper either writes the complete delta or nothing (an atomic write). If opencode writes a
-  partial file and the wrapper crashes before the atomic rename, the inbox has a corrupt delta
-  the fold must tolerate (parse failure → ignore).
+- **Pass ↔ planning run ↔ n8n host (three-party supervision) — resolved by the wrapper
+  promotion contract (2026-07-22); crash-safety verified (spike, 2026-07-22).** The pass
+  supervises the planning run via its lock instead of the Daytona API. "Lock acquirable" is a
+  binary liveness signal, not a state signal — the wrapper's recorded exit code disambiguates:
+  lock acquirable with an exit code recorded for the current leg means the run exited (classify
+  from the log and the promoted or missing delta); lock acquirable without one means the wrapper
+  died mid-leg (process-vanished path, relaunch). The agent writes the delta only to scratch; the
+  wrapper promotes it to the inbox via tmp + rename after exit 0 and a parse check, so the inbox
+  never holds a partial or unparseable delta. The fold's own parse check stays as defense in
+  depth (parse failure → reject and journal, like any validation failure). **Verified by the
+  delta-promotion spike (2026-07-22):** `fs.renameSync` is atomic under concurrent reads (200
+  rename cycles, 10 readers, zero failures), a crash during tmp write leaves target untouched
+  (SIGKILL mid-write, target unchanged, tmp orphaned), a crash before rename leaves target
+  untouched, inode isolation holds (old fd reads old content after rename), the fold's parse-check
+  catches all malformed inputs without throwing, and O_APPEND journal writes are non-interleaving
+  under concurrent appenders (500 lines, zero parse errors). One secondary finding (F2): the
+  `atomicWrite` helper should include `fsync(fd)` before `rename` for power-loss durability on
+  ext4 — not a crash-safety issue (process kill is covered), only relevant if the state directory
+  is on ext4 rather than tmpfs. See `docs/todo/spike-delta-promotion.md` for the full spike report.
 - **Pass ↔ merge wrapper ↔ per-cycle sandbox.** Same pattern as planning but with a sandbox
   the wrapper creates. If the wrapper creates the sandbox but dies before recording its ID, the
   pass cannot find the sandbox to destroy it — unless reconcile catches it via the
@@ -1775,8 +1857,10 @@ decisions kept as history (superseded revisions) or with rationale not captured 
 ## Open questions
 
 1. Chain-composition guidelines document — to author before Path step 4. The mechanical half
-   (graph delta in the inbox — resolved question 6) and the context contract (what the
-   planner knows and may touch — resolved question 8) are decided. What remains is writing
+   (graph delta in the inbox — resolved question 6, now pinned in full: op vocabulary,
+   envelope, wrapper promotion, all-or-nothing fold — see Graph delta format) and the
+   context contract (what the planner knows and may touch — resolved question 8) are
+   decided. What remains is writing
    the document itself: name, location, and content — the gen-2 step sequence rewritten as
    advice with include/skip conditions per step (empty-diff evidence in the journal is what
    shows a condition is wrong: a verification node that finds nothing produced information
