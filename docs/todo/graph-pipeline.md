@@ -310,10 +310,13 @@ Each invocation:
    and trigger the planning-host workflow (see
    Planning runs). Merge triggering is level-triggered here too: a completed merge-point node
    whose branch has neither merged nor a pending conflict report, with the merge lock
-   acquirable, (re)triggers the merge-queue workflow — a merge cycle killed mid-run is re-run by the
-   next pass, not lost (see Merge cycle). Claiming and planning launches are skipped entirely
-   while the pipeline is paused (see Pause/resume) — supervision, folding, and merge
-   triggering (finishing claimed work) still run.
+   acquirable **and capacity available** (the merge cycle's sandbox counts against
+   `maxConcurrentSandboxes` for its duration — see Honest costs — so a merge trigger is gated
+   by the same cap as a node claim; if the cap is full, the trigger is deferred to the next
+   pass, like a deferred claim), (re)triggers the merge-queue workflow — a merge cycle killed
+   mid-run is re-run by the next pass, not lost (see Merge cycle). Claiming and planning
+   launches are skipped entirely while the pipeline is paused (see Pause/resume) —
+   supervision, folding, and merge triggering (finishing claimed work) still run.
 7. **Write the heartbeat, release the lock, and exit** — the pass's last act under the lock
    is an atomic write (tmp + rename, like `graph.json`) of `last-pass.json`: timestamp,
    duration, and counts of claims, folds, and polls. The schedule tick alerts when this file
@@ -334,7 +337,10 @@ step of every pass. The behaviors carry over; the workflow does not.
   stream-truncation signal → INCOMPLETE recovery — see Stream-truncation recovery), LLM fallback
   only for the COMPLETE/QUESTION/`failed` call. The rules and prompt are ported from gen-2's
   `Parse OpenCode Response` + `BMAD Outcome` into a small JS module; a classification call adds
-  a few seconds to a pass, which stays within the seconds-long budget. The classifier reads the
+  a few seconds to a pass, which stays within the seconds-long budget. If N sessions exited since
+  the last pass, the pass makes N calls — all under the lock, so a batch of exits stretches the
+  budget; not a performance concern but a correctness one if lock hold time blocks merge
+  triggering or question-resume long enough to matter functionally. The classifier reads the
   JSON event stream (`--format json` output) — `step_finish` with `reason: "stop"` is the clean
   completion signal, `text` events carry the agent's output, `error` events carry provider
   errors. Every classification journals its evidence with the outcome event: the deterministic
@@ -450,9 +456,17 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   instead of at the next tick. The execution is a host and a latency optimization, not the
   record: canonical state is the journal, the planning lock, and the delta file. The run also
   becomes visible in n8n's execution list and inherits the error-notification hook. The trade
-  accepted here: an n8n restart kills the execution and its child process — a pass-spawned
-  detached process would have survived that — and the process-vanished path relaunches. A
-  restart costs a relaunch, never lost state.
+  accepted here: an n8n restart orphans the execution's child process — `child_process.exec()`
+  registers no cleanup handler, so the child is reparented to init (PID 1) and keeps running,
+  holding the planning lock (spike 2026-07-22, see Admitted assumption 5 and
+  `docs/todo/spike-execute-command.md`). The process-vanished recovery path therefore does
+  **not** trigger on n8n restart in the initial version: the orphaned child holds the lock,
+  the pass reads the lock as held (planner "still running"), and the pipeline stalls silently —
+  exactly the failure mode to avoid. A parent-alive check in the wrapper (periodically test
+  `kill -0 $PPID`, exit if the parent is gone, releasing the lock) is the fix, deferred to a
+  follow-up. Until then, an n8n restart during a planning run requires manual intervention
+  (kill the orphaned process by its recorded PID). Canonical state is never lost — the journal
+  and the delta file are durable — but the lock must be cleared manually.
 - **Serialized by its own lock.** The launch wrapper acquires a non-blocking `flock` on
   `planning.lock` and holds it for the run's lifetime. One primitive gives both mutual
   exclusion (at most one planning run in flight — no delta merging) and a liveness probe: a
@@ -480,7 +494,8 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   prompt's output contract), as its last act before finishing. The launch wrapper — code we
   control — is the only writer to the inbox: after the opencode child exits, the wrapper
   records the exit code, and only on exit 0 parse-checks the scratch file and promotes it
-  into the inbox via tmp + rename on the same filesystem (atomic, like `graph.json`), then
+  into the inbox via tmp + rename on the same filesystem (atomic, like `graph.json` — verified
+  under concurrent reads, spike 2026-07-22, see `docs/todo/spike-delta-promotion.md`), then
   exits, releasing the planning lock. Ordering: record exit code → promote → release lock —
   no window exists where the lock is released with a promotion still pending. A non-zero
   exit, a missing file, or an unparseable file promotes nothing; the scratch file stays for
@@ -544,16 +559,30 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   truncation signal → resume leg; otherwise a `failed` planning attempt (the output
   contract was violated), handled per retry policy. QUESTION parks and rides the standard
   form path — planning is the step most likely to need a human answer.
-- **Process-vanished path.** Unlike sandbox sessions, a local planning run dies when n8n
-  restarts, since the run is a child of its host workflow's Execute Command. Reconcile detects
-  it: the journal says a planning run is in flight, the planning lock is acquirable, and no
-  exit code is recorded for the current leg → the wrapper died mid-leg; relaunch per retry
-  policy. (Lock acquirable *with* a recorded exit code is a normal exit awaiting
-  classification — a promoted delta, QUESTION, truncation, or `failed` — not a vanished
-  process; without the exit-record discriminator, a QUESTION exit would be indistinguishable
-  from a dead wrapper and get relaunched instead of parked.) This is the honest cost of
-  running planning locally, handled by the same level-triggered code path as every other
-  recovery.
+- **Process-vanished path.** Unlike sandbox sessions, a local planning run is a child of its
+  host workflow's Execute Command. **Caveat (spike 2026-07-22, see Admitted assumption 5 and
+  `docs/todo/spike-execute-command.md`): n8n restart does NOT kill the child.** `child_process.exec()`
+  registers no cleanup handler, and `process.exit()` does not signal children; on SIGTERM (the
+  signal pm2 sends on restart) the child is reparented to init (PID 1) within ~1s, receives no
+  signal, and continues running — holding the planning lock. The recovery design below
+  assumes the child dies with its host; that assumption is disproved. In the initial pipeline
+  version (no parent-alive check in the wrapper yet), an n8n restart during a planning run
+  leaves an orphaned child holding the lock: the pass reads the lock as held and never
+  relaunches, so the pipeline stalls silently. The fix — a parent-alive check in the wrapper
+  (`kill -0 $PPID` periodically, exit if the parent is gone, releasing the lock) — is deferred
+  to a follow-up. Until then, recovery from an n8n restart during a planning run is manual:
+  kill the orphaned process by its recorded PID (the wrapper writes it alongside the lock),
+  then the next pass acquires the lock and relaunches per retry policy. Canonical state (the
+  journal, the delta scratch file) is never lost — only the lock must be cleared. The
+  reconcile logic that *would* detect a vanished process — the journal says a planning run is
+  in flight, the planning lock is acquirable, and no exit code is recorded for the current leg
+  → the wrapper died mid-leg; relaunch per retry policy — is correct for the case it was
+  designed for (a wrapper that genuinely died, releasing the lock on process death via `flock`'s
+  automatic release). It does not cover the orphaned-child case, where the lock stays held.
+  (Lock acquirable *with* a recorded exit code is a normal exit awaiting classification — a
+  promoted delta, QUESTION, truncation, or `failed` — not a vanished process; without the
+  exit-record discriminator, a QUESTION exit would be indistinguishable from a dead wrapper
+  and get relaunched instead of parked.)
 
 ### Graph delta format (decided 2026-07-22)
 
@@ -741,7 +770,7 @@ Two consequences of n8n being local, stated so nobody designs against the wrong 
 | Responsibility | Home | Why |
 |---|---|---|
 | Trigger the dispatcher (schedule tick, question answered, merge complete, planning exit) | n8n | Persistent scheduler while the devcontainer is up; invokes a pass as a local process call. The tick also checks dispatcher health after invoking: non-zero pass exit → error notification; `last-pass.json` older than a few tick intervals → "dispatcher stalled" ntfy (see The machinery observes itself under Supervision). |
-| Merge queue (git + test orchestration) | n8n hosts the merge wrapper; the whole merge cycle runs on a sandbox | Serialized by `merge.lock`, level-triggered by passes. The wrapper drives fetch, rebase, install, test, merge, and push on a sandbox created per merge cycle via the Daytona session API (resolved questions 12 and 16); pipeline git operations never touch the devcontainer checkout. Test output is pulled from the sandbox into the per-run directory and its path recorded in the journaled merge event — n8n execution history prunes, so the merge queue's evidence must not live only there. On conflict it writes an inbox report and stops — resolution is a graph node (see Merge-conflict resolution). Test scope is all unit tests per merge (superseding the earlier `nx affected` decision — resolved question 13, revised). |
+| Merge queue (git + test orchestration) | n8n hosts the merge wrapper; the whole merge cycle runs on a sandbox | Serialized by `merge.lock`, level-triggered by passes, capacity-gated by `maxConcurrentSandboxes` (the merge sandbox counts against the cap; a trigger that would exceed it defers to the next pass). The wrapper drives fetch, rebase, install, test, merge, and push on a sandbox created per merge cycle via the Daytona session API (resolved questions 12 and 16); pipeline git operations never touch the devcontainer checkout. Test output is pulled from the sandbox into the per-run directory and its path recorded in the journaled merge event — n8n execution history prunes, so the merge queue's evidence must not live only there. On conflict it writes an inbox report and stops — resolution is a graph node (see Merge-conflict resolution). Test scope is all unit tests per merge (superseding the earlier `nx affected` decision — resolved question 13, revised). |
 | Question surfacing (form + ntfy) | n8n (small workflow) | Durable Wait-form suspension and forms are n8n's strength. Human-facing surface only — the journal holds the canonical parked state. |
 | Error notification | n8n | Existing small workflow, unchanged. |
 | Pause/resume control | Helper script → inbox (n8n form optional later) | Human-initiated; folded by the next pass; the claim step gates on the journaled pause state. |
@@ -977,7 +1006,12 @@ single-use keeps it free across sequential claims too.
   catches a stale snapshot bake. See resolved question 19.
 - Create sandboxes from the custom snapshot with explicit resources:
   `resources: { cpu: 4, memory: 8, disk: 10 }` (the platform max). Create from image, not
-  snapshot, to control resources — snapshots ignore resource params. Pass `labels: { scope:
+  snapshot, to control resources — the snapshot path **rejects** `resources` with a hard API
+  error ("Cannot specify Sandbox resources when using a snapshot"), not silently ignores them
+  (verified spike 2026-07-22, see `docs/todo/spike-snapshot-resources.md`); the image path
+  honors all three — disk as a 10G overlay (visible in `df`), cpu and memory as cgroup-v2
+  quotas (`cpu.max` = 4 cores, `memory.max` = 8 GiB) that `nproc` / `free -m` do not reflect
+  (they report host-level values). Pass `labels: { scope:
   'pipeline', runId }` at creation — labels are on the returned `Sandbox` instance immediately
   (verified spike 2026-07-22, see `docs/todo/spike-label-scoping.md`), so reconcile can find
   sandboxes by label without a separate labeling call.
@@ -997,11 +1031,6 @@ single-use keeps it free across sequential claims too.
   dispatcher copies it explicitly the same way it copies the `.env*` files: the snapshot's bake is a
   cold-start optimization, not a freshness guarantee, and an `opencode.json` baked stale would
   silently pin an old model or old context limits. Pinned 2026-07-22: **neuralwatt is the LLM
-  provider for all opencode runs in the pipeline — sandbox agents, the planning run, and the
-  outcome-classification LLM fallback — with `glm-5.2` as the initial model.** The model and
-  provider are config in `opencode.json`, so swapping either is a repo change, not a pipeline
-  change; the snapshot's `opencode.json` is rebuilt on the next snapshot rebuild like any
-  other committed file. See resolved question 17. **neuralwatt is the LLM
   provider for all opencode runs in the pipeline — sandbox agents, the planning run, and the
   outcome-classification LLM fallback — with `glm-5.2` as the initial model.** The model and
   provider are config in `opencode.json`, so swapping either is a repo change, not a pipeline
@@ -1103,7 +1132,7 @@ images, explicit resources, and a declarative builder for pre-baking snapshots.
 | Network to GitHub | ✅ Works | Essential services allowlist includes `github.com`, `*.github.com` |
 | Network to npm registry | ✅ Works | Essential services allowlist includes `registry.npmjs.org`, `*.yarnpkg.com` |
 | Disk space | ✅ Up to 10 GB | Specify `resources: { disk: 10 }` when creating from an image. Default is 3 GB; max is 10 GB. 10 GB is enough for this monorepo's `node_modules` (~1.5 GB) plus headroom |
-| Resource limits | ✅ Configurable | 1-4 vCPU, 1-8 GB RAM, 1-10 GB disk. Specify when creating from an image. Snapshots ignore resource params — create from image, not snapshot, to control resources |
+| Resource limits | ✅ Configurable | 1-4 vCPU, 1-8 GB RAM, 1-10 GB disk. Specify when creating from an image. The snapshot path **rejects** `resources` with a hard API error ("Cannot specify Sandbox resources when using a snapshot") — create from image, not snapshot, to control resources. On the image path all three are honored: disk as an overlay size (visible in `df`), cpu/memory as cgroup-v2 quotas (`cpu.max`, `memory.max`) that `nproc` / `free -m` do not reflect (they report host-level values) — verified spike 2026-07-22, see `docs/todo/spike-snapshot-resources.md` |
 | Yarn 4 (Berry) | ✅ Likely works | Initial silent fetch failure was almost certainly the 3 GB disk limit, not a platform incompatibility. Needs verification with adequate disk |
 | Docker | ✅ Installable | Sandboxes have their own kernel and sudo. Install via `curl -fsSL https://get.docker.com \| sh` or pre-bake into a custom snapshot. Docker registries (`docker.io`, `*.docker.com`) are in the essential services allowlist. Not needed for pipeline agents (session history shows they use `gh` CLI and `curl`), but available if MCP servers are ever needed |
 | Browser external access | ✅ Likely works | Playwright is in the essential services allowlist. Initial `ERR_CONNECTION_RESET` was likely a snapshot-specific TLS/proxy issue. A custom snapshot with proper browser deps should resolve it |
@@ -1199,7 +1228,14 @@ Documented in full because it encodes a failure already paid for once:
   schema-migration race at cold start — when multiple instances simultaneously run migrations on
   a fresh storage directory, one fails with a `CREATE TABLE workspace` error. Pre-warming the
   storage (one instance migrates first) eliminates the race. Isolated storage sidesteps it
-  entirely, which is why the recipe uses it.
+  entirely, which is why the recipe uses it. Note: this experiment ran on the devcontainer
+  against opencode v1.17.20, which uses a SQLite database
+  (`~/.local/share/opencode/opencode.db`) — hence the `CREATE TABLE` SQL error. The sandbox
+  tier runs opencode v1.1.35, which stores session data as JSON files in
+  `~/.local/share/opencode/storage/` (verified spike 2026-07-22, see
+  `docs/todo/spike-stop-resume.md` F1 and `docs/todo/spike-opencode-sandbox.md` F3) and does
+  not exhibit this migration race. The version skew is noted; the isolated-storage prescription
+  applies to both.
 - **Phase 1 (throwaway repo):** `git init` in `/tmp/oc-test/repo`, 6 worktrees, a script
   spawning N concurrent `opencode run` with isolated vs shared storage. 6 experiments (N=3 and
   N=6, isolated vs shared storage, cold vs warm start). Results: isolated storage 9/9 success;
@@ -1296,13 +1332,20 @@ state to detect and abort) that a disposable merge cycle simply doesn't have.
   and the next trigger runs a fresh one against the new main.
 - **Level-triggered, supervised like everything else.** No pass "hands off" to the merge queue
   and forgets: any pass that finds a completed merge-point node whose branch has neither
-  merged nor a pending conflict report, with `merge.lock` acquirable, (re)triggers the
-  workflow. A merge cycle killed by an n8n restart (the wrapper dies with its host's Execute
-  Command, like a planning run) is therefore re-run, not lost. Deadline enforcement is
-  pass-side via the recorded PID, like planning. A dead merge cycle's sandbox is accounted for by
-  the recorded sandbox ID — the pass destroys it (single-use, see Sandbox lifecycle; a
-  half-finished rebase is exactly the state single-use exists to never clean up) and the
-  re-triggered merge cycle creates a fresh one.
+  merged nor a pending conflict report, with `merge.lock` acquirable **and capacity available**
+  (the merge sandbox counts against `maxConcurrentSandboxes`; if the cap is full the trigger
+  defers to the next pass), (re)triggers the
+  workflow. A merge cycle killed by an n8n restart has the same caveat as a planning run
+  (spike 2026-07-22, see Admitted assumption 5 and `docs/todo/spike-execute-command.md`):
+  the wrapper is a child of Execute Command, and n8n restart does **not** kill it — the
+  orphaned child is reparented to init and keeps holding `merge.lock`, so the pass reads the
+  lock as held and never re-triggers, stalling the merge queue silently. The same
+  parent-alive-check fix (deferred to a follow-up) covers both wrappers. Until then, an n8n
+  restart during a merge cycle requires manual recovery: kill the orphaned process by its
+  recorded PID, then the next pass re-triggers a fresh merge cycle. Deadline enforcement is
+  pass-side via the recorded PID, like planning. A dead merge cycle's sandbox is accounted for by the recorded sandbox ID — the pass destroys it (single-use, see
+  Sandbox lifecycle; a half-finished rebase is exactly the state single-use exists to never
+  clean up) and the re-triggered merge cycle creates a fresh one.
 - **Credentials.** The sandbox pushes main with the same repo credentials agents already use
   for their branch pushes (see Credentials under Sandbox lifecycle).
 
@@ -1437,116 +1480,30 @@ lockfile.
 The plan depends on a set of functional assumptions — behaviors it asserts but has not
 demonstrated. These are not performance assumptions (latency, throughput, resource cost —
 those live in Honest costs); they are correctness assumptions: if wrong, the design changes.
-Each is paired with the limited-scope spike that verifies it. The capability table under
-Worker sandbox design verifies the sandbox tier broadly (what is installable, what runs) but
-does not verify the command-execution and session lifecycle the dispatcher depends on — that
-gap is where most of these live.
+The verified ones are folded into the prose above (see Verified spikes below); the rest
+remain open, each with a spike or design-decision plan.
 
-### 1. Daytona session API: runAsync, poll, exit code, log pull — VERIFIED (spike, 2026-07-22)
+### Verified spikes
 
-The supervision model is "a pass starts a command via `executeSessionCommand({ runAsync:
-true })`, exits in seconds, and later passes poll the command's state." This assumes: the
-async call returns immediately and the command keeps running on the sandbox after the API
-session disconnects; the command's state (running vs. exited) is queryable; the exit code is
-retrievable after exit; and `getSessionCommandLogs` returns the full stdout/stderr after exit,
-not a tail or a live stream. The classifier depends on the stdout excerpt; the transcript pull
-depends on the file API. If `runAsync` blocks, or if the command is killed when the API
-session disconnects, the "pass starts work and exits in seconds" model breaks — the entire
-supervision design changes.
+The following assumptions were verified by spikes (2026-07-22) and are folded into the relevant
+prose above; the spike reports hold the full evidence:
 
-**Verified by the opencode-sandbox spike (2026-07-22):** all four assumptions pass. The async
-call returns immediately with a `cmdId`; the command survives the API session disconnecting;
-`getSessionCommand` polls and returns `exitCode` once the process exits; and
-`getSessionCommandLogs` returns `output` (combined), `stdout`, and `stderr` as a snapshot, or
-streams via callbacks. The streaming overload is the pattern the existing `sandbox.service.ts`
-uses (`streamAgentLogs`). **One caveat found (F1):** `executeSessionCommand` with `runAsync:
-true` runs the command in a PTY; opencode detects the TTY and stays alive waiting for
-interactive input after completing its task. The process never exits, and
-`getSessionCommand` never returns an `exitCode`. **Fix: append `</dev/null` to the command.**
-With stdin closed, opencode exits cleanly after completing its task (verified: ~9s, exit 0).
-This is folded into the in-sandbox command template (see the per-claim recipe under Worker
-sandbox design). See `docs/todo/spike-opencode-sandbox.md` for the full spike report.
-
-### 2. Sandbox stop/start disk persistence + opencode session resume — VERIFIED (spike, 2026-07-22)
-
-Park/resume depends on: stop sandbox → disk survives → start sandbox → `opencode run --format json --session
-<id>` resumes. The plan asserts disk and opencode storage survive a Daytona stop, but the
-restart-and-resume path is the critical chain and is not verified. This crosses four
-components (pass, n8n form, Daytona, opencode) and is mandatory from the first rollout (see
-Park/resume).
-
-**Verified by the stop-resume spike (2026-07-22):** all four links in the chain pass. The
-spike created a sandbox, ran an opencode session that established a secret word, captured
-the session ID, stopped the sandbox, waited 60 seconds, restarted the sandbox, and resumed
-the session — the resumed session correctly recalled the secret word. The opencode storage
-directory (`~/.local/share/opencode/storage/` in v1.1.35) survived the stop/start cycle with
-identical contents (same directory structure, unchanged timestamps). Stop took ~2.3s, start
-~0.8s, resume run ~18.5s — negligible against skill runs measured in hours. The Daytona
-docs confirm this is by design: container sandbox stop preserves the filesystem ("it stays on
-the runner and counts against disk quota while stopped"), and auto-archive (7-day default)
-moves the filesystem to object storage with restore on start — so even a multi-day park
-recovers. See `docs/todo/spike-stop-resume.md` for the full spike report.
-
-**Finding (F2): opencode session IDs are auto-generated, not user-specifiable.** The
-`--session <id>` flag is resume-only: it loads an existing session and fails with `Session
-not found` if the ID does not exist. The dispatcher must capture the auto-generated ID (via
-`opencode session list --format json`, newest first) immediately after the first `opencode
-run` and persist it in the journal's claim record, then pass it via `--session` on all
-resumes. This is a one-command addition to the in-sandbox command template, not a design
-change.
-
-### 3. opencode mid-stream resume (INCOMPLETE) — VERIFIED (spike, 2026-07-22)
-
-INCOMPLETE is a within-session recovery signal: the LLM provider drops the response
-mid-stream, the opencode session is still alive, and `opencode run --format json --session <id>`
-resumes it from where it left off. This assumes the session is resumable after a mid-stream drop
-and that the resume continues rather than restarts.
-
-**Verified by the midstream-resume spike (2026-07-22):** the INCOMPLETE recovery path is
-viable. `opencode run --format json --session <id>` after a mid-stream kill resumes the session
-with full conversation context — the resumed response correctly recalls information from
-pre-kill turns. The session storage records an incomplete assistant message
-(`time.completed = null`) marking the interruption point.
-
-**Detection rule (refined by the spike):** the plan's original heuristic ("exit code 0 with a
-truncated last message, or a recognized provider-mid-stream error") does not match observed
-behavior — a SIGTERM produces exit code 143, not 0. The refined rule is a two-signal check:
-exit code is non-zero (signal kill: 143 for SIGTERM, 137 for SIGKILL) OR exit code 0 without a
-`step_finish` event in the `--format json` output, AND the last assistant message in
-`opencode export <sessionID>` has `time.completed` unset. The `--format json` event stream
-gives the dispatcher a structured signal (`step_finish` present/absent, `error` events) rather
-than a heuristic on log content. See `docs/todo/spike-midstream-resume.md` for the full spike
-report and findings.
-### 4. Snapshot with baked node_modules + fresh clone — VERIFIED (spike, 2026-07-22); Strategy A chosen
-
-The per-claim provisioning recipe named two strategies for getting baked
-`node_modules` into a fresh clone — bake the shallow clone itself into the
-snapshot (per-sandbox provisioning then fetches instead of cloning), or move
-the baked `node_modules` into the fresh clone — and verified neither. The
-interaction between a baked snapshot image and a per-claim `git clone --depth
-1` is non-obvious: `node_modules` is gitignored, so a fresh clone does not have
-it, and moving it from a baked location into the clone assumes the paths line
-up. The wrong choice makes every claim pay a full install from scratch.
-
-**Verified by the baked-node-modules spike (2026-07-22):** both strategies
-pass end-to-end. Strategy A — a clone with `node_modules` baked in survives
-`git fetch` + `git checkout` with `node_modules` intact and usable
-(`node_modules` is gitignored, so git operations do not touch it); the baked
-esbuild native binary and lodash pure-JS dep are requireable after
-provisioning. Strategy B — copying a baked `node_modules` into a fresh
-`git clone --depth 1` — also leaves both deps requireable, including the
-native esbuild binary. **Strategy A has been chosen** (decided 2026-07-22): it
-avoids the per-claim `node_modules` move and matches the plan's cold-start-
-optimization framing. Three caveats surfaced, all per-claim-recipe details
-folded into the snapshot build config (see the provisioning recipe under Worker
-sandbox design): (1) baked files are root-owned but the sandbox runs as
-`daytona` (uid 1001) — the snapshot build must `chown -R 1001:1001` via
-`dockerfileCommands` (the `user: 'root'` create param is ignored); (2) "bake
-the clone" means bake a clone + `runCommands('npm install')` during the
-snapshot build — a `git clone` alone has no `node_modules` (gitignored), and
-build-time network is available; (3) bare repos in snapshots need loose refs
-(only relevant to the spike's fixture, not the primary strategy's shallow
-clone). See `docs/todo/spike-baked-node-modules.md` for the full spike report.
+- **Daytona session API** (`runAsync`, poll, exit code, log pull) — see `docs/todo/spike-opencode-sandbox.md`.
+  Caveat F1 (`</dev/null` for PTY stdin) is in the in-sandbox command template.
+- **Sandbox stop/start disk persistence + opencode session resume** — see `docs/todo/spike-stop-resume.md`.
+  Finding F2 (session IDs auto-generated, captured via `opencode session list`) is in the per-claim recipe.
+- **opencode mid-stream resume (INCOMPLETE)** — see `docs/todo/spike-midstream-resume.md`. The
+  two-signal detection rule is in Stream-truncation recovery under Supervision.
+- **Snapshot with baked `node_modules`** (Strategy A) — see `docs/todo/spike-baked-node-modules.md`.
+  The chown and bake-clone details are in the provisioning recipe.
+- **opencode.json provider registration for neuralwatt** (including the Railway relay) — see
+  `docs/todo/spike-neuralwatt-accessibility.md` and `docs/todo/spike-opencode-relay.md`. The
+  relay `baseURL` and egress constraints are in the provisioning recipe.
+- **Snapshot path rejects `resources`; image path honors all three** — see
+  `docs/todo/spike-snapshot-resources.md`. The snapshot path returns a hard API error
+  ("Cannot specify Sandbox resources when using a snapshot"), not silent ignore; the image
+  path honors cpu/memory as cgroup-v2 quotas and disk as overlay. The wording in the
+  provisioning recipe and the capability table reflects "rejects," not "ignores."
 
 ### 5. n8n Execute Command: blocking for minutes + child death on restart — PARTIALLY VERIFIED (spike, 2026-07-22); blocking PASS, child death FAIL
 
@@ -1588,50 +1545,7 @@ check, accepting the risk that an n8n restart during a planning run leaves an or
 holding the lock. The fix will be added in a follow-up. See
 `docs/todo/spike-execute-command.md` for the full spike report and findings.
 
-### 6. opencode.json provider registration for neuralwatt — VERIFIED (spike, 2026-07-22; relay spike 2026-07-22)
-
-The provider registration in `opencode.json` (and `NEURALWATT_API_KEY` in the sandbox env) is
-what makes `neuralwatt/glm-5.2` resolvable at agent launch — without it, `opencode run` fails
-at provider lookup before the LLM is called. This is a functional assumption about opencode's
-provider resolution path.
-
-**Verified by the opencode-sandbox spike (2026-07-22):** provider registration works
-— `opencode run --model opencode/big-pickle "Print exactly: SPIKE_OK"` exits with code 0 in
-~10s, and output is captured on stdout as expected. The spike used opencode's free hosted
-model to verify mechanics, not neuralwatt directly. **Finding (F2, corrected by
-`spike-neuralwatt-accessibility.md`): neuralwatt's API (`api.neuralwatt.com`) is unreachable
-from Daytona Tier 1 sandboxes — not because of Cloudflare bot protection as originally
-hypothesized, but because Daytona's Tier 1 network policy restricts egress to an Essential
-Services allowlist enforced via SNI inspection at an Envoy proxy.** `api.neuralwatt.com` is not
-on that allowlist. The planning run and the outcome-classification call run on the devcontainer
-and are unaffected. The resolution is a Railway relay (an allowlisted domain) — see resolved
-question 17 (revised) for the full decision. See `docs/todo/spike-neuralwatt-accessibility.md`
-for the corrected root cause and evidence chain, and `docs/todo/spike-opencode-sandbox.md` for
-the original spike report.
-
-**Relay spike (2026-07-22):** the Caddy relay on Railway
-(`neuralwatt-relay-production.up.railway.app`) closes the gap. From a Tier 1 sandbox:
-`/v1/models` through the relay returns HTTP 200 with the full model list; a chat completion
-(`glm-5.2`, "Print exactly: SPIKE_OK") returns `"SPIKE_OK"`; SSE streaming arrives
-incrementally (not buffered). Direct `api.neuralwatt.com` from the same sandbox fails (HTTP
-000, connection reset). The sandbox's `opencode.json` provider `baseURL` points at
-`https://neuralwatt-relay-production.up.railway.app/v1`. See resolved question 17 for the full
-deployment details and spike results.
-
-**opencode-through-relay spike (2026-07-22):** the relay spike above verified the network
-path via manual `curl`, but left the opencode path unverified — no spike had exercised
-opencode itself calling neuralwatt through the relay (provider resolution, `baseURL`
-override, API key injection, opencode's SSE parser). `docs/todo/spike-opencode-relay.js`
-closes that gap: it writes an `opencode.json` with `provider.neuralwatt.options.baseURL`
-set to the relay URL into a Tier 1 sandbox, injects `NEURALWATT_API_KEY` into the env, and
-runs `opencode run --model neuralwatt/glm-5.2`. Non-streaming run ("Print exactly:
-SPIKE_OK") → exit 0, output contains `SPIKE_OK` (8.9s). Streaming run (`--format json`) →
-exit 0, full `step_start`/`text`/`step_finish` event sequence captured (10.3s). Direct
-`api.neuralwatt.com` from the same sandbox fails (HTTP 000), confirming the relay is
-required and the opencode provider override is what makes it work. See
-`docs/todo/spike-opencode-relay.md` for the full report.
-
-### 7. Fold-time delta validation against a moving target
+### 6. Fold-time delta validation against a moving target
 
 The planner reads `graph.json` at launch (T0); by fold time (T1) a pass may have claimed
 nodes (freezing their specs) or folded completions (changing merge state). The delta format
@@ -1651,7 +1565,7 @@ removes a chain node and rewires its successor around it, racing a claim of the 
 — partial application would leave two concurrently runnable nodes on one chain branch; the
 chain-total-order rule plus all-or-nothing rejection must catch it.
 
-### 8. Branch push failure (design gap, not a spike)
+### 7. Branch push failure (design gap, not a spike)
 
 The plan says "the agent's in-sandbox command pushes its branch as its last act, so a
 completed result is durable in git no matter what was or wasn't watching when it finished."
@@ -1662,70 +1576,6 @@ gap, not an assumption to spike. The plan should either retry the push in the in
 command before exiting, have the collecting pass attempt the push if the agent did not, or
 not destroy the sandbox until the push is confirmed. Raised here as a design question to
 resolve before implementation, not a spike to run.
-
-### Interaction seams (where components agree non-obviously)
-
-These are not separate assumptions but the places where the plan's correctness depends on two
-or more components agreeing, and where the agreement is non-obvious. The spikes above cover
-the ones that matter; these are noted so the seams are visible during implementation.
-
-- **Pass ↔ planning run ↔ n8n host (three-party supervision) — resolved by the wrapper
-  promotion contract (2026-07-22); crash-safety verified (spike, 2026-07-22).** The pass
-  supervises the planning run via its lock instead of the Daytona API. "Lock acquirable" is a
-  binary liveness signal, not a state signal — the wrapper's recorded exit code disambiguates:
-  lock acquirable with an exit code recorded for the current leg means the run exited (classify
-  from the log and the promoted or missing delta); lock acquirable without one means the wrapper
-  died mid-leg (process-vanished path, relaunch). The agent writes the delta only to scratch; the
-  wrapper promotes it to the inbox via tmp + rename after exit 0 and a parse check, so the inbox
-  never holds a partial or unparseable delta. The fold's own parse check stays as defense in
-  depth (parse failure → reject and journal, like any validation failure). **Verified by the
-  delta-promotion spike (2026-07-22):** `fs.renameSync` is atomic under concurrent reads (200
-  rename cycles, 10 readers, zero failures), a crash during tmp write leaves target untouched
-  (SIGKILL mid-write, target unchanged, tmp orphaned), a crash before rename leaves target
-  untouched, inode isolation holds (old fd reads old content after rename), the fold's parse-check
-  catches all malformed inputs without throwing, and O_APPEND journal writes are non-interleaving
-  under concurrent appenders (500 lines, zero parse errors). One secondary finding (F2): the
-  `atomicWrite` helper should include `fsync(fd)` before `rename` for power-loss durability on
-  ext4 — not a crash-safety issue (process kill is covered), only relevant if the state directory
-  is on ext4 rather than tmpfs. See `docs/todo/spike-delta-promotion.md` for the full spike report.
-- **Pass ↔ merge wrapper ↔ per-cycle sandbox.** Same pattern as planning but with a sandbox
-  the wrapper creates. If the wrapper creates the sandbox but dies before recording its ID, the
-  pass cannot find the sandbox to destroy it — unless reconcile catches it via the
-  `scope: pipeline` label, which must be set at creation, not after (verified viable — labels
-  are on the instance immediately at `create()` return, see `docs/todo/spike-label-scoping.md`).
-  The ordering of create-sandbox-labeled → record ID → hold lock → do work matters for recovery.
-- **Park/resume spanning pass / n8n / Daytona / opencode.** The full park/resume chain crosses
-  four components and is the intersection of the sandbox-stop/start and opencode-session-resume
-  assumptions above. Each is individually testable; the combination (stop a sandbox with a live
-  opencode session, wait hours, restart, resume) is the real test and is what the spike covers.
-  **Verified (spike, 2026-07-22):** the full chain works — stop preserves disk, start restores
-  it, and `opencode run --format json --session <id>` resumes with prior context intact. See assumption #2
-  and `docs/todo/spike-stop-resume.md`.
-- **Stream-truncation detection as a signal.** The `--format json` event stream gives the
-  dispatcher a structured signal: `step_finish` present means clean completion, absent means
-  truncation; `error` events signal provider failures. The two-signal check (exit code +
-  `time.completed` on the last assistant message — see Stream-truncation recovery) replaces the
-  earlier log-content heuristic. If too loose, every clean exit gets a spurious continue; if too
-  tight, real truncations get misclassified as `failed` and consume an attempt. The spike
-  (`docs/todo/spike-midstream-resume.md`) defines the detection rule from observed behavior.
-- **Outcome classification inside the lock.** The LLM fallback classification runs inside the
-  pass, under the lock. If N sessions exited since the last pass, the pass makes N
-  classification calls, each a few seconds, all under the lock — no other pass can run during
-  that window. The seconds-long budget assumes roughly one exit per pass; a batch of exits
-  stretches it. Not a performance concern but a correctness concern if lock hold time blocks
-  merge triggering or question-resume long enough to matter functionally.
-- **Reconcile orphan matching — VERIFIED (spike, 2026-07-22).** "Destroy sandboxes no journal
-  entry accounts for" matches by label, not by ID. A sandbox created by a pass that died before
-  journaling the claim is orphaned and destroyed — fine, if the label is set at creation. If a
-  sandbox is created without the label (a bug in the create path), reconcile cannot see it, and
-  it leaks — consuming quota silently. The label is load-bearing for cleanup. **Verified by the
-  label-scoping spike (2026-07-22):** labels passed to `daytona.create({ labels })` are on the
-  returned `Sandbox` instance immediately (no separate labeling call, no propagation window), and
-  `daytona.list({ labels: {...} })` finds sandboxes by label filter after a ~5s index propagation
-  delay (irrelevant — reconcile runs on later passes, minutes apart). `setLabels()` (post-creation
-  update) response is authoritative but the list index lags on label removal for 20s+; not a
-  problem since the pipeline sets labels at creation and never updates them. See
-  `docs/todo/spike-label-scoping.md` for the full spike report.
 
 ## Path (incremental, each step independently useful)
 
