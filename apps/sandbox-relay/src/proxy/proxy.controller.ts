@@ -43,10 +43,15 @@ function isPrivateHost(host: string): boolean {
 export class ProxyController {
   private readonly logger = new Logger(ProxyController.name);
 
+  // Two routes: `/proxy/:host` (no path) and `/proxy/:host/*path` (with path).
+  // Express route params: `*path` captures the rest of the URL as a single
+  // string. When no path is given, `path` is undefined — the controller
+  // defaults it to empty string.
+  @All(':host')
   @All(':host/*path')
   async proxy(@Req() req: Request, @Res() res: Response): Promise<void> {
     const host = (req.params as Record<string, string>).host;
-    const path = (req.params as Record<string, string>).path;
+    const path = (req.params as Record<string, string | undefined>).path ?? '';
 
     // 1. Essential Services allowlist — sandbox reaches these directly.
     if (isEssentialService(host)) {

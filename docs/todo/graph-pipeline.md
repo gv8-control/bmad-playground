@@ -1,20 +1,12 @@
 # Plan: dependency-graph pipeline with parallel opencode agents
 
-Status: draft vision, not started. This plan describes gen-3, the next architecture generation
-for the pipeline — not a delta to the current loop. Read
-[docs/self-improving-system-concept.md](../self-improving-system-concept.md) for the current
-(gen-2) architecture. It supersedes and replaces the discarded stage-group parallelization plan
-(`pipeline-parallelization-plan.md`, deleted 2026-07-17); everything still relevant from that
-plan is folded in here.
-
-**Revised 2026-07-22:** the pipeline is generalized from a BMAD story engine to a general graph
-executor. Three changes: (1) `chainId` replaces story/epic as the structural field the machinery
-reads — story, epic, sprint, and all project-specific vocabulary move to node metadata the
-machinery never reads; (2) tests are decoupled from the merge cycle — the merge cycle does fetch +
-rebase + merge + fire a post-merge hook, and a hook failure is a standard `failed` outcome riding
-the existing remediation path; (3) the planner's prompt carries immutable graph rules alongside
-project-specific semantics. The pipeline knows nothing about stories, epics, BMAD phases, or
-sprints — those live in project-authored guidance the planner reads. See Pipeline vs.
+The pipeline is a general graph executor. `chainId` is the structural field the machinery
+reads — story, epic, sprint, and all project-specific vocabulary live in node metadata the
+machinery never reads. Tests are decoupled from the merge cycle: the merge cycle does fetch +
+rebase + merge + fire a post-merge hook, and a hook failure is a standard `failed` outcome
+riding the existing remediation path. The planner's prompt carries immutable graph rules
+alongside project-specific semantics. The pipeline knows nothing about stories, epics, BMAD
+phases, or sprints — those live in project-authored guidance the planner reads. See Pipeline vs.
 project-specific customization.
 
 ## Why this shape
@@ -55,8 +47,8 @@ counter so an independent ready node cannot starve (see Graph management rules).
   time — the pass holding the lock; nothing else writes it. Each claim launches one opencode
   agent in a single-use Daytona sandbox created on demand from a pre-built snapshot.
   Machine-level isolation eliminates the collision
-  surfaces that same-machine concurrency creates (discovered in session-history analysis,
-  2026-07-17): cross-process homicide (`pkill -f` can't cross machine boundaries), fixed port
+  surfaces that same-machine concurrency creates
+  (discovered in session-history analysis): cross-process homicide (`pkill -f` can't cross machine boundaries), fixed port
   binding (each sandbox has its own port space), shared test databases (each sandbox runs its
   own Postgres), and shared-file corruption (pipeline state files are per-sandbox). The
   opencode identity-collision risk is also removed — separate machine, separate storage. Epic 6
@@ -65,8 +57,8 @@ counter so an independent ready node cannot starve (see Graph management rules).
 - **Git is the convergence point.** Every agent pushes a branch; a serial merge queue
   (rebase → merge) integrates one branch at a time. Integration is serialized, work is
   not — integration takes seconds, skill runs take hours. The whole merge cycle — fetch,
-  rebase, merge, push — runs on a sandbox created per merge cycle (resolved questions 12 and
-  16), not on the devcontainer: the devcontainer already runs n8n, the dispatcher, the human's
+  rebase, merge, push — runs on a sandbox created per merge cycle,
+  not on the devcontainer: the devcontainer already runs n8n, the dispatcher, the human's
   dev servers, and the human's Postgres, and its checkout is the human's working copy —
   pipeline git operations never touch it. The n8n workflow runs a merge wrapper that drives the
   merge cycle on the sandbox via the Daytona session API — same create-on-demand path as a
@@ -76,7 +68,7 @@ counter so an independent ready node cannot starve (see Graph management rules).
   the start of the merge cycle: nothing to merge — the merge cycle just deletes the branch —
   so an empty-diff completion or a conflict that evaporated while its resolution was planned
   costs one git check instead of a full serialized merge cycle. **Testing is not part of the
-  merge cycle** (revised 2026-07-22): the pipeline merges branches without running tests. A
+  merge cycle**: the pipeline merges branches without running tests. A
   post-merge hook — project-authored, configured in the policy block — fires after the merge
   lands; if the hook fails, the failure is a standard `failed` outcome that rides the existing
   remediation path (conflict-mode planning run → resolution node or rework — see
@@ -125,7 +117,7 @@ machinery errors — see Conflicts are evidence), but defines no reflection mach
 nothing to gen-2's files. When a reflector is built, it is a separate consumer of gen-3's own
 journal.
 
-## Graph management rules (decided)
+## Graph management rules
 
 - **Node = one skill run** (project-agnostic — any skill, or another atomic action like a CLI
   command). A chain is a sequence of nodes connected by `dependsOn` edges. What a chain is
@@ -153,14 +145,14 @@ journal.
   implementing against the artifact while this chain's own implementation is still running. Like
   the rest of the spec, `mergeTo` freezes at claim; replanning toggles it only on unclaimed
   nodes.
-- **All nodes are assumed to modify files, so a chain is a total order** (decided 2026-07-21).
+- **All nodes are assumed to modify files, so a chain is a total order.**
   Two file-modifying nodes can never run concurrently on a shared branch — both would push to
   the same head — and gen-3 keeps no read-only node class to except from that rule. Within a
   chain, `dependsOn` is simply the previous node; the only branching in the graph is
   cross-chain, at merge points. Node-spec field names are camelCase (`dependsOn`, `mergeTo`,
   `maxAttemptsPerNode`, `chainId`) — the state is JSON written and read by JS code.
 - **`chainId` is the structural identifier the machinery reads; story, epic, and all
-  project-specific vocabulary are metadata** (decided 2026-07-22). The machinery derives branch
+  project-specific vocabulary are metadata.** The machinery derives branch
   names from `chainId`, validates cross-chain edges against `chainId`, and scopes
   `abandonSegment` to `chainId`. Story, epic, sprint, phase, and any other project-specific
   grouping live in a `metadata` dict on the node spec — the planner writes them, the machinery
@@ -190,7 +182,7 @@ journal.
    machinery — no successor exists yet, so the ready-node frontier runs low and the standard expansion
    trigger fires with the artifact now on main. A claimed node's spec is frozen; replanning
   touches only unclaimed nodes.
-- **Depth-first traversal, bounded (decided 2026-07-22):** the dispatcher descends into a
+- **Depth-first traversal, bounded:** the dispatcher descends into a
   node's dependents before starting unrelated siblings — depth-first is the default because it
   unblocks dependents fast. But unbounded depth-first starves: a chain that keeps producing
   ready successors can fill the pool indefinitely while an independent ready node waits. A
@@ -202,7 +194,7 @@ journal.
   counter increments but the yield never triggers — behavior is identical to pure depth-first.
   The counter is per-pool, not per-chain; it resets on a yield. Any independent ready node is
   guaranteed to be claimed within `fairnessBudget` node completions — starvation-freedom by
-  construction, with one integer of added state. See resolved question 18.
+  construction, with   one integer of added state.
 - These rules — and the retry/timeout/capacity knobs (`maxAttemptsPerNode`, per-node timeout,
   `maxConcurrentSandboxes`, `fairnessBudget`, `opencodeVersion`) — are dispatcher claim-time
   policy: plain code plus a small policy block in gen-3's own state, defined fresh, not
@@ -210,10 +202,10 @@ journal.
   `_bmad-output/pipeline3/`) read at the start of every pass, so capacity knobs are tunable
   without a code change or restart — the next pass picks up the new value. `opencodeVersion`
   pins the opencode version installed in sandboxes and on the devcontainer — one source of
-  truth, read by both install paths (see resolved question 19). Do not pick technology
+  truth, read by both install paths. Do not pick technology
   expecting it to enforce them.
 
-## Pipeline vs. project-specific customization (decided 2026-07-22)
+## Pipeline vs. project-specific customization
 
 The pipeline is a general graph executor. It knows nothing about BMAD, stories, epics, sprints,
 phases, or any project-specific workflow. The separation is explicit:
@@ -236,6 +228,13 @@ phases, or any project-specific workflow. The separation is explicit:
   advice for review nodes, merge-point placement advice
 - The post-merge hook (if any) — what to run after a merge lands, configured in the policy
   block; a project with no tests configures no hook
+- The per-claim install command (if any) — what to run in the node's sandbox before the
+  node's command, configured in the policy block alongside the post-merge hook. The machinery
+  runs whatever command is configured (or skips if none); a project with no install step —
+  doc-only work, early-phase projects — configures none. Same pattern as the post-merge hook:
+  machinery runs the command, the project says which. The install-failure classification
+  (park with QUESTION, do not retry — see Supervision) is machinery and applies regardless of
+  which package manager failed
 - The backlog shape — epics files and sprint plan, or a phase list, or a research agenda;
   whatever the planner reads to know what work exists
 - `decision-policy.md` — human-authored, agent-facing; what keeps questions rare
@@ -247,7 +246,7 @@ its vocabulary; the machinery enforces graph-shape rules. A project that has no 
 the same way a story project composes chains for code — the machinery doesn't care what the
 files contain.
 
-## Scope lifecycle (decided 2026-07-22)
+## Scope lifecycle
 
 Gen-3's scope is not limited to story development: the pipeline runs any unit of work the
 planner composes chains for — epic development, post-epic finalization, early-phase doc work
@@ -283,8 +282,8 @@ chain.
   claims a node in a new scope, journals the transition and fires an ntfy notification (a small
   n8n workflow, same tier as error notification) — informational, never blocking. Pause
   remains the intervention tool.
-- **Overlap with the next scope is planner judgment, not a machinery rule** (decided
-  2026-07-22: full overlap permitted). Finalization audits the scope's merged whole, and
+- **Overlap with the next scope is planner judgment, not a machinery rule.**
+  Finalization audits the scope's merged whole, and
   next-scope merges landing mid-audit move the target — but gen-3 does not reintroduce a
   between-scopes quiet point in machinery. The guidelines advise when to hold next-scope
   composition back (an in-flight trace or NFR audit whose evidence next-scope merges would
@@ -327,10 +326,7 @@ Two rules make overlapping invocations safe:
   woke it"; it reads the entire current state and processes everything that state implies. Two
   events in short succession: the first pass to take the lock handles both; the second finds
   fixpoint already reached and exits. Supervision obeys the same rule: a pass doesn't wait for
-  completion signals, it polls what is actually running. This replaces the earlier
-  single-instance-lock design where a second invocation was a no-op — a no-op arriving while
-  the running dispatcher is deciding to exit can silently drop an event; a queued
-  level-triggered pass cannot.
+  completion signals, it polls what is actually running.
 
 Liveness comes from the n8n schedule tick (every few minutes): completions are *detected* at
 tick cadence, not pushed. Minutes of detection latency is noise against skill runs measured in
@@ -446,11 +442,8 @@ step of every pass. The behaviors carry over; the workflow does not.
   recovery (resume the session) rather than treating the outcome as `failed` — consistent with
   the outcome-classification note that `error` events carry provider errors. A non-zero exit with
   a completed last assistant message is a real failure (`failed`), not INCOMPLETE; a session past
-  its deadline is handled by the timeout policy, not relabeled INCOMPLETE. Gen-2's "long-running step survives the per-run timeout
-   through repeated timeout → INCOMPLETE → continue iterations" is *not* carried over as-is: that
-   pattern conflated a provider bug with a timeout policy. Gen-3 decides timeout behavior
-   explicitly (see Timeout policy below) rather than smuggling it through the truncation path.
-- **Timeout policy** (open, decided separately from truncation). A session past its deadline is
+  its deadline is handled by the timeout policy, not relabeled INCOMPLETE.
+- **Timeout policy** (open). A session past its deadline is
   terminated by the pass, journaled as a `runner_error`, and handled per retry policy. Whether a
   long-running step should *survive* its per-node timeout by auto-continuing — the gen-2
   behavior, there a workaround for the same provider stream-drop issue — is a real policy
@@ -503,7 +496,7 @@ mode, no execution-ID bookkeeping, no spool files.
 
 ### Planning runs (graph expansion)
 
-Graph expansion is not a graph node (decided 2026-07-20). It runs on the devcontainer — the
+Graph expansion is not a graph node. It runs on the devcontainer — the
 same machine as the dispatcher — as an async planning run: a local opencode process that a
 pass decides on, journals, and supervises like any other in-flight claim, and that a small
 n8n workflow hosts. Every node in the graph is authored by
@@ -556,8 +549,8 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   pause: folded by a pass, which journals and triggers the host workflow.
 - **Context is a pinned contract** — a small per-run prompt plus a defined set of files the
   planner reads; see Planning-run context below.
-- **Output is a graph delta in the inbox — written by the wrapper, never by the agent
-  (decided 2026-07-22).** The planning agent writes the delta as an ordinary file to a
+- **Output is a graph delta in the inbox — written by the wrapper, never by the agent.**
+  The planning agent writes the delta as an ordinary file to a
   scratch path inside the planning run's per-run directory (the path is given in the
   prompt's output contract), as its last act before finishing. The launch wrapper — code we
   control — is the only writer to the inbox: after the opencode child exits, the wrapper
@@ -588,7 +581,7 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   captured after the initial run via `opencode session list --format json`, as in the
   in-sandbox template, for resume legs), and the exit code recorded per leg. The planning
   run writes nothing else shared — not the journal, not `graph.json`.
-- **Delta validation at fold time — all-or-nothing (decided 2026-07-22).** Planning reads
+- **Delta validation at fold time — all-or-nothing.** Planning reads
   graph state at launch; by fold time nodes have completed or merged. The fold applies the
   delta's ops in order to a copy of current state under the state lock, then accepts or
   rejects the delta as a whole. Per-op rules: an `updateNode`/`removeNode` whose target is
@@ -611,8 +604,8 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   unreachable). Journal ordering resolves any claim-vs-replan race — whichever hit the
   journal first wins. Claiming is not gated while a planning run is in flight: claimed specs
   are frozen, so gating would starve sandboxes for no added protection.
-- **Supervised like a sandbox session — and every leg runs under the wrapper (decided
-  2026-07-22).** Same classification (COMPLETE / QUESTION / `failed`), same deadline
+- **Supervised like a sandbox session — and every leg runs under the wrapper.**
+  Same classification (COMPLETE / QUESTION / `failed`), same deadline
   enforcement (terminate, journal `runner_error`, retry policy), same stream-truncation
   recovery, with one difference from sandbox sessions: the pass never spawns the resume
   itself. A stream-truncation continue or a question-answer resume re-triggers the
@@ -655,7 +648,7 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   exit-record discriminator, a QUESTION exit would be indistinguishable from a dead wrapper
   and get relaunched instead of parked.)
 
-### Graph delta format (decided 2026-07-22)
+### Graph delta format
 
 The delta is a list of operations — not a graph snapshot and not a JSON patch. A snapshot
 makes the planner re-assert the whole graph, so anything that changed between launch and fold
@@ -691,7 +684,7 @@ Acceptance is all-or-nothing at fold time (see Delta validation at fold time abo
 file reaches the inbox only through the wrapper's atomic promotion (see Output above), so
 the fold reads either a complete file or nothing.
 
-### Planning-run context (decided 2026-07-21)
+### Planning-run context
 
 What the planning agent knows when it runs. Derived from scenario analysis: a unit of work whose
 substance is human-performed setup (needs the full work text to skip the e2e node), early
@@ -846,7 +839,7 @@ Two consequences of n8n being local, stated so nobody designs against the wrong 
 | Responsibility | Home | Why |
 |---|---|---|
 | Trigger the dispatcher (schedule tick, question answered, merge complete, planning exit) | n8n | Persistent scheduler while the devcontainer is up; invokes a pass as a local process call. The tick also checks dispatcher health after invoking: non-zero pass exit → error notification; `last-pass.json` older than a few tick intervals → "dispatcher stalled" ntfy (see The machinery observes itself under Supervision). |
-| Merge queue (git integration) | n8n hosts the merge wrapper; the whole merge cycle runs on a sandbox | Serialized by `merge.lock`, level-triggered by passes, capacity-gated by `maxConcurrentSandboxes` (the merge sandbox counts against the cap; a trigger that would exceed it defers to the next pass). The wrapper drives fetch, rebase, merge, and push on a sandbox created per merge cycle via the Daytona session API (resolved questions 12 and 16); pipeline git operations never touch the devcontainer checkout. **No tests in the merge cycle** (revised 2026-07-22): the pipeline merges branches without running tests. A post-merge hook — project-authored, configured in the policy block — fires after the merge lands; if the hook fails, the failure is a standard `failed` outcome that rides the existing remediation path (see Merge-conflict resolution). On conflict it writes an inbox report and stops — resolution is a graph node (see Merge-conflict resolution). |
+| Merge queue (git integration) | n8n hosts the merge wrapper; the whole merge cycle runs on a sandbox | Serialized by `merge.lock`, level-triggered by passes, capacity-gated by `maxConcurrentSandboxes` (the merge sandbox counts against the cap; a trigger that would exceed it defers to the next pass). The wrapper drives fetch, rebase, merge, and push on a sandbox created per merge cycle via the Daytona session API; pipeline git operations never touch the devcontainer checkout. **No tests in the merge cycle**: the pipeline merges branches without running tests. A post-merge hook — project-authored, configured in the policy block — fires after the merge lands; if the hook fails, the failure is a standard `failed` outcome that rides the existing remediation path (see Merge-conflict resolution). On conflict it writes an inbox report and stops — resolution is a graph node (see Merge-conflict resolution). |
 | Question surfacing (form + ntfy) | n8n (small workflow) | Durable Wait-form suspension and forms are n8n's strength. Human-facing surface only — the journal holds the canonical parked state. |
 | Error notification | n8n | Existing small workflow, unchanged. |
 | Pause/resume control | Helper script → inbox (n8n form optional later) | Human-initiated; folded by the next pass; the claim step gates on the journaled pause state. |
@@ -865,7 +858,7 @@ files (a question answer, a merge-conflict report, an external event) that a pas
 the same rule: its only shared output is a graph delta in the inbox, and even that is
 written by its launch wrapper, not by the agent (see Output under Planning runs). Agents write nothing shared;
 their only output channels are their branch push and their session logs, both read by passes.
-Session-history analysis (2026-07-17) confirmed agents already don't write to pipeline state
+Session-history analysis confirmed agents already don't write to pipeline state
 files in the sequential architecture; the parallel architecture keeps that by construction.
 
 ### Data flow
@@ -943,12 +936,6 @@ Rough estimate, ~1090 lines of JS plus three small n8n workflows:
 | Planning-host workflow (run the launch wrapper, invoke dispatcher on exit) | n8n, small | New |
 | Merge queue workflow (runs the merge wrapper, invokes dispatcher on exit) | n8n, small | New — mirrors the planning-host pattern |
 
-Honest comparison with an earlier iteration of this plan that used long-lived n8n observer
-executions for supervision (~700 lines + a 19-node workflow port): the agent-lifecycle code
-that iteration deleted from its estimate returns here, but smaller — level-triggered polling
-is simpler than spawn/relay/monitor, and attach mode, observer-death handling, and spool
-files disappear entirely. Total effort is comparable; moving parts are fewer.
-
 ## State
 
 - Gen-3 state lives in its own directory (working name `_bmad-output/pipeline3/`), so the gen-2
@@ -983,9 +970,9 @@ files disappear entirely. Total effort is comparable; moving parts are fewer.
   base commit is already journaled — and squarely inside "journal everything a future
   reflector would want to read."
 - **The journal stays separate from the graph.** Folding history into `graph.json` as node
-  metadata was considered (2026-07-21) and rejected: non-node events — planning runs
-  (deliberately not graph nodes), pause/resume controls, machinery `runner_error`s — would
-  need top-level graph fields that rebuild the journal in a worse place; a canonical rewritten
+  metadata would require top-level graph fields for non-node events — planning runs
+  (deliberately not graph nodes), pause/resume controls, machinery `runner_error`s —
+  rebuilding the journal in a worse place; a canonical rewritten
   `graph.json` is protected against crashes (tmp + rename) but not against a buggy pass
   writing wrong content, while an append-only file can gain a bad line but cannot lose good
   ones and remains the rebuild source; and embedded history would grow the file every reader
@@ -1007,7 +994,7 @@ files disappear entirely. Total effort is comparable; moving parts are fewer.
   schedule tick).
 - A claimed node's spec is frozen at claim time; replanning touches only unclaimed nodes.
 
-## Viewer (decided by investigation, 2026-07-17)
+## Viewer
 
 Constraint first: the viewer belongs to the workflow silo, not the product. It must not live in
 or reuse code from `apps/web`/`apps/agent-be`, and must stay build-less and app-less — committed
@@ -1043,7 +1030,7 @@ a separate machine — isolation is free, no collision-mitigation discipline nee
 single-use keeps it free across sequential claims too.
 
 **Provisioning (per claim, at claim time):**
-- **Sandboxes use the same image the devcontainer uses (decided 2026-07-22).** The snapshot's
+- **Sandboxes use the same image the devcontainer uses.** The snapshot's
   base is the devcontainer's image — not a separately maintained base — so a worker sandbox
   and the devcontainer share one source of truth for the OS, system packages, and toolchain.
   This assumes the host runs as a devcontainer (the devcontainer image is the reference
@@ -1055,7 +1042,7 @@ single-use keeps it free across sequential claims too.
   snapshot so the per-claim install check is a no-op in the common case (see Per-claim below
   — the install runs every claim; the snapshot makes it fast, not absent). With single-use
   sandboxes the baked dependencies must end up inside each sandbox's checkout: **bake the
-  shallow clone itself into the snapshot (Strategy A, decided 2026-07-22 — per-sandbox
+  shallow clone itself into the snapshot (Strategy A — per-sandbox
   provisioning then fetches instead of cloning)** — otherwise every claim's install rebuilds
   from scratch and the cold-start optimization is lost. The alternative (move the baked
   `node_modules` into a fresh clone) was verified viable but adds a per-claim copy step and a
@@ -1071,16 +1058,15 @@ single-use keeps it free across sequential claims too.
   seconds, not minutes, so no pool needs to exist ahead of claims. The snapshot is a
   cold-start optimization, not a freshness guarantee: when the repo's deps change, the
   per-claim install does the real work until the snapshot is rebuilt (a human authors the
-  snapshot's build config; the install step surfaces when the repo has outgrown it — see
-  resolved question 14).
-- **opencode version pinning (decided 2026-07-22):** the snapshot's build config installs
+  snapshot's build config; the install step surfaces when the repo has outgrown it).
+- **opencode version pinning:** the snapshot's build config installs
   opencode at the version specified by `opencodeVersion` in the dispatcher's policy config —
   the same config file as `maxConcurrentSandboxes` and the other knobs. The devcontainer's
   install reads the same value, so both install paths share one source of truth. Daytona has no
   agent-harness or opencode-version selection API — opencode is an ordinary npm package
   installed via `run_commands()` in the snapshot and `npm install -g` on the devcontainer, and
   `opencodeVersion` is what keeps them in sync. A post-install `opencode --version` assertion
-  catches a stale snapshot bake. See resolved question 19.
+  catches a stale snapshot bake.
 - Create sandboxes from the custom snapshot with explicit resources:
   `resources: { cpu: 4, memory: 8, disk: 10 }` (the platform max). Create from image, not
   snapshot, to control resources — the snapshot path **rejects** `resources` with a hard API
@@ -1093,7 +1079,7 @@ single-use keeps it free across sequential claims too.
   (verified spike 2026-07-22, see `docs/todo/spike-label-scoping.md`), so reconcile can find
   sandboxes by label without a separate labeling call.
 - `git clone --depth 1` the repo into the sandbox (shallow, fast) — or, when the clone is
-  baked into the snapshot (Strategy A, decided 2026-07-22), `git fetch` to current. The Daytona SDK's `git.clone`
+  baked into the snapshot (Strategy A), `git fetch` to current. The Daytona SDK's `git.clone`
   has no depth parameter — use `executeCommand('git clone --depth 1 ...')` instead.
 - Copy all `.env*` files from the dispatcher into the sandbox (`.env`, `.env.local`,
   `.env.test`, and any others present). These are gitignored, small, and contain secrets —
@@ -1107,12 +1093,7 @@ single-use keeps it free across sequential claims too.
   LLM is called. The file is committed in the repo and travels with the clone, but the
   dispatcher copies it explicitly the same way it copies the `.env*` files: the snapshot's bake is a
   cold-start optimization, not a freshness guarantee, and an `opencode.json` baked stale would
-  silently pin an old model or old context limits. Pinned 2026-07-22: **neuralwatt is the LLM
-  provider for all opencode runs in the pipeline — sandbox agents, the planning run, and the
-  outcome-classification LLM fallback — with `glm-5.2` as the initial model.** The model and
-  provider are config in `opencode.json`, so swapping either is a repo change, not a pipeline
-  change; the snapshot's `opencode.json` is rebuilt on the next snapshot rebuild like any
-  other committed file. Pinned 2026-07-22: **neuralwatt is the LLM
+  silently pin an old model or old context limits. **neuralwatt is the LLM
   provider for all opencode runs in the pipeline — sandbox agents, the planning run, and the
   outcome-classification LLM fallback — with `glm-5.2` as the initial model.** The model and
   provider are config in `opencode.json`, so swapping either is a repo change, not a pipeline
@@ -1141,12 +1122,14 @@ single-use keeps it free across sequential claims too.
   the fetch and file copies are seconds — within the pass's seconds-long budget. If real-world
   creation latency ever stretches passes, the provisioning commands move into the front of the
   async in-sandbox command, leaving the pass only the create call — a mechanical change.
-- The in-sandbox command runs the repo's package-manager install with a frozen lockfile
-  checkout, before the node's command. This is the correctness floor: a no-op in seconds when
-  deps haven't changed, real work when they have. The snapshot's pre-baked `node_modules` makes
-  the common case fast; the install step handles every claim the snapshot doesn't cover. An
-  install failure (a dep change needing a system package the snapshot lacks, an unresolvable
-  lockfile) is a distinct classification — see Supervision — not a generic runner error.
+- The in-sandbox command runs the configured per-claim install command (see Pipeline vs.
+  project-specific customization) before the node's command — `npm ci` for this project,
+  but a different project configures a different command or none. This is the correctness
+  floor: a no-op in seconds when deps haven't changed, real work when they have. The
+  snapshot's pre-baked `node_modules` makes the common case fast; the install step handles
+  every claim the snapshot doesn't cover. An install failure (a dep change needing a system
+  package the snapshot lacks, an unresolvable lockfile) is a distinct classification — see
+  Supervision — not a generic runner error.
 - The pass starts the node's command inside the sandbox via the Daytona session API
   (`createSession` + `executeSessionCommand({ runAsync: true })`) with `--format json`,
   `--dir <sandbox-repo-path>`, and opencode storage at a persistent path on the sandbox
@@ -1156,13 +1139,13 @@ single-use keeps it free across sequential claims too.
   verified spike 2026-07-22). The pass then exits — the
   pull-based transport model the product already uses. Later passes poll the command's state
   and pull logs via `getSessionCommandLogs`. The sandbox never calls back to the devcontainer.
-  **The command must append `</dev/null`** (verified in the opencode-sandbox spike,
-  2026-07-22): `executeSessionCommand` with `runAsync: true` runs the command in a PTY;
+  **The command must append `</dev/null`** (verified in the opencode-sandbox spike):
+  `executeSessionCommand` with `runAsync: true` runs the command in a PTY;
   opencode detects the TTY and stays alive waiting for interactive input after completing its
   task, so the process never exits and `getSessionCommand` never returns an `exitCode`.
   With stdin closed, opencode exits cleanly after completing its task. Without this, every
   poll-for-completion loop times out.
-  **The command uses `--format json`** (decided 2026-07-22): the agent run emits
+  **The command uses `--format json`**: the agent run emits
   newline-delimited JSON events (`step_start`, `text`, `step_finish`, `tool_use`,
   `reasoning`, `error`) to stdout, which the dispatcher parses for outcome classification
   and stream-truncation detection. The default formatted output is human-readable text with
@@ -1182,7 +1165,7 @@ single-use keeps it free across sequential claims too.
   re-claimable if attempts remain, on a fresh sandbox — the terminated attempt's sandbox is
   destroyed after transcript pull like any exited attempt, never handed to the retry).
 
-**What this eliminates (from session-history analysis, 2026-07-17):**
+**What this eliminates (from session-history analysis):**
 - Cross-process homicide via `pkill -f "next dev"` / `pkill -f "agent-be"` — can't cross
   machine boundaries.
 - Fixed port binding (3000, 3001) — each sandbox has its own port space.
@@ -1192,13 +1175,10 @@ single-use keeps it free across sequential claims too.
 - `git add -A` sweeping other agents' files — each sandbox is its own clone.
 - opencode identity collision — separate machine, separate storage.
 
-### Sandbox platform capabilities (verified against Daytona docs, 2026-07-17)
+### Sandbox platform capabilities (verified against Daytona docs)
 
-An initial capability test ran against the default snapshot (`daytonaio/sandbox:0.8.0`, 3 GB disk)
-and reported several "hard blockers." A subsequent reading of the Daytona docs corrected most of
-these: the 3 GB disk, missing Docker, and ignored resource limits were properties of the default
-snapshot and the test's configuration, not platform limitations. The platform supports custom
-images, explicit resources, and a declarative builder for pre-baking snapshots.
+The platform supports custom images, explicit resources, and a declarative builder for
+pre-baking snapshots.
 
 | Capability | Status | Note |
 |---|---|---|
@@ -1227,7 +1207,7 @@ labeling and reaper discipline described under Sandbox lifecycle.
 
 ### Sandbox lifecycle
 
-- **Sandboxes are single-use, created on demand** (decided 2026-07-22): created at claim time
+- **Sandboxes are single-use, created on demand**: created at claim time
   (or per merge cycle), used for exactly one claim attempt, and destroyed when the session
   exits — after the collecting pass pulls the transcript and full logs to the devcontainer
   (see Supervision). There is no warm pool (see the per-agent workspace recipe for the
@@ -1269,8 +1249,7 @@ labeling and reaper discipline described under Sandbox lifecycle.
   at most one merge cycle, bounded by `maxConcurrentSandboxes`. The dispatcher must still track
   disk usage and enforce a budget. Label every sandbox with `scope: pipeline` and a `runId` —
   the product's lack of scoping is a known problem the pipeline must not reproduce.
-- **Credentials: sandboxes carry the same trust as the dev machine (decided by Marius,
-  2026-07-17).** Pipeline sandboxes run our own agents on our own code — they are not a
+- **Credentials: sandboxes carry the same trust as the dev machine.** Pipeline sandboxes run our own agents on our own code — they are not a
   lower-trust tier, so transferring secrets from the dispatcher into a sandbox is a non-issue
   and no minimization boundary applies. Provision whatever the work needs (`.env`, `.env.test`,
   API keys); anything left out (e.g. platform-internal keys like `AUTH_SECRET` or
@@ -1280,14 +1259,12 @@ labeling and reaper discipline described under Sandbox lifecycle.
   never go into the repo or the snapshot: a committed or cached-image copy is a different,
   broader exposure surface than a live sandbox.
 
-### opencode concurrency: resolved (both phases complete)
+### opencode concurrency
 
-The concurrency experiment tested whether isolated storage per agent prevents the identity
-collision observed when multiple opencode instances share git identity. Both phases are
-complete; the result is moot for the sandbox tier — separate machines have separate storage
-by definition. The experiment's value is confirming that the isolated-storage pattern works,
-which the sandbox recipe inherits (each sandbox gets its own storage by machine isolation).
-Documented in full because it encodes a failure already paid for once:
+Isolated storage per agent prevents the identity collision observed when multiple opencode
+instances share git identity. For the sandbox tier this is moot — separate machines have
+separate storage by definition. The isolated-storage pattern is what the sandbox recipe
+inherits (each sandbox gets its own storage by machine isolation).
 
 - **Known failure** (see the `n8n-workflow-authoring-gotchas` memory): `opencode run` from a
   second worktree *or* a standalone `git clone --local` at a different path, while a real
@@ -1298,12 +1275,17 @@ Documented in full because it encodes a failure already paid for once:
 - **Also observed:** three opencode processes (`opencode serve`, a TUI session, a pipeline
   `opencode run`) running simultaneously with cwd = this repo, no collision. Same-path
   coexistence was never the failure mode — different-path worktrees sharing git identity were.
-- **The lever, tested in both phases:** pointing each agent at an isolated storage directory
+- **The lever:** pointing each agent at an isolated storage directory
   (separate opencode storage per agent), with `--dir <path>` setting the working directory.
-  Per-agent `--dir` plus isolated storage gives fully separate storage and cwd. Phase 1
-  (throwaway repo) and phase 2 (worktrees of this repo, sharing its git identity) both confirm
-  isolated storage per agent is safe at N=6 — no collisions, no migration races. This matches
-  what the workspace recipe above already prescribes.
+  Per-agent `--dir` plus isolated storage gives fully separate storage and cwd. Tested with
+  worktrees of this repo sharing its git identity, run concurrently
+  while a live session was active against the main repo (the exact condition of the original
+  failure): zero failures across 11 runs. Every instance was
+  assigned the same `projectID` (git-identity-derived, identical to the live main-repo session);
+  opencode's project refresh listed all 7 dirs sharing that ID. **The identity collision did not
+  recur.** The `UnknownError: Unexpected server error` was a shared-mutable-state collision in
+  common storage, not a fundamental git-identity problem. Isolated storage per agent removes the
+  shared mutable state; same-projectID coexistence is safe.
 - **Shared-storage caveat (observed, not blocking):** a shared opencode storage directory has a
   schema-migration race at cold start — when multiple instances simultaneously run migrations on
   a fresh storage directory, one fails with a `CREATE TABLE workspace` error. Pre-warming the
@@ -1312,27 +1294,13 @@ Documented in full because it encodes a failure already paid for once:
   opencode v1.17.20, which uses a SQLite database at
   `~/.local/share/opencode/opencode.db` — hence the `CREATE TABLE` SQL error. The
   isolated-storage prescription applies uniformly to both tiers.
-- **Phase 1 (throwaway repo):** `git init` in `/tmp/oc-test/repo`, 6 worktrees, a script
-  spawning N concurrent `opencode run` with isolated vs shared storage. 6 experiments (N=3 and
-  N=6, isolated vs shared storage, cold vs warm start). Results: isolated storage 9/9 success;
-  shared storage 5/6 at cold start with a reproducible migration race (see caveat above), 6/6
-  when pre-warmed.
-- **Phase 2 (this repo's worktrees):** 6 worktrees of bmad-playground created via
-  `git worktree add`, each with isolated storage and `--dir <worktree>`, run concurrently
-  while a live session was active against the main repo (the exact condition of the original
-  failure). Results: 2/2, 3/3, 6/6 success — zero failures across 11 runs. Every instance was
-  assigned the same `projectID` (git-identity-derived, identical to the live main-repo session);
-  opencode's project refresh listed all 7 dirs sharing that ID. **The identity collision did not
-  recur.** The `UnknownError: Unexpected server error` was a shared-mutable-state collision in
-  common storage, not a fundamental git-identity problem. Isolated storage per agent removes the
-  shared mutable state; same-projectID coexistence is safe.
-- **Remaining scope (not tested):** both phases used a trivial prompt (startup + one LLM call).
+- **Remaining scope (not tested):** the experiments used a trivial prompt (startup + one LLM call).
   Heavier concurrent interactions — tool use, file writes, permission prompts, long sessions,
   `--continue`/`--fork`, `--attach` to a shared server — could still surface a collision. The
   recipe is confirmed safe for the *process*; richer agent interactions need their own test
   before the dispatcher relies on them.
 
-### Park/resume for human questions — mandatory (decided by Marius)
+### Park/resume for human questions — mandatory
 
 - When an agent's output classifies as outcome `QUESTION`, the node is **parked**, not failed.
   The canonical parked state is the journal entry (status `parked` — a third status, not
@@ -1344,7 +1312,7 @@ Documented in full because it encodes a failure already paid for once:
 - The sandbox is stopped while parked: disk and opencode storage survive a Daytona stop, so
   parking costs nothing while the question waits (the human-response window is unbounded — the
   existing no-timeout limitation on questions carries over; lifecycle timers are set so a long
-  park cannot be auto-deleted — see Sandbox lifecycle). Verified 2026-07-22: stop ~2.3s,
+  park cannot be auto-deleted — see Sandbox lifecycle). Verified: stop ~2.3s,
   start ~0.8s, opencode storage directory preserved identically across the cycle.
 - Other agents are unaffected; nothing finished is discarded or re-run.
 - An answer resumes exactly one session: the human submits the form, n8n writes the answer to
@@ -1374,7 +1342,7 @@ Documented in full because it encodes a failure already paid for once:
   (`maxAttemptsPerNode`, gen-3 dispatcher policy); genuine node failures count exactly as
   chain attempts do today.
 
-### Merge cycle (decided 2026-07-22; revised 2026-07-22 — tests decoupled)
+### Merge cycle
 
 The merge queue's unit of work. The entire merge cycle — fetch, rebase, merge, push —
 runs on a sandbox created for the merge cycle's duration (seconds); the
@@ -1383,7 +1351,7 @@ the same fact that put conflict resolution in sandboxes. A dedicated local clone
 a second repo to maintain, plus a crash-recovery surface (a reboot mid-rebase leaves rebase
 state to detect and abort) that a disposable merge cycle simply doesn't have.
 
-**Tests are not part of the merge cycle** (revised 2026-07-22). The pipeline merges branches
+**Tests are not part of the merge cycle**. The pipeline merges branches
 without running tests — a merge is git integration (fetch, rebase, merge, push), not a quality
 gate. A post-merge hook — project-authored, configured in the policy block — fires after the
 merge lands. If the hook fails, the failure is a standard `failed` outcome that rides the
@@ -1434,7 +1402,7 @@ is meaningful. See Pipeline vs. project-specific customization.
 - **Credentials.** The sandbox pushes main with the same repo credentials agents already use
   for their branch pushes (see Credentials under Sandbox lifecycle).
 
-### Merge-conflict resolution (decided 2026-07-21)
+### Merge-conflict resolution
 
 One path for every failure: an agent in a resolution node. Conflict resolution modifies files,
 and file-modifying work runs in sandboxes as graph nodes — never on the devcontainer, whose
@@ -1491,19 +1459,13 @@ lockfile.
   output, so the planner and the human read the actual failure, not a summary that outlived its
   n8n execution. A project with no hook configured has no failure path here — the merge lands
   and the chain proceeds.
-- **Rejected: a deterministic auto-fix tier in the merge queue** (journal the conflict, then
-  mechanically regenerate lockfiles and generated files, re-merge; escalate the rest).
-  One path for every conflict beats a second resolution surface plus a regenerable-file
-  classification to maintain, at the accepted cost that trivial conflicts pay the full path
-  (see Honest costs). It also keeps the merge queue simple, which is what makes it safe to
-  host in n8n.
 
 ### Dependency knowledge for the graph
 
 - Multiple review nodes modify the same files — `bmad-code-review` applies patches,
   `bmad-testarch-test-review` fixes markers and removes stubs, `bmad-testarch-nfr` applies
   remediations. Gen-3 does not classify skills into read-only and file-modifying: all nodes
-  are assumed to modify files (decided 2026-07-21), so a chain is a total order and review
+  are assumed to modify files, so a chain is a total order and review
   ordering is each node's position in the chain — a per-chain planning decision the graph
   makes visible instead of burying in a step sequence. Which order suits a given chain rests
   on the chain-composition guidelines carrying the ordering advice — a guideline the agent
@@ -1518,11 +1480,11 @@ lockfile.
 - A mid-chain merge point inserts merge-queue latency (rebase → merge, serialized across
   all chains) between two chain segments, and each one adds a merge-queue run. The
   chain-composition guidelines should mark one only where it buys something — a dependent chain
-   to unlock — not by default. The whole merge cycle runs on a sandbox created per merge cycle
-   (resolved questions 12 and 16), so merge-queue compute never competes with the human's dev
+   to unlock — not by default. The whole merge cycle runs on a sandbox created per merge cycle,
+   so merge-queue compute never competes with the human's dev
    servers or Postgres on the devcontainer — the merge cycle's sandbox counts against
   `maxConcurrentSandboxes` for its duration (seconds), reducing node-claim capacity by one
-  during that window. The merge cycle does not run tests (revised 2026-07-22); a post-merge
+  during that window. The merge cycle does not run tests; a post-merge
   hook, if configured, runs project-specific validation after the merge lands. Mid-chain merge
   points multiply the merge-cycle cost, which is why the
   guidelines mark one only where it earns it.
@@ -1532,7 +1494,7 @@ lockfile.
   journaled like any other conflict evidence.
 - Every merge conflict — a trivial lockfile collision included — pays the full resolution
   path: conflict report, planning run, sandbox claim, agent run, merge-queue retry. That is
-  hours on the blocked chain, accepted (2026-07-21) to keep one resolution path; other chains
+  hours on the blocked chain, accepted to keep one resolution path; other chains
   proceed meanwhile, and a chronically conflicting chain pair is a planning signal (serialize
   them), not a latency problem to optimize.
 - Chains are composed from a snapshot of knowledge that reality can overtake: an upstream
@@ -1545,10 +1507,10 @@ lockfile.
   Merge-conflict resolution).
 - Post-scope finalization audits (trace, NFR, bug-hunt) may run while next-scope work merges —
   full overlap is permitted — so their evidence is a snapshot that later merges can
-  invalidate. Accepted (2026-07-22): the guidelines advise the planner on when to hold
+  invalidate. The guidelines advise the planner on when to hold
   next-scope composition back; machinery enforces no between-scopes quiet point (see Scope
   lifecycle).
-- **No test safety net in the pipeline** (revised 2026-07-22). The merge cycle does not run
+- **No test safety net in the pipeline**. The merge cycle does not run
   tests; a broken merge lands on main and propagates to downstream chains until a post-merge
   hook (if configured) catches it or a human notices. This is the trade-off for generality:
   the pipeline works for doc-only projects, early-phase projects with no tests, and code
@@ -1578,7 +1540,7 @@ remain open, each with a spike or design-decision plan.
 
 ### Verified spikes
 
-The following assumptions were verified by spikes (2026-07-22) and are folded into the relevant
+The following assumptions were verified by spikes and are folded into the relevant
 prose above; the spike reports hold the full evidence:
 
 - **Daytona session API** (`runAsync`, poll, exit code, log pull) — see `docs/todo/spike-opencode-sandbox.md`.
@@ -1599,45 +1561,29 @@ prose above; the spike reports hold the full evidence:
   path honors cpu/memory as cgroup-v2 quotas and disk as overlay. The wording in the
   provisioning recipe and the capability table reflects "rejects," not "ignores."
 
-### 5. n8n Execute Command: blocking for minutes + child death on restart — PARTIALLY VERIFIED (spike, 2026-07-22); blocking PASS, child death FAIL
+### 5. n8n Execute Command: blocking for minutes + child death on restart — see `docs/todo/spike-execute-command.md`
 
 Both the planning-host and merge-queue workflows use Execute Command to run a wrapper that
-blocks for the run's duration (minutes). This assumes n8n does not kill long-running Execute
-Command nodes. The process-vanished recovery path assumes "a local planning run dies when n8n
-restarts, since the run is a child of its host workflow's Execute Command" — this is the
-basis for the recovery design. If the child does not die (orphaned and holding the lock), the
-pass thinks the planner is still running and never relaunches — the pipeline stalls silently.
-Conversely, if Execute Command's child survives n8n restart, the planning lock stays held.
+blocks for the run's duration (minutes). n8n does not kill long-running Execute Command nodes
+(`exec` with no `timeout` option blocks indefinitely). However, `child_process.exec()`
+registers no cleanup handler, and `process.exit()` does not signal children: when n8n
+receives SIGTERM (the signal pm2 sends on restart) and exits, the child process is NOT killed.
+It is reparented to init (PID 1) within ~1s, receives no signal, and continues running —
+holding the planning lock. The orphaned child keeps holding the lock, so the pass reads the
+lock as held and never relaunches — the pipeline stalls silently.
 
-**Verified by the execute-command spike (2026-07-22):** the spike tested the underlying
-mechanism directly — `child_process.exec()`, the exact call the Execute Command node's source
-code makes — because the Execute Command node is disabled by default in n8n v2+ and the
-internal REST execution path does not run it. Source code analysis confirmed the node passes
-no `timeout` option (defaults to `0`, blocks indefinitely), `ActiveExecutions.shutdown()`
-does not cancel running executions on graceful shutdown, and no child process cleanup handler
-is registered anywhere in the shutdown path.
-
-**Blocking — PASS:** `exec('sleep 30 && echo DONE', { cwd }, callback)` blocked for the full
-30.0s with no timeout. The Execute Command node will block for minutes or hours as expected.
 Caveat: the 1MB `maxBuffer` default means the wrapper must redirect heavy stdout to a file or
 the child is killed with "stdout maxBuffer length exceeded."
 
-**Child death on restart — FAIL (assumption disproved):** when the parent process receives
-SIGTERM (the signal pm2 sends on restart) and exits, the child process is NOT killed. It is
-reparented to init (PID 1) within 1s, receives no signal, and continues running to completion.
-This is standard Unix behavior: `child_process.exec()` registers no cleanup handler, and
-`process.exit()` does not signal children. The orphaned child keeps holding the planning lock.
-The process-vanished recovery path — which relies on n8n restart killing the child — will not
-trigger, and the pipeline stalls silently, exactly the failure mode the plan warned about.
-
-**Recommendation (deferred — not in the initial pipeline version):** the process-vanished
-recovery path cannot rely on n8n restart killing the child. The fix is a parent-alive check
-in the wrapper script: periodically test `kill -0 $PPID` and exit if the parent (n8n) is gone,
-releasing the lock. This is a few lines in the wrapper and directly addresses the root cause.
-This is a known gap in the initial version — the pipeline will ship without the parent-alive
-check, accepting the risk that an n8n restart during a planning run leaves an orphaned child
-holding the lock. The fix will be added in a follow-up. See
-`docs/todo/spike-execute-command.md` for the full spike report and findings.
+The fix is a parent-alive check in the wrapper script: periodically test `kill -0 $PPID` and
+exit if the parent (n8n) is gone, releasing the lock. This is a few lines in the wrapper and
+directly addresses the root cause. This is a known gap in the initial version — the pipeline
+will ship without the parent-alive check, accepting the risk that an n8n restart during a
+planning run leaves an orphaned child holding the lock. The fix will be added in a follow-up.
+Until then, recovery from an n8n restart during a planning run is manual: kill the orphaned
+process by its recorded PID, then the next pass acquires the lock and relaunches per retry
+policy. Canonical state (the journal, the delta scratch file) is never lost — only the lock
+must be cleared.
 
 ### 6. Fold-time delta validation against a moving target
 
@@ -1673,7 +1619,7 @@ resolve before implementation, not a spike to run.
 
 ## Path (incremental, each step independently useful)
 
-1. ~~Run the opencode concurrency experiment~~ — done (both phases). Isolated storage per
+1. The opencode concurrency experiment is complete. Isolated storage per
    agent is safe at N=6. Moot for the sandbox tier (separate machines), but confirms the
    isolated-storage pattern the sandbox recipe inherits. See the opencode concurrency section
    and spike finding F3.
@@ -1681,7 +1627,7 @@ resolve before implementation, not a spike to run.
    - Build a custom Daytona snapshot via the Declarative Builder: Node.js, Yarn, Postgres,
      Playwright browsers, opencode, and the repo's dependencies pre-installed. This eliminates
      the per-sandbox install step and makes claim-to-start fast. **Bake the shallow clone
-     itself into the snapshot (Strategy A, decided 2026-07-22 — verified by
+     itself into the snapshot (Strategy A — verified by
      `docs/todo/spike-baked-node-modules.md`):** bake a shallow clone plus
      `runCommands('npm install')` during the build (a `git clone` alone has no `node_modules`
      — gitignored), and chown the baked checkout to uid 1001 via `dockerfileCommands(['USER
@@ -1724,9 +1670,9 @@ resolve before implementation, not a spike to run.
    wrapper) + Mermaid graph view. Agents push their own branches; a pass that finds a
    completed merge-point node not yet merged triggers n8n's merge queue (level-triggered); no
    event-ingest webhook — canonical state is written only under the pass lock. The merge queue runs
-   the whole merge cycle — rebase, merge, push — on a sandbox created per merge
-    cycle, serialized by `merge.lock` (resolved questions 12 and 16). **No tests in the merge
-    cycle** (revised 2026-07-22); a post-merge hook, if configured, fires after the merge lands.
+    the whole merge cycle — rebase, merge, push — on a sandbox created per merge
+     cycle, serialized by `merge.lock`. **No tests in the merge
+     cycle**; a post-merge hook, if configured, fires after the merge lands.
     Restart n8n mid-merge-cycle and verify the
    next pass re-triggers a fresh merge cycle. Exercise a mid-chain merge point: an early
    node merges its artifact and a dependent chain starts against it while the first
@@ -1737,103 +1683,12 @@ resolve before implementation, not a spike to run.
 
 First real parallel run should be manual and supervised, including at least one supervised park.
 
-## Resolved questions
-
-Most decisions are documented inline in the relevant section above. This list retains only
-decisions kept as history (superseded revisions) or with rationale not captured inline.
-
-5. **Gen-2 self-improvement: not inherited (2026-07-20).** Out of scope for gen-3; a future
-   reflector is a separate consumer of gen-3's own journal, designed for a parallel world (the
-   gen-2 between-stories reflection cadence has no equivalent here). Gen-3 reads and writes
-   none of gen-2's state files.
-12. **Merge-queue test execution (2026-07-22, superseded same day by resolved question 16):
-     the test step runs on a sandbox acquired per merge cycle.** The original decision split the
-     merge cycle: git ops (rebase, merge) ran locally on the devcontainer — repo access was considered
-     load-bearing (see n8n / dispatcher split) — and the test step ran on a sandbox created for
-     the merge cycle via the Daytona session API, held for the duration of one merge cycle (rebase +
-     test — minutes, not hours), then destroyed like any finished claim (single-use — see
-     Sandbox lifecycle). The n8n workflow drove the sandbox: create, execute the test command
-     via the session API, poll for completion, pull results, destroy. This avoided running the
-     test suite on the devcontainer, which already carries n8n, the dispatcher, the human's dev
-     servers, and the human's Postgres — a performance bottleneck especially under mid-chain
-     merge points that multiply merge frequency. The sandbox's isolation (own ports, own
-     Postgres, own filesystem) eliminates the collision surfaces that a local worktree would
-     reintroduce. The cost was one git round-trip per merge (shipping the rebased branch to the
-     sandbox) and one `maxConcurrentSandboxes` slot during each merge cycle — both small
-     against minutes-long merge cycles and hours-long node claims. Rejected alternatives:
-     reusing the finishing sandbox (holds sandboxes alive waiting for their merge-queue slot, burning
-     scarce quota — see Honest costs); optimistic concurrency with no serial merge queue (replaces a
-     core design decision for little gain — integration is minutes, skill runs are hours, so
-     serialization is not the bottleneck); a dedicated long-lived merge-test sandbox (wastes
-     10 GB of the 30 GB quota while idle, needs its own supervision path). **Superseded by
-     resolved question 16**: the whole merge cycle — git ops included — runs on the sandbox, so the
-    local git-ops half no longer stands; the rejected alternatives above remain rejected. See
-    Git is the convergence point, the merge queue row in the n8n / dispatcher split, and
-    resolved question 16.
-13. **Merge-queue test scope — original decision (2026-07-22, superseded same day): `nx affected`
-    with a periodic full run, both tunable in the policy config.** Affected-only runs the tests for
-    projects touched by the diff — minutes, not tens of minutes — keeping the serial merge queue's
-    per-merge cost low under mid-chain merge points. The periodic full run is the safety net that
-    catches what affected-only misses (inaccurate nx project graphs, undeclared dependencies); its
-    cadence is a config knob (`fullTestRunIntervalMerges` — every N merges, or
-    `fullTestRunIntervalHours` — every N hours), tuned empirically in Path step 5. Both the test
-    scope mode (`affected` | `full`) and the full-run cadence live in the dispatcher's policy config
-    file — the same one as `maxConcurrentSandboxes` and the other capacity knobs — read at the start of
-    every pass, so tuning is an operational change, not a code change. A full-suite-per-merge mode is
-    available as a config value for when the nx project graph is not yet trustworthy or for a
-    paranoid baseline; the default is `affected`. Superseded — see below.
-
-    **Merge-queue test scope — revision (2026-07-22): all unit tests, every merge; no `nx
-    affected`; no periodic full-run cadence.** `nx affected` is unreliable during structural changes
-    — a new library with undeclared dependencies runs no tests for the new code, and the periodic
-    full run existed only to compensate for that blind spot. Running all unit tests on every merge is
-    simpler and safer; the cost is real (minutes, not seconds) but is the same minutes the full-run
-    cadence already incurred periodically, paid on every merge instead of every Nth. Excluded: e2e
-    tests and other expensive tests (Playwright, integration tests that need external services) —
-    those need their own hosting story (own sandbox lifecycle, own timeout budget) and are out of
-    scope for this decision; a separate periodic run for them may exist in the future. The test scope
-    remains a config value in the dispatcher's policy config file — the same one as
-    `maxConcurrentSandboxes` and the other capacity knobs — so the scope can be tightened or
-    loosened without a code change; the default is all unit tests. The cadence knobs
-    (`fullTestRunIntervalMerges`, `fullTestRunIntervalHours`) are removed — every run is already
-    comprehensive for unit tests, so there is nothing to cadence. Supersedes the original decision
-    above. See the merge queue row in the n8n / dispatcher split and the Merge cycle section.
-
-    **Merge-queue test scope — second revision (2026-07-22): tests removed from the merge cycle
-    entirely.** The merge cycle does not run tests; testing is decoupled to a project-authored
-    post-merge hook configured in the policy block. A hook failure is a standard `failed` outcome
-    that rides the existing remediation path (see Merge-conflict resolution). This generalizes the
-    pipeline beyond code projects: early-phase doc work (BMAD phases 1-2) and projects with no test
-    suite simply merge. The pipeline does not assume tests, a test framework, or a package-manager
-    install in the merge cycle. Resolved questions 12 and 13's test-scope decisions are moot. See
-    Merge cycle, Pipeline vs. project-specific customization, and Honest costs.
-20. **Tests decoupled from the merge cycle (2026-07-22).** The merge cycle is git integration
-    (fetch, rebase, merge, push) — not a quality gate. A post-merge hook, project-authored and
-    configured in the policy block, fires after the merge lands. If the hook fails, the failure
-    rides the standard remediation path (conflict-mode planning run → resolution node or rework).
-    Rationale: the pipeline was a BMAD story engine that assumed code, tests, and a package
-    manager; decoupling tests makes it a general graph executor that works for doc-only projects,
-    early-phase projects with no tests, and code projects alike. The trade-off: a broken merge
-    lands on main and propagates until the hook catches it or a human notices — accepted, because
-    the project owns the consequence (configure a hook for gates, accept unguarded merges without).
-    See Merge cycle, Honest costs, Pipeline vs. project-specific customization.
-21. **`chainId` replaces story as the structural field (2026-07-22).** The machinery reads
-    `chainId` for branch naming (`pipeline/<runId>/<chainId>`), cross-chain edge validation, and
-    `abandonSegment` identity. Story, epic, sprint, phase, and all project-specific vocabulary move
-    to a `metadata` dict on the node spec that the machinery never reads. The planner carries
-    project-specific semantics in its prompt alongside immutable graph rules. Rationale: the
-    pipeline was story-shaped by construction — every node had to belong to a story, the machinery
-    derived branch names from story identity, and the cross-edge invariant was stated against
-    story. `chainId` makes the chain the structural concept, not the story; a node with no story
-    in its metadata is a node whose chain isn't story-shaped, and everything works. See Graph
-    management rules, Pipeline vs. project-specific customization, Graph delta format.
-
 ## Open questions
 
 1. Chain-composition guidelines document — to author before Path step 4. The mechanical half
-   (graph delta in the inbox — resolved question 6, now pinned in full: op vocabulary,
+   (graph delta in the inbox — op vocabulary,
    envelope, wrapper promotion, all-or-nothing fold — see Graph delta format) and the
-   context contract (what the planner knows and may touch — resolved question 8) are
+   context contract (what the planner knows and may touch — see Planning-run context) are
    decided. What remains is writing
    the document itself: name, location, and content — the gen-2 step sequence rewritten as
    advice with include/skip conditions per step (empty-diff evidence in the journal is what
@@ -1845,7 +1700,7 @@ decisions kept as history (superseded revisions) or with rationale not captured 
    placement advice (only where a dependent chain exists to unlock — and cleared on the
    unclaimed node when a replan drops that dependent), the conflict-resolution
    advice (in-place resolution vs rework, and when a resolution node deserves a trailing
-   review node — resolved question 9), the scope-finalization playbook seeded from the
+   review node — see Merge-conflict resolution), the scope-finalization playbook seeded from the
    human's manual post-scope flow (sprint-flow-draft.md: `bmad-bug-hunt`,
    `bmad-testarch-trace` with a FAIL → fix follow-up, `bmad-testarch-nfr`, deferred-work
    pruning with its rule to ask when a finding is not a stale deferral,
@@ -1853,7 +1708,7 @@ decisions kept as history (superseded revisions) or with rationale not captured 
    stays folded into bug-hunt), the overlap advice (when next-scope composition should wait
    for an in-flight scope audit — see Scope lifecycle), the skill catalog with per-skill
    default deadlines, and the concrete node-spec schema (field names and format for the
-   vocabulary pinned in resolved question 8 — `id`, `chainId`, skill/agent/prompt, deadline,
+   vocabulary — `id`, `chainId`, skill/agent/prompt, deadline,
    `dependsOn`, `mergeTo`, `metadata`). The guidelines carry project-specific semantics
    (story, epic, phase, sprint vocabulary) alongside the immutable graph rules — see
    Pipeline vs. project-specific customization.
