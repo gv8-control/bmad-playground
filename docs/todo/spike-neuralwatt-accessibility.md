@@ -175,6 +175,16 @@ sandbox: `/v1/models` returns 200, chat completions work, SSE streaming arrives
 incrementally (not buffered). See resolved question 17 in `graph-pipeline.md` for the full
 decision and spike results.
 
+**Follow-up spike (2026-07-22):** the curl-based verification above proved the network
+path but left the opencode path unverified — no spike had run `opencode run --model
+neuralwatt/glm-5.2` with the provider `baseURL` pointed at the relay.
+`docs/todo/spike-opencode-relay.js` closes that gap: it writes an `opencode.json` with
+`provider.neuralwatt.options.baseURL` set to the relay URL into the sandbox, injects
+`NEURALWATT_API_KEY` into the env, and runs opencode. Both non-streaming (`opencode run
+--model neuralwatt/glm-5.2 "Print exactly: SPIKE_OK"` → exit 0, output contains
+`SPIKE_OK`) and streaming (`--format json` → full `step_start`/`text`/`step_finish` event
+sequence) succeed. See `docs/todo/spike-opencode-relay.md` for the full report.
+
 The reasoning changes from "Cloudflare bot protection" to "Daytona Tier 1 network
 allowlist." This matters because:
 

@@ -1491,6 +1491,19 @@ incrementally (not buffered). Direct `api.neuralwatt.com` from the same sandbox 
 `https://neuralwatt-relay-production.up.railway.app/v1`. See resolved question 17 for the full
 deployment details and spike results.
 
+**opencode-through-relay spike (2026-07-22):** the relay spike above verified the network
+path via manual `curl`, but left the opencode path unverified — no spike had exercised
+opencode itself calling neuralwatt through the relay (provider resolution, `baseURL`
+override, API key injection, opencode's SSE parser). `docs/todo/spike-opencode-relay.js`
+closes that gap: it writes an `opencode.json` with `provider.neuralwatt.options.baseURL`
+set to the relay URL into a Tier 1 sandbox, injects `NEURALWATT_API_KEY` into the env, and
+runs `opencode run --model neuralwatt/glm-5.2`. Non-streaming run ("Print exactly:
+SPIKE_OK") → exit 0, output contains `SPIKE_OK` (8.9s). Streaming run (`--format json`) →
+exit 0, full `step_start`/`text`/`step_finish` event sequence captured (10.3s). Direct
+`api.neuralwatt.com` from the same sandbox fails (HTTP 000), confirming the relay is
+required and the opencode provider override is what makes it work. See
+`docs/todo/spike-opencode-relay.md` for the full report.
+
 ### 7. Fold-time delta validation against a moving target
 
 The planner reads `graph.json` at launch (T0); by fold time (T1) a pass may have claimed
@@ -1873,6 +1886,21 @@ First real parallel run should be manual and supervised, including at least one 
        incrementally over ~50ms with measurable inter-chunk gaps (not buffered). Caddy's
        default streaming behavior passes through chunked responses transparently; no
        `flush_interval` config change needed.
+
+     **opencode-through-relay spike (2026-07-22, `docs/todo/spike-opencode-relay.js`):**
+     the four curl-based results above verified the network path but not the opencode path
+     — provider resolution from `opencode.json`, `baseURL` override propagation, API key
+     injection, opencode's own SSE parser. This follow-up spike writes an `opencode.json`
+     with `provider.neuralwatt.options.baseURL` set to the relay URL into a Tier 1 sandbox,
+     injects `NEURALWATT_API_KEY` into the env, and runs opencode directly:
+     5. `opencode run --model neuralwatt/glm-5.2 "Print exactly: SPIKE_OK"` (non-streaming,
+        cwd `/tmp` with the relay-pointed `opencode.json`) — **succeeded** (exit 0, output
+        contains `SPIKE_OK`, 8.9s). Provider resolved from the sandbox-local config; the
+        `baseURL` override routed the request through the relay.
+     6. `opencode run --format json --model neuralwatt/glm-5.2` (streaming) — **succeeded**
+        (exit 0, full `step_start`/`text`/`step_finish` event sequence captured, 10.3s).
+        opencode's SSE parser correctly decoded the relay's chunked responses.
+     See `docs/todo/spike-opencode-relay.md` for the full report.
 
     Alternatives considered and rejected: split-provider (neuralwatt on devcontainer,
     Anthropic/OpenAI in sandboxes) — works but abandons neuralwatt's pricing for sandbox
