@@ -1470,7 +1470,7 @@ build-time network is available; (3) bare repos in snapshots need loose refs
 (only relevant to the spike's fixture, not the primary strategy's shallow
 clone). See `docs/todo/spike-baked-node-modules.md` for the full spike report.
 
-### 5. n8n Execute Command: blocking for minutes + child death on restart
+### 5. n8n Execute Command: blocking for minutes + child death on restart — PARTIALLY VERIFIED (spike, 2026-07-22); blocking PASS, child death FAIL
 
 Both the planning-host and merge-queue workflows use Execute Command to run a wrapper that
 blocks for the run's duration (minutes). This assumes n8n does not kill long-running Execute
@@ -1479,11 +1479,36 @@ restarts, since the run is a child of its host workflow's Execute Command" — t
 basis for the recovery design. If the child does not die (orphaned and holding the lock), the
 pass thinks the planner is still running and never relaunches — the pipeline stalls silently.
 Conversely, if Execute Command's child survives n8n restart, the planning lock stays held.
-**Spike:** in the devcontainer's n8n, create a workflow with an Execute Command node that
-runs `sleep 300`. Verify it blocks for 5 minutes and completes. Then run it again and restart
-n8n mid-sleep. Verify whether the child process dies (or does not — either way, learn the
-truth) and whether the lock is released. If Execute Command times out before minutes, the
-hosting pattern needs a different mechanism.
+
+**Verified by the execute-command spike (2026-07-22):** the spike tested the underlying
+mechanism directly — `child_process.exec()`, the exact call the Execute Command node's source
+code makes — because the Execute Command node is disabled by default in n8n v2+ and the
+internal REST execution path does not run it. Source code analysis confirmed the node passes
+no `timeout` option (defaults to `0`, blocks indefinitely), `ActiveExecutions.shutdown()`
+does not cancel running executions on graceful shutdown, and no child process cleanup handler
+is registered anywhere in the shutdown path.
+
+**Blocking — PASS:** `exec('sleep 30 && echo DONE', { cwd }, callback)` blocked for the full
+30.0s with no timeout. The Execute Command node will block for minutes or hours as expected.
+Caveat: the 1MB `maxBuffer` default means the wrapper must redirect heavy stdout to a file or
+the child is killed with "stdout maxBuffer length exceeded."
+
+**Child death on restart — FAIL (assumption disproved):** when the parent process receives
+SIGTERM (the signal pm2 sends on restart) and exits, the child process is NOT killed. It is
+reparented to init (PID 1) within 1s, receives no signal, and continues running to completion.
+This is standard Unix behavior: `child_process.exec()` registers no cleanup handler, and
+`process.exit()` does not signal children. The orphaned child keeps holding the planning lock.
+The process-vanished recovery path — which relies on n8n restart killing the child — will not
+trigger, and the pipeline stalls silently, exactly the failure mode the plan warned about.
+
+**Recommendation (deferred — not in the initial pipeline version):** the process-vanished
+recovery path cannot rely on n8n restart killing the child. The fix is a parent-alive check
+in the wrapper script: periodically test `kill -0 $PPID` and exit if the parent (n8n) is gone,
+releasing the lock. This is a few lines in the wrapper and directly addresses the root cause.
+This is a known gap in the initial version — the pipeline will ship without the parent-alive
+check, accepting the risk that an n8n restart during a planning run leaves an orphaned child
+holding the lock. The fix will be added in a follow-up. See
+`docs/todo/spike-execute-command.md` for the full spike report and findings.
 
 ### 6. opencode.json provider registration for neuralwatt — VERIFIED (spike, 2026-07-22; relay spike 2026-07-22)
 
