@@ -878,7 +878,10 @@ single-use keeps it free across sequential claims too.
   catches a stale snapshot bake. See resolved question 19.
 - Create sandboxes from the custom snapshot with explicit resources:
   `resources: { cpu: 4, memory: 8, disk: 10 }` (the platform max). Create from image, not
-  snapshot, to control resources — snapshots ignore resource params.
+  snapshot, to control resources — snapshots ignore resource params. Pass `labels: { scope:
+  'pipeline', runId }` at creation — labels are on the returned `Sandbox` instance immediately
+  (verified spike 2026-07-22, see `docs/todo/spike-label-scoping.md`), so reconcile can find
+  sandboxes by label without a separate labeling call.
 - `git clone --depth 1` the repo into the sandbox (shallow, fast) — or, when the clone is
   baked into the snapshot (Strategy A, decided 2026-07-22), `git fetch` to current. The Daytona SDK's `git.clone`
   has no depth parameter — use `executeCommand('git clone --depth 1 ...')` instead.
@@ -1009,6 +1012,7 @@ images, explicit resources, and a declarative builder for pre-baking snapshots.
 | Custom snapshots | ✅ Declarative Builder | Build from any base image with `apt-get`, `run_commands()`, `dockerfile_commands()`, or `from_dockerfile()`. Pre-bake Node, Yarn, Postgres, Playwright, opencode, and repo deps. Cached for 24h; subsequent runs on the same runner are "almost instantaneous" |
 | Network allow-listing | ✅ Runtime-updatable (Tier 3+) | `domainAllowList` (wildcards, max 20) + `networkAllowList` (CIDR, max 10) + `networkBlockAll`. Updatable on a running sandbox without restart. Essential services (npm, GitHub, Anthropic, Docker, Playwright, Railway, opencode) are pre-allowed on all tiers. **Tier 1/2 cannot override the Essential Services restriction** — `domainAllowList` returns an error on those tiers (spike, 2026-07-22). On Tier 1, `networkBlockAll: false` (the default) means "apply the tier policy" (Essential Services only), not "open egress." See `docs/todo/spike-neuralwatt-accessibility.md` |
 | Create-on-demand latency | ✅ Fast from cached snapshot | The platform has no pool/acquire-release abstraction, and gen-3 needs none: pre-built snapshots make creation near-instant (cached 24h), so a sandbox is created per claim and destroyed at collection |
+| Sandbox labeling | ✅ At creation, filterable via list | `daytona.create({ labels: { scope: 'pipeline', runId } })` sets labels atomically with creation — on the returned instance immediately, no separate call. `daytona.list({ labels: {...} })` filters by exact key-value match after a ~5s index propagation delay. Daytona auto-adds `code-toolbox-language: python` to every sandbox (does not interfere with filtering). `setLabels()` replaces labels (response is authoritative) but the list index lags on label removal for 20s+ — not a problem since the pipeline sets labels at creation and never updates them (spike, 2026-07-22, see `docs/todo/spike-label-scoping.md`) |
 
 No real platform gap remains: create-on-demand needs no pool management — only the scoped
 labeling and reaper discipline described under Sandbox lifecycle.
@@ -1040,9 +1044,17 @@ labeling and reaper discipline described under Sandbox lifecycle.
 - **Reconcile on every pass:** list sandboxes with the pipeline `scope` label and cross-check
   against the journal. A sandbox no entry accounts for is orphaned (crash, terminate) and gets
   destroyed; a running one with a live claim is polled; a finished one gets collected and
-  destroyed. The product's `cleanup-daytona-sandboxes.ts` is account-wide
-  destructive — the pipeline needs a scoped reaper (Epic 8.1 adds one for the product; depend
-  on it or build its own).
+  destroyed. Labels are set at creation (`daytona.create({ labels: { scope: 'pipeline', runId } })`)
+  and are on the returned `Sandbox` instance immediately — no separate labeling call, no window
+  where a sandbox exists without its labels (verified spike 2026-07-22, see
+  `docs/todo/spike-label-scoping.md`). The `list({ labels: { scope: 'pipeline' } })` filter finds
+  sandboxes by exact key-value match; Daytona auto-adds a `code-toolbox-language: python` label
+  to every sandbox, which does not interfere with filtering. A ~5s index propagation delay
+  exists between creation and list-filter visibility — irrelevant since reconcile runs on passes
+  minutes apart, and the dispatcher journals the sandbox ID at claim time (same pass), so it
+  never discovers its own just-created sandbox via `list()`. The product's
+  `cleanup-daytona-sandboxes.ts` is account-wide destructive — the pipeline needs a scoped
+  reaper (Epic 8.1 adds one for the product; depend on it or build its own).
 - **Quota management:** the Daytona account has a 30 GiB shared disk quota across all
   environments. Shallow clones (`--depth 1`) reduce per-sandbox disk. Create-on-demand ties
   live sandboxes to in-flight work by construction — in-flight claims plus parked nodes plus
@@ -1597,8 +1609,9 @@ the ones that matter; these are noted so the seams are visible during implementa
 - **Pass ↔ merge wrapper ↔ per-cycle sandbox.** Same pattern as planning but with a sandbox
   the wrapper creates. If the wrapper creates the sandbox but dies before recording its ID, the
   pass cannot find the sandbox to destroy it — unless reconcile catches it via the
-  `scope: pipeline` label, which must be set at creation, not after. The ordering of
-  create-sandbox-labeled → record ID → hold lock → do work matters for recovery.
+  `scope: pipeline` label, which must be set at creation, not after (verified viable — labels
+  are on the instance immediately at `create()` return, see `docs/todo/spike-label-scoping.md`).
+  The ordering of create-sandbox-labeled → record ID → hold lock → do work matters for recovery.
 - **Park/resume spanning pass / n8n / Daytona / opencode.** The full park/resume chain crosses
   four components and is the intersection of the sandbox-stop/start and opencode-session-resume
   assumptions above. Each is individually testable; the combination (stop a sandbox with a live
@@ -1619,11 +1632,18 @@ the ones that matter; these are noted so the seams are visible during implementa
   that window. The seconds-long budget assumes roughly one exit per pass; a batch of exits
   stretches it. Not a performance concern but a correctness concern if lock hold time blocks
   merge triggering or question-resume long enough to matter functionally.
-- **Reconcile orphan matching.** "Destroy sandboxes no journal entry accounts for" matches by
-  label, not by ID. A sandbox created by a pass that died before journaling the claim is
-  orphaned and destroyed — fine, if the label is set at creation. If a sandbox is created
-  without the label (a bug in the create path), reconcile cannot see it, and it leaks —
-  consuming quota silently. The label is load-bearing for cleanup.
+- **Reconcile orphan matching — VERIFIED (spike, 2026-07-22).** "Destroy sandboxes no journal
+  entry accounts for" matches by label, not by ID. A sandbox created by a pass that died before
+  journaling the claim is orphaned and destroyed — fine, if the label is set at creation. If a
+  sandbox is created without the label (a bug in the create path), reconcile cannot see it, and
+  it leaks — consuming quota silently. The label is load-bearing for cleanup. **Verified by the
+  label-scoping spike (2026-07-22):** labels passed to `daytona.create({ labels })` are on the
+  returned `Sandbox` instance immediately (no separate labeling call, no propagation window), and
+  `daytona.list({ labels: {...} })` finds sandboxes by label filter after a ~5s index propagation
+  delay (irrelevant — reconcile runs on later passes, minutes apart). `setLabels()` (post-creation
+  update) response is authoritative but the list index lags on label removal for 20s+; not a
+  problem since the pipeline sets labels at creation and never updates them. See
+  `docs/todo/spike-label-scoping.md` for the full spike report.
 
 ## Path (incremental, each step independently useful)
 
@@ -1649,9 +1669,9 @@ the ones that matter; these are noted so the seams are visible during implementa
      here — claim-time creation depends on it being the seconds the docs promise; if it is
      slower in practice, move the provisioning commands into the front of the async in-sandbox
      command.
-   - Scoped reaper: destroy orphaned sandboxes on dispatcher crash — don't reproduce the
-     product's 30 GiB quota-exhaustion problem. Label every sandbox with `scope: pipeline` and
-     a `runId`.
+    - Scoped reaper: destroy orphaned sandboxes on dispatcher crash — don't reproduce the
+      product's 30 GiB quota-exhaustion problem. Label every sandbox with `scope: pipeline` and
+      a `runId` at creation (verified viable — see `docs/todo/spike-label-scoping.md`).
    - Verify Yarn 4 Berry works with adequate disk (the initial failure was almost certainly the
      3 GB default disk, not a platform incompatibility).
 3. Build the per-agent machinery: the in-sandbox command template (opencode run with `--format json`, exit capture,
@@ -1692,86 +1712,13 @@ First real parallel run should be manual and supervised, including at least one 
 
 ## Resolved questions
 
-1. **Node definition:** a graph node = one skill run (BMAD-agnostic — any skill, not just BMAD) or
-   another atomic action like a CLI command — finer than a whole story. (Reframes the original
-   "whole stories only vs review steps as nodes.")
-2. **Claim unit (2026-07-20): the node.** A story is a chain of nodes sharing one branch; each
-   node's claim bases on its predecessor's pushed head; the merge queue runs at merge points
-   (chain end always — see resolved question 7).
-   Story-unit vocabulary from earlier drafts (attempts, branch naming, the park boundary) is
-   restated per-node above. Decided from the vision (resolved question 1), not from the
-   inventory of existing workflows — claim-a-story survived as an option mainly because
-   `Develop Story (Playbook)` already existed.
-3. **Supervision home (2026-07-20): the reconcile pass.** The observer-execution design
-   required its recovery path (re-attach after routine observer death) to be fully robust,
-   which made the observers themselves redundant. Level-triggered polling from passes replaces
-   them; n8n keeps only small human-facing workflows.
-4. **Review-node write ordering: resolved by chain linearization (updated 2026-07-21).** All
-   nodes are assumed to modify code, so a chain is a total order and review ordering is each
-   node's position in the chain (see Dependency knowledge). Which order suits a given story is
-   still a judgment call resolved by guideline adherence, not by construction — the
-   chain-composition guidelines carry the ordering advice.
+Most decisions are documented inline in the relevant section above. This list retains only
+decisions kept as history (superseded revisions) or with rationale not captured inline.
+
 5. **Gen-2 self-improvement: not inherited (2026-07-20).** Out of scope for gen-3; a future
    reflector is a separate consumer of gen-3's own journal, designed for a parallel world (the
    gen-2 between-stories reflection cadence has no equivalent here). Gen-3 reads and writes
    none of gen-2's state files.
-6. **Graph expansion home (2026-07-20): a local planning run, not a graph node.** Planning
-   runs on the devcontainer as an async process: a pass decides and journals the launch, a
-   small n8n workflow hosts the run and invokes the dispatcher when it exits, and the planning
-   lock serializes; its graph delta is folded from the inbox — resolving the mechanical half
-   of the old planning-node contract question. This keeps "agents author all nodes" clean:
-   every node in the graph comes from the planning agent; only the trigger (ready nodes
-   running low) is machinery, so there is no machinery-generated node type and no bootstrap
-   exception.
-7. **Mid-chain cross-story dependencies (2026-07-21): planner-designated merge points.** A
-   story can unlock a dependent before its own implementation completes — the motivating case:
-   a create-story node produces a story doc specifying schemas and contracts, and the
-   dependent story implements against the doc alone. The gate stays merge-only: the unlocking
-   node carries `mergeTo`, its segment merges early, and the dependent gates on that merge and
-   bases on merged main under the normal rules. Two alternatives rejected: basing a dependent
-   chain on another chain's unmerged head (couples merge ordering across chains and builds
-   against still-changing work), and merging after every node (loses story-atomic integration,
-   lands unreviewed or deliberately red intermediate states on trunk, and turns the
-   merge queue into a per-node serial bottleneck).
-8. **Planning-run context (2026-07-21): pinned.** The prompt carries only trigger/mode (with
-   any human replan instruction verbatim), snapshot pointers with the staleness rule, and the
-   output contract; everything else is files the planner reads — the chain-composition
-   guidelines with a skill catalog, the node-spec vocabulary with its fold-time validation
-   rules, `graph.json`, the journal read-only, the backlog, story docs and code at
-   `origin/main` (never the devcontainer working tree, which may be dirty or on a feature
-   branch), and `decision-policy.md`. Outside its authority: capacity and pause reasoning,
-   story authorship, and any shared write except the delta. See Planning-run context under
-   Dispatcher.
-9. **Merge-conflict resolution (2026-07-21): an agent in a resolution node — one path for
-   every conflict.** The merge queue detects, reports to the inbox, and blocks the chain; it
-   never resolves, not even a lockfile. A conflict-triggered planning run authors either a
-   resolution node appended to the chain (rebase onto `origin/main`, resolve, forced push of
-   the chain branch; carries `mergeTo`, so completion re-triggers the merge) or a rework
-   replan (abandon the segment; replacement nodes base on merged main) when the conflict
-   reveals semantic divergence. Rounds are bounded by dispatcher policy; the human enters
-   through the standard park path, or after round exhaustion. Rejected: a deterministic
-   auto-fix tier in the merge queue, and any resolution on the devcontainer — the checkout is
-   the human's, and code-modifying work runs in sandboxes. See Merge-conflict resolution
-   under Worker sandbox design.
-10. **Epic lifecycle (2026-07-22): the pipeline develops epics, not only stories.** Epic
-     selection is the planner continuing down the sprint plan on the existing ready-node-frontier-low
-    trigger; post-epic finalization is an epic-scoped chain of ordinary skill-run nodes,
-    gated on all the epic's story merges by cross-story edges to their final merge points
-    and composed lazily (its audits are information-producing nodes). Both transitions are
-    automatic and ntfy-notified — pause is the brake, no question gate. Overlap with
-    next-epic work is planner judgment per the guidelines, not a machinery barrier. See
-    Epic lifecycle.
-11. **Warm pool (2026-07-22): dropped — create on demand, capped, not pooled.** (Same-day
-     revision: this question first resolved to a lazy pool with a `warmPoolSize` target;
-     superseded before implementation.) There is no warm pool: a sandbox is created at claim
-     time from the pre-built snapshot and destroyed at collection (single-use — see Sandbox
-     lifecycle). Creation from a cached snapshot is near-instant, so pre-provisioning bought
-     seconds against hour-long runs while costing pool top-up logic, idle-sandbox lifecycle
-     handling, and pool accounting in every reconcile. The only capacity control is
-     `maxConcurrentSandboxes` in the dispatcher's policy config — the same config file as
-     `maxAttemptsPerNode` and per-node timeout, read at the start of every pass, so tuning is
-     an operational change, not a code change or restart. 5 is the initial value; a claim that
-     would exceed the cap waits for a later pass.
 12. **Merge-queue test execution (2026-07-22, superseded same day by resolved question 16):
      the test step runs on a sandbox acquired per merge cycle.** The original decision split the
      merge cycle: git ops (rebase, merge) ran locally on the devcontainer — repo access was considered
@@ -1824,176 +1771,6 @@ First real parallel run should be manual and supervised, including at least one 
     (`fullTestRunIntervalMerges`, `fullTestRunIntervalHours`) are removed — every run is already
     comprehensive for unit tests, so there is nothing to cadence. Supersedes the original decision
     above. See the merge queue row in the n8n / dispatcher split and the Merge cycle section.
-14. **Session transcripts are pulled at collection (2026-07-22).** When a session exits with
-    an outcome (every attempt, not only the last — revised with the single-use lifecycle,
-    which also preserves failed attempts' evidence), the collecting pass downloads the
-    session transcript and the full command logs from the sandbox into the per-run
-    directory on the devcontainer, before the sandbox is destroyed. Rationale: the
-    stdout excerpt used for classification is not the structured record; destruction removes
-    the on-sandbox copy, so without the pull the tool-call-level evidence —
-    what debugging a strange run needs, what a future reflector reads, and what this plan's
-    own session-history analysis was built from — would be lost with the sandbox. A
-    stream-truncation continue pulls nothing; a parked node is pulled after resume, when its
-    session exits;
-    planning-run transcripts are already local. **Transcript mechanism (spike, 2026-07-22):**
-    opencode v1.1.35 stores data as JSON files in `~/.local/share/opencode/storage/`. The
-    transcript pull uses `opencode export [sessionID]` (produces JSON) or downloads the storage
-    directory via the file API. See Transcript collection under Supervision and spike finding F3.
-15. **Snapshot freshness (2026-07-22): the per-claim install step is the correctness floor; the
-    snapshot is a cold-start optimization, not a freshness guarantee.** The in-sandbox command
-    runs the repo's package-manager install with a frozen lockfile after checkout, before the
-    node's command. Package managers are idempotent and self-reporting: when deps haven't
-    changed, the install checks the lockfile against `node_modules`, finds them in sync, and
-    exits in seconds — a no-op. When deps have changed, the install does the real work that
-    needed doing. This collapses the freshness-tracking problem the open question posed: there
-    is no digest to record, no rebuild trigger, no freshness-pass workflow, no snapshot-swap
-    semantics to work out. The snapshot's pre-baked `node_modules` makes the common case fast;
-    the install step handles every claim the snapshot doesn't cover. The snapshot's build config
-    is a human-authored artifact; when the repo outgrows it (a dep change needing a system
-    package the snapshot lacks, an unresolvable lockfile), the install step fails with a
-    distinct classification that parks the node with QUESTION carrying the install output —
-    not a generic `runner_error` to retry, which would burn attempts and quota failing
-    identically. The human updates the snapshot's build config or removes the dep, answers the
-    park, and the resumed session re-runs the install and proceeds. Rejected alternatives:
-    lockfile-digest tracking at claim time (first claim after a dep change pays full rebuild
-    latency anyway); a scheduled freshness pass (a second small n8n
-    workflow and a freshness-check cadence to tune — complexity that the idempotent install
-    step makes unnecessary); a git hook or CI signal (the no-inbound-webhook constraint on the
-    devcontainer rules out the clean version). See the per-claim recipe under Worker sandbox
-    design and Outcome classification under Supervision.
-16. **Merge-cycle hosting (2026-07-22): the whole merge cycle runs on the sandbox; the devcontainer
-    keeps only the wrapper, the lock, and the inbox write.** Supersedes the git-ops-local half
-    of resolved question 12. The devcontainer checkout is the human's working copy — the fact
-    that put conflict resolution in sandboxes (resolved question 9) applies equally to the
-    merge queue's own rebase, which needs a working tree; a dedicated local clone would be a
-    second repo to maintain plus a crash-recovery surface (rebase state to detect and abort
-    after a reboot), where a merge cycle is disposable. The push to `origin/main` is the
-    merge cycle's only durable effect: a merge cycle that dies mid-run changed nothing, one that dies
-    after the push has merged, and the next merge cycle's short-circuit deletes the leftover branch;
-    a push rejected because main moved (e.g. a human push) just ends the merge cycle — the next
-    trigger runs a fresh one. The n8n merge-queue workflow mirrors the planning-host pattern:
-    Execute Command runs a merge wrapper holding a non-blocking `flock` on `merge.lock` for
-    the merge cycle's lifetime (serialization — main has at most one pipeline writer — and the
-    liveness probe: acquirable means finished or dead), with PID and sandbox ID recorded for
-    pass-side deadline enforcement and recovery. Merge triggering is level-triggered: any pass
-    that finds a completed merge-point node whose branch has neither merged nor a pending
-    conflict report, with the lock acquirable, (re)triggers the workflow — an n8n restart
-    costs a re-run merge cycle, never lost state. The merge cycle runs the frozen-lockfile install before
-    tests (the rebase can bring dep changes from main). Sandbox credentials already cover the
-    main push (see Credentials under Sandbox lifecycle). See Merge cycle under Worker sandbox
-    design.
-17. **LLM provider (2026-07-22, revised 2026-07-22): neuralwatt for all opencode runs;
-    sandbox agents route through a Railway relay.** opencode does not ship neuralwatt as a
-    built-in provider, so the provider registration in the repo's `opencode.json` (and
-    `NEURALWATT_API_KEY` in the sandbox env) is what makes the model resolvable at agent launch
-    — without it, `opencode run` fails at provider lookup before the LLM is called. The
-    dispatcher copies `opencode.json` into each sandbox at provisioning (same path as `.env`:
-    the snapshot's bake is a cold-start optimization, not a freshness guarantee, and a stale
-    baked `opencode.json` would silently pin an old model or old context limits). The planning
-    run runs on the devcontainer and inherits the working tree's `opencode.json` — no copy
-    needed. The provider and model are config in `opencode.json`, so swapping either is a repo
-    change picked up by the next snapshot rebuild or the next planning run, not a pipeline code
-    change. All opencode runs in the pipeline — sandbox agents, the planning run, and the
-    outcome-classification LLM fallback — use neuralwatt with `glm-5.2` as the initial model.
-    **Revised after the neuralwatt accessibility spike (2026-07-22): `api.neuralwatt.com` is
-    not on Daytona's Tier 1 Essential Services allowlist, so sandbox agents cannot reach it
-    directly.** The spike (`docs/todo/spike-neuralwatt-accessibility.md`) corrected the
-    original root cause: the block is Daytona's own Tier 1 network policy (an Envoy proxy
-    inspects the TLS SNI and resets connections to non-allowlisted hostnames), not Cloudflare
-    bot protection as originally hypothesized. Tier 1/2 cannot override this per-sandbox
-    (`domainAllowList` returns an error); only Tier 3+ has open egress. A Tier 3 upgrade is not
-    an option, so the resolution is a **neuralwatt relay deployed on Railway** —
-    `*.railway.app` and `*.railway.com` are on the Essential Services allowlist, so sandbox
-    agents can reach the relay. The relay is a thin reverse proxy: it receives requests at
-    `https://<relay>.railway.app/v1` and forwards them to `https://api.neuralwatt.com/v1`,
-    passing through the `Authorization` header. The sandbox's `opencode.json` provider config
-    points `baseURL` at the relay URL instead of `api.neuralwatt.com` directly. The
-    `NEURALWATT_API_KEY` rides with the `.env*` files as before — the sandbox sends it in the
-    `Authorization` header and the relay forwards it; the relay itself holds no key (or holds a
-    shared secret for access control if needed). The devcontainer's `opencode.json` continues
-    to point at `api.neuralwatt.com` directly — the relay is only for sandbox egress. This is
-    a permanent architecture decision, not a temporary split: one provider, one model, one API
-    key everywhere; the only difference is the URL sandbox agents call. The relay is a single
-    point of failure for sandbox agents — if it is down, every sandbox agent fails — so it
-    needs the same operational attention as any pipeline dependency.
-
-    **Relay deployed and spiked (2026-07-22):** the relay is a Caddy reverse proxy on Railway.
-    The Docker image is at `ghcr.io/marius321967/neuralwatt-relay:latest` (public — Railway's
-    free tier does not support private registry credentials, so the package is public; the
-    image holds no secrets, the Caddyfile is in the public repo). Railway service:
-    `neuralwatt-relay` in project `bmad-easy` (production environment). Relay domain:
-    `neuralwatt-relay-production.up.railway.app`. Caddy listens on `:80` (Railway terminates
-    TLS) and reverse-proxies to `https://api.neuralwatt.com` with `header_up Host
-    api.neuralwatt.com`; the `Authorization` header passes through from the client — the relay
-    holds no API key. The sandbox's `opencode.json` provider `baseURL` points at
-    `https://neuralwatt-relay-production.up.railway.app/v1`. The devcontainer's `opencode.json`
-    continues to point at `api.neuralwatt.com` directly — the relay is only for sandbox egress.
-
-    **Spike results (2026-07-22, from a Daytona Tier 1 sandbox with
-    `networkBlockAll: false`):**
-    1. `curl https://neuralwatt-relay-production.up.railway.app/v1/models` with the
-       Authorization header — **succeeded** (HTTP 200, full model list returned).
-    2. `curl https://api.neuralwatt.com/v1/models` directly — **failed** (HTTP 000, connection
-       reset), confirming the relay is actually needed and `*.railway.app` is on the
-       allowlist.
-    3. Chat completion through the relay (`glm-5.2`, "Print exactly: SPIKE_OK") —
-       **succeeded**, content returned as `"SPIKE_OK"`.
-    4. SSE streaming (`stream: true`) through the relay — **succeeded**, chunks arrived
-       incrementally over ~50ms with measurable inter-chunk gaps (not buffered). Caddy's
-       default streaming behavior passes through chunked responses transparently; no
-       `flush_interval` config change needed.
-
-     **opencode-through-relay spike (2026-07-22, `docs/todo/spike-opencode-relay.js`):**
-     the four curl-based results above verified the network path but not the opencode path
-     — provider resolution from `opencode.json`, `baseURL` override propagation, API key
-     injection, opencode's own SSE parser. This follow-up spike writes an `opencode.json`
-     with `provider.neuralwatt.options.baseURL` set to the relay URL into a Tier 1 sandbox,
-     injects `NEURALWATT_API_KEY` into the env, and runs opencode directly:
-     5. `opencode run --model neuralwatt/glm-5.2 "Print exactly: SPIKE_OK"` (non-streaming,
-        cwd `/tmp` with the relay-pointed `opencode.json`) — **succeeded** (exit 0, output
-        contains `SPIKE_OK`, 8.9s). Provider resolved from the sandbox-local config; the
-        `baseURL` override routed the request through the relay.
-     6. `opencode run --format json --model neuralwatt/glm-5.2` (streaming) — **succeeded**
-        (exit 0, full `step_start`/`text`/`step_finish` event sequence captured, 10.3s).
-        opencode's SSE parser correctly decoded the relay's chunked responses.
-     See `docs/todo/spike-opencode-relay.md` for the full report.
-
-    Alternatives considered and rejected: split-provider (neuralwatt on devcontainer,
-    Anthropic/OpenAI in sandboxes) — works but abandons neuralwatt's pricing for sandbox
-    agents, which is the whole point; Cloudflare Workers relay (`*.workers.dev` is
-    allowlisted) — lighter weight but Railway is already in use and known; BYOC — overkill;
-    asking neuralwatt to allowlist Daytona egress IPs — not needed, the block is on Daytona's
-    side. See the provisioning recipe under Worker sandbox design and
-    `docs/todo/spike-neuralwatt-accessibility.md`.
-18. **Depth-first fairness bound (2026-07-22): bounded depth-first with a fairness budget
-    (BDFB).** Unbounded depth-first traversal starves: a chain that keeps producing ready
-    successors fills the pool indefinitely while an independent ready node waits. The
-    mathematical solution is a fairness counter — a variant of deficit round-robin adapted to
-    preserve depth-first as the default. The rule: maintain a `chainDepth` counter,
-    initialized to 0. After a node completes, the pass claims its dependents by default
-    (depth-first) and increments the counter. When `chainDepth` reaches `fairnessBudget` and
-    at least one independent ready node exists, the pass claims the independent node instead
-    and resets the counter. When no independent node is ready, the counter increments but the
-    yield never triggers — behavior is identical to pure depth-first. `fairnessBudget` defaults
-    to `maxConcurrentSandboxes` (one full pool-fill of chain-following, then a yield) and lives
-    in the dispatcher's policy config. The counter is per-pool, not per-chain; it resets on a
-    yield. Starvation-freedom by construction: any independent ready node is claimed within
-    `fairnessBudget` node completions, with one integer of added state and no graph topology
-    analysis. See Graph management rules.
-19. **opencode version pinning (2026-07-22): `opencodeVersion` in the dispatcher's policy
-    config.** Daytona has no agent-harness or opencode-version selection API — opencode is an
-    ordinary npm package, and the SDK's sandbox-creation and snapshot types have no `agent`,
-    `harness`, or `version` field. Version consistency between the devcontainer (which runs the
-    planning agent) and the sandboxes (which run node-claim agents) is enforced by a single
-    config value: `opencodeVersion` in the dispatcher's policy config — the same file as
-    `maxConcurrentSandboxes`, `fairnessBudget`, and the other knobs. The snapshot's Declarative
-    Builder config reads it when installing opencode (`npm install -g
-    opencode-ai@${opencodeVersion}`), and the devcontainer's install reads the same value, so
-    both install paths share one source of truth. A post-install `opencode --version`
-    assertion in both environments catches a stale snapshot bake. The version is a config value,
-    not a repo file or a code constant, so updating it is an operational change picked up by
-    the next pass (devcontainer) and the next snapshot rebuild (sandboxes). See the provisioning
-    recipe under Worker sandbox design.
 
 ## Open questions
 
