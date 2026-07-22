@@ -92,7 +92,7 @@ architecture.)
 | Reflect step, `apply-amendments.mjs`, `ledger.jsonl`, trends | Not inherited — self-improvement is out of scope for gen-3 (rationale below) |
 | `runner-errors.jsonl` | Not inherited — machinery failures are `runner_error` events in the gen-3 journal |
 | `journal.jsonl` (gen-2 schema) | Not inherited — gen-3 defines its own journal with its own schema (see State) |
-| `scripts/pipeline/*.mjs` | Not imported — helper patterns may be copied into gen-3 modules, but gen-3 code has no dependency on gen-2 scripts |
+| `scripts/pipeline/*.mjs` | Not inherited — the files have been removed from the repo; gen-3 code has no dependency on gen-2 scripts |
 | Error Handler (ntfy) (n8n) | Kept — small and generic |
 | `_bmad-output/decision-policy.md` | Kept as an agent-facing artifact — human-authored, read by agents during interactive steps; it is what keeps questions rare. The reflector machinery around it is not inherited |
 
@@ -420,10 +420,9 @@ step of every pass. The behaviors carry over; the workflow does not.
   nothing (the session is still going); a parked
   node's transcript survives the sandbox stop and is pulled after resume, when that session exits.
   Planning runs need no pull — their transcript and log file are already local. **Transcript
-  mechanism (spike, 2026-07-22):** opencode v1.1.35 stores data as JSON files in
-  `~/.local/share/opencode/storage/`. The transcript pull uses
-  `opencode export [sessionID]` (produces JSON) or downloads the storage directory via the file
-  API. The agent run emits `--format json` events to stdout, which the dispatcher parses for
+  mechanism (spike, 2026-07-22):** opencode v1.17.20 stores data in a SQLite database at
+  `~/.local/share/opencode/opencode.db`. The transcript pull uses
+  `opencode export [sessionID]` (produces JSON). The agent run emits `--format json` events to stdout, which the dispatcher parses for
   outcome classification and stream-truncation detection; `opencode export` is the correct path
   for structured session data (messages, tool calls) beyond what the event stream carries. See
   `docs/todo/spike-opencode-sandbox.md` (finding F3) and `docs/todo/spike-midstream-resume.md`.
@@ -508,9 +507,12 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   embedded JSON blob, with code-fence and formatting failure modes; a file at a contract
   path is a plain tool-write the agent already does reliably. Otherwise the wrapper mirrors
   the in-sandbox command template: isolated opencode storage (per the concurrency findings —
-  the planner shares the machine, possibly with a live interactive session; opencode v1.1.35
-  stores data as JSON files in `~/.local/share/opencode/storage/`, not a SQLite DB — see
-  spike finding F3), output captured to a per-run log file, the opencode child's PID and
+  the planner shares the machine, possibly with a live interactive session; opencode v1.17.20
+  stores data in a SQLite database at `~/.local/share/opencode/opencode.db`
+  (spike finding F3, 2026-07-22 — see `docs/todo/spike-stop-resume.md` F1 and
+  `docs/todo/spike-opencode-sandbox.md` F3), so isolated storage per agent (separate `--dir`
+  and storage path) prevents the schema-migration race documented in the concurrency
+  experiment. Output captured to a per-run log file, the opencode child's PID and
   session ID recorded alongside the lock (a small status file the wrapper rewrites tmp +
   rename: PID for pass-side deadline termination — the pass signals the child, and the
   wrapper observes the exit, records it, promotes nothing, and releases the lock; session ID
@@ -918,9 +920,9 @@ files disappear entirely. Total effort is comparable; moving parts are fewer.
   `runner-errors.jsonl`, and trends. Gen-3 writes nothing to them and reads nothing from them.
   Anything a future reflector needs must come from gen-3's own journal.
 - **Atomic writes required:** passes write `graph.json` via tmp-file + `renameSync` (see
-  Atomicity under Dispatcher); any viewer keeps last-good state on parse failure. (Gen-2's
-  `scripts/pipeline/lib.mjs:24` uses plain `fs.writeFileSync` — a known gap there; gen-3
-  starts atomic.) The `atomicWrite` helper should `fsync(fd)` before `rename` for power-loss
+  Atomicity under Dispatcher); any viewer keeps last-good state on parse failure. Gen-3
+  starts atomic — gen-2's `scripts/pipeline/lib.mjs` (now removed from the repo) used plain
+  `fs.writeFileSync`, a known gap there. The `atomicWrite` helper should `fsync(fd)` before `rename` for power-loss
   durability on ext4 — not a crash-safety issue (process kill is covered by rename atomicity),
   only relevant if the state directory is on ext4 rather than tmpfs (spike finding F2,
   2026-07-22 — see `docs/todo/spike-delta-promotion.md`).
@@ -1035,11 +1037,15 @@ single-use keeps it free across sequential claims too.
   outcome-classification LLM fallback — with `glm-5.2` as the initial model.** The model and
   provider are config in `opencode.json`, so swapping either is a repo change, not a pipeline
   change; the snapshot's `opencode.json` is rebuilt on the next snapshot rebuild like any
-  other committed file. See resolved question 17. **neuralwatt API access from sandboxes
-  (spike, 2026-07-22): `api.neuralwatt.com` is not on Daytona's Tier 1 Essential Services
-  allowlist, so sandbox agents cannot reach it directly.** The planning run and the
-  outcome-classification call run on the devcontainer and are unaffected. See resolved
-  question 17 (revised) for the resolution path.
+  other committed file. Pinned 2026-07-22: **neuralwatt is the LLM
+  provider for all opencode runs in the pipeline — sandbox agents, the planning run, and the
+  outcome-classification LLM fallback — with `glm-5.2` as the initial model.** The model and
+  provider are config in `opencode.json`, so swapping either is a repo change, not a pipeline
+  change; the snapshot's `opencode.json` is rebuilt on the next snapshot rebuild like any
+  other committed file. **neuralwatt API access from sandboxes (spike, 2026-07-22):
+  `api.neuralwatt.com` is not on Daytona's Tier 1 Essential Services allowlist, so sandbox
+  agents cannot reach it directly.** The planning run and the outcome-classification call run
+  on the devcontainer and are unaffected. See open question 2 for the resolution path.
 - **Egress on Tier 1 is restricted to Daytona's Essential Services allowlist (spike,
   2026-07-22 — see `docs/todo/spike-neuralwatt-accessibility.md`).** The sandbox does not have
   open egress: an Envoy proxy inspects the TLS SNI and resets connections to any hostname not on
@@ -1050,8 +1056,7 @@ single-use keeps it free across sequential claims too.
   GitHub, npm, Anthropic, OpenAI, Docker registries, Railway (`*.railway.app`,
   `*.railway.com`), and others — see the [Daytona network limits docs](https://www.daytona.io/docs/network-limits).
   `api.neuralwatt.com` is not on the allowlist, so sandbox agents cannot reach it directly.
-  The resolution is a neuralwatt relay on Railway (an allowlisted domain) — see resolved
-  question 17 (revised).
+  The resolution path is a general authenticated sandbox-proxy relay — see open question 2.
 
 **Per-claim (after provisioning):**
 - A pass journals the claim (with its deadline), provisions the sandbox (above), and issues
@@ -1071,9 +1076,9 @@ single-use keeps it free across sequential claims too.
   (`createSession` + `executeSessionCommand({ runAsync: true })`) with `--format json`,
   `--dir <sandbox-repo-path>`, and opencode storage at a persistent path on the sandbox
   disk (not tmpfs — a parked sandbox's storage must survive stop/start; see Park/resume).
-  opencode v1.1.35 stores data as JSON files in `~/.local/share/opencode/storage/`
-  (spike finding F3, 2026-07-22; stop/start persistence verified spike 2026-07-22). The pass
-  then exits — the
+  opencode v1.17.20 stores data in a SQLite database at
+  `~/.local/share/opencode/opencode.db` (spike finding F3, 2026-07-22; stop/start persistence
+  verified spike 2026-07-22). The pass then exits — the
   pull-based transport model the product already uses. Later passes poll the command's state
   and pull logs via `getSessionCommandLogs`. The sandbox never calls back to the devcontainer.
   **The command must append `</dev/null`** (verified in the opencode-sandbox spike,
@@ -1228,14 +1233,10 @@ Documented in full because it encodes a failure already paid for once:
   schema-migration race at cold start — when multiple instances simultaneously run migrations on
   a fresh storage directory, one fails with a `CREATE TABLE workspace` error. Pre-warming the
   storage (one instance migrates first) eliminates the race. Isolated storage sidesteps it
-  entirely, which is why the recipe uses it. Note: this experiment ran on the devcontainer
-  against opencode v1.17.20, which uses a SQLite database
-  (`~/.local/share/opencode/opencode.db`) — hence the `CREATE TABLE` SQL error. The sandbox
-  tier runs opencode v1.1.35, which stores session data as JSON files in
-  `~/.local/share/opencode/storage/` (verified spike 2026-07-22, see
-  `docs/todo/spike-stop-resume.md` F1 and `docs/todo/spike-opencode-sandbox.md` F3) and does
-  not exhibit this migration race. The version skew is noted; the isolated-storage prescription
-  applies to both.
+  entirely, which is why the recipe uses it. Both the devcontainer and the sandbox tier run
+  opencode v1.17.20, which uses a SQLite database at
+  `~/.local/share/opencode/opencode.db` — hence the `CREATE TABLE` SQL error. The
+  isolated-storage prescription applies uniformly to both tiers.
 - **Phase 1 (throwaway repo):** `git init` in `/tmp/oc-test/repo`, 6 worktrees, a script
   spawning N concurrent `opencode run` with isolated vs shared storage. 6 experiments (N=3 and
   N=6, isolated vs shared storage, cold vs warm start). Results: isolated storage 9/9 success;
@@ -1496,9 +1497,10 @@ prose above; the spike reports hold the full evidence:
   two-signal detection rule is in Stream-truncation recovery under Supervision.
 - **Snapshot with baked `node_modules`** (Strategy A) — see `docs/todo/spike-baked-node-modules.md`.
   The chown and bake-clone details are in the provisioning recipe.
-- **opencode.json provider registration for neuralwatt** (including the Railway relay) — see
+- **opencode.json provider registration for neuralwatt** (including the egress constraint) — see
   `docs/todo/spike-neuralwatt-accessibility.md` and `docs/todo/spike-opencode-relay.md`. The
-  relay `baseURL` and egress constraints are in the provisioning recipe.
+  egress constraints are in the provisioning recipe; the authenticated sandbox-proxy relay
+  itself is an open need — see open question 2.
 - **Snapshot path rejects `resources`; image path honors all three** — see
   `docs/todo/spike-snapshot-resources.md`. The snapshot path returns a hard API error
   ("Cannot specify Sandbox resources when using a snapshot"), not silent ignore; the image
@@ -1730,3 +1732,25 @@ decisions kept as history (superseded revisions) or with rationale not captured 
    for an in-flight epic audit — see Epic lifecycle), the skill catalog with per-skill
    default deadlines, and the concrete node-spec schema (field names and format for the
    vocabulary pinned in resolved question 8).
+2. **Authenticated sandbox-proxy relay — to design and build before Path step 2.** Daytona
+   Tier 1 restricts sandbox egress to an Essential Services allowlist (GitHub, npm, Anthropic,
+   OpenAI, Docker registries, Railway, and others — see the [Daytona network limits
+   docs](https://www.daytona.io/docs/network-limits)). `api.neuralwatt.com` is not on the
+   allowlist, so sandbox agents cannot reach the LLM provider directly. The planning run and
+   the outcome-classification call run on the devcontainer and are unaffected, but every
+   sandbox agent needs LLM access. The resolution is a general authenticated proxy relay,
+   hosted on an allowlisted domain (e.g. Railway), that forwards requests from sandboxes to
+   non-allowlisted endpoints. Three requirements: **(a) the proxy must require
+   authentication** — an open proxy on an allowlisted domain would let any sandbox reach any
+   non-allowlisted service, defeating the purpose of the Tier 1 restriction; the auth token
+   rides with the `.env*` files already copied per-sandbox at provision time. **(b) the proxy
+   must exclude domains already permitted by Daytona's Tier 1 Essential Services allowlist** —
+   proxying a request to `github.com` or `registry.npmjs.org` adds latency and a failure mode
+   for nothing; the sandbox reaches those directly. The proxy handles only domains the
+   allowlist blocks. **(c) the proxy must be built and deployed** — the spike
+   (`docs/todo/spike-opencode-relay.md`) verified that opencode can reach neuralwatt through a
+   relay at an allowlisted domain, but the relay itself is not built; its implementation,
+   deployment, availability characteristics, and operational ownership are unresolved. This is
+   a hard dependency for every sandbox agent — if the proxy is down, all sandbox agents lose
+   LLM access. A single relay is a single point of failure; redundancy or a fallback path is
+   out of scope for the initial version but should be considered.
