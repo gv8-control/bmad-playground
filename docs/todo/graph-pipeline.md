@@ -545,8 +545,13 @@ Each invocation:
      `maxConcurrentSandboxes` for its duration — see Honest costs — so a merge
      trigger is gated by the same cap as a node claim; if the cap is full, the
      trigger is deferred to the next pass, like a deferred claim), (re)triggers
-     the merge-queue workflow — a merge cycle killed mid-run is re-run by the
-     next pass, not lost (see Merge cycle). Then claim ready nodes depth-first
+      the merge-queue workflow — a merge cycle killed mid-run is re-run by the
+      next pass, not lost (see Merge cycle). Only `completed` merge-point nodes
+      trigger the merge queue — a `failed` node's branch is never merged (verified
+      spike 2026-07-23: this is the safety property that makes unconditional push
+      safe — broken partial work landing on the chain branch is quarantined by
+      the merge gate, not by withholding the push; see
+      `docs/todo/spike-push-on-failure.md`). Then claim ready nodes depth-first
      with the fairness bound (journal the claim), create and provision a
      single-use sandbox (capacity permitting — the `maxConcurrentSandboxes`
      cap; see the per-claim recipe under Worker sandbox design), `git checkout`
@@ -658,9 +663,14 @@ step of every pass. The behaviors carry over; the workflow does not.
   would otherwise look exactly like an idle pipeline: ticks fire, passes die, nothing claims,
   nothing notifies.
 - **Durability floor** — the agent's in-sandbox command pushes its branch as its last act, so a
-  completed result is durable in git no matter what was or wasn't watching when it finished.
-  Push failure is not assumed away: the in-sandbox command retries with bounded backoff, and a
-  permanent failure parks the node with the work preserved (see Branch push failure).
+  completed result is durable in git no matter what was or wasn't watching when it finished. The
+  push is unconditional — it runs regardless of opencode's exit code, so a `failed` outcome's
+  partial work is also on the chain branch, not lost with the sandbox (verified spike
+  2026-07-23: the merge-trigger gate quarantines `failed` work — only `completed` merge-point
+  nodes trigger the merge queue — so unconditional push is safe; see
+  `docs/todo/spike-push-on-failure.md`). Push failure is not assumed away: the in-sandbox command
+  retries with bounded backoff, and a permanent failure parks the node with the work preserved
+  (see Branch push failure).
 - **Transcript collection** — when a session exits with an outcome (COMPLETE or `failed` —
   every attempt, not only the last; a failed attempt's transcript is exactly the evidence a
   retry investigation needs), the collecting pass downloads the session transcript and the full
@@ -1109,7 +1119,10 @@ When an agent finishes:
    later pass re-triggers an unfinished merge; see Merge cycle), and its successors
    become ready when the merge lands; COMPLETE on an unmarked node makes the successor ready
    and the same pass claims it; `failed` consumes an attempt and, if attempts remain, the node
-   is re-claimable (a fresh sandbox and session, not a continue — see Supervision). A stream-truncation
+   is re-claimable (a fresh sandbox and session, not a continue — see Supervision) — a `failed`
+   node's branch is never merged (only `completed` merge-point nodes trigger the merge queue;
+   the branch's partial work is quarantined on origin until a retry overwrites it or the scoped
+   reaper cleans it up — see Branch push failure). A stream-truncation
    signal is not an outcome and is not folded here: the pass issues the continue in the poll
    step and the node stays in-flight. An exited
    session also has its transcript and full logs pulled to the devcontainer before its
@@ -1138,7 +1151,7 @@ Rough estimate, ~1090 lines of JS plus three small n8n workflows:
 | Classification (deterministic rules + LLM fallback, evidence journaled with the outcome) | ~90 | Rules and prompt ported from `Parse OpenCode Response` / `BMAD Outcome`; no n8n dependency |
 | Pass frame (flock, inbox fold, reconcile, pause gate, per-pass log + `last-pass.json` heartbeat) | ~170 | New; helper patterns copied from gen-2 scripts, no imports |
 | Planning run (launch wrapper with per-leg exit record + atomic delta promotion, resume-mode legs, planning lock, delta validation + fold) | ~120 | New |
-| In-sandbox command template (install check, opencode run with `--format json` and `</dev/null`, exit capture, branch push with bounded retry + `push-failed` marker) | ~90 | New |
+| In-sandbox command template (install check, opencode run with `--format json` and `</dev/null`, exit capture, unconditional branch push with bounded retry + `push-failed` marker) | ~90 | New |
 | Merge wrapper (merge lock, drives the in-sandbox merge cycle: fetch, rebase, merge, push; fire post-merge hook; conflict report) | ~90 | New |
 | Question-form workflow (form + ntfy + inbox write + invoke) | n8n, small | New — the Wait-form/ntfy pattern from gen-2, as a standalone workflow |
 | Planning-host workflow (run the launch wrapper, invoke dispatcher on exit) | n8n, small | New |
@@ -1386,10 +1399,19 @@ single-use keeps it free across sequential claims too.
   `opencode run --format json` and writes the ID to a known path for the dispatcher to journal
   with the claim. Without this, the park/resume path has no ID to pass to `--session`.
 - The in-sandbox command ends with a branch push (`git push origin HEAD:pipeline/<runId>/<chainId>`
-  — the chain branch) so the result is durable in git regardless of what is watching. The push
-  step retries with bounded backoff and writes a `push-failed` marker on permanent failure; the
-  collecting pass checks the marker before destroying the sandbox and attempts one recovery push
-  or parks the node (see Branch push failure).
+  — the chain branch) so the result is durable in git regardless of what is watching. **The push
+  step runs unconditionally** — it pushes the branch regardless of opencode's exit code (verified
+  spike 2026-07-23: the plan's merge-trigger rules already quarantine `failed` work — only
+  `completed` merge-point nodes trigger the merge queue, so broken partial work landing on the
+  chain branch is never merged; see `docs/todo/spike-push-on-failure.md`). The template records
+  opencode's exit code separately (for the classifier) and pushes in all cases, so a `failed`
+  node's partial work is on the chain branch, not lost with the sandbox. This preserves the
+  durability floor for the common failure case (agent exits non-zero before completing) — without
+  unconditional push, hours of agent file work would sit on the sandbox disk only, the pass would
+  classify `failed`, destroy the sandbox, and the work would be lost. The push step retries with
+  bounded backoff and writes a `push-failed` marker on permanent failure; the collecting pass
+  checks the marker before destroying the sandbox and attempts one recovery push or parks the
+  node (see Branch push failure).
 - Deadlines are enforced pass-side: a pass finding a claim past its deadline terminates the
   session command in the sandbox, journals a `runner_error` event, and handles the node per
   retry policy (a timeout is a failure — see Timeout policy under Supervision; the node is
@@ -1490,6 +1512,41 @@ labeling and reaper discipline described under Sandbox lifecycle.
   product's rules serve its own threat model, which the pipeline does not share. Secrets still
   never go into the repo or the snapshot: a committed or cached-image copy is a different,
   broader exposure surface than a live sandbox.
+
+### Branch push failure
+
+The in-sandbox command's push step is the durability mechanism — it runs unconditionally
+regardless of opencode's exit code (see Durability floor under Supervision, and the in-sandbox
+command template under Per-claim). The push step retries with bounded backoff (e.g. 3 attempts
+with exponential backoff: 1s, 5s, 15s) on transient failures (network errors, rate limits). A
+permanent failure (all retries exhausted) writes a `push-failed` marker file to a known path on
+the sandbox disk, containing the exit code, the last git error, and the retry history.
+
+The collecting pass checks for the `push-failed` marker before destroying the sandbox. If the
+marker exists, the pass attempts one recovery push itself (from the sandbox's working tree, via
+the Daytona session API) — if the recovery succeeds, the work is durable and the node proceeds
+to classification; if the recovery fails, the pass parks the node with QUESTION carrying the
+push error, preserving the sandbox (stopped, not destroyed) for manual recovery. The human can
+push the branch manually from the sandbox and answer the park, or investigate why the push
+failed (credentials, network, branch-lock).
+
+**The "push step never ran" case does not occur** (verified spike 2026-07-23: the template's push
+step runs unconditionally — via a trap, wrapper, or `;`-separated command — so opencode exiting
+non-zero does not prevent the push; see `docs/todo/spike-push-on-failure.md`). The template
+records opencode's exit code separately (for the classifier) and pushes in all cases. This
+preserves the durability floor for `failed` outcomes: the partial work is on the chain branch,
+not lost with the sandbox. The merge-trigger gate (only `completed` merge-point nodes trigger
+the merge queue — see Reconcile pass step 6) quarantines the broken work: a `failed` node's
+branch is never merged.
+
+**Orphaned branch cleanup.** A `failed` node's branch sits on origin — the merge cycle only
+deletes merged branches, so a `failed` node's branch is never deleted by the merge cycle. A
+retry overwrites the same branch name (`pipeline/<runId>/<chainId>`), so a single retry cleans
+up. A node that exhausts `maxAttemptsPerNode` leaves a permanent orphan. The scoped reaper (or
+a periodic garbage-collection pass) deletes chain branches whose nodes are all terminal
+(`completed`-and-merged, `failed`-and-exhausted, or `abandoned`). This is a hygiene improvement,
+not a correctness fix — the broken work is quarantined by the merge-trigger gate, not by branch
+deletion.
 
 ### opencode concurrency
 
@@ -1806,7 +1863,7 @@ lockfile.
    - Verify Yarn 4 Berry works with adequate disk (the initial failure was almost certainly the
      3 GB default disk, not a platform incompatibility).
 3. Build the per-agent machinery: the in-sandbox command template (opencode run with `--format json`, exit capture,
-   terminal branch push with bounded retry + `push-failed` marker — see Branch push failure), session start/poll/continue via the Daytona session API, the
+   unconditional terminal branch push with bounded retry + `push-failed` marker — see Branch push failure), session start/poll/continue via the Daytona session API, the
    classification module (deterministic rules + LLM fallback, prompt ported from gen-2),
    deadline enforcement (terminate + journal + handle per retry policy; see Timeout policy), park/resume with a synthetic question
    (including sandbox stop/start around the park), transcript pull and sandbox destroy at
