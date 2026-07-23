@@ -94,6 +94,11 @@ developed in depth.
   rename).
 - **`last-pass.json`** — the heartbeat file a pass writes as its last act under the lock
   (timestamp, duration, counts). The schedule tick alerts when it goes stale.
+- **`runId`** — a pipeline-run-scoped identifier the machinery assigns once per pipeline
+  lifetime (not a node, not a chain). Branch names derive from it
+  (`pipeline/<runId>/<chainId>`), sandbox labels carry it, and the planner never emits it
+  (it is machinery-derived state, like `paused`). The initial cold state has `runId: null`;
+  the first pass that needs it assigns one. See *Bootstrap (runId assignment)*.
 - **Policy block** — a JSON config file in `pipeline3/state/` read at the start of
   every pass. Holds capacity knobs (`maxConcurrentSandboxes`, `fairnessBudget`,
   `maxAttemptsPerNode`, per-node timeout, `opencodeVersion`, `trunkBranch`), the post-merge
@@ -524,9 +529,9 @@ Each invocation:
    between the two writes).
 4. **Poll in-flight sessions (supervision)** — for each running claim, check its session
    command via the Daytona API. Still running and inside its deadline → nothing. Past its
-   deadline → terminate the session command, journal a `runner_error` event, and handle per
-   retry policy (a timeout is a failure by default — see Timeout policy under Supervision; the
-   node is re-claimable on a fresh sandbox and session if attempts remain, not continued).
+   deadline → terminate the session command, journal a `runner_error` event, and park the node
+   for human review (see Timeout policy under Supervision; the chain halts — successors stay
+   unready — and the human directs a fresh claim or a replan).
    Exited → pull
    exit code and logs, classify, act (see Supervision below). A stream-truncation signal
    (session still alive, response cut mid-stream) is handled here too: issue an async
@@ -580,6 +585,52 @@ Each invocation:
 The recursion survives across passes: a completion is detected by a pass, the fold unblocks
 dependents, and the same pass claims and launches them. Workers stay busy because every pass
 claims everything claimable — there is just no resident process between passes.
+
+### Bootstrap (runId assignment)
+
+The initial cold state has an empty graph and `runId: null` (the shipped `graph.json`). Branch
+names derive from `runId` (`pipeline/<runId>/<chainId>`), sandbox labels carry it, and the
+planner is barred from emitting it (it is machinery-derived state, like `paused` — see the
+node-spec schema under Open question 1). So the first pass that needs a `runId` must assign
+one. This is not a "bootstrap exception" to "agents author all nodes" (see Planning runs):
+`runId` is not a node, not a chain, and not graph content the planner authors. It is a
+pipeline-run-scoped identifier the machinery assigns to itself, the same way the pass writes
+`generatedAt` or `paused`. Node authorship remains entirely the planner's.
+
+The assignment is level-triggered and idempotent, riding the existing pass machinery with no
+new trigger and no new authority:
+
+- **When:** the first pass that finds `runId: null` *and* is about to trigger a planning run
+  (step 6 of the reconcile pass — the ready-node frontier is empty, no planning run is in
+  flight, the pipeline is not paused). A `runId` is needed only when the machinery is about
+  to create something that derives a branch name or labels a sandbox — and the first such
+  action is always the bootstrap planning run (there are no nodes to claim yet). Assigning
+  lazily, at the moment of first need, avoids assigning a `runId` to a pipeline that was
+  never started (a devcontainer rebuilt, the schedule tick firing on an empty graph the
+  human never intended to run). The schedule tick on a null-`runId`, empty, unpaused graph
+  triggers the bootstrap planning run; a tick on a null-`runId`, empty, *paused* graph does
+  nothing — pause gates claiming and planning launches, and bootstrap is a planning launch.
+- **How:** the pass generates a short identifier (a timestamp-prefixed random string, e.g.
+  `20260723-a4f2`, readable in branch names and logs), journals a `runId_assigned` event
+  (the commit point — the journal append is what makes the assignment durable), and
+  regenerates `graph.json` with `runId` set. The same write-ordering as every other state
+  mutation: journal first, `graph.json` second. The `runId` is stable for the rest of the
+  pipeline run's lifetime; no second assignment occurs.
+- **Idempotent:** a pass that finds `runId` already set (non-null) skips the assignment. Two
+  ticks racing on a fresh graph: the first pass to take the lock assigns and triggers the
+  planning run; the second finds `runId` set and the planning lock held, and exits at
+  fixpoint. The level-triggered design absorbs the race the same way it absorbs every other
+  duplicate invocation.
+- **Recovery:** `runId` is durable in the journal and `graph.json`. A cold restart
+  (devcontainer rebuild, pm2 restart) reads it from state on the next pass — the
+  resurrection path (see the State section's "No in-memory truth") handles this like any
+  other state recovery. A `runId` is never reassigned, so branches and sandbox labels from a
+  prior session remain consistent with the recovered state.
+- **No dedicated bootstrap workflow.** The schedule tick that already invokes the dispatcher
+  is the trigger; the pass that already assigns claims and triggers planning runs is the
+  assigner. Bootstrap is a special case of the existing first-pass-on-empty-graph, not a
+  separate code path. The only addition is the `runId_assigned` journal event and the
+  null-check that gates it.
 
 ### Supervision (in-pass)
 
@@ -643,14 +694,37 @@ step of every pass. The behaviors carry over; the workflow does not.
   the outcome-classification note that `error` events carry provider errors. A non-zero exit with
   a completed last assistant message is a real failure (`failed`), not INCOMPLETE; a session past
   its deadline is handled by the timeout policy, not relabeled INCOMPLETE.
-- **Timeout policy** (open). A session past its deadline is
-  terminated by the pass, journaled as a `runner_error`, and handled per retry policy. Whether a
-  long-running step should *survive* its per-node timeout by auto-continuing — the gen-2
-  behavior, there a workaround for the same provider stream-drop issue — is a real policy
-  question gen-3 should decide explicitly, not inherit through an INCOMPLETE label. If
-  auto-continue on timeout is wanted, it is a timeout-policy knob (a deadline extension with a
-  bound), not a relabeling of the outcome. The default until that decision: a timeout is a
-  failure, counted against `maxAttemptsPerNode` like any other `failed` outcome.
+- **Timeout policy** — park for human review, no auto-continue. A session past its deadline is
+  terminated by the pass, journaled as a `runner_error`, and the node is parked for human review
+  (not a generic `failed` to retry). The chain halts there: successors stay unready under the
+  existing rule (a parked node's dependents never become ready), so the halt is node-scoped by
+  construction — parallel chains are unaffected. The human decides what happens next: a fresh
+  claim with adjusted guidance (a longer deadline, a sharper prompt), or a replan that drops or
+  replaces the node. This is the install-failure pattern extended to timeouts: a class of failure
+  where retrying on a fresh sandbox would likely fail the same way (the agent is looping, the
+  task is too hard for the prompt, the deadline was wrong), so retry burns attempts and quota
+  for nothing — surface it instead. The decision is explicit, not inherited: gen-2's
+  auto-continue-on-timeout was a workaround for provider stream-drops, a case gen-3 now handles
+  via the dedicated INCOMPLETE path (a two-signal check, session resumed in-pass, no attempt
+  consumed — see Stream-truncation recovery). With stream-drops covered separately, there is no
+  remaining reason to auto-continue a deadline-exceeded node, so no timeout-policy knob (deadline
+  extension with a bound) is introduced. A timeout does not consume an attempt at park time (no
+  auto-retry happened); a human-directed retry is a fresh claim and consumes an attempt like any
+  other, so a node cannot be retried indefinitely without hitting `maxAttemptsPerNode`.
+  **Dead-session park variant:** a normal QUESTION park preserves the session — the sandbox is
+  stopped (not destroyed) and the human's answer resumes the *same* session via
+  `opencode run --session <id>`. A timeout park terminates the session when the deadline passes,
+  so there is no live session to resume: the park carries the timeout context (what was running,
+  how long, where the transcript shows it got stuck) and the resolution path is fresh-claim-or-
+  replan, not session-resume. The transcript is pulled before the sandbox is destroyed — the
+  evidence the human reviews. The park/resume code currently assumes a resumable session ID; a
+  timeout park has none, so it is a real branch in the park logic, not a free reuse.
+  **Frequency depends on deadline tuning:** human attention is the scarce resource, and a
+  near-zero question rate is what keeps N agents from becoming N interruptions. If every
+  timeout surfaces to a human and deadlines are routinely too tight, timeouts become the
+  interruption channel. This policy is only non-overwhelming if timeouts are rare, which puts
+  real weight on the skill catalog's per-skill default deadlines being generous and tuned from
+  gen-2 durations — deadline-tuning is load-bearing, not an afterthought.
 - **Question surfacing** — QUESTION journals the node `parked` (a third status — not `success`,
   not `failed` — so a question is never misread as a defect), stops the sandbox, and triggers
   the small n8n question-form workflow (Wait-form + ntfy with the resume URL). The canonical
@@ -714,10 +788,12 @@ same machine as the dispatcher — as an async planning run: a local opencode pr
 pass decides on, journals, and supervises like any other in-flight claim, and that a small
 n8n workflow hosts. Every node in the graph is authored by
 the planning agent per the chain-composition guidelines; the planning run itself is machinery,
-so "agents author all nodes" holds with no machinery-generated node type and no bootstrap
-exception. The devcontainer is the right home: planning reads the repo and the stories (at
+so "agents author all nodes" holds with no machinery-generated node type. The bootstrap of
+`runId` (the pipeline-run identifier branches and sandbox labels derive from) is machinery
+state, not a node — see *Bootstrap (runId assignment)*. The devcontainer is the right home:
+planning reads the repo and the stories (at
   `origin/<trunkBranch>` — see Planning-run context) plus the graph state, writes no code, and needs no
-isolation — a sandbox would add provisioning cost and buy nothing.
+  isolation — a sandbox would add provisioning cost and buy nothing.
 
 - **Async, never in-pass.** The pass journals the launch (with its deadline), triggers the
   n8n planning-host workflow — a local, contentless call; the journal already records the
@@ -1219,12 +1295,12 @@ Rough estimate, ~1150 lines of JS plus three small n8n workflows:
   classification evidence (the rule that fired, or the LLM verdict, rationale, and judged
   excerpt — see Supervision),
   parks/resumes, merge events, `runner_error`
-  events, pause/resume control events, policy decisions), `graph.json` (derived view,
+  events, pause/resume control events, policy decisions),   `graph.json` (derived view,
   rebuildable from the journal, regenerated with per-node metadata digests — attempt count,
   last outcome, durations, diff summary, parked question text, base commit, and the node's
   `metadata` dict — so routine
   readers (the planner, the viewer, sprint status) read one file and never parse the
-  journal), and
+  journal; top-level fields carry `runId`, `paused`, `generatedAt`, and the policy digest), and
   `inbox/` (written by n8n's small workflows and by the planning wrapper — graph deltas,
   promoted atomically — consumed and deleted by passes). Per-run log
   excerpts, pulled session transcripts (via `opencode export` or the storage directory — see
@@ -1498,10 +1574,12 @@ single-use keeps it free across sequential claims too.
   checks the marker before destroying the sandbox and attempts one recovery push or parks the
   node (see Branch push failure).
 - Deadlines are enforced pass-side: a pass finding a claim past its deadline terminates the
-  session command in the sandbox, journals a `runner_error` event, and handles the node per
-  retry policy (a timeout is a failure — see Timeout policy under Supervision; the node is
-  re-claimable if attempts remain, on a fresh sandbox — the terminated attempt's sandbox is
-  destroyed after transcript pull like any exited attempt, never handed to the retry).
+  session command in the sandbox, journals a `runner_error` event, and parks the node for human
+  review (see Timeout policy under Supervision; the chain halts — successors stay unready — and
+  the human directs a fresh claim or a replan). The terminated attempt's sandbox is destroyed
+  after transcript pull like any exited attempt; the transcript is the evidence the human
+  reviews. A human-directed retry is a fresh claim on a fresh sandbox, never a continue of the
+  terminated session.
 
 **What this eliminates (from session-history analysis):**
 - Cross-process homicide via `pkill -f "next dev"` / `pkill -f "agent-be"` — can't cross
@@ -1531,9 +1609,9 @@ pre-baking snapshots.
 | Network to npm registry | ✅ Works | Essential services allowlist includes `registry.npmjs.org`, `*.yarnpkg.com` |
 | Disk space | ✅ Up to 10 GB | Specify `resources: { disk: 10 }` when creating from an image. Default is 3 GB; max is 10 GB. 10 GB is enough for this monorepo's `node_modules` (~1.5 GB) plus headroom |
 | Resource limits | ✅ Configurable | 1-4 vCPU, 1-8 GB RAM, 1-10 GB disk. Specify when creating from an image. The snapshot path **rejects** `resources` with a hard API error ("Cannot specify Sandbox resources when using a snapshot") — create from image, not snapshot, to control resources. On the image path all three are honored: disk as an overlay size (visible in `df`), cpu/memory as cgroup-v2 quotas (`cpu.max`, `memory.max`) that `nproc` / `free -m` do not reflect (they report host-level values) — verified spike 2026-07-22, see `docs/todo/spike-snapshot-resources.md` |
-| Yarn 4 (Berry) | ✅ Likely works | Initial silent fetch failure was almost certainly the 3 GB disk limit, not a platform incompatibility. Needs verification with adequate disk |
+| Yarn 4 (Berry) | ✅ Works (verified) | Initial silent fetch failure was the 3 GB default-disk limit, not a platform incompatibility. Verified 2026-07-23 on a disk:10 sandbox: `corepack prepare yarn@4.5.0 --activate` + `yarn install` of lodash + esbuild (native binary) completes in <1s with exit 0; esbuild native binary loads correctly. Snapshot build config must `sudo corepack enable` (shims install to `/usr/bin`, non-root user cannot). See `docs/todo/spike-yarn-berry-disk.md` |
 | Docker | ✅ Installable | Sandboxes have their own kernel and sudo. Install via `curl -fsSL https://get.docker.com \| sh` or pre-bake into a custom snapshot. Docker registries (`docker.io`, `*.docker.com`) are in the essential services allowlist. Not needed for pipeline agents (session history shows they use `gh` CLI and `curl`), but available if MCP servers are ever needed |
-| Browser external access | ✅ Likely works | Playwright is in the essential services allowlist. Initial `ERR_CONNECTION_RESET` was likely a snapshot-specific TLS/proxy issue. A custom snapshot with proper browser deps should resolve it |
+| Browser external access | ⚠️ Partial — localhost and allowlisted API origins work; external websites with CDN sub-resources fail | Playwright launches fine with proper browser deps installed (17 shared libs + `npx playwright install chromium`). Navigation to allowlisted origins that return pure JSON (e.g., `registry.npmjs.org`) works; screenshot/rendering works. But real-world websites (e.g., `github.com`) fail to render because their CSS/JS sub-resources are served from CDN domains (`github.githubassets.com`) NOT in the Essential Services allowlist — the Envoy proxy resets TLS to non-allowlisted domains via SNI inspection. `domainAllowList` cannot override this on Tier 1/2. For the pipeline's E2E tests (Playwright against `localhost` dev servers), this is not a problem — all traffic stays in-sandbox. For navigating to external websites, upgrade to Tier 3+ (open egress) or use `curl`/`fetch` for API-only access to allowlisted domains. Verified spike 2026-07-23, see `docs/todo/spike-browser-external-access.md` |
 | Network to devcontainer | ❌ No path back | Sandboxes can't reach `localhost:5678` (n8n). Not a problem — nothing in the sandbox calls back. Passes pull logs via the Daytona session API from the devcontainer side; the agent's only outbound act is its final git push |
 | Custom snapshots | ✅ Declarative Builder | Build from any base image with `apt-get`, `run_commands()`, `dockerfile_commands()`, or `from_dockerfile()`. Pre-bake Node, Yarn, Postgres, Playwright, opencode, and repo deps. Cached for 24h; subsequent runs on the same runner are "almost instantaneous" |
 | Network allow-listing | ✅ Runtime-updatable (Tier 3+) | `domainAllowList` (wildcards, max 20) + `networkAllowList` (CIDR, max 10) + `networkBlockAll`. Updatable on a running sandbox without restart. Essential services (npm, GitHub, Anthropic, Docker, Playwright, Railway, opencode) are pre-allowed on all tiers. **Tier 1/2 cannot override the Essential Services restriction** — `domainAllowList` returns an error on those tiers (spike, 2026-07-22). On Tier 1, `networkBlockAll: false` (the default) means "apply the tier policy" (Essential Services only), not "open egress." See `docs/todo/spike-neuralwatt-accessibility.md` |
@@ -1640,9 +1718,7 @@ is written. The pass's universal fallback for all non-clean exits (SIGKILL, trap
 marker-write failure): before destroying the sandbox, check `git ls-remote origin
 pipeline/<runId>/<chainId>`. If the branch exists on the remote, the push completed. If absent,
 the pass attempts a recovery push from the sandbox's working tree via the Daytona session API —
-same recovery path as the marker case below. The Daytona API's termination signal (SIGTERM with
-grace period vs. immediate SIGKILL) must be verified empirically; the `git ls-remote` fallback
-covers both cases regardless.
+same recovery path as the marker case below. Daytona's `process.deleteSession` sends **SIGTERM with a grace period** (verified spike 2026-07-23: the bash `trap '...' SIGTERM` handler fires ~22ms after `deleteSession` returns, and the `EXIT` trap fires ~1ms after that — both within the grace window; see `docs/todo/spike-termination-signal.md`), so the trap-based push has a window to run on the normal session-termination path. The `git ls-remote` fallback covers the remaining SIGKILL surfaces that `deleteSession` does not exercise: `sandbox.stop({ force: true })`, OOM kill, and host-level SIGKILL.
 
 **Orphaned branch cleanup.** A `failed` node's branch sits on origin — the merge cycle only
 deletes merged branches, so a `failed` node's branch is never deleted by the merge cycle. A
@@ -1689,10 +1765,12 @@ inherits (each sandbox gets its own storage by machine isolation).
   `~/.local/share/opencode/opencode.db` — hence the `CREATE TABLE` SQL error. The
   isolated-storage prescription applies uniformly to both tiers.
 - **Remaining scope (not tested):** the experiments used a trivial prompt (startup + one LLM call).
-  Heavier concurrent interactions — tool use, file writes, permission prompts, long sessions,
-  `--continue`/`--fork`, `--attach` to a shared server — could still surface a collision. The
-  recipe is confirmed safe for the *process*; richer agent interactions need their own test
-  before the dispatcher relies on them.
+  Heavier concurrent interactions — tool use, file writes, permission prompts, long sessions —
+  could still surface a collision. The recipe is confirmed safe for the *process*; richer agent
+  interactions need their own test before the dispatcher relies on them. (Pipeline scope only: a
+  node runs one opencode session — `opencode run` to start, `opencode run --session <id>` to
+  resume after a park. No `--continue`/`--fork`, no `--attach`, no `opencode serve` anywhere in
+  the design; those features are out of scope regardless of the experiment's coverage.)
 
 ### Park/resume for human questions — mandatory
 
@@ -1997,11 +2075,11 @@ lockfile.
       product's 30 GiB quota-exhaustion problem. Label every sandbox with `scope: pipeline` and
       a `runId` at creation (verified viable — see `docs/todo/spike-label-scoping.md`).
    - Verify Yarn 4 Berry works with adequate disk (the initial failure was almost certainly the
-     3 GB default disk, not a platform incompatibility).
+     3 GB default disk, not a platform incompatibility) — **verified 2026-07-23**, see `docs/todo/spike-yarn-berry-disk.md`.
 3. Build the per-agent machinery: the in-sandbox command template (proxy health check with `proxy-failed` marker, install with sub-step timeout and `install-failed` marker, session ID background poller with `session-capture-failed` marker, opencode run with `--format json`, exit capture,
    unconditional terminal branch push with bounded retry + error-type classification + `push-failed` marker — see Branch push failure), the pass-side `git ls-remote` fallback for non-clean exits (SIGKILL, marker-write failure), session start/poll/continue via the Daytona session API, the
    classification module (deterministic rules + LLM fallback, prompt ported from gen-2),
-   deadline enforcement (terminate + journal + handle per retry policy; see Timeout policy), park/resume with a synthetic question
+   deadline enforcement (terminate + journal + park for human review; see Timeout policy), park/resume with a synthetic question
    (including sandbox stop/start around the park), transcript pull and sandbox destroy at
    collection, the small question-form workflow, and conflict-as-evidence journaling. Test each
    step's failure mode in isolation: proxy-start failure, install failure, session-capture
