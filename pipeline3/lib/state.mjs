@@ -44,20 +44,31 @@ export function loadPolicy(path = policyPath) {
   if (policy.perClaimInstallCommand === undefined) {
     policy.perClaimInstallCommand = null;
   }
+  if (policy.installTimeoutSec === undefined) {
+    policy.installTimeoutSec = 480; // 8 minutes — a fraction of the per-node deadline
+  }
+  if (policy.mergeStallTimeoutSec === undefined) {
+    policy.mergeStallTimeoutSec = 30; // merge cycle is seconds; 30s = stall
+  }
+  if (policy.maxMergeRounds === undefined) {
+    policy.maxMergeRounds = 3; // conflict rounds before parking for human
+  }
   return policy;
 }
 
 /**
- * The empty-graph skeleton, matching mock-graph.json's top-level shape.
+ * The empty-graph skeleton, matching the shipped graph.json's top-level shape.
  *
- * runId starts null — later stages set it (a run is a planning session's
- * output). loadGraph tolerates null runId.
+ * runId starts null — the bootstrap pass assigns it (see Bootstrap under
+ * Dispatcher). paused starts true — a fresh devcontainer does not auto-start
+ * the pipeline; the operator runs `resume` to start (see Pipeline control).
+ * loadGraph tolerates missing fields and fills defaults.
  */
 export function emptyGraph() {
   return {
     runId: null,
     generatedAt: new Date().toISOString(),
-    paused: false,
+    paused: true,
     policy: {},
     nodes: [],
   };

@@ -1,11 +1,7 @@
 {
   "maxConcurrentSandboxes": 3,
-  "fairnessBudget": 3,
-  "maxAttemptsPerNode": 2,
-  "defaultTimeoutMin": 240,
-  "tickIntervalSeconds": 180,
   "opencodeVersion": "1.17.20",
   "trunkBranch": "main",
-  "perClaimInstallCommand": "npm ci",
-  "postMergeHook": null
+  "mergeStallTimeoutSec": 30,
+  "maxMergeRounds": 3
 }

@@ -1,0 +1,179 @@
+{
+  "name": "Pipeline Question Form",
+  "description": "Presents a parked node's question to the human via a form, sends an ntfy notification, waits for the answer, writes it to the inbox, and invokes the dispatcher. The canonical parked state is the journal entry; this workflow is only the human-facing surface.",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "nodeId" },
+            { "name": "chainId" },
+            { "name": "runId" },
+            { "name": "question" },
+            { "name": "sandboxId" },
+            { "name": "sessionName" },
+            { "name": "opencodeSessionId" }
+          ]
+        }
+      },
+      "id": "q1",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "path": "pipeline-question",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "q2",
+      "typeVersion": 1,
+      "name": "Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "webhookId": "pipeline-question-form"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://ntfy.sh/pipeline-{{ $json.runId }}-{{ $json.chainId }}",
+        "headers": {
+          "entries": [
+            {
+              "name": "Title",
+              "value": "=Pipeline Question: {{ $json.chainId }}"
+            },
+            {
+              "name": "Tags",
+              "value": "question,pipeline"
+            },
+            {
+              "name": "Click",
+              "value": "={{ $env.N8N_BASE_URL }}/webhook/pipeline-question"
+            }
+          ]
+        },
+        "body": "={{ $json.question }}",
+        "options": {}
+      },
+      "id": "q3",
+      "typeVersion": 1,
+      "name": "Send ntfy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "formTitle": "Pipeline Question",
+        "formDescription": "={{ $json.question }}",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Answer",
+              "requiredField": true,
+              "multilineField": true,
+              "rows": 5
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "q4",
+      "typeVersion": 1,
+      "name": "Wait for Answer",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trigger = $('Start').first().json;\nconst answer = $json.answer;\nconst event = {\n  type: 'answer',\n  at: new Date().toISOString(),\n  nodeId: trigger.nodeId,\n  chainId: trigger.chainId,\n  runId: trigger.runId,\n  answer: answer,\n  sandboxId: trigger.sandboxId,\n  sessionName: trigger.sessionName,\n  opencodeSessionId: trigger.opencodeSessionId,\n};\nconst fs = require('fs');\nconst path = require('path');\nconst inboxDir = path.join(process.env.PIPELINE3_STATE_DIR || path.join(process.cwd(), 'pipeline3/state'), 'inbox');\nconst filename = `answer-${trigger.nodeId}-${Date.now()}.json`;\nfs.mkdirSync(inboxDir, { recursive: true });\nfs.writeFileSync(path.join(inboxDir, filename), JSON.stringify(event, null, 2));\nreturn [{ json: { ...event, inboxFile: filename } }];"
+      },
+      "id": "q5",
+      "typeVersion": 2,
+      "name": "Write to Inbox",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "command": "=node pipeline3/bin/dispatcher.mjs",
+        "executeOnce": true
+      },
+      "id": "q6",
+      "typeVersion": 1,
+      "name": "Invoke Dispatcher",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1100, 0]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Form Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send ntfy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send ntfy": {
+      "main": [
+        [
+          {
+            "node": "Wait for Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Answer": {
+      "main": [
+        [
+          {
+            "node": "Write to Inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Inbox": {
+      "main": [
+        [
+          {
+            "node": "Invoke Dispatcher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true
+  }
+}

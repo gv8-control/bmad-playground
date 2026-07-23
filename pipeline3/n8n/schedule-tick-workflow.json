@@ -1,0 +1,183 @@
+{
+  "name": "Pipeline Schedule Tick",
+  "description": "Persistent heartbeat: invokes the dispatcher pass every tickIntervalSeconds (default 120s, configurable via PIPELINE3_TICK_INTERVAL_SECONDS), then checks the pass exit code and last-pass.json age for stall detection. Non-zero exit → error ntfy; last-pass.json older than 3 tick intervals → 'dispatcher stalled' ntfy. Active by default so it starts when n8n starts.",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": "={{ Number($env.PIPELINE3_TICK_INTERVAL_SECONDS) || 120 }}"
+            }
+          ]
+        }
+      },
+      "id": "t1",
+      "typeVersion": 1.1,
+      "name": "Schedule Tick",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "command": "node /workspaces/bmad-playground/pipeline3/bin/dispatcher.mjs",
+        "executeOnce": true
+      },
+      "id": "t2",
+      "typeVersion": 1,
+      "name": "Run Dispatcher Pass",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [220, 0],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst cmdResult = $('Run Dispatcher Pass').first().json;\nconst exitCode = cmdResult.exitCode;\nconst stateDir = process.env.PIPELINE3_STATE_DIR || path.join(process.cwd(), 'pipeline3/state');\nconst lastPassPath = path.join(stateDir, 'last-pass.json');\nconst tickInterval = Number(process.env.PIPELINE3_TICK_INTERVAL_SECONDS) || 120;\nconst staleThresholdMs = tickInterval * 3 * 1000;\nlet stale = false;\nlet lastPassAt = null;\nlet ageSeconds = null;\nlet heartbeatExitCode = null;\ntry {\n  const raw = fs.readFileSync(lastPassPath, 'utf8');\n  const data = JSON.parse(raw);\n  lastPassAt = data.at;\n  heartbeatExitCode = data.exitCode;\n  if (lastPassAt) {\n    const ageMs = Date.now() - new Date(lastPassAt).getTime();\n    ageSeconds = Math.round(ageMs / 1000);\n    if (ageMs > staleThresholdMs) stale = true;\n  } else {\n    stale = true;\n  }\n} catch {\n  stale = true;\n}\nreturn [{ json: { exitCode, stale, lastPassAt, ageSeconds, heartbeatExitCode, tickInterval } }];"
+      },
+      "id": "t3",
+      "typeVersion": 2,
+      "name": "Check Pass Result",
+      "type": "n8n-nodes-base.code",
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-exit",
+              "leftValue": "={{ $json.exitCode }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "notEqual" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "t4",
+      "typeVersion": 2,
+      "name": "Exit Non-Zero?",
+      "type": "n8n-nodes-base.if",
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://ntfy.sh/pipeline-dispatcher",
+        "headers": {
+          "entries": [
+            { "name": "Title", "value": "=Dispatcher pass failed (exit {{ $json.exitCode }})" },
+            { "name": "Tags", "value": "error,pipeline,dispatcher" },
+            { "name": "Priority", "value": "high" }
+          ]
+        },
+        "body": "=Pass exit code {{ $json.exitCode }} at {{ $json.lastPassAt }}. last-pass.json age: {{ $json.ageSeconds }}s. See pipeline3/state/last-pass.json for details.",
+        "options": {}
+      },
+      "id": "t5",
+      "typeVersion": 4.2,
+      "name": "Error ntfy",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [880, -160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-stale",
+              "leftValue": "={{ $json.stale }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "t6",
+      "typeVersion": 2,
+      "name": "Dispatcher Stalled?",
+      "type": "n8n-nodes-base.if",
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://ntfy.sh/pipeline-dispatcher",
+        "headers": {
+          "entries": [
+            { "name": "Title", "value": "Dispatcher stalled" },
+            { "name": "Tags", "value": "warning,pipeline,dispatcher,stalled" },
+            { "name": "Priority", "value": "default" }
+          ]
+        },
+        "body": "=last-pass.json is stale (age {{ $json.ageSeconds }}s, threshold {{ $json.tickInterval }}s x 3). lastPassAt: {{ $json.lastPassAt }}. The dispatcher may have crashed without writing a heartbeat.",
+        "options": {}
+      },
+      "id": "t7",
+      "typeVersion": 4.2,
+      "name": "Stall ntfy",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1100, 0]
+    }
+  ],
+  "connections": {
+    "Schedule Tick": {
+      "main": [
+        [
+          { "node": "Run Dispatcher Pass", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Run Dispatcher Pass": {
+      "main": [
+        [
+          { "node": "Check Pass Result", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Check Pass Result": {
+      "main": [
+        [
+          { "node": "Exit Non-Zero?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Exit Non-Zero?": {
+      "main": [
+        [
+          { "node": "Error ntfy", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Dispatcher Stalled?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Error ntfy": {
+      "main": [
+        [
+          { "node": "Dispatcher Stalled?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Dispatcher Stalled?": {
+      "main": [
+        [
+          { "node": "Stall ntfy", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true
+  }
+}

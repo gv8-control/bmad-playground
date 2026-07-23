@@ -38,3 +38,7 @@ export N8N_RUN_MIGRATIONS=false
 .devcontainer/setup-n8n-mcp-token.sh
 
 daytona login --api-key "$DAYTONA_API_KEY" >/dev/null 2>&1 || true
+
+# Resurrection pass — one immediate dispatcher pass after n8n health.
+# Closes the boot→tick gap. On a paused graph, finds nothing to do and exits.
+node /workspaces/bmad-playground/pipeline3/bin/dispatcher.mjs 2>/dev/null || true

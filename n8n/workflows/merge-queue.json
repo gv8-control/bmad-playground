@@ -1,0 +1,106 @@
+{
+  "updatedAt": "2026-07-23T00:00:00.000Z",
+  "createdAt": "2026-07-23T00:00:00.000Z",
+  "id": "mErGeQueue001",
+  "name": "Pipeline3 Merge Queue",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "chainId"
+            },
+            {
+              "name": "mergePointNodeId"
+            },
+            {
+              "name": "runId"
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0001-4aaa-9bbb-1a2b3c4d5e6f",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "command": "node /workspaces/bmad-playground/pipeline3/bin/merge-launch.mjs --chain-id '={{ $json.chainId }}' --merge-point-node-id '={{ $json.mergePointNodeId }}' --run-id '={{ $json.runId }}'",
+        "cwd": "/workspaces/bmad-playground"
+      },
+      "id": "a1b2c3d4-0002-4aaa-9bbb-2b3c4d5e6f7a",
+      "typeVersion": 1,
+      "name": "Run Merge Wrapper",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "command": "node /workspaces/bmad-playground/pipeline3/bin/dispatcher.mjs",
+        "cwd": "/workspaces/bmad-playground"
+      },
+      "id": "a1b2c3d4-0003-4aaa-9bbb-3c4d5e6f7a8b",
+      "typeVersion": 1,
+      "name": "Invoke Dispatcher",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [
+        448,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Run Merge Wrapper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Merge Wrapper": {
+      "main": [
+        [
+          {
+            "node": "Invoke Dispatcher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "00000000-0000-4000-8000-000000000001",
+  "activeVersionId": null,
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}
