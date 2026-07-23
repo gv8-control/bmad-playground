@@ -103,6 +103,14 @@ developed in depth.
   every pass. Holds capacity knobs (`maxConcurrentSandboxes`, `fairnessBudget`,
   `maxAttemptsPerNode`, per-node timeout, `opencodeVersion`, `trunkBranch`), the post-merge
   hook, and the per-claim install command.
+- **Pipeline control helper (`pipeline3/bin/pipeline.mjs`)** — the operator's CLI interface
+  for start, pause, resume, and replan. Writes a request to the inbox and invokes the
+  dispatcher directly. Start is `resume` on the shipped `paused: true` graph. See *Pipeline
+  control (operator surface)*.
+- **Resurrection pass** — the one dispatcher pass `.devcontainer/start.sh` invokes after n8n
+  is healthy, closing the gap between devcontainer boot and the first schedule tick. On a
+  `paused: true` graph it exits at fixpoint; on a running pipeline it resumes supervision. See
+  *Pipeline control (operator surface)*.
 
 ### Planning
 
@@ -606,10 +614,10 @@ new trigger and no new authority:
   to create something that derives a branch name or labels a sandbox — and the first such
   action is always the bootstrap planning run (there are no nodes to claim yet). Assigning
   lazily, at the moment of first need, avoids assigning a `runId` to a pipeline that was
-  never started (a devcontainer rebuilt, the schedule tick firing on an empty graph the
-  human never intended to run). The schedule tick on a null-`runId`, empty, unpaused graph
-  triggers the bootstrap planning run; a tick on a null-`runId`, empty, *paused* graph does
-  nothing — pause gates claiming and planning launches, and bootstrap is a planning launch.
+  never started. The shipped graph is `paused: true` (see Pipeline control), so the
+  resurrection pass and schedule ticks on a fresh graph find it paused and do nothing —
+  bootstrap fires only when the operator runs `pipeline resume`, which unpauses and lets
+  the next pass trigger the first planning run.
 - **How:** the pass generates a short identifier (a timestamp-prefixed random string, e.g.
   `20260723-a4f2`, readable in branch names and logs), journals a `runId_assigned` event
   (the commit point — the journal append is what makes the assignment durable), and
@@ -631,6 +639,79 @@ new trigger and no new authority:
   assigner. Bootstrap is a special case of the existing first-pass-on-empty-graph, not a
   separate code path. The only addition is the `runId_assigned` journal event and the
   null-check that gates it.
+
+### Pipeline control (operator surface)
+
+The operator controls the pipeline through one CLI helper and one design decision: the
+shipped `graph.json` has `paused: true`. A fresh devcontainer rebuild does not auto-start
+the pipeline — the human may have rebuilt for unrelated reasons (snapshot rebuild,
+dependency update, investigation). The operator explicitly starts the pipeline by running
+`resume` (unpausing). This is consistent with "First real parallel run should be manual and
+supervised" (see Path) and with pause being the existing, designed control surface — start
+is just the first resume.
+
+**The CLI helper (`pipeline3/bin/pipeline.mjs`):**
+
+A single script, the operator's entire interface to the pipeline. It writes a request to
+the inbox (tmp + rename, like every inbox write) and invokes the dispatcher directly — a
+local process call, same as n8n's invocations. Three commands:
+
+- `pipeline pause [reason]` — writes a `pause` request, invokes the dispatcher. The next
+  pass folds it: journal append (the commit point), `graph.json` regenerated with
+  `paused: true`. Takes effect within one pass (the fold runs before the claim step).
+- `pipeline resume` — writes a `resume` request, invokes the dispatcher. The next pass
+  folds it and unpauses. On a fresh `paused: true` graph with `runId: null`, this is the
+  start action: the unpaused pass finds the ready-node frontier empty, triggers the
+  bootstrap planning run (which assigns `runId` — see Bootstrap), and the pipeline begins.
+  On a previously-running pipeline that was paused, the resume burst is handled by the
+  existing merges-first ordering and `merge.lock` serialization (see Pause/resume).
+- `pipeline replan [instruction]` — writes a `replan` request with the instruction text,
+  invokes the dispatcher. The next pass folds it and triggers a planning run in replan
+  mode (the instruction is passed verbatim to the planner's prompt). This is the human
+  override path: "skip to epic 7", "start the architecture phase", "drop the unclaimed
+  review node" — all go through the same inbox path as pause/resume, folded by a pass,
+  triggering a planning run. No new authority: the planner reads the instruction and
+  composes a delta; the fold validates it like any other.
+
+All three are idempotent and level-triggered — `pipeline pause` on an already-paused
+pipeline is a no-op pass; `pipeline resume` on an already-running pipeline is a no-op
+pass. The helper writes the inbox file *then* invokes the dispatcher, so the request is
+durable before the pass reads it (same contentless-invocation rule as every n8n
+invocation). The helper is a thin wrapper around the inbox path — no canonical state
+writes, no direct graph mutation, no lock acquisition. It is the same "small helper script"
+the Pause/resume section describes, made concrete and extended to cover start and replan.
+An n8n form can wrap it later for browser-based control; the CLI is the initial surface.
+
+**Why `paused: true` on the shipped graph:**
+
+The alternative — shipping `paused: false` and letting the first schedule tick auto-start —
+was rejected because a devcontainer rebuild is not necessarily an intent to start the
+pipeline. The human rebuilds for many reasons (snapshot update, dependency change,
+investigation), and auto-starting would launch sandboxes and spend quota before the human
+is ready. Shipping paused makes start an explicit operator act, consistent with the doc's
+stance that the first run is manual and supervised. The cost is one extra command
+(`pipeline resume`) before the first run — negligible against the hours-long skill runs
+that follow. A pipeline that was running before a rebuild stays paused after rebuild
+because `paused` is durable in the journal and `graph.json` — the operator runs `resume`
+to continue, which is the same explicit-start act. This does not add a new state: `paused`
+already exists, the bootstrap section already gates on it, and pause/resume already
+handles the semantics. The shipped value is the only addition.
+
+**Resurrection path (cold start):**
+
+`.devcontainer/start.sh` (the devcontainer's `postStartCommand`) starts Docker services,
+Tailscale, n8n under pm2, waits for n8n health, imports workflows and credentials, and
+logs into Daytona. After n8n is healthy, it invokes one dispatcher pass directly — the
+resurrection pass. This closes the gap between devcontainer boot and the first schedule
+tick (which has minutes of cadence): a cold devcontainer gets one immediate pass, then the
+schedule-tick n8n workflow takes over. On a `paused: true` graph, the resurrection pass
+finds nothing to do (no inbox, no in-flight sessions, no ready nodes, pause gates claiming
+and planning) and exits at fixpoint — correct behavior. On a `paused: false` graph (a
+previously-running pipeline after an unexpected restart), the resurrection pass picks up
+where the last pass left off: reconciles in-flight sandboxes, collects finished work,
+continues claiming. The schedule-tick n8n workflow (built in Path step 4) is the persistent
+heartbeat that keeps invoking passes every `tickIntervalSeconds` and checks
+`last-pass.json` staleness + pass exit code for stall detection.
 
 ### Supervision (in-pass)
 
@@ -1116,13 +1197,13 @@ A human can pause the pipeline: active nodes run to completion, no new nodes are
   hours of normal node work, with no deadlock, no thrash, and no capacity violation (verified
   spike 2026-07-23: 6 phases, 13 scenarios, zero capacity-exceeded events — see
   `docs/todo/spike-resume-burst.md`).
-- **Mechanism: the same inbox path as every other human/external input.** A small helper script
-  (an n8n form later, if wanted) writes a `pause` request to the inbox and invokes the
-  dispatcher. The next pass folds it: journal append first (a `pause` event with who/when/why —
-  the commit point), then `graph.json` regenerated with `paused: true`. The claim step gates on
-  the journaled state, so a pause survives restarts and rebuilds like everything else. `resume`
-  is the symmetric event. Repeated pauses or resumes are idempotent — level-triggered like
-  every other input.
+- **Mechanism: the same inbox path as every other human/external input.** The CLI helper
+  (`pipeline3/bin/pipeline.mjs` — see Pipeline control) writes a `pause` request to the
+  inbox and invokes the dispatcher. The next pass folds it: journal append first (a `pause`
+  event with who/when/why — the commit point), then `graph.json` regenerated with
+  `paused: true`. The claim step gates on the journaled state, so a pause survives
+  restarts and rebuilds like everything else. `resume` is the symmetric event. Repeated
+  pauses or resumes are idempotent — level-triggered like every other input.
 - **Takes effect within one pass.** The fold step runs before the claim step, so the pass that
   folds a `pause` already claims nothing; the helper invokes the dispatcher directly, so the
   gate is effectively immediate. What pause can never do is instant: in-flight runs measured in
@@ -1151,7 +1232,7 @@ see below). Three primitives cover every mutation, and two more serialize planni
 | tmp-file + `renameSync` for `graph.json` | Atomic replace (verified — spike 2026-07-22: 200 rename cycles under concurrent reads, zero failures) |
 | Non-blocking `flock` on `planning.lock`, held by the planning run for its lifetime | At most one planning run in flight; doubles as the liveness probe — acquirable means finished or dead |
 | Non-blocking `flock` on `merge.lock`, held by the merge wrapper for the merge cycle's lifetime | At most one merge cycle in flight — the trunk branch has one pipeline writer at a time; same liveness probe |
-| tmp-file + rename for every inbox write (n8n's small workflows, the merge wrapper, the pause helper, the planning wrapper's delta promotion) | A pass never folds a partial inbox file; the fold's parse check is defense in depth, not the primary guarantee (crash-safety verified — spike 2026-07-22: see `docs/todo/spike-delta-promotion.md`) |
+| tmp-file + rename for every inbox write (n8n's small workflows, the merge wrapper, the pipeline control helper, the planning wrapper's delta promotion) | A pass never folds a partial inbox file; the fold's parse check is defense in depth, not the primary guarantee (crash-safety verified — spike 2026-07-22: see `docs/todo/spike-delta-promotion.md`) |
 
 Multi-file consistency comes from write ordering, not transactions: journal first (the commit
 point), `graph.json` second (derived, rebuildable). Claims are exclusive by construction — a
@@ -1188,7 +1269,7 @@ Two consequences of n8n being local, stated so nobody designs against the wrong 
 | Merge queue (git integration) | n8n hosts the merge wrapper; the whole merge cycle runs on a sandbox | Serialized by `merge.lock`, level-triggered by passes, capacity-gated by `maxConcurrentSandboxes` (the merge sandbox counts against the cap; a trigger that would exceed it defers to the next pass). The wrapper drives fetch, rebase, merge, and push on a sandbox created per merge cycle via the Daytona session API; pipeline git operations never touch the devcontainer checkout. **No tests in the merge cycle**: the pipeline merges branches without running tests. A post-merge hook — project-authored, configured in the policy block — fires after the merge lands; if the hook fails, the failure is a standard `failed` outcome that rides the existing remediation path (see Merge-conflict resolution). On conflict it writes an inbox report and stops — resolution is a graph node (see Merge-conflict resolution). |
 | Question surfacing (form + ntfy) | n8n (small workflow) | Durable Wait-form suspension and forms are n8n's strength. Human-facing surface only — the journal holds the canonical parked state. |
 | Error notification | n8n | Existing small workflow, unchanged. |
-| Pause/resume control | Helper script → inbox (n8n form optional later) | Human-initiated; folded by the next pass; the claim step gates on the journaled pause state. |
+| Pipeline control (start, pause, resume, replan) | `pipeline3/bin/pipeline.mjs` → inbox (n8n form optional later) | Human-initiated; writes a request to the inbox and invokes the dispatcher directly; folded by the next pass. Start is `resume` on a `paused: true` shipped graph (see Pipeline control). |
 | Sprint status / reporting | n8n | Read gen-3 state, format, notify. |
 | Graph traversal + claim logic | Dispatcher pass (JS) | DAG algorithm with stateful mutations. Needs testing, iteration. |
 | Graph expansion (planning run) | Dispatcher pass decides + journals; n8n planning-host workflow runs the launch wrapper | Supervised like a sandbox session, but runs on the devcontainer — needs the repo, needs no isolation. Serialized by the planning lock; emits a graph delta; the host invokes the dispatcher on exit so the delta folds immediately. |
@@ -1210,6 +1291,10 @@ files in the sequential architecture; the parallel architecture keeps that by co
 ### Data flow
 
 ```
+.devcontainer/start.sh (postStartCommand)
+   │  starts Docker, Tailscale, n8n (pm2), imports workflows/credentials,
+   │  then invokes one dispatcher pass ← resurrection pass (closes boot→tick gap)
+   ▼
 n8n (persistent service on the devcontainer, under pm2 — small workflows only)
   │
   ├─ Schedule tick (every few minutes) → invokes dispatcher,   ← primary heartbeat
@@ -1222,6 +1307,10 @@ n8n (persistent service on the devcontainer, under pm2 — small workflows only)
   └─ Sprint status / reporting (reads gen-3 state)
        │  contentless invocations — every payload is already durable on disk or in git
        ▼
+Operator (CLI: pipeline3/bin/pipeline.mjs)
+  │  pause / resume / replan → inbox file → invokes dispatcher
+  │  (start is `resume` on the shipped paused: true graph)
+  ▼
 Dispatcher pass (same devcontainer, seconds long, one at a time under flock)
   1. Reconcile (journal vs labeled sandboxes vs pushed branches vs planning lock)
   2. Fold inbox → journal.jsonl (commit point) → graph.json (derived)
@@ -1339,9 +1428,9 @@ Rough estimate, ~1150 lines of JS plus three small n8n workflows:
   only relevant if the state directory is on ext4 rather than tmpfs (spike finding F2,
   2026-07-22 — see `docs/todo/spike-delta-promotion.md`).
 - **No in-memory truth.** Journal + graph on disk must be sufficient to resume from cold —
-  every pass reconciles, so recovery from a restart is the same code path as a normal tick. The
-  pipeline needs a resurrection path (devcontainer postStart hook invoking a pass, plus the n8n
-  schedule tick).
+  every pass reconciles, so recovery from a restart is the same code path as a normal tick.
+  The resurrection path is `.devcontainer/start.sh` invoking one pass after n8n is healthy,
+  plus the n8n schedule tick for ongoing liveness (see Pipeline control).
 - A claimed node's spec is frozen at claim time; replanning touches only unclaimed nodes.
 
 ## Viewer
@@ -2089,17 +2178,21 @@ lockfile.
    make a pass fail (bad input) and verify the tick fires the error notification; hold
    `last-pass.json` stale and verify the stall alert fires. Test against disposable
    sandboxes with synthetic steps before any real BMAD skill run.
- 4. Introduce the graph: `dependsOn` edges in planning output (chains composed per the
-    guidelines — author `chain-composition-guidelines.md` first, per open question 1's
-    requirements), `graph.json` and the reconcile pass with the plan-2-ahead / bounded
-    depth-first policy, node-granularity claims with chain branches, the planning-run machinery (launch
-    wrapper, planning lock, n8n host workflow, delta validation and fold, process-vanished
-    relaunch), and the
-    pause/resume gate on claiming (with its helper script). First taste
-    of parallelism: two independent nodes from different chains as two concurrent sandboxes.
-    This is the permanent design — sandboxed agents supervised by level-triggered passes; no
-    per-worker supervisor exists anywhere. Tune the tick cadence here, and exercise pause: pause
-    mid-run, watch in-flight nodes finish with nothing new claimed, resume.
+  4. Introduce the graph: `dependsOn` edges in planning output (chains composed per the
+     guidelines — author `chain-composition-guidelines.md` first, per open question 1's
+     requirements), `graph.json` and the reconcile pass with the plan-2-ahead / bounded
+     depth-first policy, node-granularity claims with chain branches, the planning-run machinery (launch
+     wrapper, planning lock, n8n host workflow, delta validation and fold, process-vanished
+     relaunch), the schedule-tick n8n workflow (invokes the dispatcher every
+     `tickIntervalSeconds`, checks `last-pass.json` staleness + pass exit code), the
+     resurrection pass in `.devcontainer/start.sh` (one pass after n8n health), and the
+     pipeline control helper (`pipeline3/bin/pipeline.mjs` — pause, resume, replan) with the
+     pause/resume gate on claiming. First taste
+     of parallelism: two independent nodes from different chains as two concurrent sandboxes.
+     This is the permanent design — sandboxed agents supervised by level-triggered passes; no
+     per-worker supervisor exists anywhere. Tune the tick cadence here, and exercise the full
+     operator surface: `pipeline resume` to start (bootstrap assigns `runId`, first planning
+     run fires), pause mid-run, watch in-flight nodes finish with nothing new claimed, resume.
 5. Move "done" from workflow-return to branch-merged: merge queue (n8n workflow + merge
    wrapper) + Mermaid graph view. Agents push their own branches; a pass that finds a
    completed merge-point node not yet merged triggers n8n's merge queue (level-triggered); no
