@@ -1,0 +1,7 @@
+# Runtime state — regenerated from the journal, never committed.
+journal.jsonl
+graph.json
+inbox/
+runs/
+last-pass.json
+*.log

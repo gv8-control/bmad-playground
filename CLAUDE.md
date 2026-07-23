@@ -1,8 +1,6 @@
 ## Project context
 
-This is a BMAD project. Work here often targets the workflow system itself — BMAD skills, agents, n8n workflows, and the self-improving development pipeline — rather than application code.
-
-When the request concerns the workflow system, `docs/self-improving-pipeline.md` documents the pipeline architecture and the constraints the rest of the workflow system inherits.
+This is a BMAD project. Work here often targets the workflow system itself — BMAD skills, agents, n8n workflows, and the development pipeline — rather than application code.
 
 ## Commits
 

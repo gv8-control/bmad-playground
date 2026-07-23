@@ -23,9 +23,6 @@
       "disable": true
     },
     "coder": {
-      "model": "neuralwatt/glm-5.2",
-      "temperature": 0.25,
-      "reasoningEffort": "high",
       "permission": {
         "task": "allow"
       }
@@ -34,7 +31,12 @@
       "tools": {
         "n8n_*": true
       }
-    }
+    },
+    "claude": {
+      "tools": {
+        "n8n_*": true
+      }
+    },
   },
   "mcp": {
     "github": {

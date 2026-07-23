@@ -1,0 +1,61 @@
+{
+  "name": "sandbox-relay",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/sandbox-relay/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/webpack:webpack",
+      "outputs": ["{workspaceRoot}/dist/apps/sandbox-relay"],
+      "defaultConfiguration": "production",
+      "options": {
+        "target": "node",
+        "compiler": "tsc",
+        "outputPath": "dist/apps/sandbox-relay",
+        "main": "apps/sandbox-relay/src/main.ts",
+        "tsConfig": "apps/sandbox-relay/tsconfig.app.json",
+        "webpackConfig": "apps/sandbox-relay/webpack.config.js",
+        "generatePackageJson": true
+      },
+      "configurations": {
+        "development": {
+          "mode": "development"
+        },
+        "production": {
+          "mode": "production"
+        }
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "apps/sandbox-relay/jest.config.ts",
+        "passWithNoTests": true
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p apps/sandbox-relay/tsconfig.spec.json"
+      }
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@nx/js:node",
+      "defaultConfiguration": "development",
+      "options": {
+        "buildTarget": "sandbox-relay:build",
+        "runBuildTargetDependencies": true
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "sandbox-relay:build:development"
+        },
+        "production": {
+          "buildTarget": "sandbox-relay:build:production"
+        }
+      }
+    }
+  },
+  "tags": []
+}

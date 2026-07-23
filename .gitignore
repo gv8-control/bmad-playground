@@ -43,6 +43,7 @@ playwright-report/
 test-results/
 .auth/
 .playwright-mcp/
+.playwright-cli/
 
 # Claude Code
 .claude/worktrees
@@ -51,9 +52,6 @@ test-results/
 # n8n
 .cache/
 .n8n/
-
-# Pipeline traces (session transcripts, not committed)
-_bmad-output/pipeline/traces/
 
 # Yarn Berry — ignore cache/install state but track patches/plugins/releases
 .pnp.cjs
