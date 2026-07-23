@@ -224,8 +224,9 @@ phases, or any project-specific workflow. The separation is explicit:
 **Project-specific guidance (project-authored, the planner reads):**
 - What a chain is *for* — a story, a finalization, a PRD draft, a research task — and the
   vocabulary (story, epic, sprint, phase) that describes it
-- Which nodes a chain gets — the skill catalog, include/skip conditions, within-chain ordering
-  advice for review nodes, merge-point placement advice
+- Which nodes a chain gets — the skill catalog (with per-skill default deadlines),
+  include/skip conditions, within-chain ordering advice for review nodes, merge-point
+  placement advice
 - The post-merge hook (if any) — what to run after a merge lands, configured in the policy
   block; a project with no tests configures no hook
 - The per-claim install command (if any) — what to run in the node's sandbox before the
@@ -235,6 +236,10 @@ phases, or any project-specific workflow. The separation is explicit:
   machinery runs the command, the project says which. The install-failure classification
   (park with QUESTION, do not retry — see Supervision) is machinery and applies regardless of
   which package manager failed
+- The snapshot's build config — base image, system packages, package-manager install, chown;
+  project-authored (the machinery creates sandboxes on demand from the snapshot and asserts
+  the opencode version; what gets baked is project-specific — a non-JS project bakes a
+  different toolchain)
 - The backlog shape — epics files and sprint plan, or a phase list, or a research agenda;
   whatever the planner reads to know what work exists
 - `decision-policy.md` — human-authored, agent-facing; what keeps questions rare
@@ -583,12 +588,15 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   captured after the initial run via `opencode session list --format json`, as in the
   in-sandbox template, for resume legs), and the exit code recorded per leg. The planning
   run writes nothing else shared — not the journal, not `graph.json`.
-- **Delta validation at fold time — all-or-nothing.** Planning reads
+- **Delta validation at fold time — all-or-nothing (verified spike 2026-07-23 — see
+  `docs/todo/spike-delta-validation.md`).** Planning reads
   graph state at launch; by fold time nodes have completed or merged. The fold applies the
   delta's ops in order to a copy of current state under the state lock, then accepts or
   rejects the delta as a whole. Per-op rules: an `updateNode`/`removeNode` whose target is
-  claimed, parked, or completed is stale — the claim hit the journal first and the spec is
-  frozen; an `addNode` id must be fresh; an edge target must exist. Whole-graph rules on the
+  claimed, parked, completed, failed, or abandoned is stale — the claim hit the journal
+  first and the spec is frozen; an `addNode` id must be fresh; an edge target must exist;
+  `updateNode` must not set `id`, `chainId`, or `status` (immutable or machinery-derived);
+  `addNode` must not set `status` (machinery sets it to `pending`). Whole-graph rules on the
   result: acyclic; cross-chain edges target merge-point nodes; every chain-final node
   carries `mergeTo`; every chain remains a total order (a path). Any violation rejects the
   whole delta, because partial application can produce a graph no planner intended: a delta
@@ -673,11 +681,18 @@ One JSON file per planning run:
     must be fresh. `metadata` carries project-specific fields (story, epic, phase, sprint —
     whatever the project uses) the machinery never reads.
   - `updateNode` — id plus the spec fields to replace (`dependsOn` rewiring, `mergeTo`
-    toggle, prompt or deadline change). Target must exist and be unclaimed.
+    toggle, prompt or deadline change). Target must exist and be unclaimed. The planner
+    must not set `id`, `chainId`, or `status` — these are immutable or machinery-derived
+    (verified spike 2026-07-23).
   - `removeNode` — id. Target must exist and be unclaimed; its edges go with it.
   - `abandonSegment` — the chain's `chainId`; the rework path from
     Merge-conflict resolution: the fold journals the abandonment and the pass deletes the
-    chain branch.
+    chain branch. Graph mutation (verified spike 2026-07-23): `pending` nodes in the chain
+    are removed from the graph; `completed`, `failed`, and `abandoned` nodes stay as
+    historical record. The whole-graph rules then validate the resulting graph (e.g., if
+    the removal leaves a chain without a `mergeTo` node, `final_node_missing_mergeTo`
+    fires). A chain with any `claimed` or `parked` (in-flight) node is rejected —
+    abandonSegment targets blocked chains, not running ones.
 - Edges live inside node specs as `dependsOn` — there are no separate edge ops; `updateNode`
   covers rewiring. An empty `ops` array is a legal, meaningful delta: the planner considered
   and found nothing to change — the expected common case for the answer-fold trigger.
@@ -1089,13 +1104,12 @@ single-use keeps it free across sequential claims too.
   provision time. This transfer is a non-issue: sandboxes are trusted with secrets like the dev
   machine (see Credentials under Sandbox lifecycle).
 - Copy the repo's `opencode.json` into the sandbox and ensure `NEURALWATT_API_KEY` is in the
-  sandbox env (it rides with the `.env*` files above). opencode ships without neuralwatt as a built-in
-  provider, so the provider registration in `opencode.json` is what makes `neuralwatt/glm-5.2`
-  resolvable at agent launch — without it, `opencode run` fails at provider lookup before the
-  LLM is called. The file is committed in the repo and travels with the clone, but the
+  sandbox env (it rides with the `.env*` files above). opencode ships with neuralwatt as a
+  built-in provider, so the provider registration in `opencode.json` only sets model limits —
+  no `baseURL` override. The file is committed in the repo and travels with the clone, but the
   dispatcher copies it explicitly the same way it copies the `.env*` files: the snapshot's bake is a
   cold-start optimization, not a freshness guarantee, and an `opencode.json` baked stale would
-  silently pin an old model or old context limits. **neuralwatt is the LLM
+  silently pin old context limits. **neuralwatt is the LLM
   provider for all opencode runs in the pipeline — sandbox agents, the planning run, and the
   outcome-classification LLM fallback — with `glm-5.2` as the initial model.** The model and
   provider are config in `opencode.json`, so swapping either is a repo change, not a pipeline
@@ -1104,7 +1118,19 @@ single-use keeps it free across sequential claims too.
   `api.neuralwatt.com` is not on Daytona's Tier 1 Essential Services allowlist, so sandbox
   agents cannot reach it directly.** The planning run and the outcome-classification call run
    on the devcontainer and are unaffected. See open question 2 for the resolution (resolved:
-   relay built and deployed).
+   relay built and deployed; tunnel proxy verified 2026-07-22).
+- **WebSocket tunnel proxy for LLM access (spike, 2026-07-22 — see
+  `docs/todo/spike-ws-tunnel-proxy.md`).** The sandbox starts a local CONNECT-to-WebSocket
+  tunnel proxy (`tunnel-proxy.js`) on `127.0.0.1:8888` before the agent runs. The proxy handles
+  HTTP CONNECT requests from opencode (Go's `net/http` respects `HTTPS_PROXY` natively) and
+  bridges each CONNECT to the relay's WebSocket `/tunnel` endpoint, which opens a raw TCP
+  connection to the target host and pipes bytes bidirectionally. The outer TLS (sandbox →
+  Railway relay) has an allowlisted SNI; the inner TLS (sandbox → target) flows inside the
+  WebSocket, invisible to the Envoy SNI filter. The in-sandbox command sets
+  `HTTPS_PROXY=http://127.0.0.1:8888` and `NO_PROXY` to exclude Essential Services (which the
+  sandbox reaches directly and the relay refuses to tunnel). This approach needs no `baseURL`
+  override in `opencode.json` — the agent uses the real `api.neuralwatt.com` URL. The tunnel
+  proxy depends on the `ws` npm package (installed globally before the proxy starts).
 - **Egress on Tier 1 is restricted to Daytona's Essential Services allowlist (spike,
   2026-07-22 — see `docs/todo/spike-neuralwatt-accessibility.md`).** The sandbox does not have
   open egress: an Envoy proxy inspects the TLS SNI and resets connections to any hostname not on
@@ -1133,7 +1159,15 @@ single-use keeps it free across sequential claims too.
   snapshot's pre-baked `node_modules` makes the common case fast; the install step handles
   every claim the snapshot doesn't cover. An install failure (a dep change needing a system
   package the snapshot lacks, an unresolvable lockfile) is a distinct classification — see
-  Supervision — not a generic runner error.
+  Supervision — not a generic runner error. The install step also installs the `ws` npm
+  package globally — the tunnel proxy depends on it (see WebSocket tunnel proxy above).
+- The in-sandbox command starts the tunnel proxy before the agent runs: `node /tmp/tunnel-proxy.js`
+  in the background with `TUNNEL_RELAY_URL`, `TUNNEL_RELAY_TOKEN`, and `TUNNEL_LISTEN_PORT`
+  env vars. The proxy listens on `127.0.0.1:8888` and bridges HTTP CONNECT requests to the
+  relay's WebSocket `/tunnel` endpoint. The agent's command sets `HTTPS_PROXY=http://127.0.0.1:8888`
+  and `NO_PROXY` for Essential Services (which the sandbox reaches directly). This needs no
+  `baseURL` override in `opencode.json` — opencode uses the real `api.neuralwatt.com` URL
+  (spike, 2026-07-22 — see `docs/todo/spike-ws-tunnel-proxy.md`).
 - The pass starts the node's command inside the sandbox via the Daytona session API
   (`createSession` + `executeSessionCommand({ runAsync: true })`) with `--format json`,
   `--dir <sandbox-repo-path>`, and opencode storage at a persistent path on the sandbox
@@ -1560,14 +1594,30 @@ prose above; the spike reports hold the full evidence:
 - **Snapshot with baked `node_modules`** (Strategy A) — see `docs/todo/spike-baked-node-modules.md`.
   The chown and bake-clone details are in the provisioning recipe.
 - **opencode.json provider registration for neuralwatt** (including the egress constraint) — see
-  `docs/todo/spike-neuralwatt-accessibility.md` and `docs/todo/spike-opencode-relay.md`. The
-   egress constraints are in the provisioning recipe; the authenticated sandbox-proxy relay
-   is built and deployed — see open question 2 (resolved).
+   `docs/todo/spike-neuralwatt-accessibility.md` and `docs/todo/spike-opencode-relay.md`. The
+    egress constraints are in the provisioning recipe; the authenticated sandbox-proxy relay
+    is built and deployed — see open question 2 (resolved). **WebSocket tunnel proxy
+    (spike, 2026-07-22 — see `docs/todo/spike-ws-tunnel-proxy.md`):** a local CONNECT-to-WebSocket
+    tunnel proxy inside the sandbox eliminates the `baseURL` override — opencode uses the real
+    `api.neuralwatt.com` URL with `HTTPS_PROXY` set. All eight spike steps passed (direct block
+    confirmed, curl through tunnel returned models, opencode printed `SPIKE_OK`, streaming
+    chat completion worked). The tunnel proxy and `NO_PROXY` for Essential Services are in the
+    provisioning recipe.
 - **Snapshot path rejects `resources`; image path honors all three** — see
   `docs/todo/spike-snapshot-resources.md`. The snapshot path returns a hard API error
   ("Cannot specify Sandbox resources when using a snapshot"), not silent ignore; the image
   path honors cpu/memory as cgroup-v2 quotas and disk as overlay. The wording in the
   provisioning recipe and the capability table reflects "rejects," not "ignores."
+- **Fold-time delta validation** — see `docs/todo/spike-delta-validation.md`. The
+  validation function implements all-or-nothing validation of planning deltas against
+  current graph state: per-op rules (stale target, fresh id, edge existence, immutable
+  fields) and whole-graph rules (acyclic, cross-chain merge-point, final-node `mergeTo`,
+  total order). All five documented scenarios (a–e) from admitted assumption 6 pass, plus
+  35 additional edge cases (40 tests total). The function works on `structuredClone` and
+  never mutates the input graph. Three findings folded into the prose above: (F1)
+  `abandonSegment`'s graph mutation is now documented (remove pending, keep historical);
+  (F2) frozen statuses extended to include `failed` and `abandoned`; (F4/F5) `updateNode`
+  must not set `id`/`chainId`/`status`, `addNode` must not set `status`.
 
 ### 5. n8n Execute Command: blocking for minutes + child death on restart — see `docs/todo/spike-execute-command.md`
 
@@ -1593,7 +1643,7 @@ process by its recorded PID, then the next pass acquires the lock and relaunches
 policy. Canonical state (the journal, the delta scratch file) is never lost — only the lock
 must be cleared.
 
-### 6. Fold-time delta validation against a moving target
+### 6. Fold-time delta validation against a moving target — VERIFIED (spike, 2026-07-23)
 
 The planner reads `graph.json` at launch (T0); by fold time (T1) a pass may have claimed
 nodes (freezing their specs) or folded completions (changing merge state). The delta format
@@ -1605,13 +1655,14 @@ result. A node the planner marked for removal might have been claimed between T0
 that op is stale and rejects the delta (spec is frozen). A node the planner added a
 `dependsOn` edge to might have merged — the edge target must still exist. This is the most
 algorithmically intricate interaction in the design, and it is pure code — testable without
-infrastructure. **Spike:** write the validation function and test against synthetic scenarios:
-(a) planner removes a node that was claimed meanwhile, (b) planner adds a cross-chain edge to
-a node that merged and is no longer a merge-point target, (c) planner's delta creates a cycle
-when merged with T1 state, (d) planner marks a final node without `mergeTo`, (e) a delta that
-removes a chain node and rewires its successor around it, racing a claim of the removed node
-— partial application would leave two concurrently runnable nodes on one chain branch; the
-chain-total-order rule plus all-or-nothing rejection must catch it.
+infrastructure. **Verified by the delta-validation spike (2026-07-23 — see
+`docs/todo/spike-delta-validation.md`):** the validation function was written and tested
+against all five synthetic scenarios (a–e) plus 35 additional edge cases (40 tests total,
+all pass). The function works on `structuredClone` and never mutates the input graph —
+all-or-nothing holds by construction. A sub-agent review caught two blockers
+(`updateNode` could change `id` or `chainId`, corrupting graph invariants) and several
+defense-in-depth gaps (`addNode` silently overwrote `status`); all were fixed before the
+final run. The function is ready to drop into Path step 4.
 
 ### 7. Branch push failure (decided 2026-07-22)
 
@@ -2088,9 +2139,10 @@ First real parallel run should be manual and supervised, including at least one 
 
    **Resolution:** A custom NestJS relay (`apps/sandbox-relay`) is built, deployed to Railway
    at `sandbox-relay-production.up.railway.app`, and verified. `*.railway.app` is on the
-   Tier 1 allowlist, so sandboxes reach the relay directly. The relay is a path-based reverse
-   proxy (not a forward proxy): opencode's `baseURL` is set to
-   `https://sandbox-relay-production.up.railway.app/proxy/<target-host>`, and the relay
+   Tier 1 allowlist, so sandboxes reach the relay directly. The relay exposes two endpoints:
+   a path-based reverse proxy (`/proxy/:host/*`) and a WebSocket tunnel (`/tunnel`). The
+   initial approach used the reverse proxy with opencode's `baseURL` set to
+   `https://sandbox-relay-production.up.railway.app/proxy/<target-host>`; the relay
    forwards to `https://<target-host>/<path>?<query>`. All three requirements are met:
    **(a) authentication** — a bearer token in the `X-Relay-Token` header, checked against
    `RELAY_AUTH_TOKEN` env var on Railway; requests without a valid token get 401. The token
@@ -2104,5 +2156,17 @@ First real parallel run should be manual and supervised, including at least one 
    passthrough, and SSE streaming passthrough. The relay strips hop-by-hop headers, sets
    `Host` to the target, disables proxy buffering (`X-Accel-Buffering: no`) for SSE, and
    aborts upstream fetch on client disconnect. Source: `apps/sandbox-relay/` (15 unit tests).
-   A single relay is a single point of failure; redundancy or a fallback path is out of
-   scope for the initial version but should be considered.
+
+   **Improved approach — WebSocket tunnel proxy (spike, 2026-07-22 — see
+   `docs/todo/spike-ws-tunnel-proxy.md`):** The relay's `/tunnel` WebSocket endpoint accepts
+   connections at `wss://sandbox-relay-production.up.railway.app/tunnel?host=<host>&port=<port>`,
+   opens a raw TCP connection to the target, and pipes bytes bidirectionally through the
+   WebSocket. A local tunnel proxy (`docs/todo/tunnel-proxy.js`) runs inside the sandbox on
+   `127.0.0.1:8888`, handles HTTP CONNECT requests, and bridges each to the relay's WebSocket
+   tunnel. The agent sets `HTTPS_PROXY=http://127.0.0.1:8888` and `NO_PROXY` for Essential
+   Services — no `baseURL` override needed, so opencode uses the real `api.neuralwatt.com` URL.
+   All eight spike steps passed: sandbox created, direct block confirmed, proxy uploaded and
+   started, curl through tunnel returned model data, opencode with `HTTPS_PROXY` (no
+   `baseURL`) printed `SPIKE_OK`, streaming chat completion returned coherent output. A single
+   relay is a single point of failure; redundancy or a fallback path is out of scope for the
+   initial version but should be considered.
