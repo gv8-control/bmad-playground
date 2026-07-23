@@ -197,7 +197,7 @@
       "deadlineMin": 90,
       "conflict": {
         "reportedAt": "2026-07-21T15:47:20Z",
-        "files": ["scripts/pipeline3/lib/journal.mjs", "scripts/pipeline3/lib/state.mjs"],
+        "files": ["pipeline3/lib/journal.mjs", "pipeline3/lib/state.mjs"],
         "diffstat": "2 files changed, 64 insertions(+), 31 deletions(-)"
       }
     },

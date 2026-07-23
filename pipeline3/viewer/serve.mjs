@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const graphPath = resolve(
-  process.argv[2] ?? join(root, '../../../_bmad-output/pipeline3/graph.json'),
+  process.argv[2] ?? join(root, '../../state/graph.json'),
 );
 const mockPath = join(root, 'mock-graph.json');
 const port = Number(process.env.PORT ?? 8317);
