@@ -341,7 +341,14 @@ counter so an independent ready node cannot starve (see Graph management rules).
   counter increments but the yield never triggers — behavior is identical to pure depth-first.
   The counter is per-pool, not per-chain; it resets on a yield. Any independent ready node is
   guaranteed to be claimed within `fairnessBudget` node completions — starvation-freedom by
-  construction, with   one integer of added state.
+  construction, with   one integer of added state. This guarantee is scoped to ready **nodes**:
+  a merge trigger is an action, not a ready node, so the counter does not protect it — merge
+  triggers are protected by the merges-before-claims ordering in step 6 (verified spike
+  2026-07-23: the counter provides zero protection for merge triggers under steady-state
+  contention — see `docs/todo/spike-merge-trigger-starvation.md`). Extending the counter to
+  count merge-trigger deferrals was considered and rejected: it breaks the level-triggered
+  invariant by adding history-dependent escalation, with no clean reset semantics and no
+  compositional benefit over the merges-first ordering.
 - These rules — and the retry/timeout/capacity knobs (`maxAttemptsPerNode`, per-node timeout,
   `maxConcurrentSandboxes`, `fairnessBudget`, `opencodeVersion`, `trunkBranch`) — are dispatcher claim-time
   policy: plain code plus a small policy block in gen-3's own state, defined fresh, not
@@ -522,24 +529,36 @@ Each invocation:
 5. **Re-evaluate** — which nodes are now ready? (Unmarked chain predecessor pushed, or the
     predecessor's merge landed — a merge-point predecessor in-chain or cross-chain; capacity
     available.)
-6. **Claim and launch** — claim ready nodes depth-first with the fairness bound (journal the
-    claim), create and
-    provision a single-use sandbox (capacity permitting — the `maxConcurrentSandboxes` cap; see
-    the per-claim recipe under Worker sandbox design), `git checkout` to the claim's base, start
-    the node's command via the
-    Daytona session API with `runAsync` (appending `</dev/null` — see the per-claim recipe;
-    without stdin redirection opencode hangs on the PTY) — the pass does not wait for it. If ready nodes are
-    running low (the plan-2-ahead policy) and no planning run is in flight, journal the launch
-    and trigger the planning-host workflow (see
-    Planning runs). Merge triggering is level-triggered here too: a completed merge-point node
-    whose branch has neither merged nor a pending conflict report, with the merge lock
-    acquirable **and capacity available** (the merge cycle's sandbox counts against
-    `maxConcurrentSandboxes` for its duration — see Honest costs — so a merge trigger is gated
-    by the same cap as a node claim; if the cap is full, the trigger is deferred to the next
-    pass, like a deferred claim), (re)triggers the merge-queue workflow — a merge cycle killed
-    mid-run is re-run by the next pass, not lost (see Merge cycle). Claiming and planning
-    launches are skipped entirely while the pipeline is paused (see Pause/resume) —
-    supervision, folding, and merge triggering (finishing claimed work) still run.
+6. **Merge triggers, then claim and launch** — the two sub-operations that
+     compete for the same capacity pool are ordered: pending merge triggers are
+     evaluated **before** node claims, so a merge gets first claim on capacity
+     freed this pass (verified spike 2026-07-23: under steady-state contention
+     with 6 chains and cap=5, claims-first ordering delayed merges by up to 184
+     ticks ≈ hours with 264 capacity deferrals; merges-first ordering reduced
+     the max wait to 3 ticks ≈ minutes with only merge-lock-serialization
+     deferrals — see `docs/todo/spike-merge-trigger-starvation.md`). Because
+     merge cycles complete in seconds and run one-at-a-time under `merge.lock`,
+     ordering them first does not materially delay node claims. Merge triggering
+     is level-triggered: a completed merge-point node whose branch has neither
+     merged nor a pending conflict report, with the merge lock acquirable
+     **and capacity available** (the merge cycle's sandbox counts against
+     `maxConcurrentSandboxes` for its duration — see Honest costs — so a merge
+     trigger is gated by the same cap as a node claim; if the cap is full, the
+     trigger is deferred to the next pass, like a deferred claim), (re)triggers
+     the merge-queue workflow — a merge cycle killed mid-run is re-run by the
+     next pass, not lost (see Merge cycle). Then claim ready nodes depth-first
+     with the fairness bound (journal the claim), create and provision a
+     single-use sandbox (capacity permitting — the `maxConcurrentSandboxes`
+     cap; see the per-claim recipe under Worker sandbox design), `git checkout`
+     to the claim's base, start the node's command via the Daytona session API
+     with `runAsync` (appending `</dev/null` — see the per-claim recipe; without
+     stdin redirection opencode hangs on the PTY) — the pass does not wait for
+     it. If ready nodes are running low (the plan-2-ahead policy) and no
+     planning run is in flight, journal the launch and trigger the
+     planning-host workflow (see Planning runs). Claiming and planning launches
+     are skipped entirely while the pipeline is paused (see Pause/resume) —
+     supervision, folding, and merge triggering (finishing claimed work) still
+     run.
 7. **Write the heartbeat, release the lock, and exit** — the pass's last act under the lock
    is an atomic write (tmp + rename, like `graph.json`) of `last-pass.json`: timestamp,
    duration, and counts of claims, folds, and polls. The schedule tick alerts when this file
@@ -560,10 +579,21 @@ step of every pass. The behaviors carry over; the workflow does not.
   stream-truncation signal → INCOMPLETE recovery — see Stream-truncation recovery), LLM fallback
   only for the COMPLETE/QUESTION/`failed` call. The rules and prompt are ported from gen-2's
   `Parse OpenCode Response` + `BMAD Outcome` into a small JS module; a classification call adds
-  a few seconds to a pass, which stays within the seconds-long budget. If N sessions exited since
-  the last pass, the pass makes N calls — all under the lock, so a batch of exits stretches the
-  budget; not a performance concern but a correctness one if lock hold time blocks merge
-  triggering or question-resume long enough to matter functionally. The classifier reads the
+  a few seconds to a pass, which stays within the seconds-long budget (verified spike 2026-07-23:
+  avg 4.3s, median 2.7s, max 15.8s per call — see `docs/todo/spike-lock-hold-time.md`). If N
+  sessions exited since the last pass, the pass makes N calls — all under the lock, so a batch of
+  exits stretches the budget (measured: 16.0s for N=5 — well within the seconds-long budget). Not
+  a performance concern but a correctness one if lock hold time blocks merge triggering or
+  question-resume long enough to matter functionally — the spike confirmed none of the five
+  blocked operations (merge triggering, question-resume, second-pass coalescence,
+  paused-pipeline resumes, planning-run triggering) suffer a functional defect at this lock-hold
+  duration, all absorbed by the hour-scale nature of skill runs and the level-triggered design.
+  The classification LLM call has an explicit timeout (15s) and classifies as UNKNOWN on timeout
+  failure (parking the node for human review rather than silently merging) — without this bound,
+  a slow or retrying LLM response is the unbounded risk that could push lock-hold from seconds
+  into minutes. A budget guard (defer remaining exits as `classification_deferred` if lock-hold
+  exceeds 45s, let a follow-up pass pick them up) is the documented fallback if production data
+  shows lock-hold exceeding the budget; it is not needed at the measured 16s. The classifier reads the
   JSON event stream (`--format json` output) — `step_finish` with `reason: "stop"` is the clean
   completion signal, `text` events carry the agent's output, `error` events carry provider
   errors. Every classification journals its evidence with the outcome event: the deterministic
@@ -638,7 +668,13 @@ step of every pass. The behaviors carry over; the workflow does not.
   directory on the devcontainer, before the sandbox is destroyed (single-use — see Sandbox
   lifecycle): destruction removes the sandbox copy, and the structured transcript (messages,
   tool calls) is evidence the JSON event stream cannot replace — this plan's own session-history
-  analysis was built from transcripts that existed locally. A stream-truncation continue pulls
+  analysis was built from transcripts that existed locally. Transcript collection runs under the
+  lock (it is part of the poll step, step 4 of the reconcile pass) — this is defensible because
+  pulls are bounded file operations (verified spike 2026-07-23: avg 1.6s per pull, no variance,
+  no unbounded-retry risk — see `docs/todo/spike-lock-hold-time.md`), unlike LLM classification
+  calls which carry tail latency. Moving pulls outside the lock would break the single-use
+  sequencing invariant (destruction only after transcript pull) and require keeping the sandbox
+  alive past the pass; they stay in-lock. A stream-truncation continue pulls
   nothing (the session is still going); a parked
   node's transcript survives the sandbox stop and is pulled after resume, when that session exits.
   Planning runs need no pull — their transcript and log file are already local. **Transcript
@@ -1052,8 +1088,8 @@ Dispatcher pass (same devcontainer, seconds long, one at a time under flock)
   1. Reconcile (journal vs labeled sandboxes vs pushed branches vs planning lock)
   2. Fold inbox → journal.jsonl (commit point) → graph.json (derived)
   3. Poll in-flight sessions + planning run → classify exits → act (continue / park / collect)
-  4. Re-evaluate ready nodes
-     5. Claim depth-first (bounded by fairnessBudget) → start session commands (runAsync, with `--format json` and `</dev/null` appended); trigger planning host if ready-node frontier low
+   4. Re-evaluate ready nodes
+      5. Trigger pending merges (capacity-gated, merge.lock-serialized) → then claim depth-first (bounded by fairnessBudget) → start session commands (runAsync, with `--format json` and `</dev/null` appended); trigger planning host if ready-node frontier low
   6. Release lock, exit
        │  Daytona API: create/stop,         │  journal launch → trigger n8n planning host,
        │  session exec, log pull                │  which runs the wrapper under planning.lock
@@ -1584,7 +1620,9 @@ is meaningful. See Pipeline vs. project-specific customization.
   merged nor a pending conflict report, with `merge.lock` acquirable **and capacity available**
   (the merge sandbox counts against `maxConcurrentSandboxes`; if the cap is full the trigger
   defers to the next pass), (re)triggers the
-  workflow. A merge cycle killed by an n8n restart has the same caveat as a planning run
+  workflow. Merge triggers are evaluated before node claims in step 6, so a pending merge gets
+  first claim on capacity freed this pass (verified spike 2026-07-23 — see
+  `docs/todo/spike-merge-trigger-starvation.md`). A merge cycle killed by an n8n restart has the same caveat as a planning run
   (spike 2026-07-22, see `docs/todo/spike-execute-command.md`):
   the wrapper is a child of Execute Command, and n8n restart does **not** kill it — the
   orphaned child is reparented to init and keeps holding `merge.lock`, so the pass reads the
@@ -1683,7 +1721,15 @@ lockfile.
   during that window. The merge cycle does not run tests; a post-merge
   hook, if configured, runs project-specific validation after the merge lands. Mid-chain merge
   points multiply the merge-cycle cost, which is why the
-  guidelines mark one only where it earns it.
+  guidelines mark one only where it earns it. Because the merge sandbox shares the cap with
+  node claims, step 6 evaluates merge triggers before node claims so a pending merge gets first
+  claim on capacity freed this pass — without this ordering, depth-first claiming can consume
+  every freed slot before the merge trigger is evaluated, deferring merges by hours under
+  steady-state contention (verified spike 2026-07-23 — see
+  `docs/todo/spike-merge-trigger-starvation.md`). A fallback — reserving one slot for merge
+  cycles by setting the effective node-claim cap to `maxConcurrentSandboxes - 1` (only when
+  `maxConcurrentSandboxes ≥ 3`) — is documented if production data shows merge-trigger latency
+  exceeding bounds despite the ordering fix.
 - An early-merged artifact is a promise. A chain implementing against a merged artifact's
   schemas and contracts reworks if the upstream implementation later diverges from the artifact —
   divergence is not a file conflict, so the merge queue cannot catch it; it surfaces as rework,
@@ -1713,8 +1759,12 @@ lockfile.
   projects alike. A project that wants gates configures a post-merge hook; a project that
   doesn't, accepts unguarded merges. The hook failure rides the standard remediation path —
   no new failure mode.
-- Outcome classification calls an LLM from inside a pass — a few seconds per exited session,
-  within the seconds-long pass budget.
+- Outcome classification calls an LLM from inside a pass — a few seconds per exited session
+  (verified spike 2026-07-23: avg 4.3s, max 15.8s — see `docs/todo/spike-lock-hold-time.md`),
+  within the seconds-long pass budget. A batch of N=5 exits measured 16.0s total lock-hold —
+  coalescence holds, no blocked operation suffers a functional defect. The classification LLM
+  call has an explicit 15s timeout; a budget guard (defer remaining exits if lock-hold exceeds
+  45s) is the documented fallback if production data shows the budget exceeded.
 - The practical caps on parallelism are the Daytona quota and the max-concurrent-sandboxes
   policy knob — n8n execution concurrency no longer participates: the executions that block
   on commands (merge queue, planning host) are serialized by their own locks (`merge.lock`,
