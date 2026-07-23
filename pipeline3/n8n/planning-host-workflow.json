@@ -1,0 +1,86 @@
+{
+  "name": "Pipeline Planning Host",
+  "description": "Hosts a planning run (graph expansion): Execute Command runs the launch wrapper (blocking for the run's duration — acquires the planning lock, runs the opencode planning process, promotes the delta to the inbox, releases the lock), then invokes the dispatcher so the delta folds immediately instead of at the next tick. Triggered on demand by the dispatcher (a contentless call — the journal already records the launch). NOT active by default.",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "planningRunId" },
+            { "name": "mode" },
+            { "name": "instruction" },
+            { "name": "sessionId" }
+          ]
+        }
+      },
+      "id": "p1",
+      "typeVersion": 1.1,
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trigger = $('Start').first().json;\nfunction shellQuote(s) {\n  if (s === undefined || s === null) s = '';\n  return \"'\" + String(s).replace(/'/g, \"'\\\\''\") + \"'\";\n}\nconst parts = ['node', '/workspaces/bmad-playground/pipeline3/bin/planning-launch.mjs'];\nif (trigger.planningRunId) parts.push('--planning-run-id=' + shellQuote(trigger.planningRunId));\nif (trigger.mode) parts.push('--mode=' + shellQuote(trigger.mode));\nif (trigger.instruction) parts.push('--instruction=' + shellQuote(trigger.instruction));\nif (trigger.sessionId) parts.push('--session-id=' + shellQuote(trigger.sessionId));\nreturn [{ json: { command: parts.join(' '), planningRunId: trigger.planningRunId, mode: trigger.mode } }];"
+      },
+      "id": "p2",
+      "typeVersion": 2,
+      "name": "Build Command",
+      "type": "n8n-nodes-base.code",
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.command }}",
+        "executeOnce": true
+      },
+      "id": "p3",
+      "typeVersion": 1,
+      "name": "Run Planning Launch",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [440, 0],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "command": "node /workspaces/bmad-playground/pipeline3/bin/dispatcher.mjs",
+        "executeOnce": true
+      },
+      "id": "p4",
+      "typeVersion": 1,
+      "name": "Invoke Dispatcher",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [660, 0],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          { "node": "Build Command", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Build Command": {
+      "main": [
+        [
+          { "node": "Run Planning Launch", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Run Planning Launch": {
+      "main": [
+        [
+          { "node": "Invoke Dispatcher", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true
+  }
+}
