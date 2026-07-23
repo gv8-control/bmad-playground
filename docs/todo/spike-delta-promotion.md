@@ -214,7 +214,7 @@ back the rename, reverting target to old content. Without `fsync(tmp)` before
 
 The devcontainer's `/tmp` is tmpfs (RAM-backed), so power loss clears
 everything — this is not a concern for the spike environment. But if the
-pipeline state directory is ever on ext4 (e.g. if `_bmad-output/pipeline3/`
+pipeline state directory is ever on ext4 (e.g. if `pipeline3/state/`
 lives on the devcontainer's root filesystem), the wrapper should use the
 canonical 5-step pattern:
 

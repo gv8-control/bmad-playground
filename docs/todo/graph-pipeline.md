@@ -9,6 +9,186 @@ alongside project-specific semantics. The pipeline knows nothing about stories, 
 phases, or sprints — those live in project-authored guidance the planner reads. See Pipeline vs.
 project-specific customization.
 
+## Glossary
+
+Terms used throughout this plan. Cross-references point to the section where each is
+developed in depth.
+
+### Architecture generations
+
+- **gen-2** — the predecessor pipeline: a sequential story loop driven by n8n workflows
+  (`Develop Epic`, `Develop Story (Playbook)`, `BMAD Session (OpenCode)`). Its state
+  files and engines are not inherited.
+- **gen-3** — the pipeline this plan defines: a general graph executor with parallel
+  opencode agents supervised by level-triggered dispatcher passes.
+
+### Graph structure
+
+- **Work graph** — a directed acyclic graph of nodes connected by `dependsOn` edges,
+  emitted by the planning agent. Replaces gen-2's ordered sequence. See *Graph management
+  rules*.
+- **Node** — one skill run (or atomic CLI command). The unit of claiming, supervision, and
+  retry. Carries a spec (skill, agent, prompt, deadline, `dependsOn`, `mergeTo`,
+  `metadata`).
+- **Chain** — a sequence of nodes composed for a unit of work, connected by `dependsOn`
+  edges. A chain is a total order (all nodes modify files) and shares one branch.
+- **`chainId`** — the structural identifier the machinery reads. Branch names are derived
+  from it (`pipeline/<runId>/<chainId>`); cross-chain edges are validated against it.
+  Story, epic, sprint, and all project-specific vocabulary live in `metadata`, which the
+  machinery never reads.
+- **`dependsOn`** — the edge field in a node spec. Within a chain: the previous node.
+  Cross-chain: a merge-point node only.
+- **`mergeTo`** — the optional field marking a node as a merge point. When present, its
+  value is the project's configured trunk branch; the node's completion triggers the merge
+  queue. Every chain's final node carries `mergeTo`.
+- **Merge point** — a node carrying `mergeTo`. Its completion triggers the merge queue for
+  the chain branch; its successors base on merged trunk, starting a fresh segment.
+- **Segment** — the nodes on a chain branch between two merge points (or from the chain's
+  start to its first merge point, or from a merge point to the chain's end). Same branch
+  name, successive base commits.
+- **Scope** — a project-specific grouping of chains (an epic, a BMAD phase, a research
+  agenda). The machinery never tracks scopes; scope transitions are planner judgment. See
+  *Scope lifecycle*.
+- **Backlog** — whatever the project uses to describe upcoming work (epics files and
+  sprint plan, a phase list, a research agenda). The planner reads it to know what work
+  exists.
+- **Finalization** — a scope-scoped chain of audit/review nodes (bug-hunt, trace, NFR,
+  retrospective) composed after a scope's work chains merge. See *Scope lifecycle*.
+
+### Dispatcher
+
+- **Dispatcher** — the bookkeeping and supervision engine. Not a daemon; a short reconcile
+  pass invoked by n8n on events. See *Dispatcher*.
+- **Reconcile pass (pass)** — one invocation of the dispatcher: acquire the lock,
+  reconcile, fold the inbox, poll in-flight sessions, re-evaluate ready nodes, claim and
+  launch, write the heartbeat, exit. Seconds long. See *Reconcile pass*.
+- **Fixpoint** — the state where a pass has nothing left to do: no inbox to fold, no
+  exited sessions to classify, no ready nodes to claim. The pass drives durable state to
+  fixpoint then exits.
+- **Level-triggered** — a pass processes the entire current state, not "the event that
+  woke it." Two events in quick succession: the first pass handles both, the second finds
+  fixpoint. See *Dispatcher*.
+- **Contentless invocation** — an invocation carries no payload; it is a "wake up." All
+  information is durable on disk or in git before the invocation fires.
+- **Claim** — the act of a pass taking a ready node for execution: journal the claim (the
+  commit point), provision a sandbox, start the node's command. A claimed node's spec is
+  frozen.
+- **Ready node** — a node whose dependencies are satisfied (predecessor pushed, or merge
+  landed) and for which sandbox capacity is available.
+- **Frozen spec** — a claimed node's spec cannot be changed by replanning; replanning
+  touches only unclaimed nodes.
+- **Depth-first traversal** — the dispatcher descends into a node's dependents before
+  starting unrelated siblings, bounded by the fairness counter. See *Graph management
+  rules*.
+- **Fairness counter / `fairnessBudget`** — caps consecutive chain-following claims so an
+  independent ready node cannot starve. Defaults to `maxConcurrentSandboxes`. Resets on a
+  yield.
+- **Inbox** — a directory of files written by n8n's small workflows and the planning
+  wrapper (question answers, merge-conflict reports, graph deltas, external events),
+  consumed and deleted by passes. Written atomically (tmp + rename).
+- **Journal (`journal.jsonl`)** — the append-only commit point for canonical pipeline
+  state. Gen-3 schema: claims, outcomes, parks/resumes, merge events, `runner_error`
+  events, pause/resume, policy decisions.
+- **`graph.json`** — the derived view of graph state, rebuilt from the journal. Carries
+  per-node metadata digests so routine readers read one file. Written atomically (tmp +
+  rename).
+- **`last-pass.json`** — the heartbeat file a pass writes as its last act under the lock
+  (timestamp, duration, counts). The schedule tick alerts when it goes stale.
+- **Policy block** — a JSON config file in `pipeline3/state/` read at the start of
+  every pass. Holds capacity knobs (`maxConcurrentSandboxes`, `fairnessBudget`,
+  `maxAttemptsPerNode`, per-node timeout, `opencodeVersion`, `trunkBranch`), the post-merge
+  hook, and the per-claim install command.
+
+### Planning
+
+- **Planning run** — graph expansion executed on the devcontainer as an async opencode
+  process, hosted by an n8n workflow. Not a graph node. Serialized by `planning.lock`. See
+  *Planning runs*.
+- **Graph delta** — the planning run's output: a list of operations (`addNode`,
+  `updateNode`, `removeNode`, `abandonSegment`) applied at fold time. Not a snapshot, not
+  a JSON patch. See *Graph delta format*.
+- **Lazy composition** — the planner never composes past an information-producing node;
+  the next segment is composed in a later planning run once the artifact is readable at
+  `origin/<trunkBranch>`. See *Graph management rules*.
+- **Information-producing node** — a node whose artifact determines what the rest of the
+  chain should be (e.g. `create-story`). The planner must not compose past it.
+- **Chain-composition guidelines** — the project-authored, agent-facing document
+  (`chain-composition-guidelines.md`) the planner reads as standing context: chain
+  patterns, skill catalog, decision rules, node-spec schema. See *Open question 1*.
+- **`decision-policy.md`** — human-authored, agent-facing artifact that keeps questions
+  rare. Read by agents during interactive steps.
+
+### Supervision
+
+- **Outcome classification** — deterministic rules first, LLM fallback for the
+  COMPLETE/QUESTION/`failed` call. Ported from gen-2's `Parse OpenCode Response` +
+  `BMAD Outcome`. See *Supervision*.
+- **COMPLETE** — the agent finished its task successfully.
+- **QUESTION** — the agent needs a human answer. The node is parked (a third status, not
+  `success` or `failed`), the sandbox stopped, and the question-form workflow triggered.
+- **`failed`** — the agent failed (non-zero exit with a completed last assistant message,
+  or a timeout). Consumes an attempt against `maxAttemptsPerNode`.
+- **INCOMPLETE** — a within-session recovery signal (not a node outcome): the LLM provider
+  dropped the response mid-stream, the session is still alive, and
+  `opencode run --format json --session <id>` resumes it. See *Stream-truncation recovery*.
+- **Stream-truncation recovery** — the poll step issues an async continue, extends the
+  deadline, and moves on. Does not touch the journal or consume an attempt.
+- **Transcript** — the structured session data (messages, tool calls) pulled from a
+  sandbox via `opencode export` after a session exits, before the sandbox is destroyed.
+- **`runner_error`** — a journal event for machinery failures (non-zero exits, timeouts,
+  API failures). Replaces gen-2's `runner-errors.jsonl`.
+
+### Merge
+
+- **Merge cycle** — the merge queue's unit of work: fetch, rebase, merge, push, fire
+  post-merge hook. Runs on a sandbox created per cycle. Tests are not part of it. See
+  *Merge cycle*.
+- **Merge queue** — the n8n workflow that hosts the merge wrapper. Serialized by
+  `merge.lock`, level-triggered by passes, capacity-gated by `maxConcurrentSandboxes`.
+- **Trunk branch (`trunkBranch`)** — the project's integration branch (`main`, `master`,
+  `develop`). Configured in the policy block. The merge cycle pushes to it, the planner
+  reads from it, and `mergeTo` targets it.
+- **Post-merge hook** — project-authored, configured in the policy block. Fires after a
+  merge lands. A hook failure is a standard `failed` outcome riding the existing
+  remediation path. A project with no tests configures no hook.
+- **Conflict fingerprint** — a stable identifier (e.g. `merge-conflict-<chainId>`)
+  journaled with merge-conflict events so recurrence is a query away. See *Conflicts are
+  evidence*.
+- **Resolution node** — a normal node (claimed, sandboxed, supervised) appended by a
+  conflict-mode planning run to resolve a merge conflict in-place. Carries `mergeTo`.
+- **Rework** — the alternative to in-place resolution: the conflict reveals semantic
+  divergence, so the conflicted segment is abandoned (`abandonSegment`) and replacement
+  nodes base on merged trunk.
+- **`abandonSegment`** — a graph delta op: the fold journals the abandonment and the pass
+  deletes the chain branch. `pending` nodes are removed; `completed`, `failed`, and
+  `abandoned` nodes stay as historical record.
+
+### Sandbox
+
+- **Sandbox (worker sandbox)** — a single-use Daytona sandbox, created on demand at claim
+  time, destroyed after collection. One per claim attempt. See *Worker sandbox design*.
+- **Single-use** — a sandbox is used for exactly one claim attempt and destroyed when the
+  session exits (after transcript pull). No warm pool, no reuse. See *Sandbox lifecycle*.
+- **Snapshot** — the pre-built Daytona image (built via the Declarative Builder) that
+  sandboxes are created from. Bakes the repo clone, dependencies, opencode, and toolchain.
+  A cold-start optimization, not a freshness guarantee.
+- **Tunnel proxy** — a local CONNECT-to-WebSocket proxy (`tunnel-proxy.js`) running inside
+  the sandbox on `127.0.0.1:8888`. Bridges opencode's HTTP CONNECT requests to the relay's
+  WebSocket `/tunnel` endpoint. Eliminates the need for a `baseURL` override.
+- **Relay** — the custom NestJS service (`apps/sandbox-relay`) deployed to Railway that
+  sandboxes reach (Railway is on the Essential Services allowlist). Provides a path-based
+  reverse proxy and a WebSocket tunnel.
+- **Essential Services allowlist** — Daytona Tier 1's egress policy: only pre-allowed
+  domains (GitHub, npm, Anthropic, OpenAI, Docker registries, Railway, etc.) are
+  reachable directly. `api.neuralwatt.com` is not on it, hence the relay/tunnel proxy.
+- **`maxConcurrentSandboxes`** — the policy knob capping live sandboxes (including the
+  merge cycle's sandbox). A claim or merge trigger that would exceed it defers to the next
+  pass.
+- **`maxAttemptsPerNode`** — the policy knob capping retry attempts for a failed node.
+  Merge-queue fallbacks do not consume node attempts.
+- **`opencodeVersion`** — the policy knob pinning the opencode version installed in
+  sandboxes and on the devcontainer. One source of truth for both install paths.
+
 ## Why this shape
 
 n8n executes the nodes of one workflow execution sequentially, even when branches are wired "in
@@ -62,9 +242,9 @@ counter so an independent ready node cannot starve (see Graph management rules).
   dev servers, and the human's Postgres, and its checkout is the human's working copy —
   pipeline git operations never touch it. The n8n workflow runs a merge wrapper that drives the
   merge cycle on the sandbox via the Daytona session API — same create-on-demand path as a
-  node claim, held for seconds not hours — and the push to `origin/main` is the merge cycle's
+  node claim, held for seconds not hours — and the push to `origin/<trunkBranch>` is the merge cycle's
   commit point: everything before it is sandbox-local and disposable (see Merge cycle under
-  Worker sandbox design). A branch whose head is already an ancestor of main short-circuits at
+  Worker sandbox design). A branch whose head is already an ancestor of the trunk branch short-circuits at
   the start of the merge cycle: nothing to merge — the merge cycle just deletes the branch —
   so an empty-diff completion or a conflict that evaporated while its resolution was planned
   costs one git check instead of a full serialized merge cycle. **Testing is not part of the
@@ -82,40 +262,6 @@ counter so an independent ready node cannot starve (see Graph management rules).
   workflows write only inbox files (a question answer, a merge-conflict report, an external event) that a pass folds in.
   There is no event-ingest webhook: every result is durable on disk (or in git) before the
   dispatcher is invoked, and every invocation is a contentless "wake up".
-
-## What gen-3 keeps from gen-2, and what it discards
-
-The rule applied throughout: **behaviors and small workflows carry over; engines and state do
-not.** Gen-2's engines (the epic loop, the playbook interpreter, the session runner) dissolve
-into gen-3 structures, and gen-2's state files stay with gen-2. (See
-[docs/self-improving-system-concept.md](../self-improving-system-concept.md) for the gen-2
-architecture.)
-
-| Gen-2 piece | Fate in gen-3 |
-|---|---|
-| `Develop Epic` (n8n) | Dissolved — the epic loop becomes the graph plus dispatcher claiming; its reflect/learn steps are out of scope (see below) |
-| `Develop Story (Playbook)` (n8n) + `playbook.json` | Dissolved — a chain is composed per unit of work by the planning agent; each node spec carries its own skill/agent/prompt, so there is no playbook interpreter and no playbook file. The step sequence itself survives only as content for the advisory chain-composition guidelines (see Graph management rules) |
-| `BMAD Session (OpenCode)` (n8n) | Dissolved — its behaviors (bounded runs, stream-truncation auto-continue, outcome classification, question form + ntfy resume) are reimplemented as pass logic plus one small question-form workflow; the workflow itself is not ported. Note: gen-2's INCOMPLETE was a within-session recovery signal for the LLM provider dropping a response mid-stream — the session was still alive and `opencode run --session <id>` resumed it (gen-2 did not use `--format json`). Gen-3 keeps the same within-session recovery, with `opencode run --format json --session <id>` resuming the session (see Supervision), not as a node outcome |
-| `Parse OpenCode Response`, `BMAD Outcome` (n8n sub-workflows) | Logic ported — the deterministic rules and the LLM classification prompt move into the dispatcher's classification module; the sub-workflows stay with gen-2 |
-| Reflect step, `apply-amendments.mjs`, `ledger.jsonl`, trends | Not inherited — self-improvement is out of scope for gen-3 (rationale below) |
-| `runner-errors.jsonl` | Not inherited — machinery failures are `runner_error` events in the gen-3 journal |
-| `journal.jsonl` (gen-2 schema) | Not inherited — gen-3 defines its own journal with its own schema (see State) |
-| `scripts/pipeline/*.mjs` | Not inherited — the files have been removed from the repo; gen-3 code has no dependency on gen-2 scripts |
-| Error Handler (ntfy) (n8n) | Kept — small and generic |
-| `_bmad-output/decision-policy.md` | Kept as an agent-facing artifact — human-authored, read by agents during interactive steps; it is what keeps questions rare. The reflector machinery around it is not inherited |
-
-**Why self-improvement is out of scope.** Two reasons, both structural. First, gen-2 reflects
-*between stories* — a quiet point that exists only because the epic loop is sequential. With N
-concurrent agents there is no between-chains quiet point; the only serialization point is the
-merge queue. A reflector for gen-3 must be designed for that world (hook the merge queue, or run
-on a schedule against the journal) — porting the gen-2 one buys nothing. Second, carrying the
-substrate without the consumer is pure cost: it constrained storage format choices, imported
-policy vocabulary (`maxAttemptsPerStory`, `addStepRecurrenceThreshold`), and motivated features
-like playbook version pinning that only make sense with a live amendment loop. Gen-3 therefore
-journals everything a future reflector would want to read (outcomes, durations, conflicts,
-machinery errors — see Conflicts are evidence), but defines no reflection machinery and writes
-nothing to gen-2's files. When a reflector is built, it is a separate consumer of gen-3's own
-journal.
 
 ## Graph management rules
 
@@ -135,8 +281,9 @@ journal.
   dev-story) reads the work, halts with a question, and rides the standard
   QUESTION → park → resume path.
 - **Chains share a branch and merge at merge points.** A chain works on one branch
-  (`pipeline/<runId>/<chainId>`). A node spec may carry `mergeTo: <branch>` — the only target
-  for now is `main` — marking a merge point: when that node completes, the pass triggers the
+  (`pipeline/<runId>/<chainId>`). A node spec may carry `mergeTo: <trunkBranch>` — the target
+  is the project's configured trunk branch (see `trunkBranch` in the policy block; default
+  `main`) — marking a merge point: when that node completes, the pass triggers the
   merge queue for the chain branch. Every chain's final node carries `mergeTo` (the guidelines
   instruct the planner; the dispatcher's rule is just "merge when marked", no chain-end special
   case — a final node without `mergeTo` is a planning error rejected at fold time). A mid-chain
@@ -160,9 +307,9 @@ journal.
   node with no story in its metadata is a node whose chain isn't story-shaped; everything works.
 - **Basing and readiness follow the merge points.** The successor of an unmarked node is ready
   when the predecessor's head is pushed and bases on it — same branch, same segment. The
-  successor of a merge-point node is ready when the merge *lands* and bases on merged main,
+  successor of a merge-point node is ready when the merge *lands* and bases on merged trunk,
   starting a fresh segment: the merge queue deletes the merged branch and the successor's claim
-  recreates `pipeline/<runId>/<chainId>` from main — same name, new segment; the journal records
+  recreates `pipeline/<runId>/<chainId>` from the trunk branch — same name, new segment; the journal records
   each claim's base commit. Cross-chain `dependsOn` edges may only target merge-point nodes,
   keeping "cross-chain dependencies gate on a merge" an invariant rather than a convention — an
   edge to an unmarked node is rejected at fold time. A failed mid-chain merge blocks the chain
@@ -174,13 +321,13 @@ journal.
   Dispatcher). The same rule applies within a chain: the planner never
   composes past an information-producing node — one whose artifact determines what the rest
   of the chain should be; create-story is the type case — and extends the chain in a later
-  run once the artifact is readable at `origin/main`. Composing a whole chain up front from
+   run once the artifact is readable at `origin/<trunkBranch>`. Composing a whole chain up front from
   the backlog entry alone plans speculation, and depth-first claiming makes the mistake
    irreversible: the pass that folds the artifact-producing node's completion claims the
    pre-planned successor in the same pass, leaving no window for a replan to remove a node the
    artifact just revealed as unnecessary. Lazy composition closes that gap with existing
    machinery — no successor exists yet, so the ready-node frontier runs low and the standard expansion
-   trigger fires with the artifact now on main. A claimed node's spec is frozen; replanning
+   trigger fires with the artifact now on the trunk branch. A claimed node's spec is frozen; replanning
   touches only unclaimed nodes.
 - **Depth-first traversal, bounded:** the dispatcher descends into a
   node's dependents before starting unrelated siblings — depth-first is the default because it
@@ -196,13 +343,16 @@ journal.
   guaranteed to be claimed within `fairnessBudget` node completions — starvation-freedom by
   construction, with   one integer of added state.
 - These rules — and the retry/timeout/capacity knobs (`maxAttemptsPerNode`, per-node timeout,
-  `maxConcurrentSandboxes`, `fairnessBudget`, `opencodeVersion`) — are dispatcher claim-time
+  `maxConcurrentSandboxes`, `fairnessBudget`, `opencodeVersion`, `trunkBranch`) — are dispatcher claim-time
   policy: plain code plus a small policy block in gen-3's own state, defined fresh, not
   inherited from the gen-2 playbook's `policy`. The policy block is a config file (JSON in
-  `_bmad-output/pipeline3/`) read at the start of every pass, so capacity knobs are tunable
+  `pipeline3/state/`) read at the start of every pass, so capacity knobs are tunable
   without a code change or restart — the next pass picks up the new value. `opencodeVersion`
   pins the opencode version installed in sandboxes and on the devcontainer — one source of
-  truth, read by both install paths. Do not pick technology
+  truth, read by both install paths. `trunkBranch` names the project's integration branch —
+  the branch the merge cycle pushes to, the planner reads from, and `mergeTo` targets
+  (default `main`; a project whose trunk is called `master`, `develop`, or anything else
+  configures it here so no code assumes the literal string `main`). Do not pick technology
   expecting it to enforce them.
 
 ## Pipeline vs. project-specific customization
@@ -216,7 +366,7 @@ phases, or any project-specific workflow. The separation is explicit:
   chain's final node carries `mergeTo`, the graph stays acyclic
 - The merge cycle: fetch + rebase + merge + push + fire post-merge hook
 - Retry, timeout, capacity knobs (`maxAttemptsPerNode`, `maxConcurrentSandboxes`,
-  `fairnessBudget`, `opencodeVersion`)
+  `fairnessBudget`, `opencodeVersion`, `trunkBranch`)
 - The planner's immutable base rules: "compose chains, don't plan past information-producing
   nodes, mark merge points only where a dependent exists, every chain's final node carries
   `mergeTo`"
@@ -229,6 +379,9 @@ phases, or any project-specific workflow. The separation is explicit:
   placement advice
 - The post-merge hook (if any) — what to run after a merge lands, configured in the policy
   block; a project with no tests configures no hook
+- The trunk branch name — what the project calls its integration branch (`main`, `master`,
+  `develop`), configured in the policy block as `trunkBranch`; the machinery reads it, the
+  value is the project's
 - The per-claim install command (if any) — what to run in the node's sandbox before the
   node's command, configured in the policy block alongside the post-merge hook. The machinery
   runs whatever command is configured (or skips if none); a project with no install step —
@@ -510,7 +663,7 @@ n8n workflow hosts. Every node in the graph is authored by
 the planning agent per the chain-composition guidelines; the planning run itself is machinery,
 so "agents author all nodes" holds with no machinery-generated node type and no bootstrap
 exception. The devcontainer is the right home: planning reads the repo and the stories (at
-`origin/main` — see Planning-run context) plus the graph state, writes no code, and needs no
+  `origin/<trunkBranch>` — see Planning-run context) plus the graph state, writes no code, and needs no
 isolation — a sandbox would add provisioning cost and buy nothing.
 
 - **Async, never in-pass.** The pass journals the launch (with its deadline), triggers the
@@ -526,7 +679,7 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   becomes visible in n8n's execution list and inherits the error-notification hook. The trade
   accepted here: an n8n restart orphans the execution's child process — `child_process.exec()`
   registers no cleanup handler, so the child is reparented to init (PID 1) and keeps running,
-  holding the planning lock (spike 2026-07-22, see Admitted assumption 5 and
+  holding the planning lock (spike 2026-07-22, see
   `docs/todo/spike-execute-command.md`). The process-vanished recovery path therefore does
   **not** trigger on n8n restart in the initial version: the orphaned child holds the lock,
   the pass reads the lock as held (planner "still running"), and the pipeline stalls silently —
@@ -598,7 +751,9 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   `updateNode` must not set `id`, `chainId`, or `status` (immutable or machinery-derived);
   `addNode` must not set `status` (machinery sets it to `pending`). Whole-graph rules on the
   result: acyclic; cross-chain edges target merge-point nodes; every chain-final node
-  carries `mergeTo`; every chain remains a total order (a path). Any violation rejects the
+  carries `mergeTo`; `mergeTo` equals the configured `trunkBranch` (not truthiness — an
+  explicit check against the policy value, so a `mergeTo` targeting any other branch is
+  rejected); every chain remains a total order (a path). Any violation rejects the
   whole delta, because partial application can produce a graph no planner intended: a delta
   that removes chain node X and rewires X's successor around it, racing a pass that claimed
   X, would on partial application leave two nodes concurrently runnable on one chain branch
@@ -634,7 +789,7 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   contract was violated), handled per retry policy. QUESTION parks and rides the standard
   form path — planning is the step most likely to need a human answer.
 - **Process-vanished path.** Unlike sandbox sessions, a local planning run is a child of its
-  host workflow's Execute Command. **Caveat (spike 2026-07-22, see Admitted assumption 5 and
+  host workflow's Execute Command. **Caveat (spike 2026-07-22, see
   `docs/todo/spike-execute-command.md`): n8n restart does NOT kill the child.** `child_process.exec()`
   registers no cleanup handler, and `process.exit()` does not signal children; on SIGTERM (the
   signal pm2 sends on restart) the child is reparented to init (PID 1) within ~1s, receives no
@@ -758,11 +913,11 @@ is directed to read; it is a local opencode run with repo access.
   lifecycle). Merge-point placement needs lookahead: a merge point is
   added only where a dependent chain actually exists to unlock, so the planner must see
   beyond the chain it is currently composing.
-- **Work docs and code at `origin/main`** — pinned ref, decided here: the devcontainer
+- **Work docs and code at `origin/<trunkBranch>`** — pinned ref, decided here: the devcontainer
   checkout is the human's working copy, possibly dirty, possibly on a feature branch, so
   reading the working tree would plan against half-finished human state. The planner reads
   the merged truth the chains base on. (The launch wrapper can provide a clean read-only
-  worktree of `origin/main` if directing reads by ref proves awkward.)
+  worktree of `origin/<trunkBranch>` if directing reads by ref proves awkward.)
 - **`decision-policy.md`** — planning is the step most likely to need a human answer; the
   planner exhausts policy before parking with a QUESTION.
 
@@ -821,7 +976,7 @@ see below). Three primitives cover every mutation, and two more serialize planni
 | Single-`write` `O_APPEND` appends to `journal.jsonl` | Atomic appends on a local filesystem (verified — spike 2026-07-22: 500 concurrent appends, zero interleaved lines) |
 | tmp-file + `renameSync` for `graph.json` | Atomic replace (verified — spike 2026-07-22: 200 rename cycles under concurrent reads, zero failures) |
 | Non-blocking `flock` on `planning.lock`, held by the planning run for its lifetime | At most one planning run in flight; doubles as the liveness probe — acquirable means finished or dead |
-| Non-blocking `flock` on `merge.lock`, held by the merge wrapper for the merge cycle's lifetime | At most one merge cycle in flight — main has one pipeline writer at a time; same liveness probe |
+| Non-blocking `flock` on `merge.lock`, held by the merge wrapper for the merge cycle's lifetime | At most one merge cycle in flight — the trunk branch has one pipeline writer at a time; same liveness probe |
 | tmp-file + rename for every inbox write (n8n's small workflows, the merge wrapper, the pause helper, the planning wrapper's delta promotion) | A pass never folds a partial inbox file; the fold's parse check is defense in depth, not the primary guarantee (crash-safety verified — spike 2026-07-22: see `docs/todo/spike-delta-promotion.md`) |
 
 Multi-file consistency comes from write ordering, not transactions: journal first (the commit
@@ -955,7 +1110,7 @@ Rough estimate, ~1090 lines of JS plus three small n8n workflows:
 
 ## State
 
-- Gen-3 state lives in its own directory (working name `_bmad-output/pipeline3/`), so the gen-2
+- Gen-3 state lives in its own directory (`pipeline3/state/`), so the gen-2
   loop and its files remain untouched and runnable while gen-3 is built. Canonical state is
   two files plus an inbox: `journal.jsonl` (append-only commit point; gen-3 schema: claims with
   sandbox/session IDs and deadlines, outcomes with commits-added, a diffstat (see below), and
@@ -1117,8 +1272,8 @@ single-use keeps it free across sequential claims too.
   other committed file. **neuralwatt API access from sandboxes (spike, 2026-07-22):
   `api.neuralwatt.com` is not on Daytona's Tier 1 Essential Services allowlist, so sandbox
   agents cannot reach it directly.** The planning run and the outcome-classification call run
-   on the devcontainer and are unaffected. See open question 2 for the resolution (resolved:
-   relay built and deployed; tunnel proxy verified 2026-07-22).
+   on the devcontainer and are unaffected. The relay is built and deployed; the tunnel proxy
+   is verified (2026-07-22).
 - **WebSocket tunnel proxy for LLM access (spike, 2026-07-22 — see
   `docs/todo/spike-ws-tunnel-proxy.md`).** The sandbox starts a local CONNECT-to-WebSocket
   tunnel proxy (`tunnel-proxy.js`) on `127.0.0.1:8888` before the agent runs. The proxy handles
@@ -1141,13 +1296,12 @@ single-use keeps it free across sequential claims too.
   GitHub, npm, Anthropic, OpenAI, Docker registries, Railway (`*.railway.app`,
   `*.railway.com`), and others — see the [Daytona network limits docs](https://www.daytona.io/docs/network-limits).
   `api.neuralwatt.com` is not on the allowlist, so sandbox agents cannot reach it directly.
-   The resolution is the authenticated sandbox-proxy relay — see open question 2 (resolved:
-   `sandbox-relay-production.up.railway.app`).
+   The resolution is the authenticated sandbox-proxy relay (`sandbox-relay-production.up.railway.app`).
 
 **Per-claim (after provisioning):**
 - A pass journals the claim (with its deadline), provisions the sandbox (above), and issues
   `git fetch && git checkout` to the claim's base — the unmarked chain predecessor's pushed
-  head, or merged main for a chain's first node and for the first node after a merge point.
+  head, or merged trunk for a chain's first node and for the first node after a merge point.
   Provisioning runs inside the claim step: with a cached snapshot, create is near-instant and
   the fetch and file copies are seconds — within the pass's seconds-long budget. If real-world
   creation latency ever stretches passes, the provisioning commands move into the front of the
@@ -1406,32 +1560,32 @@ is meaningful. See Pipeline vs. project-specific customization.
 
 - **Hosted like planning.** The n8n merge-queue workflow mirrors the planning-host pattern:
   Execute Command runs a merge wrapper that holds a non-blocking `flock` on `merge.lock` for
-  the merge cycle's lifetime — mutual exclusion (at most one merge cycle in flight, so main has one
+  the merge cycle's lifetime — mutual exclusion (at most one merge cycle in flight, so the trunk branch has one
   pipeline writer at a time) plus the liveness probe — records its PID and sandbox
   ID alongside the lock, drives the sandbox via the Daytona session API, writes any report to
   the inbox, and invokes the
   dispatcher on exit.
 - **The merge cycle, in order.** Create a sandbox (same per-claim provisioning as a node claim);
   `git fetch`; short-circuit if the chain branch's
-  head is already an ancestor of main (delete the branch, done); checkout the
-  chain branch; rebase onto `origin/main` — a conflict aborts the rebase and the wrapper
+  head is already an ancestor of the trunk branch (delete the branch, done); checkout the
+  chain branch; rebase onto `origin/<trunkBranch>` — a conflict aborts the rebase and the wrapper
   writes the conflict report (see Merge-conflict resolution); merge and push
-  `origin/main`; delete the chain branch on origin; destroy the sandbox (single-use — see
+  `origin/<trunkBranch>`; delete the chain branch on origin; destroy the sandbox (single-use — see
   Sandbox lifecycle). If a post-merge hook is configured, fire it after the push; a hook
   failure is journaled as a `failed` outcome with the hook's output, and the chain enters
   the standard remediation path (see Merge-conflict resolution).
 - **The push is the commit point.** Everything before it is sandbox-local and disposable: a
   merge cycle that dies mid-run has changed nothing durable, and one that dies after the push
   has merged — the next merge cycle's short-circuit cleans up the leftover branch. A rejected push
-  (main moved under the merge cycle — e.g. a human pushing to main) is not an error: the merge cycle exits
-  and the next trigger runs a fresh one against the new main.
+  (the trunk branch moved under the merge cycle — e.g. a human pushing to it) is not an error: the merge cycle exits
+  and the next trigger runs a fresh one against the new trunk.
 - **Level-triggered, supervised like everything else.** No pass "hands off" to the merge queue
   and forgets: any pass that finds a completed merge-point node whose branch has neither
   merged nor a pending conflict report, with `merge.lock` acquirable **and capacity available**
   (the merge sandbox counts against `maxConcurrentSandboxes`; if the cap is full the trigger
   defers to the next pass), (re)triggers the
   workflow. A merge cycle killed by an n8n restart has the same caveat as a planning run
-  (spike 2026-07-22, see Admitted assumption 5 and `docs/todo/spike-execute-command.md`):
+  (spike 2026-07-22, see `docs/todo/spike-execute-command.md`):
   the wrapper is a child of Execute Command, and n8n restart does **not** kill it — the
   orphaned child is reparented to init and keeps holding `merge.lock`, so the pass reads the
   lock as held and never re-triggers, stalling the merge queue silently. The same
@@ -1441,7 +1595,7 @@ is meaningful. See Pipeline vs. project-specific customization.
   pass-side via the recorded PID, like planning. A dead merge cycle's sandbox is accounted for by the recorded sandbox ID — the pass destroys it (single-use, see
   Sandbox lifecycle; a half-finished rebase is exactly the state single-use exists to never
   clean up) and the re-triggered merge cycle creates a fresh one.
-- **Credentials.** The sandbox pushes main with the same repo credentials agents already use
+- **Credentials.** The sandbox pushes the trunk branch with the same repo credentials agents already use
   for their branch pushes (see Credentials under Sandbox lifecycle).
 
 ### Merge-conflict resolution
@@ -1469,22 +1623,22 @@ lockfile.
   through the planner keeps "every node is authored by the planning agent" intact, and the
   response needs planning judgment anyway: the same delta rewires the unclaimed successors'
   `dependsOn` to the resolution node, appends a review node after a heavy resolution (a
-  resolution commit otherwise lands on main having bypassed the chain's review nodes), and can
+  resolution commit otherwise lands on the trunk branch having bypassed the chain's review nodes), and can
   serialize a chronically conflicting chain pair (the fingerprint history is in its context).
 - **The resolution node is a normal node.** Claimed by a pass, run in a sandbox on the chain
   branch, supervised, parked on QUESTION like any other; it carries `mergeTo`, so its
   completion re-triggers the merge queue under the merge-when-marked rule. Its job: rebase the
-  chain branch onto `origin/main`, resolve preserving both sides' intent, push. Two mechanical
+  chain branch onto `origin/<trunkBranch>`, resolve preserving both sides' intent, push. Two mechanical
   differences from other nodes: its push is a forced update of the chain branch (the rebase
   rewrites the segment's history — safe because the chain is blocked, nothing bases on the
   stale head, and the journal records the new head at collection), and the merge queue accepts
-  the pre-rebased branch (its own rebase step finds nothing to redo unless main moved again).
+  the pre-rebased branch (its own rebase step finds nothing to redo unless the trunk moved again).
 - **Rework abandons the segment.** When the planner chooses rework, the delta marks the
   conflicted segment abandoned (`abandonSegment` with the chain's `chainId`) — the pass
   journals the abandonment and deletes the chain
-  branch — and the replacement nodes base on merged main under the normal rules (same branch
+  branch — and the replacement nodes base on merged trunk under the normal rules (same branch
   name, new segment, like the first node after a merge point).
-- **Rounds are bounded.** If main moved while resolution ran, the retried merge can conflict
+- **Rounds are bounded.** If the trunk moved while resolution ran, the retried merge can conflict
   again — a new report, a new round. A per-merge-point round bound in dispatcher policy stops
   the automatic path: exhaustion notifies the human (error-notification workflow) and leaves
   the chain blocked for a human replan. Merge-queue fallbacks still consume no node attempts
@@ -1553,7 +1707,7 @@ lockfile.
   next-scope composition back; machinery enforces no between-scopes quiet point (see Scope
   lifecycle).
 - **No test safety net in the pipeline**. The merge cycle does not run
-  tests; a broken merge lands on main and propagates to downstream chains until a post-merge
+  tests; a broken merge lands on the trunk branch and propagates to downstream chains until a post-merge
   hook (if configured) catches it or a human notices. This is the trade-off for generality:
   the pipeline works for doc-only projects, early-phase projects with no tests, and code
   projects alike. A project that wants gates configures a post-merge hook; a project that
@@ -1571,212 +1725,6 @@ lockfile.
   quota-exhaustion problem.
 - Human attention becomes the scarce resource; the question inbox and a near-zero question rate
   are what keep N agents from turning into N interruptions.
-
-## Admitted assumptions (functional, to verify before refining)
-
-The plan depends on a set of functional assumptions — behaviors it asserts but has not
-demonstrated. These are not performance assumptions (latency, throughput, resource cost —
-those live in Honest costs); they are correctness assumptions: if wrong, the design changes.
-The verified ones are folded into the prose above (see Verified spikes below); the rest
-remain open, each with a spike or design-decision plan.
-
-### Verified spikes
-
-The following assumptions were verified by spikes and are folded into the relevant
-prose above; the spike reports hold the full evidence:
-
-- **Daytona session API** (`runAsync`, poll, exit code, log pull) — see `docs/todo/spike-opencode-sandbox.md`.
-  Caveat F1 (`</dev/null` for PTY stdin) is in the in-sandbox command template.
-- **Sandbox stop/start disk persistence + opencode session resume** — see `docs/todo/spike-stop-resume.md`.
-  Finding F2 (session IDs auto-generated, captured via `opencode session list`) is in the per-claim recipe.
-- **opencode mid-stream resume (INCOMPLETE)** — see `docs/todo/spike-midstream-resume.md`. The
-  two-signal detection rule is in Stream-truncation recovery under Supervision.
-- **Snapshot with baked `node_modules`** (Strategy A) — see `docs/todo/spike-baked-node-modules.md`.
-  The chown and bake-clone details are in the provisioning recipe.
-- **opencode.json provider registration for neuralwatt** (including the egress constraint) — see
-   `docs/todo/spike-neuralwatt-accessibility.md` and `docs/todo/spike-opencode-relay.md`. The
-    egress constraints are in the provisioning recipe; the authenticated sandbox-proxy relay
-    is built and deployed — see open question 2 (resolved). **WebSocket tunnel proxy
-    (spike, 2026-07-22 — see `docs/todo/spike-ws-tunnel-proxy.md`):** a local CONNECT-to-WebSocket
-    tunnel proxy inside the sandbox eliminates the `baseURL` override — opencode uses the real
-    `api.neuralwatt.com` URL with `HTTPS_PROXY` set. All eight spike steps passed (direct block
-    confirmed, curl through tunnel returned models, opencode printed `SPIKE_OK`, streaming
-    chat completion worked). The tunnel proxy and `NO_PROXY` for Essential Services are in the
-    provisioning recipe.
-- **Snapshot path rejects `resources`; image path honors all three** — see
-  `docs/todo/spike-snapshot-resources.md`. The snapshot path returns a hard API error
-  ("Cannot specify Sandbox resources when using a snapshot"), not silent ignore; the image
-  path honors cpu/memory as cgroup-v2 quotas and disk as overlay. The wording in the
-  provisioning recipe and the capability table reflects "rejects," not "ignores."
-- **Fold-time delta validation** — see `docs/todo/spike-delta-validation.md`. The
-  validation function implements all-or-nothing validation of planning deltas against
-  current graph state: per-op rules (stale target, fresh id, edge existence, immutable
-  fields) and whole-graph rules (acyclic, cross-chain merge-point, final-node `mergeTo`,
-  total order). All five documented scenarios (a–e) from admitted assumption 6 pass, plus
-  35 additional edge cases (40 tests total). The function works on `structuredClone` and
-  never mutates the input graph. Three findings folded into the prose above: (F1)
-  `abandonSegment`'s graph mutation is now documented (remove pending, keep historical);
-  (F2) frozen statuses extended to include `failed` and `abandoned`; (F4/F5) `updateNode`
-  must not set `id`/`chainId`/`status`, `addNode` must not set `status`.
-
-### 5. n8n Execute Command: blocking for minutes + child death on restart — see `docs/todo/spike-execute-command.md`
-
-Both the planning-host and merge-queue workflows use Execute Command to run a wrapper that
-blocks for the run's duration (minutes). n8n does not kill long-running Execute Command nodes
-(`exec` with no `timeout` option blocks indefinitely). However, `child_process.exec()`
-registers no cleanup handler, and `process.exit()` does not signal children: when n8n
-receives SIGTERM (the signal pm2 sends on restart) and exits, the child process is NOT killed.
-It is reparented to init (PID 1) within ~1s, receives no signal, and continues running —
-holding the planning lock. The orphaned child keeps holding the lock, so the pass reads the
-lock as held and never relaunches — the pipeline stalls silently.
-
-Caveat: the 1MB `maxBuffer` default means the wrapper must redirect heavy stdout to a file or
-the child is killed with "stdout maxBuffer length exceeded."
-
-The fix is a parent-alive check in the wrapper script: periodically test `kill -0 $PPID` and
-exit if the parent (n8n) is gone, releasing the lock. This is a few lines in the wrapper and
-directly addresses the root cause. This is a known gap in the initial version — the pipeline
-will ship without the parent-alive check, accepting the risk that an n8n restart during a
-planning run leaves an orphaned child holding the lock. The fix will be added in a follow-up.
-Until then, recovery from an n8n restart during a planning run is manual: kill the orphaned
-process by its recorded PID, then the next pass acquires the lock and relaunches per retry
-policy. Canonical state (the journal, the delta scratch file) is never lost — only the lock
-must be cleared.
-
-### 6. Fold-time delta validation against a moving target — VERIFIED (spike, 2026-07-23)
-
-The planner reads `graph.json` at launch (T0); by fold time (T1) a pass may have claimed
-nodes (freezing their specs) or folded completions (changing merge state). The delta format
-and rejection semantics are now decided (ops list, all-or-nothing — see Graph delta format
-and Delta validation at fold time), which pins what the validation checks: per-op legality
-against T1 state, then the whole-graph rules (acyclic, cross-chain edges target
-merge-points, final node carries `mergeTo`, every chain remains a total order) on the
-result. A node the planner marked for removal might have been claimed between T0 and T1 —
-that op is stale and rejects the delta (spec is frozen). A node the planner added a
-`dependsOn` edge to might have merged — the edge target must still exist. This is the most
-algorithmically intricate interaction in the design, and it is pure code — testable without
-infrastructure. **Verified by the delta-validation spike (2026-07-23 — see
-`docs/todo/spike-delta-validation.md`):** the validation function was written and tested
-against all five synthetic scenarios (a–e) plus 35 additional edge cases (40 tests total,
-all pass). The function works on `structuredClone` and never mutates the input graph —
-all-or-nothing holds by construction. A sub-agent review caught two blockers
-(`updateNode` could change `id` or `chainId`, corrupting graph invariants) and several
-defense-in-depth gaps (`addNode` silently overwrote `status`); all were fixed before the
-final run. The function is ready to drop into Path step 4.
-
-### 7. Branch push failure (decided 2026-07-22)
-
-The agent's in-sandbox command pushes its branch as its last act, so a completed result is
-durable in git no matter what was or wasn't watching when it finished. Push failure — a
-network blip, auth expiry, force-push rejection — is not assumed away: a completed run whose
-push failed has its work on the sandbox disk only, and the sandbox is destroyed at collection,
-losing hours of agent runtime to a seconds-long infra blip. The asymmetry is load-bearing:
-**agent runs cost hours, push retries cost seconds**, so a design that does not exploit it is
-wrong by construction.
-
-Push failures are not monolithic — they split cleanly into two classes with different correct
-responses:
-
-| Failure class | Examples | Correct response |
-|---|---|---|
-| **Transient** | network blip, HTTP 5xx, rate limit, brief DNS failure | Retry with backoff. The work is valid; the push will land. |
-| **Permanent** | auth expired, branch deleted, non-fast-forward rejection, repo restructured | Stop retrying. The work cannot land as-is. Surface it. |
-
-The design is two layers, in order:
-
-**Layer 1 — In-sandbox bounded retry (catches transient).** The in-sandbox command
-template's push step is a bounded exponential backoff: 3 attempts, ~5s/15s/45s (worst case
-~65s — noise against an hours-long run). Each attempt captures exit code and stderr. After
-the retry budget is exhausted, the command classifies the failure by inspecting the last
-stderr: transient signals (`Connection reset`, `RPC failed`, HTTP 5xx, timeout, rate-limit
-messages) vs. permanent signals (`403`/`401`/`Permission denied`/`could not read Username`
-for auth; `! [rejected]`/`non-fast-forward` for rejection; `refs/heads/... does not exist`
-for branch deleted). On permanent failure — or transient-exhausted — the command writes a
-`push-failed` marker file to a known path on the sandbox disk (failure class, stderr, branch
-name, head commit SHA) and exits with a distinct exit code (`42` — chosen to be unmistakable,
-not `1` which is the agent's own failure code). The marker is the detail; the exit code is the
-reliable signal (the agent could exit before writing the marker, but the exit code is set by
-the template's own push step, which always runs last).
-
-**Layer 2 — Collecting pass handles the marker (catches permanent).** The collecting pass,
-when it sees an exited session, checks for the `push-failed` marker *before* destroying the
-sandbox — the sandbox is not destroyed until the push lands or the node is parked:
-
-- **No marker** → normal path. Push succeeded. Pull transcript, destroy sandbox, classify
-  outcome from the JSON event stream.
-- **Marker: `transient-exhausted`** → the pass re-issues a single push command on the
-  still-alive sandbox via the Daytona session API (the sandbox isn't destroyed yet — that's
-  the key ordering), with the devcontainer's fresher credentials copied in if auth was the
-  issue. If that push succeeds, proceed to normal collection. If it fails again, treat as
-  permanent.
-- **Marker: permanent (auth)** → the pass copies refreshed `.env*` / credentials into the
-  sandbox and re-issues the push. If it succeeds, collect normally. If auth is still bad,
-  this is a QUESTION — the human needs to fix credentials, and the parked sandbox preserves
-  the work (parked sandboxes are stopped, not destroyed — see Park/resume).
-- **Marker: permanent (non-fast-forward / branch deleted)** — structurally interesting. A
-  rejected push to `pipeline/<runId>/<chainId>` means someone else pushed to that branch,
-  which the design says can't happen (single-use, one owner per chain branch). So this case
-  is either a bug or a human pushing manually. Either way: QUESTION — surface it, don't
-  silently destroy.
-
-**The sandbox is not destroyed until the push lands or the node is parked.** This resolves
-the "don't destroy until confirmed" option's capacity-leak problem: instead of waiting
-forever, the pass gets one shot at recovery, and if that fails the node parks (preserving
-the sandbox like any park) for human attention. Capacity leak is bounded because parking is
-the terminal state, not an indefinite wait.
-
-**Why this shape:**
-
-- **It exploits the hours-vs-seconds asymmetry.** A 65-second retry budget is noise against a
-  2-hour agent run. The cost of not retrying is losing 2 hours.
-- **It splits the failure space correctly.** Transient failures get automatic recovery
-  (Layer 1, in-sandbox, no pass involvement). Permanent failures get intelligent recovery
-  (Layer 2, the pass has context and credentials the sandbox doesn't). Treating push failure
-  as monolithic — the failure of the three rejected alternatives — handles one class and
-  fumbles the other.
-- **It preserves the design's invariants.** The sandbox is still single-use. The pass is
-  still the only state writer. Git is still the convergence point. The devcontainer checkout
-  is still never touched by pipeline git ops (the pass drives a push on the sandbox via the
-  Daytona session API, not on the devcontainer). The only additions are a marker file and a
-  distinct exit code — both cheap, both inspectable.
-- **It uses the park path that already exists.** Permanent push failure parks the node — the
-  same QUESTION → park → resume machinery the design already builds for agent questions. No
-  new node state, no new recovery surface. The human fixes credentials (or investigates the
-  rejected push) and answers the park; the resumed session re-attempts the push.
-- **The work is never lost.** The sandbox is destroyed only after the push is confirmed or
-  the node is parked. This is the guarantee the "don't destroy until confirmed" option
-  wanted, achieved without its capacity-leak problem.
-
-**Rejected alternatives:**
-
-- **Retry in-sandbox only (no marker, no pass involvement).** Catches transient, but a
-  permanent failure (auth expired) burns the retry budget for nothing and then loses the
-  work when the sandbox is destroyed — the in-sandbox layer has no path to refresh
-  credentials or surface the failure to a human.
-- **Collecting pass attempts the push if the agent didn't.** The pass has more context, but
-  the work is on the sandbox disk — the pass would need to either drive a push on the
-  sandbox (which this design does, but only after Layer 1 has already caught the transient
-  cases) or pull the diff to the devcontainer and push from there (reintroducing the
-  local-checkout-as-convergence-surface the design explicitly rejects). Doing this
-  unconditionally makes the pass heavier on every collection, not just failures.
-- **Don't destroy the sandbox until the push is confirmed, unconditionally.** A sandbox that
-  can't push because auth expired waits forever, burning a `maxConcurrentSandboxes` slot with
-  no recovery path. This design adopts the principle (don't destroy until confirmed) but
-  bounds it: one pass-side recovery attempt, then park.
-
-**Honest costs:**
-
-- The in-sandbox command template grows by ~30 lines (retry loop + classification + marker
-  write). It was ~60 lines; it becomes ~90. Still the smallest module.
-- A transient-exhausted or permanent-auth failure keeps the sandbox alive past the agent's
-  exit, until the collecting pass attempts recovery. This holds one `maxConcurrentSandboxes`
-  slot for the duration of one pass interval (minutes). Accepted — it's a rare case, and the
-  alternative is losing the work.
-- The collecting pass gets one new branch in its collection logic: check for the marker
-  before destroying. ~15 lines added to the heaviest module; a small addition.
-- A distinct exit code (`42`) is a minor convention to maintain. The alternative — parsing
-  the marker file to detect push failure — would work but is more fragile (what if the agent
-  exits before writing it?). The exit code is the reliable signal; the marker is the detail.
 
 ## Path (incremental, each step independently useful)
 
@@ -1857,7 +1805,7 @@ First real parallel run should be manual and supervised, including at least one 
    ### Identity
 
    - **Name:** `chain-composition-guidelines.md`
-   - **Location:** `_bmad-output/pipeline3/chain-composition-guidelines.md` — same tier as
+   - **Location:** `pipeline3/state/chain-composition-guidelines.md` — same tier as
      `decision-policy.md` (human-authored, agent-facing), co-located with the policy block
      and gen-3 state so the planner reads it from the same directory it reads `graph.json`
      from. The planner's prompt points to it; it is not auto-discovered.
@@ -1889,7 +1837,8 @@ First real parallel run should be manual and supervised, including at least one 
 
    - A chain is a total order — all nodes modify files, so they cannot run concurrently on
      one branch. Within a chain, `dependsOn` is simply the previous node.
-   - Every chain's final node carries `mergeTo: main`. A final node without `mergeTo` is a
+    - Every chain's final node carries `mergeTo: <trunkBranch>` (the project's configured
+      trunk branch — see `trunkBranch` in the policy block). A final node without `mergeTo` is a
      planning error rejected at fold time.
    - Cross-chain `dependsOn` edges may only target merge-point nodes (nodes carrying
      `mergeTo`). An edge to an unmarked node is rejected at fold time.
@@ -1915,14 +1864,14 @@ First real parallel run should be manual and supervised, including at least one 
      information-producing node — its artifact (the story spec) determines what the rest of
      the chain should be. The planner composes this one node and stops. If another chain
      depends on the story artifact (e.g. a chain implementing against the story's schemas and
-     contracts), `create-story` carries `mergeTo: main` as a mid-chain merge point; otherwise
-     it does not, and the chain continues on the same branch after the artifact is produced.
-     Either way, the planner does not compose past it — the next segment is composed in a
-     later planning run once the artifact is readable at `origin/main`.
-   - **Second segment** (composed after `create-story`'s artifact lands on main): validate
-     (1st pass) → prepare-tests → validate (2nd pass) → implement → unit-tests → e2e-tests →
-     code-review → test-review → NFR-review → update-project-context → commit (final node,
-     carries `mergeTo: main`).
+      contracts), `create-story` carries `mergeTo: <trunkBranch>` as a mid-chain merge point; otherwise
+      it does not, and the chain continues on the same branch after the artifact is produced.
+      Either way, the planner does not compose past it — the next segment is composed in a
+      later planning run once the artifact is readable at `origin/<trunkBranch>`.
+    - **Second segment** (composed after `create-story`'s artifact lands on the trunk branch): validate
+      (1st pass) → prepare-tests → validate (2nd pass) → implement → unit-tests → e2e-tests →
+      code-review → test-review → NFR-review → update-project-context → commit (final node,
+      carries `mergeTo: <trunkBranch>`).
    - **Include/skip conditions per step** — each step carries a condition stating when it
      applies. These are empirical hypotheses, not immutable rules: empty-diff evidence in
      the journal is what shows a condition is wrong. A verification node that finds nothing
@@ -1933,7 +1882,7 @@ First real parallel run should be manual and supervised, including at least one 
        tests for).
      - `e2e-tests`: skip if the ATDD checklist deferred E2E coverage because no
        browser-level mock can simulate the acceptance criteria. The planner reads the
-       checklist from the prepare-tests artifact (on main) to decide.
+       checklist from the prepare-tests artifact (on the trunk branch) to decide.
      - `validate (2nd pass)`: skip if prepare-tests made no changes to the story spec (the
        story didn't need updating after tests exist).
      - `review-nfrs`: include always — even a story with no code changes may have NFR
@@ -1975,9 +1924,9 @@ First real parallel run should be manual and supervised, including at least one 
      reality). Not information-producing.
    - `bmad-agent-architect` — cleanup `project-context.md`: throw out redundant items,
      consolidate multiple items. Not information-producing. This is the final node; it
-     carries `mergeTo: main`.
+      carries `mergeTo: <trunkBranch>`.
 
-   The finalization chain's lazy composition is more aggressive than the story chain's:
+    The finalization chain's lazy composition is more aggressive than the story chain's:
    bug-hunt and trace are both information-producing, so the planner composes bug-hunt first,
    then (after its findings land) composes trace, then (after trace's FAIL/PASS lands)
    composes the rest. The guidelines must state this explicitly — a planner that composes
@@ -2050,13 +1999,13 @@ First real parallel run should be manual and supervised, including at least one 
 
    - **Lazy composition:** never compose past an information-producing node. The planner
      composes up to the next information-producing node, then stops. The next planning run
-     (triggered by the ready-node frontier running low after the artifact lands on main)
+      (triggered by the ready-node frontier running low after the artifact lands on the trunk branch)
      composes the next segment. Rationale: composing a whole chain up front from the backlog
      entry alone plans speculation, and depth-first claiming makes the mistake irreversible
      — the pass that folds the artifact-producing node's completion claims the pre-planned
      successor in the same pass, leaving no window for a replan to remove a node the
      artifact just revealed as unnecessary.
-   - **Merge-point placement:** mark `mergeTo: main` on a node only where a dependent chain
+    - **Merge-point placement:** mark `mergeTo: <trunkBranch>` on a node only where a dependent chain
      exists to unlock. The classic case: `create-story` merges right away so another chain
      can start implementing against the artifact while this chain's own implementation is
      still running. If a replan drops the dependent, clear `mergeTo` on the unclaimed node.
@@ -2098,7 +2047,7 @@ First real parallel run should be manual and supervised, including at least one 
      "prompt":      <string, the prompt text passed to the skill — may carry step-specific instructions>
      "deadline":    <string, ISO duration — e.g. "PT2H" — from the catalog default or overridden with a reason>
      "dependsOn":   <string[], node ids — within a chain: the previous node; cross-chain: a merge-point node>
-     "mergeTo":     <string, optional — "main" — present only on merge-point nodes; absence means no merge at this node>
+      "mergeTo":     <string, optional — the project's configured trunk branch (e.g. "main", "master", "develop" — see trunkBranch in the policy block) — present only on merge-point nodes; absence means no merge at this node>
      "metadata":    <object, free-form — project-specific fields the machinery never reads: story, epic, sprint, phase, scope>
    }
    ```
@@ -2126,47 +2075,6 @@ First real parallel run should be manual and supervised, including at least one 
       like "include e2e-tests when appropriate" is not.
    4. The lazy-composition rule is unambiguous: given a chain pattern, the planner knows
       exactly where to cut (at each information-producing node) and what triggers the next
-      segment (the artifact landing on main → ready-node frontier low → expansion trigger).
+      segment (the artifact landing on the trunk branch → ready-node frontier low → expansion trigger).
    5. The node-spec schema is concrete enough that a planner emitting a delta produces
       valid JSON on the first try — no field names guessed, no derived fields emitted.
-2. **Authenticated sandbox-proxy relay — RESOLVED (2026-07-22).** Daytona
-   Tier 1 restricts sandbox egress to an Essential Services allowlist (GitHub, npm, Anthropic,
-   OpenAI, Docker registries, Railway, and others — see the [Daytona network limits
-   docs](https://www.daytona.io/docs/network-limits)). `api.neuralwatt.com` is not on the
-   allowlist, so sandbox agents cannot reach the LLM provider directly. The planning run and
-   the outcome-classification call run on the devcontainer and are unaffected, but every
-   sandbox agent needs LLM access.
-
-   **Resolution:** A custom NestJS relay (`apps/sandbox-relay`) is built, deployed to Railway
-   at `sandbox-relay-production.up.railway.app`, and verified. `*.railway.app` is on the
-   Tier 1 allowlist, so sandboxes reach the relay directly. The relay exposes two endpoints:
-   a path-based reverse proxy (`/proxy/:host/*`) and a WebSocket tunnel (`/tunnel`). The
-   initial approach used the reverse proxy with opencode's `baseURL` set to
-   `https://sandbox-relay-production.up.railway.app/proxy/<target-host>`; the relay
-   forwards to `https://<target-host>/<path>?<query>`. All three requirements are met:
-   **(a) authentication** — a bearer token in the `X-Relay-Token` header, checked against
-   `RELAY_AUTH_TOKEN` env var on Railway; requests without a valid token get 401. The token
-   rides with the `.env*` files already copied per-sandbox at provision time, and opencode
-   supports per-model custom `headers` in its config. **(b) allowlist exclusion** — the
-   relay rejects requests to domains on Daytona's Essential Services allowlist with HTTP 400
-   `DOMAIN_DIRECTLY_REACHABLE`, so sandboxes reach those directly without proxy overhead.
-   **(c) deployed and verified** — all six scenarios pass against the live relay: health
-   check (200, no auth), unauthenticated proxy request (401), allowlisted domain rejection
-   (400), non-allowlisted domain forwarding (200 + correct response), query string
-   passthrough, and SSE streaming passthrough. The relay strips hop-by-hop headers, sets
-   `Host` to the target, disables proxy buffering (`X-Accel-Buffering: no`) for SSE, and
-   aborts upstream fetch on client disconnect. Source: `apps/sandbox-relay/` (15 unit tests).
-
-   **Improved approach — WebSocket tunnel proxy (spike, 2026-07-22 — see
-   `docs/todo/spike-ws-tunnel-proxy.md`):** The relay's `/tunnel` WebSocket endpoint accepts
-   connections at `wss://sandbox-relay-production.up.railway.app/tunnel?host=<host>&port=<port>`,
-   opens a raw TCP connection to the target, and pipes bytes bidirectionally through the
-   WebSocket. A local tunnel proxy (`docs/todo/tunnel-proxy.js`) runs inside the sandbox on
-   `127.0.0.1:8888`, handles HTTP CONNECT requests, and bridges each to the relay's WebSocket
-   tunnel. The agent sets `HTTPS_PROXY=http://127.0.0.1:8888` and `NO_PROXY` for Essential
-   Services — no `baseURL` override needed, so opencode uses the real `api.neuralwatt.com` URL.
-   All eight spike steps passed: sandbox created, direct block confirmed, proxy uploaded and
-   started, curl through tunnel returned model data, opencode with `HTTPS_PROXY` (no
-   `baseURL`) printed `SPIKE_OK`, streaming chat completion returned coherent output. A single
-   relay is a single point of failure; redundancy or a fallback path is out of scope for the
-   initial version but should be considered.
