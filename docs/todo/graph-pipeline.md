@@ -247,7 +247,14 @@ counter so an independent ready node cannot starve (see Graph management rules).
   Worker sandbox design). A branch whose head is already an ancestor of the trunk branch short-circuits at
   the start of the merge cycle: nothing to merge — the merge cycle just deletes the branch —
   so an empty-diff completion or a conflict that evaporated while its resolution was planned
-  costs one git check instead of a full serialized merge cycle. **Testing is not part of the
+  costs one git check instead of a full serialized merge cycle. The short-circuit still consumes
+  a sandbox slot for seconds (the merge cycle creates a sandbox, fetches, then discovers nothing
+  to merge) — noise under steady state, and bounded under burst by `merge.lock` serialization
+  (verified spike 2026-07-23: 5 burst empty-diff merges complete in 11 ticks ≈ minutes — see
+  `docs/todo/spike-merge-point-lifecycle.md`). A future optimization: if the diffstat computed
+  at node completion (see Collection records the diff under State) shows zero changes, the
+  pipeline could skip enqueuing the merge cycle entirely and delete the branch via API, with
+  the merge-cycle ancestry check remaining as a fallback for the evaporated-conflict case. **Testing is not part of the
   merge cycle**: the pipeline merges branches without running tests. A
   post-merge hook — project-authored, configured in the policy block — fires after the merge
   lands; if the hook fails, the failure is a standard `failed` outcome that rides the existing
@@ -538,7 +545,7 @@ Each invocation:
      the max wait to 3 ticks ≈ minutes with only merge-lock-serialization
      deferrals — see `docs/todo/spike-merge-trigger-starvation.md`). Because
      merge cycles complete in seconds and run one-at-a-time under `merge.lock`,
-     ordering them first does not materially delay node claims. Merge triggering
+     ordering them first does not materially delay node claims. A fired merge trigger reserves its capacity slot for the remainder of the pass — the node-claim phase treats a just-fired trigger as consuming one slot, so the merge sandbox's brief async-creation window (between the trigger invocation and the merge-queue workflow creating the sandbox) cannot be consumed by a node claim in the same pass (verified spike 2026-07-23: zero capacity deferrals across the full merge-point lifecycle under merges-first ordering, including cap=1 — see `docs/todo/spike-merge-point-lifecycle.md`). Merge triggering
      is level-triggered: a completed merge-point node whose branch has neither
      merged nor a pending conflict report, with the merge lock acquirable
      **and capacity available** (the merge cycle's sandbox counts against
@@ -773,7 +780,13 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   "planner never finished". Rejected transports: extracting the delta from the agent's
   stdout (`text` events) or from the session transcript — both mean parsing prose for an
   embedded JSON blob, with code-fence and formatting failure modes; a file at a contract
-  path is a plain tool-write the agent already does reliably. Otherwise the wrapper mirrors
+  path is a plain tool-write the agent already does reliably. Before launching the opencode
+  child, the wrapper does `git fetch origin <trunkBranch>` and captures the trunk SHA
+  (`trunkShaAtT0`) — this SHA is embedded in the delta envelope for the fold-time semantic
+  staleness check (see Delta validation at fold time). The fetch must happen before the SHA
+  capture: capturing the SHA before the fetch guarantees a false positive (the fetch itself
+  moves trunk — verified spike 2026-07-23, see
+  `docs/todo/spike-planning-context-staleness.md`). Otherwise the wrapper mirrors
   the in-sandbox command template: isolated opencode storage (per the concurrency findings —
   the planner shares the machine, possibly with a live interactive session; opencode v1.17.20
   stores data in a SQLite database at `~/.local/share/opencode/opencode.db`
@@ -815,6 +828,30 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   unreachable). Journal ordering resolves any claim-vs-replan race — whichever hit the
   journal first wins. Claiming is not gated while a planning run is in flight: claimed specs
   are frozen, so gating would starve sandboxes for no added protection.
+- **Semantic staleness check at fold time — trunk-SHA pin (verified spike 2026-07-23 — see
+  `docs/todo/spike-planning-context-staleness.md`).** Structural validation catches claimed
+  nodes and merged nodes, but not semantic staleness: the planner reads an artifact at
+  `origin/<trunkBranch>` at T0, another chain merges a different version between T0 and T1,
+  and the delta's structurally-valid addNode ops target an artifact version that no longer
+  exists on trunk. The planned nodes execute against stale content, potentially producing
+  wrong work detected only at merge time or review — hours of wasted agent runtime. The fix
+  is a trunk-SHA pin: the wrapper records the trunk SHA at T0 (after fetch, before the
+  planner reads) in the delta envelope (`trunkShaAtT0`), and the fold rejects the delta
+  with `semantic_stale_trunk_moved` if trunk moved between T0 and T1. The rejection rides the
+  existing rejection path (journal evidence + delete inbox + level-triggered re-plan). At a
+  realistic merge rate (4 chains, hourly merges) and 20% file-overlap, ~15% of planning runs
+  have semantic staleness; the SHA pin eliminates 100% of false negatives at the cost of
+  ~40% false positives (each costing ~8 minutes of re-planning — a 30:1 cost asymmetry
+  favoring conservative rejection). The SHA check runs after structural validation — if the
+  structural validation already rejected, the SHA check is unnecessary. Livelock (every
+  re-plan also rejected because trunk keeps moving) does not occur at realistic merge rates
+  (≤4 chains); a "max replans before fallback to rework" counter is the documented fallback
+  if production data shows livelock at higher rates — do not build it preemptively. The
+  wrapper must capture the T0 SHA **after** the fetch, not before — capturing before the
+  fetch guarantees a false positive (the fetch itself moves trunk). This check catches
+  "planner read old version" (divergence between read and fold); the existing rework path
+  catches "implementation diverged from the version the planner read" (divergence after
+  fold) — the two are complementary, not redundant.
 - **Supervised like a sandbox session — and every leg runs under the wrapper.**
   Same classification (COMPLETE / QUESTION / `failed`), same deadline
   enforcement (terminate, journal `runner_error`, retry policy), same stream-truncation
@@ -874,8 +911,10 @@ current state.
 One JSON file per planning run:
 
 - **Envelope:** `planningRunId`, `mode` (`expansion` | `conflict` | `replan`), `authoredAt`,
-  and the journal position the planner's `graph.json` snapshot reflected at launch — for
-  diagnostics in rejection events; validation itself always runs against current state.
+  `trunkShaAtT0` (the trunk SHA captured by the wrapper after fetch, before the planner
+  reads — used by the fold-time semantic staleness check; see Delta validation at fold
+  time), and the journal position the planner's `graph.json` snapshot reflected at launch —
+  for diagnostics in rejection events; validation itself always runs against current state.
 - **`ops`, applied in order.** Four operations:
   - `addNode` — the full node spec (the node-spec vocabulary: id, `chainId`, skill/agent/prompt,
     deadline, `dependsOn`, `mergeTo`, `metadata`). Ids are planner-authored and
@@ -962,8 +1001,11 @@ is directed to read; it is a local opencode run with repo access.
 - **Work docs and code at `origin/<trunkBranch>`** — pinned ref, decided here: the devcontainer
   checkout is the human's working copy, possibly dirty, possibly on a feature branch, so
   reading the working tree would plan against half-finished human state. The planner reads
-  the merged truth the chains base on. (The launch wrapper can provide a clean read-only
-  worktree of `origin/<trunkBranch>` if directing reads by ref proves awkward.)
+  the merged truth the chains base on. The wrapper does `git fetch origin <trunkBranch>`
+  before the planner reads, minimizing the T0→T1 staleness window (see Delta validation at
+  fold time for the trunk-SHA pin that catches residual staleness). (The launch wrapper can
+  provide a clean read-only worktree of `origin/<trunkBranch>` if directing reads by ref
+  proves awkward.)
 - **`decision-policy.md`** — planning is the step most likely to need a human answer; the
   planner exhausts policy before parking with a QUESTION.
 
@@ -1686,7 +1728,16 @@ is meaningful. See Pipeline vs. project-specific customization.
   lock as held and never re-triggers, stalling the merge queue silently. The same
   parent-alive-check fix (deferred to a follow-up) covers both wrappers. Until then, an n8n
   restart during a merge cycle requires manual recovery: kill the orphaned process by its
-  recorded PID, then the next pass re-triggers a fresh merge cycle. Deadline enforcement is
+  recorded PID, then the next pass re-triggers a fresh merge cycle. The stall is silent — passes
+  continue and heartbeats are written, but no progress is made on the downstream graph — so the
+  `merge.lock` record should carry a `heldSince` timestamp, and a pass that observes the lock
+  held for longer than `T_merge_stall` (default 30s, tunable) emits a stall alert, converting a
+  silent stall into a loud one without requiring the parent-alive-check refactor (verified spike
+  2026-07-23: the stall is permanent without manual intervention — the level-triggered design
+  cannot recover a lock held by a live orphaned process; see `docs/todo/spike-merge-point-lifecycle.md`).
+  The reconcile step's orphaned-sandbox detection (step 2) should cross-reference orphaned
+  sandboxes against `merge.lock` records — a dead sandbox whose lock file still references it
+  indicates a stale lock. Deadline enforcement is
   pass-side via the recorded PID, like planning. A dead merge cycle's sandbox is accounted for by the recorded sandbox ID — the pass destroys it (single-use, see
   Sandbox lifecycle; a half-finished rebase is exactly the state single-use exists to never
   clean up) and the re-triggered merge cycle creates a fresh one.
@@ -1705,8 +1756,13 @@ lockfile.
   node, conflicted files, diffstat, the
   stable fingerprint (see Conflicts are evidence) — and invokes the dispatcher; the report is
   durable before the invocation, like every other input. The pass folds it: journal append
-  (the commit point), then `graph.json` marks the chain blocked. Successors stay unready under
-  the existing rule; other chains are unaffected.
+  (the commit point), then `graph.json` marks the chain blocked. A conflict-blocked chain's
+  merge-point node stays `completed`; `blocked` is a chain-scoped flag on `graph.json`, never a
+  node status — the merge-trigger rule keys on "completed merge-point node," which must remain
+  true so the merge can re-trigger after resolution (verified spike 2026-07-23 — see
+  `docs/todo/spike-merge-point-lifecycle.md`). Successors stay unready under
+  the existing rule; chains with no `dependsOn` edge into this merge-point are unaffected, but
+  dependent chains' successors stay unready until resolution lands.
 - **A conflict-triggered planning run authors the response.** A pass that finds a
   conflict-blocked chain with no response yet in the graph and no planning run in flight
   triggers a planning run in conflict mode — the trigger is machinery, the content is the
@@ -1735,8 +1791,14 @@ lockfile.
   name, new segment, like the first node after a merge point).
 - **Rounds are bounded.** If the trunk moved while resolution ran, the retried merge can conflict
   again — a new report, a new round. A per-merge-point round bound in dispatcher policy stops
-  the automatic path: exhaustion notifies the human (error-notification workflow) and leaves
-  the chain blocked for a human replan. Merge-queue fallbacks still consume no node attempts
+  the automatic path: exhaustion parks the original merge-point node's conflict with QUESTION
+  carrying the round-bound report — the standard question-form path returns the answer to the
+  next conflict-mode planning run (verified spike 2026-07-23: the full conflict resolution path
+  — conflict → report → planning run → resolution node → re-merge — completes correctly across 4
+  dispatcher passes plus 2 async hops, with the resolution node's hours-long skill run as the
+  dominant latency; see `docs/todo/spike-merge-point-lifecycle.md`). This honors the "human
+  enters through the park" principle below — exhaustion does not require manual filesystem
+  intervention. Merge-queue fallbacks still consume no node attempts
   (see Conflicts are evidence); the round bound is its own knob.
 - **The human enters through the park, never around it.** A resolution agent that cannot
   resolve confidently parks with QUESTION — the standard path. The human answers with
@@ -1790,7 +1852,13 @@ lockfile.
 - An early-merged artifact is a promise. A chain implementing against a merged artifact's
   schemas and contracts reworks if the upstream implementation later diverges from the artifact —
   divergence is not a file conflict, so the merge queue cannot catch it; it surfaces as rework,
-  journaled like any other conflict evidence.
+  journaled like any other conflict evidence. The fold-time trunk-SHA pin (see Delta validation
+  at fold time) catches the related but distinct case where the planner read a stale version of
+  the artifact itself (divergence between read and fold); the rework path catches divergence
+  after fold (implementation diverged from the version the planner read). The two are
+  complementary: the SHA pin prevents hours of wrong agent work from a stale read; rework
+  handles the residual divergence the SHA pin cannot cover (verified spike 2026-07-23 — see
+  `docs/todo/spike-planning-context-staleness.md`).
 - Every merge conflict — a trivial lockfile collision included — pays the full resolution
   path: conflict report, planning run, sandbox claim, agent run, merge-queue retry. That is
   hours on the blocked chain, accepted to keep one resolution path; other chains
