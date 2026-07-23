@@ -164,11 +164,10 @@ export function getDependencies(graph, node) {
  *     pushed.)
  *   - If the dependency is a merge point (carries mergeTo): the dependency
  *     must be `completed` AND its merge must have landed. The merge is
- *     considered landed when the node's status is `completed` and no pending
- *     merge trigger exists for it (the pass checks merge state separately).
- *     For step 4, we treat a completed merge-point node as having its merge
- *     landed (the merge queue is step 5; for now, completed = ready for
- *     dependents).
+ *     considered landed when the node has the `merged` flag set (set by the
+ *     pass after a merge cycle reports success). A completed merge-point node
+ *     without the `merged` flag is NOT ready for dependents — the merge
+ *     hasn't landed yet (or is in flight, or conflicted).
  *   - Cross-chain dependencies (different chainId) must target merge-point
  *     nodes (validated at fold time). The same merge-point rule applies.
  *
@@ -190,9 +189,11 @@ export function isNodeReady(graph, node) {
     if (dep.status !== STATUS.COMPLETED) return false;
 
     // If the dependency is a merge point, the merge must have landed.
-    // In step 4 (no merge queue yet), we treat completed merge-point nodes
-    // as having their merge landed. Step 5 will add the merge-landed check.
-    // (The merge queue is built in step 5; for now, completed = merged.)
+    // The `merged` flag is set by the pass after a merge cycle reports
+    // success (markMerged in merge.mjs). A completed merge-point node
+    // without `merged` is NOT ready for dependents — the merge hasn't
+    // landed yet (or is in flight, or conflicted).
+    if (isMergePoint(dep) && !dep.merged) return false;
   }
 
   return true;
@@ -211,26 +212,33 @@ export function getReadyNodes(graph) {
  *
  * The pass uses this to enforce maxConcurrentSandboxes at claim time.
  * Parked nodes' sandboxes are stopped but still count against the cap
- * (they will be resumed, not recreated). Actually — parked sandboxes are
- * stopped, so they don't consume Daytona quota. But the plan says "the merge
- * sandbox counts against the cap" and parked nodes are "finishing claimed
- * work." For step 4 (no merge queue), we count claimed nodes only. Parked
- * nodes' sandboxes are stopped and don't count.
+ * (they will be resumed, not recreated). The merge sandbox (step 5) also
+ * counts against the cap for its duration (seconds). The pass checks
+ * isMergeLockHeld() to determine if a merge sandbox is live, and adds 1
+ * to the count if so.
  *
- * Actually, re-reading the plan: "maxConcurrentSandboxes" is the cap on
- * live sandboxes. Parked sandboxes are stopped (not live). So we count
- * claimed nodes only. The merge sandbox (step 5) counts too, but that's
- * not built yet.
+ * @param {object} graph - the graph state
+ * @param {boolean} [mergeSandboxLive=false] - whether a merge sandbox is live
+ * @returns {number} the count of in-flight sandboxes
  */
-export function countInFlightSandboxes(graph) {
-  return graph.nodes.filter(n => n.status === STATUS.CLAIMED).length;
+export function countInFlightSandboxes(graph, mergeSandboxLive = false) {
+  const claimed = graph.nodes.filter(n => n.status === STATUS.CLAIMED).length;
+  const parked = graph.nodes.filter(n => n.status === STATUS.PARKED).length;
+  const mergeCount = mergeSandboxLive ? 1 : 0;
+  return claimed + parked + mergeCount;
 }
 
 /**
  * Check if capacity is available for a new claim.
+ *
+ * @param {object} graph - the graph state
+ * @param {number} maxConcurrent - maxConcurrentSandboxes from policy
+ * @param {boolean} [mergeSandboxLive=false] - whether a merge sandbox is live
+ * @param {number} [reservedSlots=0] - slots reserved by fired merge triggers
+ *   (a fired trigger reserves its slot for the remainder of the pass)
  */
-export function hasCapacity(graph, maxConcurrent) {
-  return countInFlightSandboxes(graph) < maxConcurrent;
+export function hasCapacity(graph, maxConcurrent, mergeSandboxLive = false, reservedSlots = 0) {
+  return countInFlightSandboxes(graph, mergeSandboxLive) + reservedSlots < maxConcurrent;
 }
 
 // ─── Depth-first bounded fairness ────────────────────────────────────────────
@@ -270,10 +278,10 @@ export function hasCapacity(graph, maxConcurrent) {
  *   counter, and whether a fairness yield occurred
  */
 export function selectNextClaim(graph, opts) {
-  const { fairnessBudget, fairnessCounter, lastCompletedNodeId, maxConcurrent } = opts;
+  const { fairnessBudget, fairnessCounter, lastCompletedNodeId, maxConcurrent, mergeSandboxLive = false, reservedSlots = 0 } = opts;
 
   // Check capacity first.
-  if (!hasCapacity(graph, maxConcurrent)) {
+  if (!hasCapacity(graph, maxConcurrent, mergeSandboxLive, reservedSlots)) {
     return { node: null, fairnessCounter, yielded: false };
   }
 
@@ -705,6 +713,7 @@ export function buildNodeDigest(node) {
     attempts: node.attempts || 0,
     dependsOn: node.dependsOn || [],
     mergeTo: node.mergeTo || null,
+    merged: node.merged || false,
     deadline: node.deadline || null,
     lastOutcome: node.lastOutcome || null,
     lastOutcomeEvidence: node.lastOutcomeEvidence || null,
@@ -728,6 +737,7 @@ export function buildGraphDigest(graph) {
     generatedAt: new Date().toISOString(),
     paused: graph.paused,
     policy: graph.policy || {},
+    blockedChains: graph.blockedChains || {},
     nodes: graph.nodes.map(buildNodeDigest),
   };
 }

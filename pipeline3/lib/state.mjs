@@ -47,6 +47,12 @@ export function loadPolicy(path = policyPath) {
   if (policy.installTimeoutSec === undefined) {
     policy.installTimeoutSec = 480; // 8 minutes — a fraction of the per-node deadline
   }
+  if (policy.mergeStallTimeoutSec === undefined) {
+    policy.mergeStallTimeoutSec = 30; // merge cycle is seconds; 30s = stall
+  }
+  if (policy.maxMergeRounds === undefined) {
+    policy.maxMergeRounds = 3; // conflict rounds before parking for human
+  }
   return policy;
 }
 

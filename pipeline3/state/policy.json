@@ -1,5 +1,7 @@
 {
   "maxConcurrentSandboxes": 3,
   "opencodeVersion": "1.17.20",
-  "trunkBranch": "main"
+  "trunkBranch": "main",
+  "mergeStallTimeoutSec": 30,
+  "maxMergeRounds": 3
 }

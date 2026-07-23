@@ -586,7 +586,7 @@ console.log('\n17. pass frame: depth-first claiming (parallelism)');
 setupState({
   runId: 'r1', generatedAt: '', paused: false, policy: {}, nodes: [
     { id: 'a', chainId: 'ca', skill: 't', agent: 'c', prompt: 't', deadline: 'PT1H',
-      dependsOn: [], mergeTo: 'main', metadata: {}, status: 'completed', attempts: 1 },
+      dependsOn: [], mergeTo: 'main', metadata: {}, status: 'completed', attempts: 1, merged: true },
     { id: 'b', chainId: 'ca', skill: 't', agent: 'c', prompt: 't', deadline: 'PT1H',
       dependsOn: ['a'], mergeTo: 'main', metadata: {}, status: 'pending', attempts: 0 },
     { id: 'c', chainId: 'cb', skill: 't', agent: 'c', prompt: 't', deadline: 'PT1H',

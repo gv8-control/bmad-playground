@@ -49,6 +49,12 @@ import { validateDelta, buildRejectionEvent, buildAcceptEvent } from './delta.mj
 import {
   isPlanningLockHeld, checkPlanningRunVanished,
 } from './planning.mjs';
+import {
+  acquireMergeLock, releaseMergeLock, isMergeLockHeld, checkMergeStall,
+  findPendingMergeTriggers, markMerged, markChainBlocked, clearChainBlocked,
+  getBlockedChains, readMergeLock,
+} from './merge.mjs';
+import { writeMermaidView } from './mermaid.mjs';
 
 // ─── Lock management ─────────────────────────────────────────────────────────
 
@@ -180,9 +186,25 @@ function foldInbox(graph, policy, journal) {
       graphMutated = true;
     } else if (content.type === 'conflict') {
       // Merge-conflict report from the merge queue.
-      events.push(content);
-      // Conflict reports don't mutate the graph directly — the pass
-      // triggers a conflict-mode planning run (step 5).
+      // Mark the chain blocked — the merge-point node stays 'completed';
+      // 'blocked' is a chain-level flag on graph.json, never a node status
+      // (spike-merge-point-lifecycle.md F5). The merge-trigger rule keys on
+      // "completed merge-point node" which must remain true so the merge
+      // can re-trigger after resolution.
+      const { event: blockEvent } = markChainBlocked(graph, content.chainId, content);
+      events.push(content); // the conflict report itself
+      events.push(blockEvent); // the chain-blocked event
+      graphMutated = true;
+    } else if (content.type === 'merge' && content.result === 'merged') {
+      // Merge result from the merge-queue workflow (merge landed).
+      // Mark the merge-point node as merged — the `merged` flag prevents
+      // re-triggering and makes dependents ready (isNodeReady checks
+      // `merged` for merge-point dependencies).
+      if (content.nodeId) {
+        const { event: mergeEvent } = markMerged(graph, content.nodeId);
+        events.push(mergeEvent);
+        graphMutated = true;
+      }
     }
 
     // Delete the inbox file (consumed).
@@ -337,7 +359,7 @@ export async function runPass(opts = {}) {
     // Cross-check the journal's in-flight and parked entries against reality.
     // For step 4 (no merge queue, no Daytona reconcile against real sandboxes
     // in tests), this is primarily: check for vanished planning runs.
-    const reconcileResult = reconcile(graph, journal, { daytona });
+    const reconcileResult = reconcile(graph, journal, { daytona, policy });
     if (reconcileResult.events.length > 0) {
       for (const ev of reconcileResult.events) {
         appendJournal(ev);
@@ -373,8 +395,69 @@ export async function runPass(opts = {}) {
     // (This is implicit — getReadyNodes is called in step 6.)
 
     // Step 6: Merge triggers, then claim and launch.
+    // Merge triggering runs even during pause (finishing claimed work —
+    // spike-resume-burst.md F5). Claims and planning launches are gated by
+    // pause.
+
+    // 6a: Merge triggers (merges-first ordering).
+    // Pending merge triggers are evaluated BEFORE node claims, so a merge
+    // gets first claim on capacity freed this pass. A fired merge trigger
+    // reserves its capacity slot for the remainder of the pass — the
+    // node-claim phase treats a just-fired trigger as consuming one slot
+    // (spike-merge-trigger-starvation.md F1, spike-merge-point-lifecycle.md F2).
+    //
+    // Merge triggering is level-triggered: a completed merge-point node
+    // whose branch has neither merged nor a pending conflict report, with
+    // the merge lock acquirable AND capacity available, (re)triggers the
+    // merge-queue workflow. A merge cycle killed mid-run is re-run by the
+    // next pass, not lost.
+    //
+    // Merge triggering continues during pause (finishing claimed work).
+    // The pause gate below only gates claiming and planning launches.
+    let reservedSlots = 0;
+    const mergeSandboxLive = isMergeLockHeld();
+    const blockedChains = getBlockedChains(graph);
+
+    // Note: merge stall detection is in the reconcile step (step 2),
+    // not here — it runs regardless of pause state.
+
+    if (!mergeSandboxLive) {
+      const triggers = findPendingMergeTriggers(graph, blockedChains);
+      for (const trigger of triggers) {
+        // Capacity gate: the merge sandbox counts against
+        // maxConcurrentSandboxes. If the cap is full, the trigger is
+        // deferred to the next pass, like a deferred claim.
+        if (!hasCapacity(graph, policy.maxConcurrentSandboxes, false, reservedSlots)) {
+          break; // no capacity for this merge trigger — defer to next pass
+        }
+
+        // Fire the merge trigger — journal the launch, then trigger the
+        // n8n merge-queue workflow. The trigger reserves its slot for the
+        // remainder of the pass (fired-trigger-reserves-slot).
+        const mergeCycleId = `merge-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+        const mergeLaunchEvent = {
+          type: 'merge_launch',
+          at: new Date().toISOString(),
+          mergeCycleId,
+          chainId: trigger.chainId,
+          mergePointNodeId: trigger.nodeId,
+          runId: graph.runId,
+          trunkBranch: trigger.mergeTo,
+        };
+        appendJournal(mergeLaunchEvent);
+        counts.merges++;
+        reservedSlots++; // the fired trigger reserves its slot
+
+        // Trigger the n8n merge-queue workflow.
+        // The integration path does:
+        //   await triggerN8nWorkflow('merge-queue', { ...trigger, mergeCycleId });
+        // For the pass frame, we journal and the n8n workflow is
+        // triggered by the schedule tick or a direct invocation.
+      }
+    }
+
+    // 6b/6c/6d: Claims, conflict-mode planning, and expansion planning.
     // Gated by pause: while paused, no new claims, no planning launches.
-    // Supervision, folding, and merge triggering still run.
     if (!graph.paused) {
       // Bootstrap: assign runId if needed and about to trigger planning.
       if (!graph.runId) {
@@ -389,13 +472,46 @@ export async function runPass(opts = {}) {
         }
       }
 
-      // Claim and launch ready nodes (depth-first, bounded by fairness).
+      // 6b: Conflict-mode planning trigger.
+      // A conflict-blocked chain with no response yet in the graph and no
+      // planning run in flight triggers a planning run in conflict mode.
+      // The trigger is machinery; the content is the planner's. The planning
+      // lock serializes it and pause gates it (spike-resume-burst.md F5).
+      if (graph.blockedChains) {
+        for (const [chainId, block] of Object.entries(graph.blockedChains)) {
+          // Check if a resolution node already exists for this chain.
+          const hasResolution = graph.nodes.some(
+            n => n.chainId === chainId && n.metadata && n.metadata.resolutionFor === block.mergePointNodeId
+          );
+          if (!hasResolution && !isPlanningLockHeld()) {
+            const conflictPlanningEvent = {
+              type: 'planning_launch',
+              at: new Date().toISOString(),
+              planningRunId: `plan-conflict-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+              mode: 'conflict',
+              runId: graph.runId,
+              chainId,
+              conflict: block,
+              deadline: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+            };
+            appendJournal(conflictPlanningEvent);
+            counts.planning++;
+            break; // one planning run at a time (planning lock serializes)
+          }
+        }
+      }
+
+      // 6c: Claim and launch ready nodes (depth-first, bounded by fairness).
+      // The claim phase treats fired merge triggers as consuming slots
+      // (reservedSlots), so the merge sandbox's brief async-creation window
+      // cannot be consumed by a node claim in the same pass.
       const claimResult = await claimAndLaunch(graph, policy, {
         daytona, image, apiKey, runId: graph.runId,
+        mergeSandboxLive, reservedSlots,
       });
       counts.claims += claimResult.claims;
 
-      // Trigger planning run if frontier is low.
+      // 6d: Trigger planning run if frontier is low.
       if (isFrontierLow(graph, policy.maxConcurrentSandboxes) && !isPlanningLockHeld()) {
         const planningTriggered = triggerPlanningRun(graph, policy, {
           mode: 'expansion', runId: graph.runId,
@@ -408,6 +524,15 @@ export async function runPass(opts = {}) {
 
     // Save the graph (derived view, rebuildable from journal).
     saveGraph(buildGraphDigest(graph));
+
+    // Regenerate the Mermaid graph view on every graph mutation (the viewer
+    // belongs to the workflow silo — viewable in VS Code preview and on
+    // GitHub after push. Zero infrastructure — graph-pipeline.md lines 1445-1447).
+    try {
+      writeMermaidView(buildGraphDigest(graph));
+    } catch {
+      // Best-effort — the viewer is not canonical state.
+    }
 
     // Step 7: Write the heartbeat, release the lock, exit.
     const duration = Date.now() - startTime;
@@ -462,7 +587,7 @@ export async function runPass(opts = {}) {
  */
 function reconcile(graph, journal, opts = {}) {
   const events = [];
-  const { daytona } = opts;
+  const { daytona, policy = {} } = opts;
 
   // Check for vanished planning runs.
   const vanished = checkPlanningRunVanished(graph, journal);
@@ -478,6 +603,45 @@ function reconcile(graph, journal, opts = {}) {
     // standard level-triggered trigger re-fires a fresh run.
   }
 
+  // Check for a stale merge lock (holder PID is dead).
+  // A stale merge lock means the merge wrapper died. The pass can reclaim
+  // the lock — the next merge trigger in step 6 will re-fire a fresh merge
+  // cycle. This is the automated recovery path for a crashed merge wrapper
+  // (distinct from the n8n-restart orphan case, where the PID is still
+  // alive — that's detected by checkMergeStall below).
+  // spike-merge-point-lifecycle.md F3.
+  const mergeLockRecord = readMergeLock();
+  if (mergeLockRecord && mergeLockRecord.pid) {
+    try {
+      process.kill(mergeLockRecord.pid, 0);
+      // PID is alive — check for stall (orphaned wrapper after n8n restart).
+      // This runs regardless of pause state — stall detection is a reconcile
+      // concern, not a claim concern. A stalled merge lock blocks the merge
+      // queue silently; the alert makes it loud (spike-merge-point-lifecycle.md F3).
+      const stallCheck = checkMergeStall(policy.mergeStallTimeoutSec || 30000);
+      if (stallCheck.stalled) {
+        events.push({
+          type: 'runner_error',
+          at: new Date().toISOString(),
+          errorType: 'merge_stall',
+          message: `Merge lock held for too long (since ${stallCheck.heldSince}, PID ${stallCheck.pid}). Likely orphaned wrapper after n8n restart. Manual recovery: kill PID ${stallCheck.pid}, then next pass re-triggers a fresh merge cycle.`,
+          pid: stallCheck.pid,
+          sandboxId: stallCheck.sandboxId,
+        });
+      }
+    } catch {
+      // PID is dead — stale lock. The merge wrapper crashed. Reclaim it.
+      // The next merge trigger in step 6 will re-fire a fresh merge cycle.
+      events.push({
+        type: 'runner_error',
+        at: new Date().toISOString(),
+        errorType: 'merge_wrapper_vanished',
+        message: `Merge wrapper died (PID ${mergeLockRecord.pid} not alive). Lock reclaimed; next merge trigger re-fires a fresh cycle.`,
+        sandboxId: mergeLockRecord.sandboxId,
+      });
+    }
+  }
+
   // Check for orphaned sandboxes (only when Daytona client is available).
   if (daytona) {
     // The full orphan-sandbox reconciliation calls reapOrphanedSandboxes
@@ -485,6 +649,7 @@ function reconcile(graph, journal, opts = {}) {
     // the actual reaping is done by the integration tests / production.
     // The pass collects known sandbox IDs from the journal's in-flight
     // and parked entries, then calls reapOrphanedSandboxes.
+    // The merge sandbox ID (from merge.lock) must be in the known set.
     // This is deferred to the integration path — the pass frame doesn't
     // import reaper.mjs to keep the dependency optional.
   }
@@ -566,17 +731,19 @@ async function pollInFlightSessions(graph, policy, opts = {}) {
  * graph mutations.
  */
 async function claimAndLaunch(graph, policy, opts = {}) {
-  const { daytona, image, apiKey, runId } = opts;
+  const { daytona, image, apiKey, runId, mergeSandboxLive = false, reservedSlots = 0 } = opts;
   let claims = 0;
   let fairnessCounter = 0;
   let lastCompletedNodeId = null;
 
-  while (hasCapacity(graph, policy.maxConcurrentSandboxes)) {
+  while (hasCapacity(graph, policy.maxConcurrentSandboxes, mergeSandboxLive, reservedSlots)) {
     const selection = selectNextClaim(graph, {
       fairnessBudget: policy.fairnessBudget || policy.maxConcurrentSandboxes,
       fairnessCounter,
       lastCompletedNodeId,
       maxConcurrent: policy.maxConcurrentSandboxes,
+      mergeSandboxLive,
+      reservedSlots,
     });
 
     if (!selection.node) break; // no ready nodes or no capacity
