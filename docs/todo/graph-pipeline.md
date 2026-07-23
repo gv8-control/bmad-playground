@@ -797,7 +797,7 @@ isolation — a sandbox would add provisioning cost and buy nothing.
   session ID recorded alongside the lock (a small status file the wrapper rewrites tmp +
   rename: PID for pass-side deadline termination — the pass signals the child, and the
   wrapper observes the exit, records it, promotes nothing, and releases the lock; session ID
-  captured after the initial run via `opencode session list --format json`, as in the
+  captured via a background poller concurrent with the initial run, as in the
   in-sandbox template, for resume legs), and the exit code recorded per leg. The planning
   run writes nothing else shared — not the journal, not `graph.json`.
 - **Delta validation at fold time — all-or-nothing (verified spike 2026-07-23 — see
@@ -1030,6 +1030,16 @@ A human can pause the pipeline: active nodes run to completion, no new nodes are
   sandboxes get created either — that falls out for free, since sandbox creation happens
   only at claim time. No new planning runs launch while paused; an in-flight planning run is
   supervised to completion and its delta folds — finishing claimed work, like everything else.
+  Conflict-mode planning launches are also gated by pause; a conflict-blocked chain stays blocked
+  through the pause window and only begins resolution at the resume pass (verified spike
+  2026-07-23: the blocked chain recovers via the standard conflict-resolution path once resume
+  fires — see `docs/todo/spike-resume-burst.md`). The resume burst — a deep ready-node frontier
+  plus pending merge triggers landing simultaneously at resume — is handled by the existing
+  merges-first ordering and `merge.lock` serialization: at most one merge sandbox is live at a
+  time, so the burst produces minutes of merge-heavy execution (one merge per tick) followed by
+  hours of normal node work, with no deadlock, no thrash, and no capacity violation (verified
+  spike 2026-07-23: 6 phases, 13 scenarios, zero capacity-exceeded events — see
+  `docs/todo/spike-resume-burst.md`).
 - **Mechanism: the same inbox path as every other human/external input.** A small helper script
   (an n8n form later, if wanted) writes a `pause` request to the inbox and invokes the
   dispatcher. The next pass folds it: journal append first (a `pause` event with who/when/why —
@@ -1173,7 +1183,8 @@ When an agent finishes:
    question text), stops the sandbox, and triggers the question-form workflow, which fires ntfy
    with the form URL and suspends on its Wait node. The session ID was captured at launch (see
    the in-sandbox command template — opencode auto-generates IDs, so the template runs
-   `opencode session list --format json` after the initial `opencode run` and records the ID
+    `opencode session list --format json` via a background poller concurrent with the initial
+    `opencode run` and records the ID
    for the journal). The human's answer is written to the inbox
    and the dispatcher invoked; the next pass starts the sandbox and issues
    `opencode run --format json --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
@@ -1183,7 +1194,7 @@ When an agent finishes:
 
 ### Implementation surface
 
-Rough estimate, ~1090 lines of JS plus three small n8n workflows:
+Rough estimate, ~1150 lines of JS plus three small n8n workflows:
 
 | Module | Lines | Reuses |
 |---|---|---|
@@ -1193,7 +1204,7 @@ Rough estimate, ~1090 lines of JS plus three small n8n workflows:
 | Classification (deterministic rules + LLM fallback, evidence journaled with the outcome) | ~90 | Rules and prompt ported from `Parse OpenCode Response` / `BMAD Outcome`; no n8n dependency |
 | Pass frame (flock, inbox fold, reconcile, pause gate, per-pass log + `last-pass.json` heartbeat) | ~170 | New; helper patterns copied from gen-2 scripts, no imports |
 | Planning run (launch wrapper with per-leg exit record + atomic delta promotion, resume-mode legs, planning lock, delta validation + fold) | ~120 | New |
-| In-sandbox command template (install check, opencode run with `--format json` and `</dev/null`, exit capture, unconditional branch push with bounded retry + `push-failed` marker) | ~90 | New |
+| In-sandbox command template (proxy health check, install with sub-step timeout, session ID background poller, opencode run with `--format json` and `</dev/null`, exit capture, unconditional branch push with bounded retry + error-type classification + `push-failed`/`proxy-failed`/`install-failed`/`session-capture-failed` markers) | ~150 | New — verified spike 2026-07-23, see `docs/todo/spike-in-sandbox-template.md` |
 | Merge wrapper (merge lock, drives the in-sandbox merge cycle: fetch, rebase, merge, push; fire post-merge hook; conflict report) | ~90 | New |
 | Question-form workflow (form + ntfy + inbox write + invoke) | n8n, small | New — the Wait-form/ntfy pattern from gen-2, as a standalone workflow |
 | Planning-host workflow (run the launch wrapper, invoke dispatcher on exit) | n8n, small | New |
@@ -1406,13 +1417,35 @@ single-use keeps it free across sequential claims too.
   package the snapshot lacks, an unresolvable lockfile) is a distinct classification — see
   Supervision — not a generic runner error. The install step also installs the `ws` npm
   package globally — the tunnel proxy depends on it (see WebSocket tunnel proxy above).
+  **The install command is wrapped in a per-step timeout** (`timeout $INSTALL_TIMEOUT npm ci`,
+  configurable in the policy block — verified spike 2026-07-23: without a sub-step timeout, an
+  install hang consumes the entire per-node deadline, the pass kills the session, and the
+  same SIGKILL gap as the opencode-hang case applies — no trap, no push, no marker, work lost;
+  see `docs/todo/spike-in-sandbox-template.md`). On exit code 124 (GNU timeout's exit code for
+  timeout), the template writes an `install-failed` marker with `cause: "timeout"` and exits
+  with the install-failure code. The pass classifies this as install failure (park with
+  QUESTION), not generic timeout.
 - The in-sandbox command starts the tunnel proxy before the agent runs: `node /tmp/tunnel-proxy.js`
   in the background with `TUNNEL_RELAY_URL`, `TUNNEL_RELAY_TOKEN`, and `TUNNEL_LISTEN_PORT`
   env vars. The proxy listens on `127.0.0.1:8888` and bridges HTTP CONNECT requests to the
   relay's WebSocket `/tunnel` endpoint. The agent's command sets `HTTPS_PROXY=http://127.0.0.1:8888`
   and `NO_PROXY` for Essential Services (which the sandbox reaches directly). This needs no
   `baseURL` override in `opencode.json` — opencode uses the real `api.neuralwatt.com` URL
-  (spike, 2026-07-22 — see `docs/todo/spike-ws-tunnel-proxy.md`).
+  (spike, 2026-07-22 — see `docs/todo/spike-ws-tunnel-proxy.md`). **The template runs a proxy
+  health check after starting the proxy and before running opencode** (verified spike 2026-07-23:
+  without a health check, a dead proxy causes opencode to exit non-zero with a provider error,
+  classified as `failed` — triggering a retry on a fresh sandbox that fails identically if the
+  cause is permanent, e.g. `ws` not in the snapshot; see `docs/todo/spike-in-sandbox-template.md`).
+  The health check is two-tier: (1) HTTP listener check (`curl -sf --max-time 1
+  http://127.0.0.1:8888/` with a 5s bounded poll) catches ws-missing, port-in-use, proxy crash;
+  (2) end-to-end tunnel verification (`HTTPS_PROXY=http://127.0.0.1:8888 curl -sf --max-time 10
+  https://api.neuralwatt.com/v1/models`) catches relay-down, bad-token. On failure, the template
+  writes a `proxy-failed` marker (analogous to `push-failed`) with the cause and permanence
+  classification, and exits with a distinct code. The pass checks this marker before
+  classification — permanent causes park with QUESTION (don't retry, same as install failure),
+  transient causes park with QUESTION (human checks relay). The `ws` package is installed globally
+  before the project install, not as part of it — its failure is a distinct infra-dep failure
+  (transient, retryable) vs. a project-dep failure (permanent, don't retry).
 - The pass starts the node's command inside the sandbox via the Daytona session API
   (`createSession` + `executeSessionCommand({ runAsync: true })`) with `--format json`,
   `--dir <sandbox-repo-path>`, and opencode storage at a persistent path on the sandbox
@@ -1435,11 +1468,21 @@ single-use keeps it free across sequential claims too.
   no structured signal — `--format json` gives the dispatcher a machine-readable event stream
   and the `step_finish` event as a clean completion signal (see Supervision, Stream-truncation
   recovery, and spike-midstream-resume.md).
-  **The template captures the session ID after the initial run** (verified spike 2026-07-22):
-  opencode auto-generates session IDs (format `ses_<hex>`) and `--session` is resume-only, so
-  the template runs `opencode session list --format json` (newest first) after the initial
-  `opencode run --format json` and writes the ID to a known path for the dispatcher to journal
+  **The template captures the session ID via a background poller, not as a post-exit step**
+  (verified spike 2026-07-23): opencode auto-generates session IDs (format `ses_<hex>`) and
+  `--session` is resume-only, so the template runs `opencode session list --format json`
+  (newest first) and writes the ID to a known path for the dispatcher to journal
   with the claim. Without this, the park/resume path has no ID to pass to `--session`.
+  The plan's original "capture after the initial `opencode run`" design breaks for the
+  opencode-hang case: if opencode hangs and is killed, `opencode run` never exits, the
+  session list is never called, and the session ID is not journaled — park/resume has no
+  ID (see `docs/todo/spike-in-sandbox-template.md`). The fix: before launching `opencode run`,
+  capture `sessions_before=$(opencode session list --format json)`. Then launch a background
+  poller that polls `opencode session list --format json` every ~2s. As soon as a new session
+  appears that wasn't in `sessions_before`, write it to the known path and exit the poller.
+  This is robust against: opencode hang (ID captured before the hang is detected), opencode
+  crash (poller detects no new session, writes a `session-capture-failed` marker), and stale
+  sessions on sandbox reuse (the pre-run snapshot diff eliminates them).
 - The in-sandbox command ends with a branch push (`git push origin HEAD:pipeline/<runId>/<chainId>`
   — the chain branch) so the result is durable in git regardless of what is watching. **The push
   step runs unconditionally** — it pushes the branch regardless of opencode's exit code (verified
@@ -1570,16 +1613,36 @@ the Daytona session API) — if the recovery succeeds, the work is durable and t
 to classification; if the recovery fails, the pass parks the node with QUESTION carrying the
 push error, preserving the sandbox (stopped, not destroyed) for manual recovery. The human can
 push the branch manually from the sandbox and answer the park, or investigate why the push
-failed (credentials, network, branch-lock).
+failed (credentials, network, branch-lock). **If no marker exists** (marker-write failure, SIGKILL
+before the trap could write it), the pass checks `git ls-remote origin
+pipeline/<runId>/<chainId>` before destruction — if the branch is absent, the pass attempts a
+recovery push from the working tree (verified spike 2026-07-23: this is the universal fallback
+for all non-clean exits; see `docs/todo/spike-in-sandbox-template.md`). The push-failed marker
+carries the opencode exit code, the git error, the error classification (auth_failure,
+non_fast_forward, network_transient_exhausted, rate_limit), the branch name, the commit SHA,
+and the retry history — enough for the pass to decide whether a recovery push is worth
+attempting (auth and non-fast-forward skip recovery; network and rate-limit attempt it).
 
 **The "push step never ran" case does not occur** (verified spike 2026-07-23: the template's push
-step runs unconditionally — via a trap, wrapper, or `;`-separated command — so opencode exiting
-non-zero does not prevent the push; see `docs/todo/spike-push-on-failure.md`). The template
-records opencode's exit code separately (for the classifier) and pushes in all cases. This
-preserves the durability floor for `failed` outcomes: the partial work is on the chain branch,
-not lost with the sandbox. The merge-trigger gate (only `completed` merge-point nodes trigger
-the merge queue — see Reconcile pass step 6) quarantines the broken work: a `failed` node's
-branch is never merged.
+  step runs unconditionally — via a trap, wrapper, or `;`-separated command — so opencode exiting
+  non-zero does not prevent the push; see `docs/todo/spike-push-on-failure.md`). The template
+  records opencode's exit code separately (for the classifier) and pushes in all cases. This
+  preserves the durability floor for `failed` outcomes: the partial work is on the chain branch,
+  not lost with the sandbox. The merge-trigger gate (only `completed` merge-point nodes trigger
+  the merge queue — see Reconcile pass step 6) quarantines the broken work: a `failed` node's
+  branch is never merged.
+
+**The SIGKILL case is the exception** (verified spike 2026-07-23 — see
+`docs/todo/spike-in-sandbox-template.md`): the bash EXIT trap fires on SIGTERM (143) but NOT on
+SIGKILL (137, OOM killer, Daytona force-stop). If opencode hangs and the pass terminates with
+SIGKILL, the trap does not fire, steps 5-8 never run, the branch is never pushed, and no marker
+is written. The pass's universal fallback for all non-clean exits (SIGKILL, trap failure,
+marker-write failure): before destroying the sandbox, check `git ls-remote origin
+pipeline/<runId>/<chainId>`. If the branch exists on the remote, the push completed. If absent,
+the pass attempts a recovery push from the sandbox's working tree via the Daytona session API —
+same recovery path as the marker case below. The Daytona API's termination signal (SIGTERM with
+grace period vs. immediate SIGKILL) must be verified empirically; the `git ls-remote` fallback
+covers both cases regardless.
 
 **Orphaned branch cleanup.** A `failed` node's branch sits on origin — the merge cycle only
 deletes merged branches, so a `failed` node's branch is never deleted by the merge cycle. A
@@ -1650,8 +1713,8 @@ inherits (each sandbox gets its own storage by machine isolation).
   the inbox and invokes the dispatcher, and the next pass starts the sandbox and issues
    `opencode run --format json --session <id> --dir <sandbox-repo-path> "<answer>"` async, journaling the
    resume. The session ID is the one captured at launch (opencode auto-generates IDs —
-  `--session` is resume-only, so the template captures it via `opencode session list --format
-  json` after the initial run; see the per-claim recipe). Agents still never talk to n8n.
+   `--session` is resume-only, so the template captures it via a background poller concurrent
+   with `opencode run` (see the per-claim recipe). Agents still never talk to n8n.
 - This path is also how human-involved chains run: a chain whose instructions require human
   action (e.g. setting up credentials) is still a normal chain — the skill run reads the work,
   asks, parks, resumes with the answer. There is no separate human-task node type.
@@ -1767,7 +1830,9 @@ lockfile.
   conflict-blocked chain with no response yet in the graph and no planning run in flight
   triggers a planning run in conflict mode — the trigger is machinery, the content is the
   planner's, exactly like expansion; the planning lock serializes it and pause gates it like
-  any other launch. The prompt carries the journaled conflict details. The planner chooses per
+  any other launch (verified spike 2026-07-23: a conflict-blocked chain during pause stays
+  blocked through the pause window; the conflict-mode planning run triggers at the resume pass
+  — see `docs/todo/spike-resume-burst.md`). The prompt carries the journaled conflict details. The planner chooses per
   the chain-composition guidelines: append a **resolution node** (the common case), or
   **replan for rework** when the conflict reveals semantic divergence — the merged upstream
   invalidated this chain's approach, so resolving hunks would merge wrong content. Routing
@@ -1836,8 +1901,11 @@ lockfile.
    to unlock — not by default. The whole merge cycle runs on a sandbox created per merge cycle,
    so merge-queue compute never competes with the human's dev
    servers or Postgres on the devcontainer — the merge cycle's sandbox counts against
-  `maxConcurrentSandboxes` for its duration (seconds), reducing node-claim capacity by one
-  during that window. The merge cycle does not run tests; a post-merge
+   `maxConcurrentSandboxes` for its duration (seconds), reducing node-claim capacity by one
+   during that window. `merge.lock` serializes merge cycles one-at-a-time, so at most one merge
+   sandbox is live at any moment — the pool can never fill with merge sandboxes (verified spike
+   2026-07-23: the resume-burst spike tested this structural bound explicitly — see
+   `docs/todo/spike-resume-burst.md`). The merge cycle does not run tests; a post-merge
   hook, if configured, runs project-specific validation after the merge lands. Mid-chain merge
   points multiply the merge-cycle cost, which is why the
   guidelines mark one only where it earns it. Because the merge sandbox shares the cap with
@@ -1930,12 +1998,15 @@ lockfile.
       a `runId` at creation (verified viable — see `docs/todo/spike-label-scoping.md`).
    - Verify Yarn 4 Berry works with adequate disk (the initial failure was almost certainly the
      3 GB default disk, not a platform incompatibility).
-3. Build the per-agent machinery: the in-sandbox command template (opencode run with `--format json`, exit capture,
-   unconditional terminal branch push with bounded retry + `push-failed` marker — see Branch push failure), session start/poll/continue via the Daytona session API, the
+3. Build the per-agent machinery: the in-sandbox command template (proxy health check with `proxy-failed` marker, install with sub-step timeout and `install-failed` marker, session ID background poller with `session-capture-failed` marker, opencode run with `--format json`, exit capture,
+   unconditional terminal branch push with bounded retry + error-type classification + `push-failed` marker — see Branch push failure), the pass-side `git ls-remote` fallback for non-clean exits (SIGKILL, marker-write failure), session start/poll/continue via the Daytona session API, the
    classification module (deterministic rules + LLM fallback, prompt ported from gen-2),
    deadline enforcement (terminate + journal + handle per retry policy; see Timeout policy), park/resume with a synthetic question
    (including sandbox stop/start around the park), transcript pull and sandbox destroy at
-   collection, the small question-form workflow, and conflict-as-evidence journaling. Restart n8n mid-run and verify the next pass reconciles
+   collection, the small question-form workflow, and conflict-as-evidence journaling. Test each
+   step's failure mode in isolation: proxy-start failure, install failure, session-capture
+   failure, opencode hang (SIGTERM vs. SIGKILL), push-transient, push-permanent (verified spike
+   2026-07-23 — see `docs/todo/spike-in-sandbox-template.md`). Restart n8n mid-run and verify the next pass reconciles
    correctly (collects finished work, keeps polling running work). Exercise the health checks:
    make a pass fail (bad input) and verify the tick fires the error notification; hold
    `last-pass.json` stale and verify the stall alert fires. Test against disposable
